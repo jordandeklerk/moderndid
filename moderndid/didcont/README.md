@@ -1,6 +1,6 @@
 # Difference-in-Differences with Continuous Treatments
 
-This module extends difference-in-differences to settings where treatment intensity is continuous and adoption can be staggered across groups, implementing the estimators in [Callaway, Goodman-Bacon, and Sant'Anna (2024)](https://arxiv.org/abs/2107.02637).
+This module estimates difference-in-differences effects when treatment intensity varies across units and adoption can be staggered across groups. The [December 2025 paper by Callaway, Goodman-Bacon, and Sant'Anna](https://psantanna.com/files/CGBS_v4.pdf) develops the identification framework, including the additional assumptions needed to interpret fitted dose derivatives as causal responses.
 
 The computational methods here are inspired by the corresponding R package [contdid](https://github.com/bcallaway11/contdid).
 
@@ -40,4 +40,4 @@ did.plot_dose_response(result, effect_type="att")
 
 ## References
 
-Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2024). Difference-in-differences with a continuous treatment. *Journal of Econometrics* (forthcoming). [arXiv:2107.02637](https://arxiv.org/abs/2107.02637)
+Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2025). Difference-in-differences with a continuous treatment. *American Economic Review* (forthcoming). [December 31, 2025 manuscript](https://psantanna.com/files/CGBS_v4.pdf).

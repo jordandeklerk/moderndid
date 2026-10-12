@@ -243,8 +243,10 @@ def test_attgt_pte_aggregations_with_missing(basic_attgt_data, create_pte_params
     pte_params = create_pte_params()
     result = attgt_pte_aggregations(attgt_list, pte_params)
 
-    assert len(result["attgt_results"]) == len(attgt_list) - len(missing_indices)
+    assert len(result["attgt_results"]) == len(attgt_list)
     assert not result["attgt_results"]["att"].is_null().any()
+    np.testing.assert_array_equal(np.flatnonzero(result["attgt_results"]["att"].is_nan().to_numpy()), missing_indices)
+    assert np.all(np.isfinite(result["dyn_results"]["att_e"].to_numpy()))
 
 
 def test_overall_weights_e_mask(basic_attgt_data, create_pte_params):
@@ -273,6 +275,33 @@ def test_overall_weights_e_mask(basic_attgt_data, create_pte_params):
         if len(post_treatment) > 0 and post_treatment["weight"].sum() > 0:
             computed_overall = (post_treatment["att"] * post_treatment["weight"]).sum()
             assert np.isclose(result["overall_results"], computed_overall, rtol=0.01)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_overall_weights_for_group_without_post_treatment_periods(basic_attgt_data, create_pte_params, forbid_errstate):
+    attgt_list = [row for row in basic_attgt_data if row["time_period"] < row["group"] or row["group"] == 2004]
+    pte_params = create_pte_params()
+    pte_params = pte_params._replace(
+        data=pte_params.data.with_columns(pl.when(pl.col("id") % 2 == 0).then(2004).otherwise(2006).alias("G"))
+    )
+    forbid_errstate()
+
+    result = attgt_pte_aggregations(attgt_list, pte_params)
+
+    assert sorted(result["overall_weights"].tolist()) == [0.0, 0.0, 0.5, 0.5]
+    assert result["overall_results"] == pytest.approx(0.175)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_overall_weights_when_no_unit_belongs_to_a_group(basic_attgt_data, create_pte_params, forbid_errstate):
+    pte_params = create_pte_params()
+    pte_params = pte_params._replace(data=pte_params.data.with_columns(pl.lit(0).alias("G")))
+    forbid_errstate()
+
+    result = attgt_pte_aggregations(basic_attgt_data, pte_params)
+
+    assert result["overall_weights"].tolist() == [0.0, 0.0, 0.0, 0.0, 0.0]
+    assert np.isnan(result["overall_results"])
 
 
 @pytest.mark.parametrize("quantile", [0.25, 0.5, 0.75])
@@ -316,7 +345,7 @@ def test_qott_pte_aggregations(quantile_test_data, create_pte_params, quantile):
 
 
 @pytest.mark.parametrize(
-    "n_boot,gt_type",
+    "biters,gt_type",
     [
         (5, "att"),
         (10, "att"),
@@ -324,7 +353,7 @@ def test_qott_pte_aggregations(quantile_test_data, create_pte_params, quantile):
         (5, "qott"),
     ],
 )
-def test_panel_empirical_bootstrap(create_pte_params, n_boot, gt_type):
+def test_panel_empirical_bootstrap(create_pte_params, biters, gt_type):
     np.random.seed(42)
 
     attgt_list = [
@@ -357,7 +386,7 @@ def test_panel_empirical_bootstrap(create_pte_params, n_boot, gt_type):
             for att in attgt_list
         ]
 
-    pte_params = create_pte_params(gt_type=gt_type)._replace(biters=n_boot)
+    pte_params = create_pte_params(gt_type=gt_type)._replace(biters=biters)
 
     def mock_setup_pte(**kwargs):
         return pte_params
@@ -398,7 +427,7 @@ def test_panel_empirical_bootstrap(create_pte_params, n_boot, gt_type):
     if len(se_values) > 0:
         assert all(se_values >= 0)
         assert all(se_values < 1.0)
-        if n_boot >= 10:
+        if biters >= 10:
             assert all(se_values > 0)
 
     assert np.isfinite(result.overall_results["att"])
@@ -455,3 +484,16 @@ def test_panel_empirical_bootstrap_with_warnings(create_pte_params):
         )
 
         assert isinstance(result, PteEmpBootResult)
+
+
+def test_attgt_pte_aggregations_leaves_out_cells_without_estimates(basic_attgt_data, create_pte_params):
+    cells = [dict(cell) for cell in basic_attgt_data]
+    cells[4]["att"] = np.nan
+
+    result = attgt_pte_aggregations(cells, create_pte_params(n_units=200))
+
+    dyn = result["dyn_results"]
+    assert dyn.filter(pl.col("e") == 0)["att_e"][0] == pytest.approx(0.2, rel=1e-12)
+    assert dyn.filter(pl.col("e") == -1)["att_e"].is_finite().all()
+    assert result["overall_results"] == pytest.approx(0.175, rel=1e-12)
+    np.testing.assert_array_equal(result["attgt_results"]["att"].to_numpy(), [0.1, 0.2, 0.15, 0.05, np.nan])

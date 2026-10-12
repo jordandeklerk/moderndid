@@ -1,28 +1,14 @@
 """Utility functions for continuous treatment DiD estimators."""
 
-from typing import NamedTuple
-
 import numpy as np
 
 from moderndid.cupy.backend import get_backend
 
+from .container import FullRankCheckResult
 from .numba import (
     check_full_rank_crossprod,
     matrix_sqrt_eigendecomp,
 )
-
-
-class FullRankCheckResult(NamedTuple):
-    """Container for full rank check results."""
-
-    #: Whether the matrix has full rank.
-    is_full_rank: bool
-    #: Condition number of the matrix.
-    condition_number: float
-    #: Minimum eigenvalue.
-    min_eigenvalue: float
-    #: Maximum eigenvalue.
-    max_eigenvalue: float
 
 
 def is_full_rank(x, tol=None):
@@ -43,10 +29,10 @@ def is_full_rank(x, tol=None):
     FullRankCheckResult
         NamedTuple containing:
 
-        - is_full_rank: Whether the matrix has full rank
-        - condition_number: The condition number (max_eigenvalue/min_eigenvalue)
-        - min_eigenvalue: Minimum eigenvalue of :math:`X'X`
-        - max_eigenvalue: Maximum eigenvalue of :math:`X'X`
+        - **is_full_rank**: Whether the matrix has full rank
+        - **condition_number**: Ratio of the largest to the smallest eigenvalue of :math:`X'X`
+        - **min_eigenvalue**: Minimum eigenvalue of :math:`X'X`
+        - **max_eigenvalue**: Maximum eigenvalue of :math:`X'X`
     """
     x = np.atleast_2d(x)
 
@@ -127,7 +113,7 @@ def basis_dimension(basis="additive", degree=None, segments=None):
     """Compute dimension of multivariate basis without constructing it.
 
     Efficiently computes the dimension of additive, tensor product, or
-    generalized linear product (GLP) bases without the memory overhead
+    generalized polynomial (glp) bases without the memory overhead
     of constructing the full basis matrix.
 
     Parameters
@@ -137,7 +123,7 @@ def basis_dimension(basis="additive", degree=None, segments=None):
 
         - "additive": Sum of univariate bases
         - "tensor": Full tensor product
-        - "glp": Generalized linear product
+        - "glp": Generalized polynomial
     degree : ndarray, optional
         Polynomial degrees for each variable. Must be provided with segments.
     segments : ndarray, optional
@@ -200,7 +186,7 @@ def basis_dimension(basis="additive", degree=None, segments=None):
 
 
 def _compute_glp_dimension_step(d1, d2, nd1, pd12):
-    """Compute a step in the GLP dimension calculation."""
+    """Compute a step in the glp dimension calculation."""
     if d2 == 1:
         return {"d12": pd12, "nd1": nd1}
 

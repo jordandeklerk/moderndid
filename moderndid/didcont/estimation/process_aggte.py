@@ -7,7 +7,7 @@ import polars as pl
 import scipy.stats as st
 
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
-from moderndid.did.mboot import mboot
+from moderndid.did.mboot import _mboot
 
 from ..container import PTEAggteResult
 
@@ -18,46 +18,59 @@ def aggregate_att_gt(
     balance_event=None,
     min_event_time=-np.inf,
     max_event_time=np.inf,
+    rng=None,
 ):
     """Aggregate ATT(g,t) results to overall, event-time, or group-level effects.
+
+    A cell without an estimate, such as one whose doses can't fit the spline,
+    leaves every average. The other cells of the same average share its
+    weight. An event time without any estimated cell is not reported.
 
     Parameters
     ----------
     att_gt_result : object
-        Has attributes: group, t, att, inf_func, pte_params (with .data, .cband, .alp, .biters, .gname).
+        Has attributes: group, t, att, inf_func, pte_params (with .data, .cband, .alpha, .biters, .gname).
     aggregation_type : {'overall','dynamic','group'}
         Aggregation kind.
-    balance_event : int or None
-        Minimum post periods a cohort must have to enter the balanced event window.
+    balance_event : int, float, or None
+        Event time a cohort must reach to enter the balanced event window.
     min_event_time, max_event_time : int or float
         Event-time trimming bounds.
+    rng : numpy.random.Generator, optional
+        Random number generator for the multiplier bootstrap. If None, a new generator is created.
 
     Returns
     -------
     PTEAggteResult
         Aggregated effects, standard errors, influence functions, and metadata.
     """
+    if rng is None:
+        rng = np.random.default_rng()
+
     original_group = np.asarray(att_gt_result.groups)
     original_time = np.asarray(att_gt_result.times)
 
     att = np.asarray(att_gt_result.att, dtype=float)
     inf_func = np.asarray(att_gt_result.influence_func)
     pte_params = att_gt_result.pte_params
+    # Masks rather than filtered arrays keep every period and cohort for the time map and the cohort shares.
+    estimated = np.isfinite(att)
 
     if pte_params is None:
         raise ValueError("att_gt_result.pte_params is required.")
 
     bootstrap = True
     confidence_band = bool(pte_params.cband)
-    alpha = float(pte_params.alp)
-    bootstrap_iterations = int(pte_params.biters) if pte_params.biters else 100
+    alpha = float(pte_params.alpha)
+    biters = int(pte_params.biters) if pte_params.biters else 100
     data = pte_params.data
 
     t_levels = np.array(sorted(np.unique(original_time)))
     time_map = {v: i + 1 for i, v in enumerate(t_levels)}
     time_idx = _map_to_idx(original_time, time_map)
     group_idx = _map_to_idx(original_group, time_map)
-    max_t = int(time_idx.max())
+    # Event times are counted in the units of the data's own periods, as the group-time results report them.
+    event_time = _event_times(original_time.astype(float) - original_group.astype(float))
     pointwise_z = st.norm.ppf(1 - alpha / 2)
 
     weights_ind = None
@@ -66,41 +79,32 @@ def aggregate_att_gt(
     glist_idx = _map_to_idx(glist_original, time_map)
 
     if data is not None and "period" in data.columns and ".w" in data.columns and (pte_params.gname in data.columns):
-        first_period_idx = int(np.min(time_idx))
-        first_period_data = data.filter(pl.col("period") == first_period_idx)
-        weights_ind = np.asarray(first_period_data[".w"], dtype=float)
-        g_values = first_period_data[pte_params.gname].to_numpy()
+        weights_ind, g_values = _first_period_units(pte_params, int(np.min(time_idx)))
         finite_mask = np.isfinite(g_values)
         g_units_idx = np.zeros(len(g_values), dtype=int)
 
         if finite_mask.any():
             g_units_idx[finite_mask] = _map_to_idx(g_values[finite_mask], time_map)
-        pg_groups = np.array(
-            [np.mean(weights_ind * (first_period_data[pte_params.gname].to_numpy() == g)) for g in glist_original],
-            dtype=float,
-        )
-        pg_groups = safe_normalize(pg_groups)
+        # Unlike the aggregation weights, the weight influence functions need P(G=g) itself rather than shares.
+        pg_groups_raw = np.array([np.mean(weights_ind * (g_values == g)) for g in glist_original], dtype=float)
+        pg_groups = safe_normalize(pg_groups_raw)
     else:
         pg_groups = safe_normalize(np.ones(len(glist_original), dtype=float))
+        pg_groups_raw = pg_groups
         warnings.warn("No unit-level data available; using uniform group probabilities and omitting weight-IF terms.")
 
     pg_map = dict(zip(glist_idx, pg_groups, strict=False))
     pg_att = np.array([pg_map.get(g, np.nan) for g in group_idx], dtype=float)
+    pg_raw_map = dict(zip(glist_idx, pg_groups_raw, strict=False))
+    pg_att_raw = np.array([pg_raw_map.get(g, np.nan) for g in group_idx], dtype=float)
 
-    if np.isfinite(max_event_time):
-        keepers_mask = (group_idx <= time_idx) & (time_idx <= (group_idx + int(max_event_time)))
-    else:
-        keepers_mask = group_idx <= time_idx
+    keepers_mask = (event_time >= 0) & (event_time <= max_event_time) & estimated
 
     if aggregation_type == "group":
         att_by_group, se_by_group, inf_by_group_cols = [], [], []
 
         for g_idx in glist_idx:
-            which_g = (
-                (group_idx == g_idx)
-                & (g_idx <= time_idx)
-                & (time_idx <= (group_idx + (int(max_event_time) if np.isfinite(max_event_time) else max_t)))
-            )
+            which_g = (group_idx == g_idx) & keepers_mask
 
             if not np.any(which_g):
                 att_by_group.append(np.nan)
@@ -113,7 +117,7 @@ def aggregate_att_gt(
             inf_g = get_aggregated_influence_function(
                 att, inf_func, np.where(which_g)[0], weights_agg, weight_influence_function=None
             ).astype(float)
-            se_g = get_se(inf_g[:, None], bootstrap=True, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
+            se_g = get_se(inf_g[:, None], bootstrap=True, biters=biters, alpha=alpha, rng=rng)
             se_g = set_small_se_to_nan(se_g)
 
             att_by_group.append(att_g)
@@ -128,8 +132,15 @@ def aggregate_att_gt(
         valid_cols = ~np.isnan(att_by_group)
 
         if confidence_band and np.any(valid_cols):
-            mb_result = mboot(
-                inf_by_group[:, valid_cols], n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha
+            # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that
+            # column staying at zero, they stay in the sample.
+            mb_result = _mboot(
+                inf_by_group[:, valid_cols],
+                n_units=inf_func.shape[0],
+                biters=biters,
+                alpha=alpha,
+                random_state=rng,
+                keep_infinite_draws=True,
             )
             crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
@@ -144,7 +155,7 @@ def aggregate_att_gt(
 
             if (weights_ind is not None) and (g_units_idx is not None):
                 wif_overall = weight_influence_function_from_groups(
-                    pg_comp=pg_groups_valid[valid_groups],
+                    pg_comp=pg_groups_raw[valid_groups],
                     weights_ind=weights_ind,
                     g_units_idx=g_units_idx,
                     group_labels=glist_idx[valid_groups],
@@ -164,7 +175,11 @@ def aggregate_att_gt(
 
             overall_se = float(
                 get_se(
-                    inf_overall[:, None], bootstrap=bootstrap, bootstrap_iterations=bootstrap_iterations, alpha=alpha
+                    inf_overall[:, None],
+                    bootstrap=bootstrap,
+                    biters=biters,
+                    alpha=alpha,
+                    rng=rng,
                 )
             )
             overall_se = set_small_se_to_nan(overall_se)
@@ -186,20 +201,21 @@ def aggregate_att_gt(
         )
 
     if aggregation_type == "dynamic":
-        event_idx_all = time_idx - group_idx
-        eseq = np.array(sorted(np.unique(event_idx_all)), dtype=int)
+        event_idx_all = event_time
+        eseq = np.unique(event_idx_all[estimated])
 
         include_balanced = np.ones_like(event_idx_all, dtype=bool)
         if balance_event is not None:
-            include_balanced = (max_t - group_idx) >= int(balance_event)
-            eseq = np.array(sorted(np.unique(event_idx_all[include_balanced])), dtype=int)
-            lower_bound = int(balance_event - max_t + 1)
+            last_period = float(np.max(original_time))
+            include_balanced = _event_times(last_period - original_group.astype(float)) >= balance_event
+            eseq = np.unique(event_idx_all[include_balanced & estimated])
+            lower_bound = balance_event - _event_times(last_period - float(np.min(original_time)))
             eseq = eseq[(eseq <= balance_event) & (eseq >= lower_bound)]
 
         if np.isfinite(min_event_time):
-            eseq = eseq[eseq >= int(min_event_time)]
+            eseq = eseq[eseq >= min_event_time]
         if np.isfinite(max_event_time):
-            eseq = eseq[eseq <= int(max_event_time)]
+            eseq = eseq[eseq <= max_event_time]
         if eseq.size == 0:
             return PTEAggteResult(
                 overall_att=np.nan,
@@ -213,15 +229,15 @@ def aggregate_att_gt(
                     "overall": np.full(inf_func.shape[0], np.nan),
                     "by_event": np.empty((inf_func.shape[0], 0)),
                 },
-                min_event_time=int(min_event_time) if np.isfinite(min_event_time) else None,
-                max_event_time=int(max_event_time) if np.isfinite(max_event_time) else None,
+                min_event_time=min_event_time if np.isfinite(min_event_time) else None,
+                max_event_time=max_event_time if np.isfinite(max_event_time) else None,
                 balance_event=balance_event,
                 att_gt_result=att_gt_result,
             )
 
         dyn_att, dyn_se, inf_dyn_cols = [], [], []
         for e in eseq:
-            which_e_mask = (event_idx_all == e) & include_balanced
+            which_e_mask = (event_idx_all == e) & include_balanced & estimated
             which_e = np.where(which_e_mask)[0]
             if which_e.size == 0:
                 dyn_att.append(np.nan)
@@ -232,15 +248,15 @@ def aggregate_att_gt(
             weights_agg = safe_normalize(pg_att[which_e])
 
             if (weights_ind is not None) and (g_units_idx is not None):
-                wif_e = weight_influence_function_from_att_indices(which_e, pg_att, weights_ind, g_units_idx, group_idx)
+                wif_e = weight_influence_function_from_att_indices(
+                    which_e, pg_att_raw, weights_ind, g_units_idx, group_idx
+                )
             else:
                 wif_e = None
 
             inf_e = get_aggregated_influence_function(att, inf_func, which_e, weights_agg, wif_e).astype(float)
             att_e = float(np.sum(att[which_e] * weights_agg))
-            se_e = float(
-                get_se(inf_e[:, None], bootstrap=bootstrap, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
-            )
+            se_e = float(get_se(inf_e[:, None], bootstrap=bootstrap, biters=biters, alpha=alpha, rng=rng))
             se_e = set_small_se_to_nan(se_e)
 
             dyn_att.append(att_e)
@@ -255,7 +271,14 @@ def aggregate_att_gt(
         valid_dyn = ~np.isnan(dyn_att)
 
         if confidence_band and np.any(valid_dyn):
-            mb_result = mboot(inf_dyn[:, valid_dyn], n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha)
+            mb_result = _mboot(
+                inf_dyn[:, valid_dyn],
+                n_units=inf_func.shape[0],
+                biters=biters,
+                alpha=alpha,
+                random_state=rng,
+                keep_infinite_draws=True,
+            )
             crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
         non_neg = eseq >= 0
@@ -271,7 +294,11 @@ def aggregate_att_gt(
             ).astype(float)
             overall_se = float(
                 get_se(
-                    inf_overall[:, None], bootstrap=bootstrap, bootstrap_iterations=bootstrap_iterations, alpha=alpha
+                    inf_overall[:, None],
+                    bootstrap=bootstrap,
+                    biters=biters,
+                    alpha=alpha,
+                    rng=rng,
                 )
             )
             overall_se = set_small_se_to_nan(overall_se)
@@ -289,8 +316,8 @@ def aggregate_att_gt(
             se_by_event=dyn_se,
             critical_value=crit_val,
             influence_func={"overall": inf_overall, "by_event": inf_dyn},
-            min_event_time=int(min_event_time) if np.isfinite(min_event_time) else None,
-            max_event_time=int(max_event_time) if np.isfinite(max_event_time) else None,
+            min_event_time=min_event_time if np.isfinite(min_event_time) else None,
+            max_event_time=max_event_time if np.isfinite(max_event_time) else None,
             balance_event=balance_event,
             att_gt_result=att_gt_result,
         )
@@ -309,7 +336,7 @@ def aggregate_att_gt(
 
     if (weights_ind is not None) and (g_units_idx is not None):
         wif_overall = weight_influence_function_from_att_indices(
-            np.where(keepers_mask)[0], pg_att, weights_ind, g_units_idx, group_idx
+            np.where(keepers_mask)[0], pg_att_raw, weights_ind, g_units_idx, group_idx
         )
     else:
         wif_overall = None
@@ -319,15 +346,20 @@ def aggregate_att_gt(
         att, inf_func, np.where(keepers_mask)[0], weights_agg, wif_overall
     ).astype(float)
 
-    overall_se = float(
-        get_se(inf_overall[:, None], bootstrap=bootstrap, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
-    )
+    overall_se = float(get_se(inf_overall[:, None], bootstrap=bootstrap, biters=biters, alpha=alpha, rng=rng))
     overall_se = set_small_se_to_nan(overall_se)
 
     crit_val = pointwise_z
 
     if confidence_band:
-        mb_result = mboot(inf_overall.reshape(-1, 1), n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha)
+        mb_result = _mboot(
+            inf_overall.reshape(-1, 1),
+            n_units=inf_func.shape[0],
+            biters=biters,
+            alpha=alpha,
+            random_state=rng,
+            keep_infinite_draws=True,
+        )
         crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
     return PTEAggteResult(
@@ -340,28 +372,36 @@ def aggregate_att_gt(
     )
 
 
-def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, max_event_time=np.inf):
+def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, max_event_time=np.inf, estimable=None):
     """Compute weights for the overall ATT under "group" aggregation.
+
+    Each cohort gets its share of the treated units. That share is split
+    evenly over the cohort's estimable post-treatment cells. A cohort without
+    such a cell gets no weight. The shares of the other cohorts are then
+    scaled up to sum to one.
 
     Parameters
     ----------
     att_gt_result : object
-        Requires pte_params.data with columns: period, .w, and gname.
+        Group-time results whose ``pte_params.data`` has the columns ``period``,
+        ``.w``, and the group column that ``pte_params.gname`` names.
     balance_event : int or None, optional
-        Relevant for "dynamic" aggregation, but does not affect this weighting scheme.
+        Not used. It belongs to the "dynamic" aggregation.
     min_event_time : int or float, optional
-        Relevant for "dynamic" aggregation, but does not affect this weighting scheme.
+        Not used. It belongs to the "dynamic" aggregation.
     max_event_time : int or float, optional
-        Caps the maximum post-treatment period length for inclusion. Defaults to infinity.
+        Largest event time of a cell that gets weight. Defaults to infinity.
+    estimable : array-like of bool, optional
+        Whether each cell has an estimate to average. If None, every cell does.
 
     Returns
     -------
     dict
         Dictionary containing:
 
-        **groups**: Original group labels.
-        **times**: Original time periods.
-        **weights**: Weighted group probabilities.
+        - **groups**: Group of each cell as the data codes it
+        - **times**: Period of each cell as the data codes it
+        - **weights**: Aggregation weight of each cell
     """
     original_group = np.asarray(att_gt_result.groups)
     original_time = np.asarray(att_gt_result.times)
@@ -375,7 +415,7 @@ def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, m
     time_map = {v: i + 1 for i, v in enumerate(t_levels)}
     time_idx = _map_to_idx(original_time, time_map)
     group_idx = _map_to_idx(original_group, time_map)
-    max_t = int(time_idx.max())
+    event_time = _event_times(original_time.astype(float) - original_group.astype(float))
 
     first_period_idx = int(np.min(time_idx))
     first_period_data = data.filter(pl.col("period") == first_period_idx)
@@ -390,19 +430,14 @@ def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, m
     )
     pg_groups = safe_normalize(pg_groups)
 
-    if np.isfinite(max_event_time):
-        keepers_mask = (group_idx <= time_idx) & (time_idx <= (group_idx + int(max_event_time)))
-    else:
-        keepers_mask = group_idx <= time_idx
+    keepers_mask = (event_time >= 0) & (event_time <= max_event_time)
+    if estimable is not None:
+        keepers_mask &= np.asarray(estimable, dtype=bool)
 
     g_weights = np.zeros_like(glist_idx, dtype=float)
 
     for i, g in enumerate(glist_idx):
-        is_this_g = (
-            (group_idx == g)
-            & (g <= time_idx)
-            & (time_idx <= (group_idx + (int(max_event_time) if np.isfinite(max_event_time) else max_t)))
-        )
+        is_this_g = (group_idx == g) & keepers_mask
         if np.any(is_this_g):
             g_weights[i] = pg_groups[i] / np.sum(is_this_g)
 
@@ -453,12 +488,19 @@ def check_critical_value(critical_value, alpha):
     return critical_value
 
 
-def get_se(influence_function, bootstrap=True, bootstrap_iterations=100, alpha=0.05, rng=None):
+def get_se(influence_function, bootstrap=True, biters=100, alpha=0.05, rng=None):
     """Convert an influence function to a scalar standard error."""
     n = influence_function.shape[0]
 
     if bootstrap:
-        boot_result = mboot(influence_function, n_units=n, biters=bootstrap_iterations, alp=alpha, random_state=rng)
+        boot_result = _mboot(
+            influence_function,
+            n_units=n,
+            biters=biters,
+            alpha=alpha,
+            random_state=rng,
+            keep_infinite_draws=True,
+        )
         return float(np.asarray(boot_result["se"]).reshape(-1)[0])
 
     vec = np.asarray(influence_function).reshape(n, -1)[:, 0]
@@ -479,7 +521,11 @@ def get_aggregated_influence_function(
 
 
 def weight_influence_function_from_att_indices(att_indices, pg_att, weights_ind, g_units_idx, group_idx):
-    """Weight influence function when components are ATT(g,t) indices."""
+    """Weight influence function when components are ATT(g,t) indices.
+
+    Since the unit-level indicators in the influence function average to P(G=g), the entries of
+    ``pg_att`` must be those probabilities themselves rather than shares that sum to one.
+    """
     att_indices = np.asarray(att_indices, dtype=int)
     n = weights_ind.shape[0]
     k = att_indices.size
@@ -505,7 +551,11 @@ def weight_influence_function_from_att_indices(att_indices, pg_att, weights_ind,
 
 
 def weight_influence_function_from_groups(pg_comp, weights_ind, g_units_idx, group_labels):
-    """Weight influence function when components are groups."""
+    """Weight influence function when components are groups.
+
+    Since the unit-level indicators in the influence function average to P(G=g), the entries of
+    ``pg_comp`` must be those probabilities themselves rather than shares that sum to one.
+    """
     n = weights_ind.shape[0]
     k = group_labels.size
     denom = float(np.sum(pg_comp))
@@ -525,3 +575,82 @@ def weight_influence_function_from_groups(pg_comp, weights_ind, g_units_idx, gro
     denom_weights = (pg_comp / (denom**2)).reshape(1, -1)
     influence_part2 = row_sum.reshape(-1, 1) @ denom_weights
     return influence_part1 - influence_part2
+
+
+def weight_influence_function_from_cells(att_gt_result, cell_weights):
+    """Compute the influence function of cohort-share weights on group-time cells.
+
+    Dose and group aggregations give each cohort its share of the treated units and split that share
+    evenly over the cohort's post-treatment cells. Since the shares are estimated, each cell's weight has
+    an influence function of its own. Its product with the cell estimates is the term that estimating the
+    weights adds to the influence function of the aggregate.
+
+    Parameters
+    ----------
+    att_gt_result : GroupTimeATTResult
+        Group-time results whose ``pte_params.data`` holds the group and sampling weight of each unit.
+    cell_weights : ndarray
+        Aggregation weight of each group-time cell, zero for cells that do not enter.
+
+    Returns
+    -------
+    ndarray
+        Influence function of each cell's weight. Rows are units and columns are cells.
+    """
+    groups = np.asarray(att_gt_result.groups)
+    times = np.asarray(att_gt_result.times)
+    cell_weights = np.asarray(cell_weights, dtype=float)
+
+    t_levels = np.array(sorted(np.unique(times)))
+    time_map = {v: i + 1 for i, v in enumerate(t_levels)}
+    first_period = int(np.min(_map_to_idx(times, time_map)))
+    weights_ind, g_values = _first_period_units(att_gt_result.pte_params, first_period)
+
+    out = np.zeros((len(weights_ind), len(cell_weights)), dtype=float)
+    used = cell_weights != 0
+    cohorts = np.unique(groups[used])
+    if cohorts.size == 0:
+        return out
+
+    pg_cohorts = np.array([np.mean(weights_ind * (g_values == g)) for g in cohorts], dtype=float)
+    share_inf_func = weight_influence_function_from_groups(pg_cohorts, weights_ind, g_values, cohorts)
+    if share_inf_func is None:
+        return out
+
+    for j, g in enumerate(cohorts):
+        cells = np.flatnonzero(used & (groups == g))
+        share = np.sum(cell_weights[cells])
+        out[:, cells] = share_inf_func[:, [j]] * (cell_weights[cells] / share)[None, :]
+    return out
+
+
+def _event_times(differences):
+    """Turn differences between period labels into event times.
+
+    Parameters
+    ----------
+    differences : float or ndarray
+        Period label of each group-time cell less the label of its group.
+
+    Returns
+    -------
+    ndarray
+        Event time of each cell. The values are integers when every one is a whole number.
+    """
+    event_times = np.asarray(differences, dtype=float)
+    # Since labels such as 2001.1 and 2001.3 carry rounding error, equal event times match only after rounding.
+    if not np.all(event_times == np.trunc(event_times)):
+        event_times = np.round(event_times, 10)
+    if np.all(event_times == np.trunc(event_times)):
+        return event_times.astype(int)
+    return event_times
+
+
+def _first_period_units(pte_params, first_period):
+    """Return the sampling weight and group of each unit in influence-function row order."""
+    first_period_data = pte_params.data.filter(pl.col("period") == first_period)
+    # Since influence-function rows follow sorted unit ids, the unit-level terms must use the same order.
+    if "id" in first_period_data.columns:
+        first_period_data = first_period_data.sort("id")
+    weights_ind = np.asarray(first_period_data[".w"], dtype=float)
+    return weights_ind, first_period_data[pte_params.gname].to_numpy()
