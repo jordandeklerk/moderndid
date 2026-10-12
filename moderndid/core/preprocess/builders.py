@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from ..dataframe import DataFrame, to_polars
+from ..dataframe import to_polars
 from .config import (
     BasePreprocessConfig,
     ContDIDConfig,
@@ -17,11 +17,18 @@ from .config import (
     EtwfeConfig,
     TwoPeriodDIDConfig,
 )
-from .constants import WEIGHTS_COLUMN
+from .constants import (
+    NEVER_TREATED_VALUE,
+    WEIGHTS_COLUMN,
+    BasePeriod,
+    BootstrapType,
+    ControlGroup,
+    EstimationMethod,
+)
 from .models import ContDIDData, DDDData, DIDData, DIDInterData, DynBalancingData, EtwfeData, TwoPeriodDIDData
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
-from .utils import extract_ddd_covariates, extract_vars_from_formula
+from .utils import extract_ddd_covariates, extract_unit_clusters, extract_vars_from_formula
 from .validators import CompositeValidator
 
 
@@ -33,10 +40,12 @@ class PreprocessDataBuilder:
         self._data: pl.DataFrame | None = None
         self._config: BasePreprocessConfig | None = None
         self._validator: CompositeValidator | None = None
+        self._structure_validator: CompositeValidator | None = None
         self._transformer: DataTransformerPipeline | None = None
+        self._validated = False
         self._warnings: list[str] = []
 
-    def with_data(self, data: DataFrame) -> "PreprocessDataBuilder":
+    def with_data(self, data):
         """Set the data.
 
         Parameters
@@ -68,29 +77,23 @@ class PreprocessDataBuilder:
         self._config = config
 
         if isinstance(config, TwoPeriodDIDConfig):
-            self._validator = CompositeValidator(config_type="two_period")
-            self._transformer = DataTransformerPipeline.get_two_period_pipeline()
+            config_type, pipeline = "two_period", DataTransformerPipeline.get_two_period_pipeline()
         elif isinstance(config, DIDInterConfig):
-            self._validator = CompositeValidator(config_type="didinter")
-            self._transformer = DataTransformerPipeline.get_didinter_pipeline()
+            config_type, pipeline = "didinter", DataTransformerPipeline.get_didinter_pipeline()
         elif isinstance(config, DynBalancingConfig):
-            self._validator = CompositeValidator(config_type="dyn_balancing")
-            self._transformer = DataTransformerPipeline.get_dyn_balancing_pipeline()
+            config_type, pipeline = "dyn_balancing", DataTransformerPipeline.get_dyn_balancing_pipeline()
         elif isinstance(config, DDDConfig):
-            self._validator = CompositeValidator(config_type="ddd")
-            self._transformer = DataTransformerPipeline.get_ddd_pipeline()
+            config_type, pipeline = "ddd", DataTransformerPipeline.get_ddd_pipeline()
         elif isinstance(config, EtwfeConfig):
-            self._validator = CompositeValidator(config_type="etwfe")
-            self._transformer = DataTransformerPipeline.get_etwfe_pipeline()
-        elif isinstance(config, DIDConfig):
-            self._validator = CompositeValidator(config_type="did")
-            self._transformer = DataTransformerPipeline.get_did_pipeline()
+            config_type, pipeline = "etwfe", DataTransformerPipeline.get_etwfe_pipeline()
         elif isinstance(config, ContDIDConfig):
-            self._validator = CompositeValidator(config_type="cont_did")
-            self._transformer = DataTransformerPipeline.get_cont_did_pipeline()
+            config_type, pipeline = "cont_did", DataTransformerPipeline.get_cont_did_pipeline()
         else:
-            self._validator = CompositeValidator(config_type="did")
-            self._transformer = DataTransformerPipeline.get_did_pipeline()
+            config_type, pipeline = "did", DataTransformerPipeline.get_did_pipeline()
+
+        self._validator = CompositeValidator(config_type=config_type)
+        self._structure_validator = CompositeValidator(config_type=config_type, phase="structure")
+        self._transformer = pipeline
 
         return self
 
@@ -116,18 +119,21 @@ class PreprocessDataBuilder:
 
         return self.with_config(self._config)
 
-    def validate(self) -> "PreprocessDataBuilder":
+    def validate(self):
         """Validate data and configuration.
+
+        The column checks cover the columns that the arguments name, their
+        types, the reserved names, and the argument values. They raise at
+        once. A categorical option given as a string, such as
+        ``control_group="notyettreated"``, is then stored as its enum member.
+        The structural checks, such as a cohort that changes within a unit,
+        run later in :meth:`transform` on the rows that the missing-data step
+        keeps.
 
         Returns
         -------
         PreprocessDataBuilder
             Self for method chaining.
-
-        Raises
-        ------
-        ValueError
-            If data or config not set, or if validation fails.
         """
         if self._data is None:
             raise ValueError("Data not set. Use with_data() first.")
@@ -145,28 +151,29 @@ class PreprocessDataBuilder:
                 warnings.warn(warning)
 
         result.raise_if_invalid()
+        _store_options_as_enums(self._config)
+        self._validated = True
 
         return self
 
-    def transform(self) -> "PreprocessDataBuilder":
+    def transform(self):
         """Apply data transformations.
+
+        After :meth:`validate`, the structural checks run on the rows that the
+        missing-data step keeps.
 
         Returns
         -------
         PreprocessDataBuilder
             Self for method chaining.
-
-        Raises
-        ------
-        ValueError
-            If data, config, or transformer not set.
         """
         if self._data is None or self._config is None:
             raise ValueError("Must set data and config before transforming")
         if self._transformer is None:
             raise ValueError("Transformer not initialized. Use with_config() first.")
 
-        self._data = self._transformer.transform(self._data, self._config)
+        checks = self._structure_validator if self._validated else None
+        self._data = self._transformer.transform(self._data, self._config, checks=checks)
 
         self._validate_transformed_data()
 
@@ -199,11 +206,10 @@ class PreprocessDataBuilder:
                 "the time a unit is first treated (0 if never-treated)"
             )
 
-        if self._config.panel:
-            gsize = self._data.group_by(self._config.gname).len()
-            gsize = gsize.with_columns((pl.col("len") / self._config.time_periods_count).alias("size"))
-        else:
-            gsize = self._data.group_by(self._config.gname).len().rename({"len": "size"})
+        # A group's rows per period measure its size in panels, unbalanced panels, and repeated cross sections
+        # alike. Reading config.panel instead would count raw rows once preprocessing flips it for an unbalanced panel.
+        gsize = self._data.group_by(self._config.gname).len()
+        gsize = gsize.with_columns((pl.col("len") / self._config.time_periods_count).alias("size"))
 
         if self._config and self._config.xformla and self._config.xformla != "~1":
             formula_vars = extract_vars_from_formula(self._config.xformla)
@@ -214,30 +220,30 @@ class PreprocessDataBuilder:
 
         small_groups = gsize.filter(pl.col("size") < reqsize)
         if len(small_groups) > 0:
-            group_list = ", ".join([str(g) for g in small_groups[self._config.gname].to_list()])
+            small_group_values = small_groups[self._config.gname].to_list()
+            group_list = ", ".join(np.format_float_positional(float(g), trim="-") for g in small_group_values)
             warning_msg = f"Be aware that there are some small groups in your dataset.\nCheck groups: {group_list}"
             warnings.warn(warning_msg)
             self._warnings.append(warning_msg)
 
-            if isinstance(self._config, DIDConfig):
-                from .constants import NEVER_TREATED_VALUE
+            # Since transform may run without validate, the comparison also accepts the option as a string.
+            if (
+                isinstance(self._config, DIDConfig)
+                and NEVER_TREATED_VALUE in small_group_values
+                and self._config.control_group == ControlGroup.NEVER_TREATED
+            ):
+                raise ValueError(
+                    "The never-treated group is too small to serve as the comparison group. "
+                    "Pass control_group='notyettreated' to compare with units not yet treated."
+                )
 
-                small_group_values = small_groups[self._config.gname].to_list()
-                if NEVER_TREATED_VALUE in small_group_values and self._config.control_group.value == "nevertreated":
-                    raise ValueError("Never treated group is too small, try setting control_group='notyettreated'")
-
-    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData | DDDData | DynBalancingData:
+    def build(self):
         """Build the final preprocessed data object.
 
         Returns
         -------
-        DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData
-            Preprocessed data container (type depends on config).
-
-        Raises
-        ------
-        ValueError
-            If data or config not set.
+        DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData | DDDData | DynBalancingData | EtwfeData
+            Preprocessed data container whose type follows the config.
         """
         if self._data is None or self._config is None:
             raise ValueError("Must set data and config before building")
@@ -274,6 +280,7 @@ class PreprocessDataBuilder:
             outcomes_tensor=tensor_data["outcomes_tensor"],
             covariates_matrix=tensor_data["covariates_matrix"],
             covariates_tensor=tensor_data["covariates_tensor"],
+            weights_tensor=tensor_data["weights_tensor"],
             cluster=tensor_data["cluster"],
             config=self._config,
         )
@@ -353,14 +360,16 @@ class PreprocessDataBuilder:
             raise ValueError("Config must be DDDConfig")
 
         df = self._data
+        idname = self._config.idname
         glist = np.sort(df[self._config.gname].unique().to_numpy())
         treat_val = glist[1]
 
-        df_pre = df.filter(pl.col("_post") == 0)
-        df_post = df.filter(pl.col("_post") == 1)
+        # Joining on the unit id pairs each unit's two outcomes whatever the row order.
+        df_post = df.filter(pl.col("_post") == 1).select(idname, pl.col(self._config.yname).alias("_y_post"))
+        df_pre = df.filter(pl.col("_post") == 0).join(df_post, on=idname, how="inner", validate="1:1").sort(idname)
 
         y0 = df_pre[self._config.yname].to_numpy().astype(float)
-        y1 = df_post[self._config.yname].to_numpy().astype(float)
+        y1 = df_pre["_y_post"].to_numpy().astype(float)
         treat = df_pre[self._config.gname].to_numpy()
         treat = (treat == treat_val).astype(int)
         partition = df_pre[self._config.pname].to_numpy().astype(int)
@@ -368,7 +377,7 @@ class PreprocessDataBuilder:
         weights_arr = df_pre[WEIGHTS_COLUMN].to_numpy()
 
         subgroup_pre = df_pre["_subgroup"].to_numpy()
-        covariates, covariate_names = extract_ddd_covariates(df, self._config.xformla, subgroup=subgroup_pre)
+        covariates, covariate_names = extract_ddd_covariates(df_pre, self._config.xformla, subgroup=subgroup_pre)
 
         cluster_arr = None
         if self._config.cluster is not None:
@@ -408,7 +417,9 @@ class PreprocessDataBuilder:
         cluster = self._extract_cluster_variable(time_invariant_data)
         weights = self._extract_weights(time_invariant_data)
 
-        original_time_periods = self._config.time_periods.copy()
+        # Since the recoder replaced each period by its position, the time map leads back to the periods in the data.
+        periods = {position: period for period, position in (self._config.time_map or {}).items()}
+        original_time_periods = np.array([periods.get(t, t) for t in self._config.time_periods])
 
         cont_data = ContDIDData(
             data=self._data,
@@ -550,8 +561,12 @@ class PreprocessDataBuilder:
             for period in time_periods:
                 period_df = df.filter(pl.col(cfg.tname) == period).sort(cfg.idname)
                 cols = all_cov_names[:-dim_fe] if dim_fe > 0 and period != final_period else all_cov_names
+                # Casting first turns a missing value of any column type into NaN. The estimator
+                # then leaves that unit out of the affected periods only.
                 covariate_dict[period] = (
-                    period_df.select(cols).to_numpy().astype(float) if cols else np.empty((period_df.height, 0))
+                    period_df.select(pl.col(cols).cast(pl.Float64)).to_numpy()
+                    if cols
+                    else np.empty((period_df.height, 0))
                 )
 
         cluster = None
@@ -628,9 +643,7 @@ class PreprocessDataBuilder:
 
     def _extract_cluster_variable(self, time_invariant_data: pl.DataFrame) -> np.ndarray | None:
         """Extract cluster variable if specified."""
-        if self._config.clustervars and len(self._config.clustervars) > 0:
-            return time_invariant_data[self._config.clustervars[0]].to_numpy()
-        return None
+        return extract_unit_clusters(time_invariant_data, self._config.clustervars, self._config.idname)
 
     @staticmethod
     def _extract_weights(time_invariant_data: pl.DataFrame) -> np.ndarray:
@@ -724,3 +737,24 @@ class PreprocessDataBuilder:
 
         lines.append("=" * 60 + "\n")
         return "\n".join(lines)
+
+
+def _store_options_as_enums(config):
+    """Replace each categorical option given as a string by its enum member.
+
+    The column checks have accepted the values by then. A callable
+    ``est_method`` stays as given. Since the values of the two-period
+    config's ``est_method`` have no enum, that option stays a string too.
+
+    Parameters
+    ----------
+    config : BasePreprocessConfig
+        Configuration whose options passed the column checks.
+    """
+    enums = {"control_group": ControlGroup, "base_period": BasePeriod, "boot_type": BootstrapType}
+    if isinstance(config, DIDConfig | DDDConfig):
+        enums["est_method"] = EstimationMethod
+    for name, enum in enums.items():
+        value = getattr(config, name, None)
+        if isinstance(value, str):
+            setattr(config, name, enum(value))

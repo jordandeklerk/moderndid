@@ -1,38 +1,42 @@
-"""Test related helper functions based on arviz-stats."""
+"""Test-related helper functions based on arviz-stats."""
 
 import os
 import sys
 import warnings
-from typing import Any
 
 import pytest
 
 
-def importorskip(modname: str, reason: str | None = None) -> Any:
+def importorskip(modname, reason=None):
     """Import and return the requested module ``modname``.
 
-    Doesn't allow skips when ``DRSYNTHD_REQUIRE_ALL_DEPS`` env var is defined.
-    Borrowed and modified from ``pytest.importorskip``.
+    Raise the import error instead of skipping when the ``MODERNDID_REQUIRE_ALL_DEPS``
+    environment variable is set. Borrowed and modified from ``pytest.importorskip``.
 
     Parameters
     ----------
     modname : str
-        the name of the module to import
+        Name of the module to import.
     reason : str, optional
-        this reason is shown as skip message when the module cannot be imported.
+        Skip message shown when the module cannot be imported.
+
+    Returns
+    -------
+    module
+        The imported module.
     """
     __tracebackhide__ = True
-    compile(modname, "", "eval")  # to catch syntaxerrors
+    compile(modname, "", "eval")  # to catch syntax errors
 
     with warnings.catch_warnings():
         # Make sure to ignore ImportWarnings that might happen because
         # of existing directories with the same name we're trying to
         # import but without a __init__.py file.
-        warnings.simplefilter("ignore")
+        warnings.simplefilter("ignore", ImportWarning)
         try:
             __import__(modname)
         except ImportError as exc:
-            if "DRSYNTHD_REQUIRE_ALL_DEPS" in os.environ:
+            if "MODERNDID_REQUIRE_ALL_DEPS" in os.environ:
                 raise exc
             if reason is None:
                 reason = f"could not import {modname!r}: {exc}"

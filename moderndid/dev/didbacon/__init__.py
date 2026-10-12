@@ -1,1 +1,1 @@
-"""Bacon-Goodman decomposition for differences-in-differences with variation in treatment timing."""
+"""Goodman-Bacon decomposition for difference-in-differences with variation in treatment timing."""

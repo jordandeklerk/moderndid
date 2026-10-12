@@ -10,6 +10,16 @@ import scipy.linalg
 from ..dataframe import to_polars
 
 
+def extract_unit_clusters(time_invariant_data, clustervars, idname):
+    """Return each unit's cluster from the cluster variables in the order att_gt uses them."""
+    if not clustervars:
+        return None
+    # Validation allows at most one cluster variable besides idname, and att_gt's bootstrap clusters
+    # on that one whenever it's given, so the unit id decides the clusters only when it stands alone.
+    others = [var for var in clustervars if var != idname]
+    return time_invariant_data[(others or clustervars)[0]].to_numpy()
+
+
 def map_to_idx(vals, time_map):
     """Map values to indices."""
     vals_arr = np.asarray(vals, dtype=float)
@@ -31,8 +41,51 @@ def map_to_idx(vals, time_map):
     return result
 
 
+def nonfinite_to_null(data, keep_infinite=()):
+    """Turn every NaN and infinity in the float columns into a null.
+
+    The preprocessing steps treat a null as a missing value. A pandas NaN
+    arrives in polars as a null. A NaN from polars or numpy arrives unchanged.
+    So does an infinity such as the log of zero. Turning both into nulls makes
+    the same data lose the same rows whatever library holds it.
+
+    Since an infinity marks never-treated units in a cohort column, an
+    infinity in a column of ``keep_infinite`` stays. A NaN there still turns
+    into a null.
+
+    Parameters
+    ----------
+    data : pd.DataFrame or pl.DataFrame
+        Input data.
+    keep_infinite : sequence of str, default ()
+        Columns whose infinities stay.
+
+    Returns
+    -------
+    pl.DataFrame
+        The data with a null in place of every NaN and of every infinity
+        outside ``keep_infinite``.
+    """
+    df = to_polars(data)
+    float_columns = [name for name, dtype in df.schema.items() if dtype.is_float()]
+    if not float_columns:
+        return df
+    return df.with_columns(
+        pl.col(name).fill_nan(None) if name in keep_infinite else pl.when(pl.col(name).is_finite()).then(pl.col(name))
+        for name in float_columns
+    )
+
+
 def make_balanced_panel(data, idname, tname):
     """Make balanced panel.
+
+    A unit stays when it has exactly one row in every period. Counting rows
+    alone would also keep a unit whose second row in one period stands in for
+    a period it misses.
+
+    Since a row whose unit or period is missing belongs to no period, it
+    leaves the result and doesn't count as a period. Null, NaN, and infinite
+    values are missing.
 
     Parameters
     ----------
@@ -46,16 +99,38 @@ def make_balanced_panel(data, idname, tname):
     Returns
     -------
     pl.DataFrame
-        Balanced panel data containing only units observed in all time periods.
+        Balanced panel data containing only units observed once in every time period.
     """
     df = to_polars(data)
     if df.is_empty():
         return df
 
-    n_periods = df[tname].n_unique()
-    counts = df.group_by(idname).len()
-    complete_ids = counts.filter(pl.col("len") == n_periods)[idname].to_list()
-    return df.filter(pl.col(idname).is_in(complete_ids))
+    keyed = df.filter(_has_unit_and_period(df, idname, tname))
+    n_periods = keyed[tname].n_unique()
+    counts = keyed.group_by(idname).agg(pl.len().alias("n_rows"), pl.col(tname).n_unique().alias("n_periods"))
+    complete = counts.filter((pl.col("n_rows") == n_periods) & (pl.col("n_periods") == n_periods))
+    return keyed.filter(pl.col(idname).is_in(complete[idname].to_list()))
+
+
+def _has_unit_and_period(df, idname, tname):
+    """Mark the rows whose unit and period both hold a value.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Panel data.
+    idname : str
+        Name of the unit identifier column.
+    tname : str
+        Name of the time period column.
+
+    Returns
+    -------
+    pl.Series
+        True for each row whose unit and period are neither null, NaN, nor infinite.
+    """
+    keys = nonfinite_to_null(df.select(idname, tname))
+    return keys[idname].is_not_null() & keys[tname].is_not_null()
 
 
 def get_first_difference(df, idname, yname, tname):
@@ -85,6 +160,10 @@ def get_first_difference(df, idname, yname, tname):
 def get_group(df, idname, tname, treatname, treat_period=None):
     """Get group.
 
+    A unit's group is the first period in which its treatment is positive.
+    A unit that is never treated gets 0. A row whose period is missing never
+    counts as that period. Null, NaN, and infinite periods are missing.
+
     Parameters
     ----------
     df : pd.DataFrame or pl.DataFrame
@@ -98,45 +177,31 @@ def get_group(df, idname, tname, treatname, treat_period=None):
     treat_period : int or None
         Known treatment onset period. When provided, units with any positive
         value of *treatname* are assigned ``G = treat_period`` and all others
-        receive ``G = 0``, bypassing the first-switch detection logic.
+        receive ``G = 0``.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with original columns plus 'G' column containing group assignment.
+        The data with a ``G`` column added, or replaced if the data already has one.
     """
     data = to_polars(df)
+    # A row without a unit id belongs to no unit. It must not pool with the other such rows.
+    has_unit = pl.col(idname).is_not_null()
 
+    # Since the windows below add no helper columns, no column of the data can clash with one.
     if treat_period is not None:
-        ever_treated = (
-            data.group_by(idname)
-            .agg((pl.col(treatname) > 0).any().alias("_ever"))
-            .with_columns(
-                pl.when(pl.col("_ever"))
-                .then(pl.lit(treat_period, dtype=pl.Int64))
-                .otherwise(pl.lit(0, dtype=pl.Int64))
-                .alias("G")
-            )
-            .drop("_ever")
-        )
-        return data.join(ever_treated, on=idname, how="left")
+        ever_treated = (pl.col(treatname) > 0).any().over(idname)
+        group = pl.when(ever_treated).then(pl.lit(treat_period, dtype=pl.Int64)).otherwise(pl.lit(0, dtype=pl.Int64))
+        return data.with_columns(pl.when(has_unit).then(group).alias("G"))
 
-    df_sorted = data.sort([idname, tname])
-
-    df_with_treat = df_sorted.with_columns(
-        (pl.col(treatname) > 0).alias("_is_treated"),
-        (pl.col(treatname) > 0).cum_sum().over(idname).alias("_treat_cumsum"),
-    ).with_columns(((pl.col("_treat_cumsum") == 1) & pl.col("_is_treated")).alias("_first_treat"))
-
-    first_treat_df = (
-        df_with_treat.filter(pl.col("_first_treat")).group_by(idname).agg(pl.col(tname).first().alias("_group"))
-    )
-
-    result = data.join(first_treat_df, on=idname, how="left").with_columns(
-        pl.col("_group").fill_null(0).cast(pl.Int64).alias("G")
-    )
-
-    return result.drop("_group")
+    is_treated = pl.col(treatname) > 0
+    # NaN and infinity are missing periods like null.
+    # Only float columns can hold them. is_finite raises on strings, dates, booleans, and decimals.
+    if data[tname].dtype.is_float():
+        is_treated = is_treated & pl.col(tname).is_finite()
+    first_period = pl.col(tname).filter(is_treated).min().over(idname)
+    group = pl.when(has_unit).then(first_period).fill_null(0)
+    return data.with_columns(group.cast(pl.Int64).alias("G"))
 
 
 def two_by_two_subset(
@@ -147,27 +212,36 @@ def two_by_two_subset(
     anticipation=0,
     base_period="varying",
 ):
-    """Two by two subset for treatment DiD.
+    """Keep the units and periods that estimate one group-time effect.
+
+    The subset holds period ``tp`` and its base period for the units of group
+    ``g`` and their comparison units. A comparison unit is untreated, and not
+    yet anticipating treatment, in both periods. Never-treated units qualify
+    whether ``G`` codes them as ``inf`` or as 0. With
+    ``control_group="nevertreated"`` they are the only comparison units.
 
     Parameters
     ----------
     data : pd.DataFrame or pl.DataFrame
-        Input data with columns 'G', 'period', 'id'.
+        Panel with the columns ``G``, ``period``, and ``id``.
     g : numeric
-        Treatment group.
+        Treatment group, the period in which its units start treatment.
     tp : numeric
-        Time period.
-    control_group : str
-        Control group type ('notyettreated' or 'nevertreated').
+        Time period of the effect.
+    control_group : {"notyettreated", "nevertreated"}
+        Which units serve as comparison units.
     anticipation : int
-        Anticipation periods.
-    base_period : str
-        Base period type ('varying' or 'universal').
+        Number of periods before treatment in which units may respond to it.
+    base_period : {"varying", "universal"}
+        Whether the base period before treatment is the period just before
+        ``tp`` or always the period ``g - anticipation - 1``.
 
     Returns
     -------
     dict
-        Dictionary with 'gt_data', 'n1', 'disidx'.
+        - **gt_data**: The subset with the period label ``name`` and the group indicator ``D``
+        - **n1**: Number of units in the subset
+        - **disidx**: Mask over the sorted unit ids that marks the units in the subset
     """
     df = to_polars(data)
     main_base_period = g - anticipation - 1
@@ -178,9 +252,11 @@ def two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp)
+        # A comparison unit must be untreated, and not yet anticipating treatment, in both periods of the cell.
+        latest_untreated = max(tp, base_period_val) + anticipation
+        unit_mask = (pl.col("G") == g) | (pl.col("G") > latest_untreated) | (pl.col("G") == 0)
     else:
-        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite()
+        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite() | (pl.col("G") == 0)
 
     this_data = df.filter(unit_mask)
 
@@ -196,7 +272,7 @@ def two_by_two_subset(
         return {"gt_data": pl.DataFrame(), "n1": 0, "disidx": np.array([])}
 
     n1 = this_data["id"].n_unique()
-    all_ids = df["id"].unique().to_numpy()
+    all_ids = np.unique(df["id"].to_numpy())
     subset_ids = this_data["id"].unique().to_numpy()
     disidx = np.isin(all_ids, subset_ids)
 
@@ -259,22 +335,44 @@ def validate_dose_values(dose, treatment_group, never_treated_value=float("inf")
 
 
 def parse_formula(formula):
-    """Parse formula string to extract components."""
-    parts = formula.split("~")
-    if len(parts) != 2:
-        raise ValueError("Formula must be in the form 'y ~ x1 + x2 + ...'")
+    """Split a covariate formula into its outcome and covariate columns.
 
-    outcome = parts[0].strip()
-    predictors_str = parts[1].strip()
+    The right-hand side lists data columns joined by ``+``. A column name may
+    contain dots, as in ``log.pop``. A name in backticks, as in
+    ``"~ `log pop` + x"``, may contain any character but a backtick. A ``1``
+    stands for the intercept and adds no column.
 
-    var_pattern = r"\b[a-zA-Z_]\w*\b"
-    all_vars = re.findall(var_pattern, predictors_str)
+    Since the estimators take each covariate as a plain column, any other term
+    raises an error. A transformation such as ``I(x**2)``, ``log(x)``, or
+    ``C(x)`` and an interaction such as ``x1:x2`` or ``x1*x2`` go into the data
+    as columns of their own first.
 
-    exclude = {"C", "I", "Q", "bs", "ns", "log", "exp", "sqrt", "abs", "np"}
-    predictors = [v for v in all_vars if v not in exclude]
+    Parameters
+    ----------
+    formula : str
+        Formula of the form ``"y ~ x1 + x2"`` or ``"~ x1 + x2"``.
 
-    seen = set()
-    predictors = [x for x in predictors if not (x in seen or seen.add(x))]
+    Returns
+    -------
+    dict
+        - **outcome**: Name left of ``~``, or an empty string when there is none
+        - **predictors**: Covariate column names in the order given, each once
+        - **formula**: The formula as given
+    """
+    outcome, terms = _split_formula(formula)
+
+    predictors = []
+    for term in terms:
+        name = _column_name(term)
+        if name is None:
+            _check_formula_term(term)
+            raise ValueError(
+                f"xformla term '{term}' is not a column name. xformla accepts column names joined by '+'. "
+                "Add a transformed or interaction covariate to the data as its own column first. "
+                "A name that holds spaces or symbols goes in backticks."
+            )
+        if name not in predictors:
+            predictors.append(name)
 
     return {
         "outcome": outcome,
@@ -283,18 +381,195 @@ def parse_formula(formula):
     }
 
 
+def get_transformed_terms(formula):
+    """List the terms of a covariate formula that are not column names.
+
+    Since a term such as ``I(x**2)``, ``log(x)``, ``C(x)``, or ``x1:x2``
+    transforms or combines columns, a formula engine has to evaluate it.
+    Column names and the intercept ``1`` stay off the list. The formula
+    otherwise follows the rules of :func:`extract_vars_from_formula`. A
+    left-hand side, an empty term, or a term that drops the intercept raises
+    an error.
+
+    Parameters
+    ----------
+    formula : str
+        Covariate formula such as ``"~ x1 + I(x1**2)"``.
+
+    Returns
+    -------
+    list of str
+        The transformed terms in the order given, empty when every term names
+        a column.
+    """
+    outcome, terms = _split_formula(formula)
+    _reject_outcome(formula, outcome)
+
+    transformed = []
+    for term in terms:
+        if _column_name(term) is None:
+            _check_formula_term(term)
+            transformed.append(term)
+    return transformed
+
+
+def get_column_terms(formula):
+    """List the columns that the plain terms of a covariate formula name.
+
+    A plain term is one column name with or without backticks. A transformed
+    term such as ``I(x**2)``, the intercept ``1``, and a left-hand side name
+    no column here.
+
+    Parameters
+    ----------
+    formula : str
+        Covariate formula such as ``"~ x1 + I(x2**2)"``.
+
+    Returns
+    -------
+    list of str
+        The column names in the order given, each once.
+    """
+    _, terms = _split_formula(formula)
+    return list(dict.fromkeys(name for name in map(_column_name, terms) if name is not None))
+
+
+def get_formula_columns(formula, columns):
+    """List the data columns that a formula refers to.
+
+    The formula may hold transformations and interactions such as
+    ``I(x**2)``, ``C(group)``, or ``x1:x2``. A name counts when it is a column
+    of the data. Function names such as ``np.log`` drop out unless a column
+    carries that name. When a dotted name such as ``x.clip`` is not a column,
+    its longest leading part that is a column counts instead. A keyword
+    argument name such as ``degree`` in ``poly(age, degree=2)`` never counts.
+
+    Parameters
+    ----------
+    formula : str
+        Formula with one ``~``, such as ``"~ x1 + I(x1**2) + C(group)"``.
+    columns : list of str
+        Column names of the data.
+
+    Returns
+    -------
+    list of str
+        The columns the formula names, in order of first appearance.
+    """
+    if len(_split_outside_quotes(formula, "~")) != 2:
+        raise ValueError("Formula must be in the form '~ x1 + x2 + ...'")
+
+    available = set(columns)
+    found = []
+    # Quoted strings are skipped so that a level such as 'a' in C(g, Treatment('a')) is not read as a column.
+    # A keyword argument such as degree in poly(age, degree=2) names no column. The lookahead after the
+    # name keeps a prefix such as d in df=3 from matching instead.
+    pattern = r"`([^`]+)`|'[^']*'|\"[^\"]*\"|(?<![\w.])((?:[^\W\d]|\.+[^\W\d])[\w.]*)(?![\w.])(?!\s*=(?!=))"
+    for match in re.finditer(pattern, formula):
+        quoted, plain = match.group(1), match.group(2)
+        if quoted is not None:
+            candidates = [quoted]
+        elif plain is not None:
+            parts = plain.split(".")
+            candidates = [".".join(parts[:k]) for k in range(len(parts), 0, -1)]
+        else:
+            continue
+        name = next((c for c in candidates if c in available), None)
+        if name is not None and name not in found:
+            found.append(name)
+    return found
+
+
+def _split_outside_quotes(text, sep):
+    """Split text at each separator outside quotes and brackets."""
+    parts = []
+    start = 0
+    depth = 0
+    quote = None
+    for i, char in enumerate(text):
+        if quote is not None:
+            if char == quote:
+                quote = None
+        elif char in "`'\"":
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == sep and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return parts
+
+
+def _column_name(term):
+    """Return the column a formula term names or None for any other term."""
+    match = re.fullmatch(r"`([^`]+)`|((?:[^\W\d]|\.+[^\W\d])[\w.]*)", term)
+    if match is None:
+        return None
+    return match.group(1) or match.group(2)
+
+
+def _split_formula(formula):
+    """Split a formula into its outcome and its right-hand terms other than the intercept."""
+    sides = _split_outside_quotes(formula, "~")
+    if len(sides) != 2:
+        raise ValueError("Formula must be in the form '~ x1 + x2 + ...'")
+
+    outcome = sides[0].strip()
+    rhs = sides[1].strip()
+    terms = [term.strip() for term in _split_outside_quotes(rhs, "+")] if rhs else []
+    return _column_name(outcome) or outcome, [term for term in terms if term != "1"]
+
+
+def _check_formula_term(term):
+    """Raise an error for an empty term or a term that drops the intercept."""
+    if not term:
+        raise ValueError("xformla has an empty term. Remove the extra '+'.")
+    if term == "0" or re.search(r"-\s*1$", term):
+        raise ValueError(
+            f"xformla term '{term}' drops the intercept. Since the estimators always include an "
+            "intercept, remove the '0' or '-1' from xformla."
+        )
+
+
+def _reject_outcome(formula, outcome):
+    """Raise an error when a covariate formula has a left-hand side."""
+    if outcome:
+        raise ValueError(
+            f"xformla='{formula}' has a left-hand side. It lists only the covariates, as in '~ x1 + x2'. "
+            "The outcome goes in yname."
+        )
+
+
 def extract_vars_from_formula(formula):
-    """Extract all variable names from formula string."""
+    """List the covariate columns that a formula names.
+
+    The formula follows the grammar of :func:`parse_formula` and lists only
+    covariates, as in ``"~ x1 + x2"``. Since the outcome goes in ``yname``, a
+    left-hand side raises an error.
+
+    Parameters
+    ----------
+    formula : str
+        Covariate formula such as ``"~ x1 + x2"``.
+
+    Returns
+    -------
+    list of str
+        Covariate column names in the order given, each once.
+    """
     parsed = parse_formula(formula)
-    vars_list = []
-    if parsed["outcome"]:
-        vars_list.append(parsed["outcome"])
-    vars_list.extend(parsed["predictors"])
-    return vars_list
+    _reject_outcome(formula, parsed["outcome"])
+    return parsed["predictors"]
 
 
 def is_balanced_panel(data, tname, idname):
     """Check if the panel data is balanced.
+
+    Rows whose unit or period is missing don't count. Null, NaN, and
+    infinite values are missing.
 
     Parameters
     ----------
@@ -311,8 +586,9 @@ def is_balanced_panel(data, tname, idname):
         True if panel is balanced (all units observed in all periods).
     """
     df = to_polars(data)
-    n_periods = df[tname].n_unique()
-    obs_per_unit = df.group_by(idname).agg(pl.col(tname).n_unique().alias("n_obs"))
+    keyed = df.filter(_has_unit_and_period(df, idname, tname))
+    n_periods = keyed[tname].n_unique()
+    obs_per_unit = keyed.group_by(idname).agg(pl.col(tname).n_unique().alias("n_obs"))
 
     return (obs_per_unit["n_obs"] == n_periods).all()
 
@@ -422,7 +698,7 @@ def check_partition_collinearity(cov_matrix, subgroup, var_names, tol=1e-6):
         collinear_in_subset = [v for v in var_names if v not in kept_set]
 
         if collinear_in_subset:
-            partition_name = f"subgroup 4 vs {comp_group}"
+            partition_name = f"subgroup 4 versus subgroup {comp_group}"
             for var in collinear_in_subset:
                 if var not in partition_collinear:
                     partition_collinear[var] = []
@@ -432,13 +708,13 @@ def check_partition_collinearity(cov_matrix, subgroup, var_names, tol=1e-6):
 
 
 def create_ddd_subgroups(treat, partition, treat_val):
-    """Create subgroup assignments for DDD.
+    """Assign each unit to one of the four DDD subgroups.
 
-    Subgroup definitions:
-    - 4: Treated AND Eligible (treat=g, partition=1)
-    - 3: Treated BUT Ineligible (treat=g, partition=0)
-    - 2: Eligible BUT Untreated (treat=0, partition=1)
-    - 1: Untreated AND Ineligible (treat=0, partition=0)
+    Subgroup 4 holds the treated units in the eligible partition and subgroup
+    3 the treated units outside it. Subgroup 2 holds the untreated units in
+    the eligible partition and subgroup 1 the untreated units outside it. A
+    unit counts as treated when its ``treat`` equals ``treat_val`` and as
+    eligible when its ``partition`` is 1.
     """
     is_treated = treat == treat_val
     is_eligible = partition == 1

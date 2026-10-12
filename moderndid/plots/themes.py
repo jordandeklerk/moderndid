@@ -1,7 +1,5 @@
 """Theme functions for moderndid plotnine plots."""
 
-from __future__ import annotations
-
 from plotnine import element_blank, element_line, element_rect, element_text, theme
 
 COLORS = {
@@ -18,7 +16,7 @@ COLORS = {
 }
 
 
-def theme_moderndid() -> theme:
+def theme_moderndid():
     """Default moderndid theme for plotnine plots.
 
     Returns a clean, modern theme with sensible defaults for
@@ -45,7 +43,7 @@ def theme_moderndid() -> theme:
     )
 
 
-def theme_publication() -> theme:
+def theme_publication():
     """Publication-ready theme for academic papers.
 
     Returns a minimal theme optimized for print and publication,
@@ -76,7 +74,7 @@ def theme_publication() -> theme:
     )
 
 
-def theme_minimal() -> theme:
+def theme_minimal():
     """Minimal theme with reduced visual elements.
 
     Returns a very clean theme with minimal chrome,

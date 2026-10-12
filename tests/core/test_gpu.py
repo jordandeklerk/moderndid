@@ -1,5 +1,8 @@
 """Tests for GPU backend dispatch and GPU-accelerated operations."""
 
+import importlib.util
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
@@ -12,6 +15,8 @@ from moderndid.did.mboot import mboot
 from tests.helpers import importorskip
 
 cp = importorskip("cupy")
+
+HAS_RMM = importlib.util.find_spec("rmm") is not None
 
 
 def _has_cuda_gpu():
@@ -274,7 +279,9 @@ def test_cupy_vs_cpu_mboot_clustered():
     assert gpu_result["bres"].shape == cpu_result["bres"].shape
     assert np.all(np.isfinite(gpu_result["se"][~np.isnan(cpu_result["se"])]))
     np.testing.assert_allclose(gpu_result["se"], cpu_result["se"], rtol=0.3)
-    np.testing.assert_allclose(gpu_result["bres"].mean(axis=0), cpu_result["bres"].mean(axis=0), atol=0.15)
+    np.testing.assert_allclose(
+        gpu_result["bres"].mean(axis=0), cpu_result["bres"].mean(axis=0), atol=0.15 * n_units / n_clusters
+    )
     set_backend("numpy")
 
 
@@ -288,6 +295,7 @@ def test_cpu_aggregate():
     result, n_clusters = aggregate_by_cluster(inf_func, cluster)
     assert result.shape == (10, k)
     assert n_clusters == 10
+    np.testing.assert_allclose(result, inf_func.reshape(10, 10, k).sum(axis=1))
 
 
 @requires_gpu
@@ -346,12 +354,7 @@ def test_cupy_vs_cpu_column_std(inject_nans):
 @requires_gpu
 def test_rmm_initialized_after_set_backend():
     set_backend("cupy")
-    try:
-        import rmm  # noqa: F401
-
-        assert _backend_mod._rmm_initialized is True
-    except ImportError:
-        pass
+    assert _backend_mod._rmm_initialized is HAS_RMM
     set_backend("numpy")
 
 
@@ -359,12 +362,8 @@ def test_rmm_initialized_after_set_backend():
 def test_rmm_initialized_after_use_backend():
     _backend_mod._rmm_initialized = False
     try:
-        import rmm  # noqa: F401
-
         with use_backend("cupy"):
-            assert _backend_mod._rmm_initialized is True
-    except ImportError:
-        pass
+            assert _backend_mod._rmm_initialized is HAS_RMM
     finally:
         _init_rmm_pool()
         set_backend("numpy")
@@ -372,12 +371,9 @@ def test_rmm_initialized_after_use_backend():
 
 @requires_gpu
 def test_rmm_skips_reinitialize_when_already_active():
+    rmm = importorskip("rmm")
+    rmm_cupy_allocator = importorskip("rmm.allocators.cupy").rmm_cupy_allocator
     try:
-        from unittest.mock import patch
-
-        import rmm
-        from rmm.allocators.cupy import rmm_cupy_allocator
-
         cp.cuda.set_allocator(rmm_cupy_allocator)
         _backend_mod._rmm_initialized = False
 
@@ -386,8 +382,6 @@ def test_rmm_skips_reinitialize_when_already_active():
             mock_reinit.assert_not_called()
 
         assert _backend_mod._rmm_initialized is True
-    except ImportError:
-        pytest.skip("rmm not installed")
     finally:
         set_backend("numpy")
 
@@ -522,15 +516,11 @@ def test_ddd_cupy_vs_numpy(est_method):
 
 
 def test_set_backend_cupy_import_error():
-    from unittest.mock import patch
-
     with patch.object(_backend_mod, "HAS_CUPY", False), pytest.raises(ImportError, match="CuPy is not installed"):
         _backend_mod._validate_backend_name("cupy")
 
 
 def test_set_backend_cupy_no_gpu_runtime_error():
-    from unittest.mock import patch
-
     if not _backend_mod.HAS_CUPY:
         pytest.skip("CuPy not installed")
 
@@ -544,8 +534,6 @@ def test_set_backend_cupy_no_gpu_runtime_error():
 
 @requires_gpu
 def test_wls_oom_raises_memory_error():
-    from unittest.mock import patch
-
     set_backend("cupy")
 
     class FakeOOM(Exception):
@@ -566,8 +554,6 @@ def test_wls_oom_raises_memory_error():
 
 @requires_gpu
 def test_logistic_irls_oom_raises_memory_error():
-    from unittest.mock import patch
-
     set_backend("cupy")
 
     class FakeOOM(Exception):
@@ -587,12 +573,10 @@ def test_logistic_irls_oom_raises_memory_error():
 
 
 def test_rmm_fallback_when_not_installed():
-    from unittest.mock import patch
-
     _backend_mod._rmm_initialized = False
 
     with patch.dict("sys.modules", {"rmm": None, "rmm.allocators": None, "rmm.allocators.cupy": None}):
         _init_rmm_pool()
 
     assert _backend_mod._rmm_initialized is False
-    _init_rmm_pool()  # restore real state
+    _init_rmm_pool()

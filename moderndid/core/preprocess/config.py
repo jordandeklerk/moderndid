@@ -42,7 +42,7 @@ class BasePreprocessConfig(ConfigMixin):
     panel: bool = True
     allow_unbalanced_panel: bool = True
     weightsname: str | None = None
-    alp: float = DEFAULT_ALPHA
+    alpha: float = DEFAULT_ALPHA
     boot: bool = False
     cband: bool = False
     biters: int = DEFAULT_BOOTSTRAP_ITERATIONS
@@ -80,7 +80,6 @@ class DIDMLConfig(DIDConfig):
 
     k_folds: int = 10
     lambda_choice: str = "lambda.min"
-    tune_penalty: bool = True
     t_func: bool = True
 
     use_gamma: bool = True
@@ -119,7 +118,7 @@ class TwoPeriodDIDConfig(ConfigMixin):
     xformla: str = "~1"
     panel: bool = True
     weightsname: str | None = None
-    alp: float = DEFAULT_ALPHA
+    alpha: float = DEFAULT_ALPHA
     boot: bool = False
     boot_type: BootstrapType = BootstrapType.WEIGHTED
     biters: int = DEFAULT_BOOTSTRAP_ITERATIONS
@@ -171,10 +170,10 @@ class DDDConfig(ConfigMixin):
     weightsname: str | None = None
     boot: bool = False
     boot_type: BootstrapType = BootstrapType.MULTIPLIER
-    n_boot: int = DEFAULT_BOOTSTRAP_ITERATIONS
+    biters: int = DEFAULT_BOOTSTRAP_ITERATIONS
     cluster: str | None = None
     cband: bool = False
-    alp: float = DEFAULT_ALPHA
+    alpha: float = DEFAULT_ALPHA
     inf_func: bool = False
     panel: bool = True
     allow_unbalanced_panel: bool = False
@@ -209,8 +208,7 @@ class DIDInterConfig(ConfigMixin):
     same_switchers: bool = False
     same_switchers_pl: bool = False
 
-    ci_level: float = 95.0
-    alp: float = DEFAULT_ALPHA
+    alpha: float = DEFAULT_ALPHA
     less_conservative_se: bool = False
 
     trends_lin: bool = False
@@ -259,7 +257,7 @@ class EtwfeConfig(ConfigMixin):
     family: str | None = None
     weightsname: str | None = None
     cluster: str | None = None
-    alp: float = DEFAULT_ALPHA
+    alpha: float = DEFAULT_ALPHA
     panel: bool = True
 
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
@@ -293,7 +291,7 @@ class DynBalancingConfig(ConfigMixin):
     clustervars: list[str] | None = None
     balancing: str = "dcb"
     method: str = "lasso_plain"
-    alp: float = DEFAULT_ALPHA
+    alpha: float = DEFAULT_ALPHA
     final_period: int | None = None
     initial_period: int | None = None
     adaptive_balancing: bool = True
@@ -308,7 +306,7 @@ class DynBalancingConfig(ConfigMixin):
     ratio_coefficients: float = 1 / 3
     nfolds: int = 10
     lags: int | None = None
-    robust_quantile: bool = True
+    robust_quantile: bool = False
     demeaned_fe: bool = False
 
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))

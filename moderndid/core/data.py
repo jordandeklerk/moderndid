@@ -2,7 +2,6 @@
 
 import gzip
 import pickle
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -33,36 +32,42 @@ __all__ = [
     "load_ehec",
     "load_engel",
     "load_favara_imbs",
+    "load_fracking",
     "load_mpdta",
     "load_nsw",
 ]
 
 
-def load_acemoglu() -> pl.DataFrame:
-    """Load the Acemoglu et al. (2019) democracy and economic growth dataset.
+def load_acemoglu():
+    """Load the democracy and economic growth panel of 141 countries.
 
-    This dataset contains country-level panel data used to study the
-    effects of democracy on GDP per capita. Countries transition to
-    democracy at different times, creating a dynamic treatment regime
-    where treatment effects may depend on the length of exposure. The
-    dataset is suitable for dynamic covariate balancing estimation.
+    This dataset is a six-year extract of the country panel that Acemoglu, Naidu,
+    Restrepo, and Robinson [1]_ assembled to study whether democracy causes growth. It
+    follows 141 countries over six consecutive years for 846 rows in all.
 
-    The panel contains 141 countries observed across 6 five-year periods,
-    for a total of 846 observations, with 158 country-level covariates
-    and 4 lagged outcome variables.
+    Democracy can switch on and off, although only 12 of the countries change status at
+    least once. The four lagged outcomes let an estimator hold past GDP per capita fixed
+    when democracy responds to it, as dynamic covariate balancing does.
+
+    See the :ref:`dynamic covariate balancing example <example_dyn_balancing>` for a full
+    analysis of democracy and growth with this data.
 
     Returns
     -------
     pl.DataFrame
         A DataFrame with the following columns:
 
-        - *Y*: Log GDP per capita (outcome)
-        - *D*: Democracy indicator (treatment)
-        - *Unit*: Country identifier
-        - *Time*: Time period (0-5)
-        - *region*: World Bank region
-        - *V1-V158*: Country-level covariates
-        - *lag1.Value1* through *lag4.Value1*: Lagged outcomes
+        - **Y**: Log GDP per capita (outcome). It's missing in the last year for four countries
+        - **D**: Democracy indicator, 1 in the years a country was a democracy (treatment)
+        - **Unit**: Country identifier
+        - **Time**: Year, numbered 0 to 5
+        - **region**: One of seven region codes, from AFR to SAS
+        - **V1** through **V158**: Further country-level columns, of which **V47** through
+          **V52** mark the six years and **V2** through **V46** are zero in every row
+        - **lag1.Value1**: Log GDP per capita one year earlier
+        - **lag2.Value1**: Log GDP per capita two years earlier
+        - **lag3.Value1**: Log GDP per capita three years earlier
+        - **lag4.Value1**: Log GDP per capita four years earlier
 
     References
     ----------
@@ -94,13 +99,15 @@ def load_acemoglu() -> pl.DataFrame:
     return df
 
 
-def load_nsw() -> pl.DataFrame:
+def load_nsw():
     """Load the NSW (National Supported Work) demonstration dataset.
 
     This dataset is from the National Supported Work (NSW) Demonstration,
     a randomized employment training program operated in the mid-1970s.
-    It has been widely used in the causal inference literature, particularly
-    for demonstrating difference-in-differences methods.
+    Lalonde [1]_ used the demonstration to check nonexperimental estimators
+    against its experimental estimate. It has been widely used in the causal
+    inference literature, particularly for demonstrating difference-in-differences
+    methods.
 
     The dataset is a balanced panel in long format with 16,417 individuals
     observed in 1975 (pre-treatment) and 1978 (post-treatment), for a total
@@ -111,17 +118,17 @@ def load_nsw() -> pl.DataFrame:
     pl.DataFrame
         A DataFrame with the following columns:
 
-        - *id*: Individual identifier
-        - *year*: Year (1975 or 1978)
-        - *experimental*: Treatment indicator (1 if treated, 0 if control)
-        - *re*: Real earnings (outcome variable)
-        - *age*: Age in years
-        - *educ*: Years of education
-        - *black*: Indicator for Black race
-        - *married*: Indicator for married status
-        - *nodegree*: Indicator for no high school degree
-        - *hisp*: Indicator for Hispanic ethnicity
-        - *re74*: Real earnings in 1974
+        - **id**: Individual identifier
+        - **year**: Year (1975 or 1978)
+        - **experimental**: Treatment indicator (1 if treated, 0 if control)
+        - **re**: Real earnings (outcome variable)
+        - **age**: Age in years
+        - **educ**: Years of education
+        - **black**: Indicator for Black race
+        - **married**: Indicator for married status
+        - **nodegree**: Indicator for no high school degree
+        - **hisp**: Indicator for Hispanic ethnicity
+        - **re74**: Real earnings in 1974
 
     References
     ----------
@@ -144,7 +151,7 @@ def load_nsw() -> pl.DataFrame:
     return to_polars(nsw_data)
 
 
-def load_mpdta() -> pl.DataFrame:
+def load_mpdta():
     """Load the County Teen Employment dataset for multiple time period DiD analysis.
 
     This dataset contains county-level teen employment rates from 2003-2007
@@ -152,19 +159,20 @@ def load_mpdta() -> pl.DataFrame:
     treated in 2004, 2006, or 2007.
 
     The dataset is a balanced panel of 500 counties observed across 5 years,
-    for a total of 2,500 observations.
+    for a total of 2,500 observations. It is a subset of the data that Callaway
+    and Sant'Anna [1]_ use in their application.
 
     Returns
     -------
     pl.DataFrame
         A DataFrame with the following columns:
 
-        - *year*: Year (2003-2007)
-        - *countyreal*: County identifier
-        - *lpop*: Log of county population
-        - *lemp*: Log of county-level teen employment (outcome variable)
-        - *first.treat*: Period when state first increased minimum wage (2004, 2006, 2007, or 0 for never-treated)
-        - *treat*: Treatment indicator (1 if treated, 0 if control)
+        - **year**: Year (2003-2007)
+        - **countyreal**: County identifier
+        - **lpop**: Log of county population
+        - **lemp**: Log of county-level teen employment (outcome variable)
+        - **first.treat**: Period when state first increased minimum wage (2004, 2006, 2007, or 0 for never-treated)
+        - **treat**: Treatment indicator (1 if treated, 0 if control)
 
     References
     ----------
@@ -188,34 +196,31 @@ def load_mpdta() -> pl.DataFrame:
     return to_polars(mpdta_data)
 
 
-def load_ehec() -> pl.DataFrame:
+def load_ehec():
     """Load the EHEC dataset for Medicaid expansion analysis.
 
-    This dataset contains state-level data on health insurance coverage rates
-    among low-income childless adults from 2008-2019, used to study the effects
-    of Medicaid expansion under the Affordable Care Act.
+    This dataset holds the share of low-income adults without children who had health
+    insurance in each state from 2008 to 2019. The shares come from the American Community
+    Survey and are used to study the Medicaid expansion under the Affordable Care Act.
 
-    The dataset tracks 46 states that expanded Medicaid at different times
-    (2014, 2015, 2016, 2017, or 2019) as well as states that never expanded
-    during the sample period, observed across 12 years for a total of 552
-    observations.
+    The panel is balanced and covers 46 states over 12 years, 552 rows in all. Of those
+    states, 30 expanded Medicaid in 2014, 2015, 2016, 2017, or 2019. The other 16 had not
+    expanded by 2019.
+
+    See the :ref:`sensitivity analysis example <example_honest_did>` for a full analysis of
+    the Medicaid expansions with this data.
 
     Returns
     -------
     pl.DataFrame
         A DataFrame with the following columns:
 
-        - *stfips*: State FIPS code identifier
-        - *year*: Year (2008-2019)
-        - *dins*: Share of low-income childless adults with health insurance (outcome variable)
-        - *yexp2*: Year that state expanded Medicaid (2014, 2015, 2016, 2017, 2019, or NaN for never-expanded)
-        - *W*: State population weights
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+        - **stfips**: State FIPS code identifier
+        - **year**: Year (2008-2019)
+        - **dins**: Share of low-income childless adults with health insurance (outcome variable)
+        - **yexp2**: Year the state expanded Medicaid (2014, 2015, 2016, 2017, or 2019), missing for
+          states that had not expanded by 2019
+        - **W**: State population weights
     """
     data_path = Path(__file__).parent / "datasets" / "ehec_data.pkl.gz"
 
@@ -231,37 +236,43 @@ def load_ehec() -> pl.DataFrame:
     return to_polars(ehec_data)
 
 
-def load_engel() -> pl.DataFrame:
+def load_engel():
     """Load the Engel household expenditure dataset.
 
-    This dataset contains household expenditure data used to study Engel curves,
-    which describe how household expenditure on different goods varies with income.
-    The data includes expenditure shares on various categories and household
-    characteristics.
+    Engel curves describe how household spending on a good varies with income.
+    This dataset records how 1,655 households from the 1995 British Family
+    Expenditure Survey split their budgets across seven groups of goods. It also
+    holds each household's total expenditure, its earnings, and whether it has
+    children.
 
-    The dataset is a cross-section of 1,655 households.
+    The households are married or cohabiting couples with an employed head and at
+    most two children [1]_.
+
+    See the :ref:`nonparametric IV example <example_npiv>` for the Engel curve for
+    food estimated from this data.
 
     Returns
     -------
     pl.DataFrame
         A DataFrame with the following columns:
 
-        - *food*: Food expenditure share
-        - *catering*: Catering expenditure share
-        - *alcohol*: Alcohol expenditure share
-        - *fuel*: Fuel expenditure share
-        - *motor*: Motor expenditure share
-        - *fares*: Transportation fares expenditure share
-        - *leisure*: Leisure expenditure share
-        - *logexp*: Log of total expenditure
-        - *logwages*: Log of wages
-        - *nkids*: Number of children
+        - **food**: Food expenditure share
+        - **catering**: Catering expenditure share
+        - **alcohol**: Alcohol expenditure share
+        - **fuel**: Fuel expenditure share
+        - **motor**: Motor expenditure share
+        - **fares**: Transportation fares expenditure share
+        - **leisure**: Leisure expenditure share
+        - **logexp**: Log of total expenditure
+        - **logwages**: Log of total earnings
+        - **nkids**: Indicator for children, 0 for none and 1 for one or two
 
     References
     ----------
 
-    .. [1] Engel, E. (1857). Die Lebenskosten belgischer Arbeiter-Familien.
-        Dresden: C. Heinrich.
+    .. [1] Blundell, R., Chen, X., & Kristensen, D. (2007). Semi-nonparametric IV
+        estimation of shape-invariant Engel curves. *Econometrica*, 75(6),
+        1613-1669.
     """
     data_path = Path(__file__).parent / "datasets" / "engel.pkl.gz"
 
@@ -277,30 +288,37 @@ def load_engel() -> pl.DataFrame:
     return to_polars(engel_data)
 
 
-def load_favara_imbs() -> pl.DataFrame:
-    """Load the Favara and Imbs banking deregulation dataset.
+def load_favara_imbs():
+    """Load the county panel of interstate branching deregulation and bank lending.
 
-    This dataset contains county-level data on bank lending and interstate
-    branching deregulation from 1994-2005, used to study the effects of
-    banking deregulation on credit supply. The treatment (interstate branching)
-    is non-binary and potentially non-absorbing, making it suitable for
-    intertemporal treatment effects estimation.
+    After the Interstate Banking and Branching Efficiency Act of 1994, each US state
+    chose when to lift four restrictions on branching by banks from other states.
+    This dataset follows the counties that Favara and Imbs [1]_ studied from 1994 to
+    2005. For each county and year it records how many restrictions the state had
+    lifted and the growth of mortgage lending by banks. de Chaisemartin and
+    D'Haultfoeuille [2]_ revisit it with intertemporal treatment effects.
 
-    The dataset contains 1,048 counties observed across 12 years, for a
-    total of 12,538 observations.
+    The file holds 12,538 rows for 1,048 counties in 50 states. All but five counties
+    appear in each of the 12 years. The lending outcome is missing in 200 rows.
+
+    See the :ref:`intertemporal treatment example <example_inter_did>` for a full
+    analysis of the deregulations with this data.
 
     Returns
     -------
     pl.DataFrame
         A DataFrame with the following columns:
 
-        - *year*: Year (1994-2005)
-        - *county*: County identifier
-        - *state_n*: State number
-        - *Dl_vloans_b*: Change in log volume of loans (outcome variable)
-        - *inter_bra*: Interstate branching indicator (treatment variable)
-        - *w1*: Sampling weight
-        - *Dl_hpi*: Change in log house price index
+        - **year**: Year (1994-2005)
+        - **county**: County FIPS code
+        - **state_n**: State FIPS code
+        - **Dl_vloans_b**: Change in the log volume of mortgage loans originated by
+          banks (outcome variable)
+        - **inter_bra**: Number of the four restrictions on interstate branching that
+          the state had lifted, from 0 to 4 (treatment variable)
+        - **w1**: Inverse of the number of counties per state, the weight Favara and
+          Imbs use for house prices, scaled to average one
+        - **Dl_hpi**: Change in the log house price index
 
     References
     ----------
@@ -323,37 +341,132 @@ def load_favara_imbs() -> pl.DataFrame:
     return pl.read_csv(data_path)
 
 
-def load_cai2016() -> pl.DataFrame:
+def load_fracking():
+    """Load the county employment panel for the fracking application.
+
+    The panel follows 402 US counties from 1990 through 2014 for 10,050 rows.
+    Callaway, Goodman-Bacon, and Sant'Anna [1]_ use this county data from Bartik,
+    Currie, Greenstone, and Knittel [2]_ in their continuous treatment application.
+    The processed source file comes from their replication archive [3]_.
+
+    The loader retains counties observed in all 25 years after removing missing
+    employment outcomes. Each county's dose is a fixed geological prospectivity
+    score. The source preparation sets missing scores to zero without retaining
+    an imputation flag. Those zeros therefore cannot be distinguished from
+    observed zero scores. The scores measure prospectivity within shale plays and are
+    not comparable across plays.
+
+    See the :ref:`continuous treatment example <example_cont_did>` for an
+    analysis of geological prospectivity and county employment with this data.
+
+    Returns
+    -------
+    pl.DataFrame
+        A balanced county panel sorted by county and year.
+
+        - **i**: County FIPS code
+        - **t**: Year (1990-2014)
+        - **y**: Log total county employment
+        - **d**: Time-invariant geological prospectivity score
+        - **G**: Adoption year based on publicity about successful fracking or 0 for zero-dose counties
+        - **shale_basin1**: Shale-basin identifier
+        - **G_original**: Formation adoption year retained for every county from the source file
+
+    Notes
+    -----
+    The bundled extract is prepared from ``bcgk_replication.dta`` in [3]_.
+    Preparation removes 2015 and missing employment outcomes, retains counties
+    observed in every year from 1990 through 2014, and sets ``G=0`` when ``d=0``.
+    The ``G_original`` column preserves the source dates used to restrict the
+    comparison sample in the paper's time-averaged dose curves.
+    Identifiers and years are integers. Outcomes and scores retain the source
+    values without rescaling.
+
+    Adoption dates follow the original study's first publicity about successful
+    fracking in a shale play. Announcements after June are assigned to the
+    following year to match the annual outcomes.
+
+    The prospectivity data are county-level aggregates released with [2]_ and
+    its replication package [4]_. Data reuse follows the AEA's published
+    guidance for older replication deposits at
+    https://aeadataeditor.github.io/aea-de-guidance/FAQ.html#licensing.
+    The source data's rights are separate from ModernDiD's software license.
+
+    References
+    ----------
+
+    .. [1] Callaway, B., Goodman-Bacon, A., and Sant'Anna, P. H. C. (2024).
+       "Event Studies with a Continuous Treatment." AEA Papers and
+       Proceedings, 114, 601-605. https://doi.org/10.1257/pandp.20241047.
+
+    .. [2] Bartik, A. W., Currie, J., Greenstone, M., and Knittel, C. R. (2019).
+       "The Local Economic and Welfare Consequences of Hydraulic Fracturing."
+       American Economic Journal: Applied Economics, 11(4), 105-155.
+       https://doi.org/10.1257/app.20170487.
+
+    .. [3] Callaway, B., Goodman-Bacon, A., and Sant'Anna, P. H. C. (2024).
+       "Data and Code for: Event-Studies with a Continuous Treatment."
+       https://doi.org/10.3886/E201785V1.
+
+    .. [4] Bartik, A. W., Currie, J., Greenstone, M., and Knittel, C. R.
+       "Replication data for: The Local Economic and Welfare Consequences
+       of Hydraulic Fracturing." https://doi.org/10.3886/E231454V1.
+    """
+    data_path = Path(__file__).parent / "datasets" / "fracking.csv.gz"
+
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"Fracking data file not found at {data_path}. "
+            "Please ensure the data file is included in the moderndid installation."
+        )
+
+    return pl.read_csv(
+        data_path,
+        schema_overrides={
+            "i": pl.Int64,
+            "t": pl.Int64,
+            "y": pl.Float64,
+            "d": pl.Float64,
+            "G": pl.Int64,
+            "shale_basin1": pl.Int64,
+            "G_original": pl.Int64,
+        },
+    )
+
+
+def load_cai2016():
     """Load the Cai (2016) agricultural insurance dataset.
 
     This dataset contains household-level panel data from rural Jiangxi province
     in China (2000-2008), used to study the effects of weather-indexed crop
-    insurance on household saving behavior. The People's Insurance Company of
+    insurance on household saving behavior [1]_. The People's Insurance Company of
     China (PICC) introduced crop insurance for tobacco farmers in select counties
-    in 2003, creating a triple difference-in-differences (DDD) design with three
-    sources of variation: treatment region, household eligibility (tobacco vs
-    non-tobacco farmers), and time (pre/post 2003).
+    in 2003. The rollout gives a triple difference-in-differences (DDD) design
+    with three sources of variation, namely treatment region, household
+    eligibility (tobacco or non-tobacco farmers), and time (before or after
+    2003). Ortiz-Villavicencio and Sant'Anna [2]_ revisit these households with
+    their triple differences estimators.
 
     The dataset includes all households with non-missing outcome and covariate
-    values, forming an unbalanced panel of 3,659 households (32,391
-    observations). Most households are observed in all 9 years, but some have
-    fewer observations.
+    values. They form an unbalanced panel of 3,659 households (32,391
+    observations). Although most households are observed in all 9 years,
+    some have fewer observations.
 
     Returns
     -------
     pl.DataFrame
         A DataFrame with the following columns:
 
-        - *hhno*: Household identifier
-        - *year*: Year (2000-2008)
-        - *treatment*: Treatment region indicator (1 if in treated county, 0 otherwise)
-        - *sector*: Eligibility indicator (1 for tobacco farmers, 0 for non-tobacco)
-        - *checksaving_ratio*: Flexible-term saving ratio (outcome variable)
-        - *savingtotal_rate*: Total saving rate
-        - *hhsize*: Household size
-        - *age*: Age of head of household
-        - *educ_scale*: Education level of head of household
-        - *county*: County identifier (for clustering)
+        - **hhno**: Household identifier
+        - **year**: Year (2000-2008)
+        - **treatment**: Treatment region indicator (1 if in treated county, 0 otherwise)
+        - **sector**: Eligibility indicator (1 for tobacco farmers, 0 for non-tobacco)
+        - **checksaving_ratio**: Flexible-term saving ratio (outcome variable)
+        - **savingtotal_rate**: Total saving rate
+        - **hhsize**: Household size
+        - **age**: Age of head of household
+        - **educ_scale**: Education level of head of household
+        - **county**: County identifier (for clustering)
 
     References
     ----------
@@ -362,8 +475,9 @@ def load_cai2016() -> pl.DataFrame:
         production and financial decisions. American Economic Journal:
         Economic Policy, 8(2), 44-88.
 
-    .. [2] Ortiz-Villavicencio, J. & Sant'Anna, P. H. C. (2025). Triple
-        Differences with Multiple Periods. arXiv preprint arXiv:2505.09942.
+    .. [2] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025). Better
+        Understanding Triple Differences Estimators. arXiv preprint
+        arXiv:2505.09942.
     """
     data_path = Path(__file__).parent / "datasets" / "cai2016.csv.gz"
 
@@ -377,15 +491,15 @@ def load_cai2016() -> pl.DataFrame:
 
 
 def gen_did_scalable(
-    n: int,
-    dgp_type: int = 1,
-    n_periods: int = 10,
-    n_cohorts: int = 8,
-    n_covariates: int = 20,
-    att_base: float = 10.0,
-    panel: bool = True,
+    n,
+    dgp_type=1,
+    n_periods=10,
+    n_cohorts=8,
+    n_covariates=20,
+    att_base=10.0,
+    panel=True,
     random_state=None,
-) -> dict:
+):
     """Generate configurable staggered DiD data for stress-testing.
 
     Parameters
@@ -394,13 +508,14 @@ def gen_did_scalable(
         Number of units (panel) or observations per period (repeated
         cross-section).
     dgp_type : {1, 2, 3, 4}, default=1
-        Controls nuisance function specification:
-
-        - 1: Both propensity score and outcome regression use Z (both correct)
-        - 2: Propensity score uses X, outcome regression uses Z (OR correct)
-        - 3: Propensity score uses Z, outcome regression uses X (PS correct)
-        - 4: Both use X (both misspecified when estimating with Z)
-
+        Which covariates generate the nuisance functions. Type 1 generates
+        both the propensity score and the outcome regression from Z. Type 2
+        generates the propensity score from X and the outcome regression
+        from Z. Type 3 generates the propensity score from Z and the outcome
+        regression from X. Type 4 generates both from X. An estimator that
+        uses Z is then correctly specified in both models under type 1, only
+        in the outcome regression under type 2, only in the propensity score
+        under type 3, and in neither under type 4.
     n_periods : int, default=10
         Total number of time periods (labeled 1..T). Must be >= 2.
     n_cohorts : int, default=8
@@ -408,8 +523,8 @@ def gen_did_scalable(
         and < n_periods. Cohorts adopt treatment at times 2, 3, ...,
         n_cohorts+1.
     n_covariates : int, default=20
-        Total covariates. Must be >= 4. First 4 get nonlinear transform via
-        ``_transform_covariates``; rest are raw standard normals.
+        Total covariates. Must be >= 4. The first 4 get a nonlinear
+        transform. The rest are raw standard normals.
     att_base : float, default=10.0
         Base treatment effect. Cohort g at period t >= g gets
         ``att_base * g * (t - g + 1)``.
@@ -424,16 +539,16 @@ def gen_did_scalable(
     dict
         Dictionary containing:
 
-        - *data*: pl.DataFrame in long format with columns [id, group,
+        - **data**: pl.DataFrame in long format with columns [id, group,
           time, y, cov1..covK, cluster]
-        - *data_wide*: pl.DataFrame in wide format (panel with
+        - **data_wide**: pl.DataFrame in wide format (panel with
           n_periods <= 20 only)
-        - *att_config*: dict mapping each treated cohort g to
+        - **att_config**: dict mapping each treated cohort g to
           ``att_base * g``
-        - *cohort_values*: list of all cohort values
+        - **cohort_values**: list of all cohort values
           [0, 2, 3, ..., n_cohorts+1]
-        - *n_periods*: number of periods
-        - *n_covariates*: number of covariates
+        - **n_periods**: number of periods
+        - **n_covariates**: number of covariates
     """
     if dgp_type not in {1, 2, 3, 4}:
         raise ValueError(f"dgp_type must be 1, 2, 3, or 4, got {dgp_type}")
@@ -560,16 +675,27 @@ def gen_did_scalable(
 
 
 def gen_cont_did_data(
-    n: int = 500,
-    num_time_periods: int = 4,
-    num_groups: int | None = None,
-    p_group: list | None = None,
-    p_untreated: float | None = None,
-    dose_linear_effect: float = 0.5,
-    dose_quadratic_effect: float = 0,
-    seed: int = 42,
-) -> pl.DataFrame:
+    n=500,
+    num_time_periods=4,
+    num_groups=None,
+    p_group=None,
+    p_untreated=None,
+    dose_linear_effect=0.5,
+    dose_quadratic_effect=0,
+    seed=42,
+):
     """Simulate panel data for difference-in-differences with continuous treatment.
+
+    Each unit falls into a cohort that starts treatment in one of the periods
+    after the first or never starts it. Treated units draw a dose uniformly
+    between 0 and 1. Once its treatment starts, a unit at dose :math:`d` gains
+    ``dose_linear_effect * d + dose_quadratic_effect * d**2`` in every period.
+    A unit fixed effect centered on the cohort shifts outcome levels without
+    changing their trends.
+
+    You can use this data to check whether an estimator recovers the planted
+    effects. See the :ref:`continuous treatment example <example_cont_did>`
+    for an analysis of the county employment data from :func:`load_fracking`.
 
     Parameters
     ----------
@@ -578,11 +704,13 @@ def gen_cont_did_data(
     num_time_periods : int, default=4
         Number of time periods.
     num_groups : int, optional
-        Number of timing groups. Defaults to ``num_time_periods``.
-        Groups consist of a never-treated group (G=0) and groups that
-        become treated in periods 2, 3, ..., num_time_periods.
+        Number of timing groups. The never-treated group (G=0) counts as one
+        of them. The treated groups start treatment in periods 2, 3, ...,
+        num_groups. Must be between 2 and ``num_time_periods``. Defaults to
+        ``num_time_periods``.
     p_group : list, optional
-        Probabilities for each treated group. Defaults to equal probabilities.
+        Probabilities for the treated groups, one per treated group.
+        Defaults to equal probabilities.
     p_untreated : float, optional
         Probability of being in the never-treated group.
         Defaults to ``1/num_groups``.
@@ -596,21 +724,27 @@ def gen_cont_did_data(
     Returns
     -------
     pl.DataFrame
-        A balanced panel DataFrame with columns:
+        A balanced panel with one row per unit and period.
 
-        - *id*: Unit identifier
-        - *time_period*: Time period (1, 2, ..., num_time_periods)
-        - *Y*: Outcome variable
-        - *G*: Timing group (0 for never-treated, or period when treatment starts)
-        - *D*: Treatment dose (0 for untreated unit-periods, positive otherwise)
+        - **id**: Unit identifier
+        - **time_period**: Time period (1, 2, ..., num_time_periods)
+        - **Y**: Outcome variable
+        - **G**: Timing group, 0 for never-treated units or the period when treatment starts
+        - **D**: The unit's dose, the same in every period before and after treatment starts.
+          Never-treated units have a dose of 0.
     """
     rng = np.random.default_rng(seed)
 
     if num_groups is None:
         num_groups = num_time_periods
+    if not 2 <= num_groups <= num_time_periods:
+        raise ValueError(
+            f"num_groups={num_groups} is not valid. Since it counts the never-treated group and groups that start "
+            f"treatment in periods 2 to {num_time_periods}, it must be between 2 and {num_time_periods}."
+        )
 
     time_periods = np.arange(1, num_time_periods + 1)
-    groups = np.concatenate(([0], time_periods[1:]))
+    groups = np.concatenate(([0], time_periods[1:num_groups]))
 
     if p_untreated is None:
         p_untreated = 1 / num_groups
@@ -618,6 +752,8 @@ def gen_cont_did_data(
     if p_group is None:
         p_group_len = num_groups - 1
         p_group = np.repeat((1 - p_untreated) / p_group_len, p_group_len)
+    elif len(p_group) != num_groups - 1:
+        raise ValueError(f"p_group needs one probability for each of the {num_groups - 1} treated groups.")
 
     p = np.concatenate(([p_untreated], p_group))
     p /= p.sum()
@@ -703,30 +839,30 @@ def gen_ddd_2periods(
     dgp_type,
     panel=True,
     random_state=None,
-) -> dict:
+):
     """Generate synthetic data for 2-period DDD estimation.
 
-    Four subgroups are created based on treatment and partition status:
-
-    - Subgroup 4: Treated AND Eligible (state=1, partition=1)
-    - Subgroup 3: Treated BUT Ineligible (state=1, partition=0)
-    - Subgroup 2: Eligible BUT Untreated (state=0, partition=1)
-    - Subgroup 1: Untreated AND Ineligible (state=0, partition=0)
+    Treatment and partition status form four subgroups. Subgroup 4 holds
+    the treated and eligible units (state=1, partition=1), subgroup 3 the
+    treated but ineligible units (state=1, partition=0), subgroup 2 the
+    eligible but untreated units (state=0, partition=1), and subgroup 1 the
+    untreated and ineligible units (state=0, partition=0).
 
     Parameters
     ----------
-    n : int, default=5000
+    n : int
         Number of units to simulate. For panel data, this is the total number of
         units observed in both periods. For repeated cross-section data, this is
         the number of observations per period.
-    dgp_type : {1, 2, 3, 4}, default=1
-        Controls nuisance function specification:
-
-        - 1: Both propensity score and outcome regression use Z (both correct)
-        - 2: Propensity score uses X, outcome regression uses Z (OR correct)
-        - 3: Propensity score uses Z, outcome regression uses X (PS correct)
-        - 4: Both use X (both misspecified when estimating with Z)
-
+    dgp_type : {1, 2, 3, 4}
+        Which covariates generate the nuisance functions. Type 1 generates
+        both the propensity score and the outcome regression from Z. Type 2
+        generates the propensity score from X and the outcome regression
+        from Z. Type 3 generates the propensity score from Z and the outcome
+        regression from X. Type 4 generates both from X. An estimator that
+        uses Z is then correctly specified in both models under type 1, only
+        in the outcome regression under type 2, only in the propensity score
+        under type 3, and in neither under type 4.
     panel : bool, default=True
         If True, generate panel data where each unit is observed in both periods.
         If False, generate repeated cross-section data where different units are
@@ -739,11 +875,11 @@ def gen_ddd_2periods(
     dict
         Dictionary containing:
 
-        - *data*: pl.DataFrame in long format with columns [id, state, partition,
+        - **data**: pl.DataFrame in long format with columns [id, state, partition,
           time, y, cov1, cov2, cov3, cov4, cluster]
-        - *true_att*: True ATT (always 0)
-        - *oracle_att*: Oracle ATT from potential outcomes
-        - *efficiency_bound*: Theoretical efficiency bound
+        - **true_att**: True ATT (always 0)
+        - **oracle_att**: Oracle ATT from potential outcomes
+        - **efficiency_bound**: Theoretical efficiency bound
     """
     if dgp_type not in [1, 2, 3, 4]:
         raise ValueError(f"dgp_type must be 1, 2, 3, or 4, got {dgp_type}")
@@ -952,11 +1088,11 @@ def gen_ddd_2periods(
 
 
 def gen_ddd_mult_periods(
-    n: int,
-    dgp_type: int = 1,
-    panel: bool = True,
+    n,
+    dgp_type=1,
+    panel=True,
     random_state=None,
-) -> dict:
+):
     """Generate data with staggered treatment adoption for multi-period DDD.
 
     Generates data where units adopt treatment at different times across
@@ -970,13 +1106,14 @@ def gen_ddd_mult_periods(
         units observed in all periods. For repeated cross-section data, this is
         the number of observations per period.
     dgp_type : {1, 2, 3, 4}, default=1
-        Controls nuisance function specification:
-
-        - 1: Both propensity score and outcome regression use Z (both correct)
-        - 2: Propensity score uses X, outcome regression uses Z (OR correct)
-        - 3: Propensity score uses Z, outcome regression uses X (PS correct)
-        - 4: Both use X (both misspecified when estimating with Z)
-
+        Which covariates generate the nuisance functions. Type 1 generates
+        both the propensity score and the outcome regression from Z. Type 2
+        generates the propensity score from X and the outcome regression
+        from Z. Type 3 generates the propensity score from Z and the outcome
+        regression from X. Type 4 generates both from X. An estimator that
+        uses Z is then correctly specified in both models under type 1, only
+        in the outcome regression under type 2, only in the propensity score
+        under type 3, and in neither under type 4.
     panel : bool, default=True
         If True, generate panel data where each unit is observed in all periods.
         If False, generate repeated cross-section data where different units are
@@ -989,12 +1126,12 @@ def gen_ddd_mult_periods(
     dict
         Dictionary containing:
 
-        - *data*: pl.DataFrame in long format with columns [id, group, partition,
+        - **data**: pl.DataFrame in long format with columns [id, group, partition,
           time, y, cov1, cov2, cov3, cov4, cluster]
-        - *data_wide*: pl.DataFrame in wide format with one row per unit (only for panel=True)
-        - *es_0_oracle*: Oracle event-study parameter at event time 0
-        - *prob_g2_p1*: Proportion of units with cohort=2 and eligibility
-        - *prob_g3_p1*: Proportion of units with cohort=3 and eligibility
+        - **data_wide**: pl.DataFrame in wide format with one row per unit (only for panel=True)
+        - **es_0_oracle**: Oracle event-study parameter at event time 0
+        - **prob_g2_p1**: Proportion of units with cohort=2 and eligibility
+        - **prob_g3_p1**: Proportion of units with cohort=3 and eligibility
     """
     if dgp_type not in [1, 2, 3, 4]:
         raise ValueError(f"dgp_type must be 1, 2, 3, or 4, got {dgp_type}")
@@ -1262,14 +1399,14 @@ def gen_simple_ddd_data(
     n,
     att,
     random_state=None,
-) -> pl.DataFrame:
+):
     """Generate simple DDD panel data with a known treatment effect.
 
     Parameters
     ----------
-    n : int, default=500
+    n : int
         Number of units to simulate.
-    att : float, default=5.0
+    att : float
         True average treatment effect on the treated.
     random_state : int, Generator, or None, default=None
         Controls randomness for reproducibility.
@@ -1279,12 +1416,13 @@ def gen_simple_ddd_data(
     pl.DataFrame
         Long-format DataFrame with columns:
 
-        - *id*: Unit identifier
-        - *state*: Treatment indicator (1=treated, 0=control)
-        - *partition*: Eligibility indicator (1=eligible, 0=ineligible)
-        - *time*: Time period (1=pre, 2=post)
-        - *y*: Outcome variable
-        - *x1*, *x2*: Covariates
+        - **id**: Unit identifier
+        - **state**: Treatment indicator (1=treated, 0=control)
+        - **partition**: Eligibility indicator (1=eligible, 0=ineligible)
+        - **time**: Time period (1=pre, 2=post)
+        - **y**: Outcome variable
+        - **x1**: First covariate
+        - **x2**: Second covariate
     """
     rng = np.random.default_rng(random_state)
 
@@ -1342,15 +1480,15 @@ def gen_simple_ddd_data(
 
 
 def gen_ddd_scalable(
-    n: int,
-    dgp_type: int = 1,
-    n_periods: int = 10,
-    n_cohorts: int = 8,
-    n_covariates: int = 20,
-    att_base: float = 10.0,
-    panel: bool = True,
+    n,
+    dgp_type=1,
+    n_periods=10,
+    n_cohorts=8,
+    n_covariates=20,
+    att_base=10.0,
+    panel=True,
     random_state=None,
-) -> dict:
+):
     """Generate configurable staggered DDD data for stress-testing.
 
     Parameters
@@ -1359,13 +1497,14 @@ def gen_ddd_scalable(
         Number of units (panel) or observations per period (repeated
         cross-section).
     dgp_type : {1, 2, 3, 4}, default=1
-        Controls nuisance function specification:
-
-        - 1: Both propensity score and outcome regression use Z (both correct)
-        - 2: Propensity score uses X, outcome regression uses Z (OR correct)
-        - 3: Propensity score uses Z, outcome regression uses X (PS correct)
-        - 4: Both use X (both misspecified when estimating with Z)
-
+        Which covariates generate the nuisance functions. Type 1 generates
+        both the propensity score and the outcome regression from Z. Type 2
+        generates the propensity score from X and the outcome regression
+        from Z. Type 3 generates the propensity score from Z and the outcome
+        regression from X. Type 4 generates both from X. An estimator that
+        uses Z is then correctly specified in both models under type 1, only
+        in the outcome regression under type 2, only in the propensity score
+        under type 3, and in neither under type 4.
     n_periods : int, default=10
         Total number of time periods (labeled 1..T). Must be >= 2.
     n_cohorts : int, default=8
@@ -1373,8 +1512,8 @@ def gen_ddd_scalable(
         and < n_periods. Cohorts adopt treatment at times 2, 3, ...,
         n_cohorts+1.
     n_covariates : int, default=20
-        Total covariates. Must be >= 4. First 4 get nonlinear transform via
-        ``_transform_covariates``; rest are raw standard normals.
+        Total covariates. Must be >= 4. The first 4 get a nonlinear
+        transform. The rest are raw standard normals.
     att_base : float, default=10.0
         Base treatment effect. Cohort g at period t >= g gets
         ``att_base * g * (t - g + 1) * partition``.
@@ -1389,16 +1528,16 @@ def gen_ddd_scalable(
     dict
         Dictionary containing:
 
-        - *data*: pl.DataFrame in long format with columns [id, group,
+        - **data**: pl.DataFrame in long format with columns [id, group,
           partition, time, y, cov1..covK, cluster]
-        - *data_wide*: pl.DataFrame in wide format (panel with
+        - **data_wide**: pl.DataFrame in wide format (panel with
           n_periods <= 20 only)
-        - *att_config*: dict mapping each treated cohort g to
+        - **att_config**: dict mapping each treated cohort g to
           ``att_base * g``
-        - *cohort_values*: list of all cohort values
+        - **cohort_values**: list of all cohort values
           [0, 2, 3, ..., n_cohorts+1]
-        - *n_periods*: number of periods
-        - *n_covariates*: number of covariates
+        - **n_periods**: number of periods
+        - **n_covariates**: number of covariates
     """
     if dgp_type not in {1, 2, 3, 4}:
         raise ValueError(f"dgp_type must be 1, 2, 3, or 4, got {dgp_type}")
@@ -1565,53 +1704,3 @@ def gen_ddd_scalable(
         "n_periods": n_periods,
         "n_covariates": n_covariates,
     }
-
-
-def simulate_cont_did_data(*args, **kwargs):
-    """Call :func:`gen_cont_did_data` instead (deprecated)."""
-    warnings.warn(
-        "simulate_cont_did_data is deprecated, use gen_cont_did_data instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return gen_cont_did_data(*args, **kwargs)
-
-
-def generate_simple_ddd_data(*args, **kwargs):
-    """Call :func:`gen_simple_ddd_data` instead (deprecated)."""
-    warnings.warn(
-        "generate_simple_ddd_data is deprecated, use gen_simple_ddd_data instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return gen_simple_ddd_data(*args, **kwargs)
-
-
-def gen_dgp_2periods(*args, **kwargs):
-    """Call :func:`gen_ddd_2periods` instead (deprecated)."""
-    warnings.warn(
-        "gen_dgp_2periods is deprecated, use gen_ddd_2periods instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return gen_ddd_2periods(*args, **kwargs)
-
-
-def gen_dgp_mult_periods(*args, **kwargs):
-    """Call :func:`gen_ddd_mult_periods` instead (deprecated)."""
-    warnings.warn(
-        "gen_dgp_mult_periods is deprecated, use gen_ddd_mult_periods instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return gen_ddd_mult_periods(*args, **kwargs)
-
-
-def gen_dgp_scalable(*args, **kwargs):
-    """Call :func:`gen_ddd_scalable` instead (deprecated)."""
-    warnings.warn(
-        "gen_dgp_scalable is deprecated, use gen_ddd_scalable instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return gen_ddd_scalable(*args, **kwargs)

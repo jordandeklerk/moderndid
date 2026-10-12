@@ -4,7 +4,8 @@ try:
     import plotnine
 except ImportError as e:
     raise ImportError(
-        "The 'plots' module requires additional dependencies. Install them with: uv pip install 'moderndid[plots]'"
+        "The 'plots' module requires additional dependencies. Install them with "
+        "uv add 'moderndid[plots]' or pip install 'moderndid[plots]'"
     ) from e
 
 from moderndid.core.converters import (

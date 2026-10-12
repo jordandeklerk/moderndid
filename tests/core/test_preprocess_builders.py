@@ -1,5 +1,8 @@
 """Tests for builder paths."""
 
+import re
+import warnings
+
 import numpy as np
 import pytest
 
@@ -7,41 +10,25 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+from moderndid import drdid_panel, gen_cont_did_data
 from moderndid.core.preprocess.builders import PreprocessDataBuilder
 from moderndid.core.preprocess.config import (
     ContDIDConfig,
     DDDConfig,
     DIDConfig,
     DIDInterConfig,
+    DIDMLConfig,
+    DynBalancingConfig,
     TwoPeriodDIDConfig,
 )
-
-
-@pytest.fixture
-def builder():
-    return PreprocessDataBuilder()
-
-
-@pytest.fixture
-def panel_data():
-    rng = np.random.default_rng(42)
-    n_units = 60
-    n_periods = 4
-    units = np.repeat(np.arange(n_units), n_periods)
-    periods = np.tile(np.arange(1, n_periods + 1), n_units)
-    treat_time = np.where(np.arange(n_units) < 20, 3, np.where(np.arange(n_units) < 40, 4, 0))
-    groups = np.repeat(treat_time, n_periods)
-    y = rng.standard_normal(n_units * n_periods) + (groups > 0).astype(float) * 2.0
-    x1 = rng.standard_normal(n_units * n_periods)
-    return pl.DataFrame(
-        {
-            "id": units,
-            "time": periods,
-            "y": y,
-            "group": groups,
-            "x1": x1,
-        }
-    )
+from moderndid.core.preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
+from moderndid.core.preprocess.validators import _duplicate_unit_period_error
+from moderndid.core.preprocessing import (
+    preprocess_cont_did,
+    preprocess_ddd_2periods,
+    preprocess_did,
+    preprocess_drdid,
+)
 
 
 @pytest.mark.parametrize(
@@ -270,3 +257,742 @@ def test_get_cont_did_summary_many_cohorts(builder):
     }
     summary = builder._get_cont_did_summary(summary_tables)
     assert "... and 2 more cohorts" in summary
+
+
+def test_two_period_band_rule_spares_continuous_treatment():
+    rng = np.random.default_rng(3)
+    n = 200
+    group = np.repeat(rng.choice([0, 2], n), 2)
+    df = pl.DataFrame(
+        {
+            "id": np.repeat(np.arange(n), 2),
+            "time": np.tile([1, 2], n),
+            "y": rng.standard_normal(2 * n),
+            "group": group,
+            "dose": np.repeat(rng.uniform(0.1, 1.0, n), 2) * (group > 0),
+        }
+    )
+
+    did_data = preprocess_did(df, yname="y", tname="time", gname="group", idname="id", cband=True)
+    dose_data = preprocess_cont_did(df, yname="y", tname="time", gname="group", dname="dose", idname="id", cband=True)
+    event_data = preprocess_cont_did(
+        df, yname="y", tname="time", gname="group", dname="dose", idname="id", cband=True, aggregation="eventstudy"
+    )
+
+    assert did_data.config.cband is False
+    assert dose_data.config.cband is True
+    assert event_data.config.cband is False
+
+
+def test_cont_did_preprocessing_recodes_groups_to_period_positions():
+    df = gen_cont_did_data(n=200, seed=5).with_columns(
+        (pl.col("time_period") + 2000).alias("time_period"),
+        pl.when(pl.col("G") > 0).then(pl.col("G") + 2000).otherwise(0).alias("G"),
+    )
+    data = preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+    assert data.time_map == {2001: 1, 2002: 2, 2003: 3, 2004: 4}
+    assert sorted(data.data["time_period"].unique().to_list()) == [1, 2, 3, 4]
+    np.testing.assert_array_equal(data.config.treated_groups, [2.0, 3.0, 4.0])
+
+
+def test_cont_did_preprocessing_stores_alpha():
+    df = gen_cont_did_data(n=200, seed=5)
+
+    data = preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id", alpha=0.1)
+
+    assert data.config.alpha == 0.1
+
+
+@pytest.mark.parametrize("removed", ["alp", "boot"])
+def test_cont_did_preprocessing_rejects_the_removed_arguments(removed):
+    df = gen_cont_did_data(n=200, seed=5)
+
+    with pytest.raises(TypeError, match=f"unexpected keyword argument '{removed}'"):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id", **{removed: 0.1})
+
+
+def test_cont_did_preprocessing_without_never_treated_drops_late_periods():
+    df = gen_cont_did_data(n=200, p_untreated=0.0, seed=5)
+    kwargs = {"yname": "Y", "tname": "time_period", "gname": "G", "dname": "D", "idname": "id"}
+
+    with pytest.warns(UserWarning, match="no unit is untreated from period 4 on"):
+        data = preprocess_cont_did(df, **kwargs)
+    with pytest.raises(ValueError, match="needs never-treated units"):
+        preprocess_cont_did(df, control_group="nevertreated", **kwargs)
+
+    np.testing.assert_array_equal(data.config.time_periods, [1, 2, 3])
+
+
+def test_cont_did_preprocessing_without_never_treated_needs_a_treated_period():
+    df = gen_cont_did_data(n=200, seed=5).filter(pl.col("G") == 3)
+
+    with pytest.raises(ValueError, match="no treated period has untreated units to compare with"):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_cont_did_preprocessing_rejects_dose_that_changes_over_time():
+    df = gen_cont_did_data(n=200, seed=5).with_columns(
+        pl.when(pl.col("time_period") == 4).then(pl.col("D") + 0.1).otherwise(pl.col("D")).alias("D")
+    )
+
+    with pytest.raises(ValueError, match="must stay the same over time"):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_cont_did_preprocessing_fills_dose_recorded_as_zero_before_treatment():
+    df = gen_cont_did_data(n=200, seed=5)
+    zero_before = df.with_columns(
+        pl.when(pl.col("time_period") < pl.col("G")).then(0.0).otherwise(pl.col("D")).alias("D")
+    )
+    kwargs = {"yname": "Y", "tname": "time_period", "gname": "G", "dname": "D", "idname": "id"}
+
+    filled = preprocess_cont_did(zero_before, **kwargs).data
+    constant = preprocess_cont_did(df, **kwargs).data
+
+    np.testing.assert_array_equal(filled["id"].to_numpy(), constant["id"].to_numpy())
+    np.testing.assert_array_equal(filled["D"].to_numpy(), constant["D"].to_numpy())
+
+
+def test_cont_did_preprocessing_rejects_group_between_observed_periods():
+    df = gen_cont_did_data(n=200, seed=5).filter(pl.col("time_period") != 3)
+
+    with pytest.raises(ValueError, match="Treatment starts between observed periods for group 3\\."):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_cont_did_preprocessing_names_each_group_between_observed_periods():
+    df = gen_cont_did_data(n=200, seed=5).filter(pl.col("time_period").is_in([1, 4]))
+
+    with pytest.raises(ValueError, match="Treatment starts between observed periods for groups 2, 3\\."):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_cont_did_preprocessing_leaves_the_default_dose_grid_to_the_estimator():
+    df = gen_cont_did_data(n=200, seed=5)
+    kwargs = {"yname": "Y", "tname": "time_period", "gname": "G", "dname": "D", "idname": "id"}
+
+    default = preprocess_cont_did(df, **kwargs)
+    chosen = preprocess_cont_did(df, dvals=[0.25, 0.5], **kwargs)
+
+    assert default.config.dvals is None
+    np.testing.assert_array_equal(chosen.config.dvals, [0.25, 0.5])
+
+
+def test_small_group_guard_unbalanced_panel_counts_rows_per_period(small_never_treated_panel):
+    sparse_controls = small_never_treated_panel.filter(~((pl.col("g") == 0) & pl.col("t").is_in([1, 3])))
+    config = DIDConfig(yname="y", tname="t", idname="id", gname="g", allow_unbalanced_panel=True)
+    builder = PreprocessDataBuilder().with_data(sparse_controls).with_config(config).validate()
+
+    with pytest.warns(UserWarning, match="Check groups: inf$"), pytest.raises(ValueError, match="too small"):
+        builder.transform()
+
+
+def test_small_group_guard_keeps_balanced_panel_with_enough_controls(small_never_treated_panel):
+    config = DIDConfig(yname="y", tname="t", idname="id", gname="g", allow_unbalanced_panel=True)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        PreprocessDataBuilder().with_data(small_never_treated_panel).with_config(config).validate().transform()
+
+    assert not [w for w in caught if "small groups" in str(w.message)]
+
+
+def test_small_group_guard_cross_sections_count_rows_per_period(small_never_treated_cross_sections):
+    config = DIDConfig(yname="y", tname="t", gname="g", panel=False)
+    builder = PreprocessDataBuilder().with_data(small_never_treated_cross_sections).with_config(config).validate()
+
+    with pytest.warns(UserWarning, match="Check groups: inf$"), pytest.raises(ValueError, match="too small"):
+        builder.transform()
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name"),
+    [
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "xformla": "~ lpop"},
+            "mpdta_with_nan",
+        ),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id", "xformla": "~ x", "panel": False},
+            "drdid_panel_with_nan",
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+        ),
+        (
+            DIDInterConfig,
+            {"yname": "y", "tname": "t", "gname": "id", "dname": "d", "xformla": "~ x"},
+            "didinter_panel_with_nan",
+        ),
+        (
+            DynBalancingConfig,
+            {
+                "yname": "y",
+                "tname": "time",
+                "idname": "id",
+                "treatment_name": "d",
+                "ds1": [0, 1, 1],
+                "ds2": [0, 0, 0],
+                "xformla": "~ x",
+            },
+            "dyn_balancing_panel_with_nan",
+        ),
+    ],
+)
+def test_builder_treats_nan_as_missing_for_pandas_and_polars(request, config_class, config_kwargs, data_name):
+    data = request.getfixturevalue(data_name)
+    built = [
+        PreprocessDataBuilder().with_data(frame).with_config(config_class(**config_kwargs)).validate().transform()._data
+        for frame in (data, data.to_pandas())
+    ]
+
+    assert built[0].equals(built[1])
+    assert sum(int(column.is_nan().sum()) for column in built[0].iter_columns() if column.dtype.is_float()) == 0
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name"),
+    [
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "xformla": "~ lpop"},
+            "mpdta_with_nan",
+        ),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id", "xformla": "~ x", "panel": False},
+            "drdid_panel_with_nan",
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+        ),
+        (
+            DIDInterConfig,
+            {"yname": "y", "tname": "t", "gname": "id", "dname": "d", "xformla": "~ x"},
+            "didinter_panel_with_nan",
+        ),
+        (
+            DynBalancingConfig,
+            {
+                "yname": "y",
+                "tname": "time",
+                "idname": "id",
+                "treatment_name": "d",
+                "ds1": [0, 1, 1],
+                "ds2": [0, 0, 0],
+                "xformla": "~ x",
+            },
+            "dyn_balancing_panel_with_nan",
+        ),
+    ],
+)
+def test_builder_treats_infinity_like_nan(request, config_class, config_kwargs, data_name):
+    with_nan = request.getfixturevalue(data_name)
+    with_infinity = with_nan.with_columns(pl.col(pl.Float64).fill_nan(float("inf")))
+    built = [
+        PreprocessDataBuilder().with_data(frame).with_config(config_class(**config_kwargs)).validate().transform()._data
+        for frame in (with_nan, with_infinity)
+    ]
+
+    assert built[0].equals(built[1])
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name"),
+    [
+        (DIDConfig, {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"}, "mpdta"),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id"},
+            "drdid_panel_data",
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+        ),
+        (DIDInterConfig, {"yname": "y", "tname": "t", "gname": "id", "dname": "d"}, "didinter_panel_with_nan"),
+    ],
+)
+def test_builder_rejects_weights_without_positive_mean(request, config_class, config_kwargs, data_name):
+    data = request.getfixturevalue(data_name).with_columns(pl.lit(0.0).alias("w"))
+    config = config_class(**config_kwargs, weightsname="w")
+    builder = PreprocessDataBuilder().with_data(data).with_config(config).validate()
+
+    with pytest.raises(ValueError, match="^The weights variable 'w' must be non-negative with a positive mean\\.$"):
+        builder.transform()
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs"),
+    [
+        (DIDConfig, {"yname": "y", "tname": "time", "idname": "id", "gname": "group"}),
+        (ContDIDConfig, {"yname": "y", "tname": "time", "idname": "id", "gname": "group", "dname": "x1"}),
+    ],
+)
+def test_builder_rejects_negative_cohort(panel_data, config_class, config_kwargs):
+    data = panel_data.with_columns(pl.col("group").replace(0, -2), pl.col("x1").abs())
+    builder = PreprocessDataBuilder().with_data(data).with_config(config_class(**config_kwargs)).validate()
+
+    with pytest.raises(ValueError, match="^gname = 'group' holds negative values such as -2\\."):
+        builder.transform()
+
+
+def test_builder_names_the_columns_when_no_row_is_complete(mpdta):
+    data = mpdta.with_columns(pl.lit(float("nan")).alias("lpop"))
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat", xformla="~ lpop")
+    builder = PreprocessDataBuilder().with_data(data).with_config(config).validate()
+
+    with pytest.raises(ValueError, match="^Every row has a missing value in 'lpop'\\. No data is left"):
+        builder.transform()
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name", "column", "value", "unit"),
+    [
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"},
+            "mpdta",
+            "first.treat",
+            None,
+            None,
+        ),
+        (
+            DIDConfig,
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "idname": "countyreal",
+                "gname": "first.treat",
+                "allow_unbalanced_panel": False,
+            },
+            "mpdta",
+            "first.treat",
+            float("nan"),
+            "countyreal",
+        ),
+        (
+            ContDIDConfig,
+            {
+                "yname": "Y",
+                "tname": "time_period",
+                "idname": "id",
+                "gname": "G",
+                "dname": "D",
+                "allow_unbalanced_panel": False,
+            },
+            "cont_did_panel_with_nan",
+            "D",
+            float("-inf"),
+            "id",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "panel": False},
+            "drdid_panel_data",
+            "year",
+            float("nan"),
+            None,
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+            "partition",
+            None,
+            "id",
+        ),
+    ],
+)
+def test_builder_checks_structure_on_the_rows_that_remain(
+    request, config_class, config_kwargs, data_name, column, value, unit
+):
+    data = request.getfixturevalue(data_name).with_columns(pl.col(column).cast(pl.Float64))
+    first = pl.int_range(pl.len()) == 0
+    with_missing = data.with_columns(pl.when(first).then(value).otherwise(pl.col(column)).alias(column))
+    dropped = first if unit is None else pl.col(unit) == data[unit][0]
+    built = [
+        PreprocessDataBuilder().with_data(frame).with_config(config_class(**config_kwargs)).validate().transform()._data
+        for frame in (with_missing, data.filter(~dropped))
+    ]
+
+    assert built[0].equals(built[1])
+
+
+@pytest.mark.parametrize(
+    ("config_type", "config_class", "config_kwargs", "data_name"),
+    [
+        ("did", DIDConfig, {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"}, "mpdta"),
+        (
+            "cont_did",
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+    ],
+)
+def test_builder_accepts_clustervars_none(request, config_type, config_class, config_kwargs, data_name):
+    data = request.getfixturevalue(data_name)
+    expected = (
+        PreprocessDataBuilder()
+        .with_data(data)
+        .with_config(config_class(**config_kwargs))
+        .validate()
+        .transform()
+        .build()
+    )
+    builders = [
+        PreprocessDataBuilder().with_data(data).with_config(config_class(**config_kwargs, clustervars=None)),
+        PreprocessDataBuilder().with_data(data).with_config_dict(config_type, **config_kwargs, clustervars=None),
+    ]
+
+    for builder in builders:
+        result = builder.validate().transform().build()
+        assert result.cluster is None
+        assert result.data.equals(expected.data)
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_repeated_unit_period_check_skips_rows_missing_the_unit_or_period(missing):
+    data = pl.DataFrame(
+        {"id": [1.0, 1.0, missing, missing], "time": [missing, missing, 2.0, 2.0]},
+        schema={"id": pl.Float64, "time": pl.Float64},
+    )
+
+    assert _duplicate_unit_period_error(data, "id", "time") is None
+
+
+def test_repeated_unit_period_check_names_a_repeated_pair_beside_rows_missing_the_unit():
+    data = pl.DataFrame({"id": [1.0, 1.0, float("inf"), float("inf")], "time": [2.0, 2.0, 3.0, 3.0]})
+
+    assert _duplicate_unit_period_error(data, "id", "time") == (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, time) pair (1.0, 2.0)."
+    )
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name", "message"),
+    [
+        (
+            DIDConfig,
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "idname": "countyreal",
+                "gname": "first.treat",
+                "control_group": "bogus",
+            },
+            "mpdta",
+            "control_group='bogus' is not valid. Must be 'nevertreated' or 'notyettreated'.",
+        ),
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "bogus"},
+            "mpdta",
+            "est_method='bogus' is not valid. Must be 'dr', 'ipw', or 'reg'.",
+        ),
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": None},
+            "mpdta",
+            "est_method=None is not valid. Must be 'dr', 'ipw', or 'reg'.",
+        ),
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "base_period": "bogus"},
+            "mpdta",
+            "base_period='bogus' is not valid. Must be 'varying' or 'universal'.",
+        ),
+        (
+            DIDMLConfig,
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "idname": "countyreal",
+                "gname": "first.treat",
+                "control_group": "bogus",
+            },
+            "mpdta",
+            "control_group='bogus' is not valid. Must be 'nevertreated' or 'notyettreated'.",
+        ),
+        (
+            ContDIDConfig,
+            {
+                "yname": "Y",
+                "tname": "time_period",
+                "idname": "id",
+                "gname": "G",
+                "dname": "D",
+                "control_group": "bogus",
+            },
+            "cont_did_panel_with_nan",
+            "control_group='bogus' is not valid. Must be 'notyettreated' or 'nevertreated'.",
+        ),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D", "base_period": "bogus"},
+            "cont_did_panel_with_nan",
+            "base_period='bogus' is not valid. Must be 'varying' or 'universal'.",
+        ),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D", "boot_type": "bogus"},
+            "cont_did_panel_with_nan",
+            "boot_type='bogus' is not valid. Must be 'weighted', 'multiplier', or 'empirical'.",
+        ),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D", "aggregation": "bogus"},
+            "cont_did_panel_with_nan",
+            "aggregation='bogus' is not valid. Must be 'dose' or 'eventstudy'.",
+        ),
+        (
+            DDDConfig,
+            {
+                "yname": "y",
+                "tname": "time",
+                "idname": "id",
+                "gname": "state",
+                "pname": "partition",
+                "est_method": "bogus",
+            },
+            "ddd_panel_with_nan",
+            "est_method='bogus' is not valid. Must be 'dr', 'reg', or 'ipw'.",
+        ),
+        (
+            DDDConfig,
+            {
+                "yname": "y",
+                "tname": "time",
+                "idname": "id",
+                "gname": "state",
+                "pname": "partition",
+                "boot_type": "empirical",
+            },
+            "ddd_panel_with_nan",
+            "boot_type='empirical' is not valid. Must be 'weighted' or 'multiplier'.",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id", "boot_type": "bogus"},
+            "drdid_panel_data",
+            "boot_type='bogus' is not valid. Must be 'weighted' or 'multiplier'.",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id", "est_method": "imp_local"},
+            "drdid_panel_data",
+            "est_method='imp_local' is not valid. Must be 'imp' or 'trad'.",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {
+                "yname": "y",
+                "tname": "year",
+                "treat_col": "treat",
+                "idname": "id",
+                "est_method": "bogus",
+                "panel": False,
+            },
+            "drdid_panel_data",
+            "est_method='bogus' is not valid. Must be 'imp' or 'trad'.",
+        ),
+        (
+            DIDInterConfig,
+            {"yname": "y", "tname": "t", "gname": "id", "dname": "d", "switchers": "bogus"},
+            "didinter_panel_with_nan",
+            "switchers='bogus' is not valid. Must be '', 'in', or 'out'.",
+        ),
+    ],
+)
+def test_builder_rejects_unknown_options(request, config_class, config_kwargs, data_name, message):
+    data = request.getfixturevalue(data_name)
+    builder = PreprocessDataBuilder().with_data(data).with_config(config_class(**config_kwargs))
+
+    with pytest.raises(ValueError, match=f"^Validation failed:\n{re.escape(message)}$"):
+        builder.validate()
+
+
+@pytest.mark.parametrize("panel", [True, False])
+@pytest.mark.parametrize("est_method", ["imp_local", "trad_local"])
+def test_preprocess_drdid_rejects_the_removed_drdid_names_with_either_design(drdid_panel_data, est_method, panel):
+    message = f"est_method='{est_method}' is not valid. Must be 'imp' or 'trad'."
+
+    with pytest.raises(ValueError, match=f"^Validation failed:\n{re.escape(message)}$"):
+        preprocess_drdid(
+            drdid_panel_data,
+            yname="y",
+            tname="year",
+            treat_col="treat",
+            idname="id" if panel else None,
+            panel=panel,
+            est_method=est_method,
+        )
+
+
+@pytest.mark.parametrize("panel", [True, False])
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+def test_preprocess_drdid_stores_the_drdid_names_with_either_design(drdid_panel_data, est_method, panel):
+    data = preprocess_drdid(
+        drdid_panel_data,
+        yname="y",
+        tname="year",
+        treat_col="treat",
+        idname="id" if panel else None,
+        panel=panel,
+        est_method=est_method,
+    )
+
+    assert data.config.est_method == est_method
+
+
+@pytest.mark.parametrize(
+    ("config", "data_name", "expected"),
+    [
+        (
+            DIDConfig(
+                yname="lemp",
+                tname="year",
+                idname="countyreal",
+                gname="first.treat",
+                control_group="notyettreated",
+                est_method="ipw",
+                base_period="universal",
+            ),
+            "mpdta",
+            {
+                "control_group": ControlGroup.NOT_YET_TREATED,
+                "est_method": EstimationMethod.IPW,
+                "base_period": BasePeriod.UNIVERSAL,
+            },
+        ),
+        (
+            ContDIDConfig(
+                yname="Y",
+                tname="time_period",
+                idname="id",
+                gname="G",
+                dname="D",
+                control_group="nevertreated",
+                boot_type="weighted",
+            ),
+            "cont_did_panel_with_nan",
+            {"control_group": ControlGroup.NEVER_TREATED, "boot_type": BootstrapType.WEIGHTED},
+        ),
+        (
+            DDDConfig(
+                yname="y",
+                tname="time",
+                idname="id",
+                gname="state",
+                pname="partition",
+                est_method="reg",
+                boot_type="weighted",
+            ),
+            "ddd_panel_with_nan",
+            {"est_method": EstimationMethod.REGRESSION, "boot_type": BootstrapType.WEIGHTED},
+        ),
+        (
+            TwoPeriodDIDConfig(yname="y", tname="year", treat_col="treat", idname="id", est_method="trad"),
+            "drdid_panel_data",
+            {"est_method": "trad", "boot_type": BootstrapType.WEIGHTED},
+        ),
+    ],
+)
+def test_builder_validate_stores_options_as_enums(request, config, data_name, expected):
+    PreprocessDataBuilder().with_data(request.getfixturevalue(data_name)).with_config(config).validate()
+
+    for name, value in expected.items():
+        assert getattr(config, name) == value
+        assert type(getattr(config, name)) is type(value)
+
+
+def test_builder_keeps_callable_est_method(mpdta):
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat", est_method=drdid_panel)
+
+    PreprocessDataBuilder().with_data(mpdta).with_config(config).validate()
+
+    assert config.est_method is drdid_panel
+
+
+def test_small_group_guard_reads_control_group_given_as_string(small_never_treated_cross_sections):
+    config = DIDConfig(yname="y", tname="t", gname="g", panel=False, control_group="nevertreated")
+    builder = PreprocessDataBuilder().with_data(small_never_treated_cross_sections).with_config(config)
+
+    with (
+        pytest.warns(UserWarning, match="Check groups: inf$"),
+        pytest.raises(ValueError, match="^The never-treated group is too small to serve as the comparison group\\."),
+    ):
+        builder.transform()
+
+
+def test_small_group_warning_prints_cohorts_without_decimals(small_never_treated_panel):
+    data = small_never_treated_panel.filter((pl.col("g") != 4) | (pl.col("id") < 22))
+    config = DIDConfig(yname="y", tname="t", idname="id", gname="g")
+
+    with pytest.warns(UserWarning, match="Check groups: 4$"):
+        PreprocessDataBuilder().with_data(data).with_config(config).validate().transform()
+
+
+def test_cont_did_data_keeps_the_time_periods_before_recoding(cont_did_panel_in_years):
+    built = preprocess_cont_did(
+        cont_did_panel_in_years, yname="Y", tname="time_period", idname="id", gname="G", dname="D"
+    )
+
+    np.testing.assert_array_equal(built.original_time_periods, [2001, 2002, 2003, 2004])
+    np.testing.assert_array_equal(built.config.time_periods, [1, 2, 3, 4])
+    assert built.time_map == {2001: 1, 2002: 2, 2003: 3, 2004: 4}
+
+
+def test_ddd_preprocessing_names_both_subgroups_of_a_collinear_comparison():
+    rng = np.random.default_rng(3)
+    n = 200
+    state = rng.choice([0, 2], n)
+    cov1 = rng.standard_normal(n)
+    cov2 = np.where(state == 2, 2.0 * cov1, rng.standard_normal(n))
+    data = pl.DataFrame(
+        {
+            "id": np.repeat(np.arange(n), 2),
+            "time": np.tile([1, 2], n),
+            "y": rng.standard_normal(2 * n),
+            "state": np.repeat(state, 2),
+            "partition": np.repeat(rng.choice([0, 1], n), 2),
+            "cov1": np.repeat(cov1, 2),
+            "cov2": np.repeat(cov2, 2),
+        }
+    )
+    message = (
+        "The following covariates were dropped due to partition-specific collinearity:\n"
+        "  - cov1 (collinear in: subgroup 4 versus subgroup 3)"
+    )
+
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$"):
+        built = preprocess_ddd_2periods(
+            data, yname="y", tname="time", idname="id", gname="state", pname="partition", xformla="~ cov1 + cov2"
+        )
+
+    assert built.covariate_names == ["cov2"]

@@ -1,8 +1,10 @@
 """Tests for shared formatting utilities."""
 
+import warnings
 from collections import namedtuple
 
 import numpy as np
+import pytest
 
 from moderndid.core.format import (
     THICK_SEP,
@@ -20,8 +22,10 @@ from moderndid.core.format import (
     format_section_header,
     format_significance_note,
     format_single_result_table,
+    format_standard_errors,
     format_title,
     format_value,
+    warn_few_clusters,
 )
 
 
@@ -342,3 +346,156 @@ class TestAttachFormat:
 
         assert str(A(x=1)) == "A=1"
         assert str(B(x=2)) == "B=2"
+
+
+@pytest.mark.parametrize("dtype", [np.float64, np.float32, np.float16])
+def test_format_value_prints_numpy_nan_of_any_float_type_as_na(dtype):
+    assert format_value(dtype("nan")) == "NA"
+    assert format_value(dtype(1.5)) == "1.5000"
+
+
+def test_format_event_table_prints_every_missing_value_as_na():
+    lines = format_event_table(
+        "Group",
+        np.array([2, 3, 4, 5]),
+        np.array([1.25, np.nan, 0.0, 2.0]),
+        np.array([0.3, np.nan, np.nan, 0.5]),
+        np.array([0.66, np.nan, np.nan, np.nan]),
+        np.array([1.84, np.nan, np.nan, np.nan]),
+        95,
+        "Pointwise Conf. Band",
+    )
+    rows = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert rows[1:] == [
+        ["2", "1.2500", "0.3000", "[ 0.6600,  1.8400] *"],
+        ["3", "NA", "NA", "NA"],
+        ["4", "0.0000", "NA", "NA"],
+        ["5", "2.0000", "0.5000", "[     NA,      NA]"],
+    ]
+
+
+def test_format_group_time_table_prints_every_missing_value_as_na():
+    lines = format_group_time_table(
+        np.array([2004, 2004, 2006]),
+        np.array([2004, 2005, 2006]),
+        np.array([-0.0105, np.nan, 0.03]),
+        np.array([0.0233, np.nan, 0.01]),
+        np.array([-0.0561, np.nan, np.nan]),
+        np.array([0.0351, np.nan, np.nan]),
+        95,
+        "Pointwise Conf. Band",
+    )
+    rows = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert rows[1:] == [
+        ["2004", "2004", "-0.0105", "0.0233", "[-0.0561,  0.0351]"],
+        ["2004", "2005", "NA", "NA", "NA"],
+        ["2006", "2006", "0.0300", "0.0100", "[     NA,      NA]"],
+    ]
+
+
+def test_format_horizon_table_prints_every_missing_value_as_na():
+    lines = format_horizon_table(
+        np.array([1.0, 2.0]),
+        np.array([0.5, np.nan]),
+        np.array([0.1, np.nan]),
+        np.array([0.3, np.nan]),
+        np.array([0.7, np.nan]),
+        95,
+        n_obs=np.array([100.0, 0.0]),
+        n_switchers=np.array([50.0, 0.0]),
+    )
+    rows = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert rows[1:] == [
+        ["1", "0.5000", "0.1000", "[  0.3000,   0.7000] *", "100", "50"],
+        ["2", "NA", "NA", "NA", "0", "0"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("bootstrap", "clustervar", "detail", "expected"),
+    [
+        (False, None, None, " Analytical standard errors"),
+        (True, None, None, " Bootstrap standard errors"),
+        (True, "state", None, " Bootstrap standard errors clustered by state"),
+        (False, "state", None, " Analytical standard errors clustered by state"),
+        (True, None, "multiplier, 999 reps", " Bootstrap standard errors (multiplier, 999 reps)"),
+        (True, "cl", "multiplier, 999 reps", " Bootstrap standard errors clustered by cl (multiplier, 999 reps)"),
+        (True, True, "multiplier, 99 reps", " Bootstrap standard errors clustered (multiplier, 99 reps)"),
+        (False, True, None, " Analytical standard errors clustered"),
+    ],
+)
+def test_format_standard_errors_names_the_cluster_variable(bootstrap, clustervar, detail, expected):
+    assert format_standard_errors(bootstrap, clustervar, detail) == expected
+
+
+@pytest.mark.parametrize(
+    ("cluster", "cohort_clusters", "message"),
+    [
+        (
+            np.repeat(np.arange(29), 2),
+            {2004.0: np.array([0, 0]), 2006.0: np.array([1, 2, 3, 1]), 2007.0: np.arange(4, 13)},
+            "The units fall in only 29 clusters. The treated units of cohort 2004 fall in 1 cluster and those of "
+            "cohort 2006 in 3 clusters. Cluster-robust inference rests on very few clusters and can give confidence "
+            "intervals and bands that are too narrow.",
+        ),
+        (
+            np.repeat(np.arange(40), 2),
+            {3: np.array([0, 1]), 4: np.arange(5, 15)},
+            "The treated units of cohort 3 fall in 2 clusters. Cluster-robust inference for this cohort rests on very "
+            "few clusters and can give confidence intervals and bands that are too narrow.",
+        ),
+        (
+            np.repeat(np.arange(40), 2),
+            {4: np.array([3, 4, 5]), 2: np.array([0]), 3.5: np.array([1, 2])},
+            "The treated units of cohort 2 fall in 1 cluster, those of cohort 3.5 in 2 clusters, and those of cohort "
+            "4 in 3 clusters. Cluster-robust inference for these cohorts rests on very few clusters and can give "
+            "confidence intervals and bands that are too narrow.",
+        ),
+        (
+            np.repeat(np.arange(25), 2),
+            {2: np.arange(10), 3: np.arange(10, 25)},
+            "The units fall in only 25 clusters. Cluster-robust inference rests on very few clusters and can give "
+            "confidence intervals and bands that are too narrow.",
+        ),
+        (
+            np.repeat(np.arange(50), 2),
+            {None: np.array([0, 1, 2, 2])},
+            "The treated units fall in 3 clusters. Cluster-robust inference for their effect rests on very few "
+            "clusters and can give a confidence interval that is too narrow.",
+        ),
+        (
+            np.repeat(np.arange(1), 4),
+            {None: np.array([0, 0])},
+            "The units fall in only 1 cluster. The treated units fall in 1 cluster. Cluster-robust inference rests on "
+            "very few clusters and can give a confidence interval that is too narrow.",
+        ),
+    ],
+    ids=["both", "one_cohort", "three_cohorts", "total", "one_group", "one_cluster"],
+)
+def test_warn_few_clusters_names_the_cohorts_and_their_clusters(cluster, cohort_clusters, message):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        warn_few_clusters(cluster, cohort_clusters)
+
+    assert [(w.category, str(w.message), w.filename) for w in caught] == [(UserWarning, message, __file__)]
+
+
+@pytest.mark.parametrize(
+    ("cluster", "cohort_clusters"),
+    [
+        (np.repeat(np.arange(30), 2), {2: np.arange(5), 3: np.arange(5, 30)}),
+        (np.arange(10), {2: np.array([0]), 3: np.array([1, 2])}),
+        (np.repeat(np.arange(40), 2), {2: np.array([]), 3: np.arange(10)}),
+        (np.repeat(np.arange(30), 2), {None: np.arange(5)}),
+    ],
+    ids=["thresholds", "unit_level", "cohort_without_units", "one_group"],
+)
+def test_warn_few_clusters_stays_silent_with_plentiful_or_unit_level_clusters(cluster, cohort_clusters):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        warn_few_clusters(cluster, cohort_clusters)
+
+    assert caught == []

@@ -8,15 +8,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def parallel_map(func, args_list, n_jobs=1):
-    """Execute func(*args) for each args in args_list, optionally in parallel.
+    """Call func on each argument tuple of args_list in sequence or in threads.
 
-    Uses threads rather than processes because the per-cell computation is
-    dominated by NumPy/scipy/statsmodels C extensions that release the GIL.
-    Threads avoid the large serialization overhead of pickling data to
-    subprocesses.
+    Uses threads rather than processes because the per-cell computation runs
+    mostly in compiled code that releases the GIL. Threads avoid the large
+    serialization overhead of pickling data to subprocesses.
 
-    ``ContextVar`` values (e.g. the active backend set by
-    :func:`~moderndid.cupy.backend.use_backend`) are propagated to each
+    ``ContextVar`` values, such as the active backend set by
+    :func:`~moderndid.cupy.backend.use_backend`, are propagated to each
     worker thread via :func:`contextvars.copy_context`.
 
     Parameters

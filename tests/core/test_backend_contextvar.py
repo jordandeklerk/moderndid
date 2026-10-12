@@ -9,21 +9,6 @@ from moderndid.core.parallel import parallel_map
 from moderndid.cupy.backend import get_backend, set_backend, use_backend
 
 
-def _dask_import_ok() -> bool:
-    try:
-        import dask.dataframe  # noqa: F401
-
-        return True
-    except (ImportError, AttributeError):
-        return False
-
-
-_requires_dask_compat = pytest.mark.skipif(
-    not _dask_import_ok(),
-    reason="Dask/CuPy compatibility issue in this environment",
-)
-
-
 class TestUseBackend:
     def setup_method(self):
         set_backend("numpy")
@@ -81,7 +66,6 @@ class TestParallelContextPropagation:
         assert all(r == "numpy" for r in results)
 
 
-@_requires_dask_compat
 class TestAttGtBackendParam:
     def setup_method(self):
         set_backend("numpy")
@@ -128,7 +112,6 @@ class TestAttGtBackendParam:
         assert result is not None
 
 
-@_requires_dask_compat
 class TestDddBackendParam:
     def setup_method(self):
         set_backend("numpy")

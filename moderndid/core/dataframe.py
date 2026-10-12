@@ -8,30 +8,21 @@ import polars as pl
 DataFrame = Any  # Any object implementing __arrow_c_stream__
 
 
-def to_polars(df: Any) -> pl.DataFrame:
+def to_polars(df):
     """Convert any Arrow-compatible DataFrame to polars.
 
     Parameters
     ----------
     df : Any
         Input DataFrame. Supports any object implementing the Arrow PyCapsule
-        Interface (__arrow_c_stream__), including:
-        - polars DataFrame
-        - pandas DataFrame (2.0+)
-        - duckdb results
-        - pyarrow Table
-        - ibis expressions
-        - cudf DataFrame
+        Interface (``__arrow_c_stream__``), such as polars and pandas (2.0+)
+        DataFrames, duckdb results, pyarrow Tables, ibis expressions, and
+        cudf DataFrames.
 
     Returns
     -------
     pl.DataFrame
         Polars DataFrame.
-
-    Raises
-    ------
-    TypeError
-        If input doesn't implement __arrow_c_stream__.
     """
     if isinstance(df, pl.DataFrame):
         return df
@@ -44,7 +35,7 @@ def to_polars(df: Any) -> pl.DataFrame:
     raise TypeError(msg)
 
 
-def from_polars(result: pl.DataFrame, like: Any) -> Any:
+def from_polars(result, like):
     """Convert polars DataFrame back to the format of ``like``.
 
     Parameters
@@ -58,11 +49,6 @@ def from_polars(result: pl.DataFrame, like: Any) -> Any:
     -------
     Any
         DataFrame in the same format as ``like``.
-
-    Raises
-    ------
-    TypeError
-        If ``like`` is not a recognized DataFrame type.
     """
     if isinstance(like, pl.DataFrame):
         return result
