@@ -1,8 +1,8 @@
 # Nonparametric Instrumental Variables Estimation
 
-This module implements nonparametric instrumental variables (NPIV) estimation with data-driven sieve dimension selection and honest uniform confidence bands, following [Chen, Christensen, and Kankanala (2024)](https://arxiv.org/abs/2107.11869). The structural function is approximated by a B-spline sieve and estimated by two-stage least squares, with the sieve dimension chosen adaptively through a bootstrap implementation of Lepski's method to achieve the minimax sup-norm convergence rate. Within ModernDiD, the same machinery powers the nonparametric dose-response estimator in `cont_did`.
+Following [Chen, Christensen, and Kankanala (2024)](https://arxiv.org/abs/2107.11869), this module implements nonparametric instrumental variables (NPIV) estimation with a data-driven choice of sieve dimension and uniform confidence bands that account for that choice. The structural function is approximated by a B-spline sieve and estimated by two-stage least squares. A bootstrap implementation of Lepski's method chooses the sieve dimension so that the estimator attains the minimax sup-norm convergence rate. Within ModernDiD, the same machinery powers the nonparametric dose-response estimator in `cont_did`.
 
-The computational methods here are inspired by the corresponding R package [npiv](https://github.com/tkitagawa/npiv) by Chen, Christensen, and Kankanala.
+The computational methods here are inspired by the corresponding R package [npiv](https://github.com/JeffreyRacine/npiv) by Racine and Christensen.
 
 ## Quick Start
 
@@ -35,6 +35,6 @@ result = did.npiv(
 
 ## References
 
-Chen, X., Christensen, T., & Kankanala, S. (2024). Adaptive estimation and uniform confidence bands for nonparametric structural functions and elasticities. *Review of Economic Studies* (forthcoming). [arXiv:2107.11869](https://arxiv.org/abs/2107.11869)
+Chen, X., Christensen, T., & Kankanala, S. (2024). Adaptive estimation and uniform confidence bands for nonparametric structural functions and elasticities. *Review of Economic Studies*, 92(1), 162-196. [doi:10.1093/restud/rdae025](https://doi.org/10.1093/restud/rdae025)
 
 Chen, X., & Christensen, T. (2018). Optimal sup-norm rates and uniform inference on nonlinear functionals of nonparametric IV regression. *Quantitative Economics*, 9(1), 39-84.

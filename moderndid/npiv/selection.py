@@ -24,32 +24,27 @@ def npiv_choose_j(
 ):
     r"""Select optimal B-spline dimensions.
 
-    Implements the full data-driven selection procedure from [1]_, combining a maximum
-    dimension selection step with a Lepski-style test. This procedure selects a
-    data-driven sieve dimension, :math:`\tilde{J}`, that is sup-norm rate-adaptive. This means
-    it adapts to unknown features of the data-generating process (e.g., smoothness of
-    :math:`h_0`, instrument strength) to achieve the minimax optimal convergence rate in sup-norm,
+    Implements the data-driven choice of sieve dimension in [1]_. The selected
+    dimension :math:`\tilde{J}` adapts to the unknown smoothness of :math:`h_0` and
+    the strength of the instruments. With it, :math:`\hat{h}_{\tilde{J}}` converges
+    to :math:`h_0` at the minimax rate in sup-norm.
 
-    .. math::
-        \sup_x |\hat{h}_{\tilde{J}}(x) - h_0(x)|.
+    The selection runs in two steps. :func:`npiv_jhat_max` first sets the grid of
+    candidate dimensions from the sample size and the estimated strength of the
+    instruments. :func:`npiv_j` then keeps the smallest dimension whose fit no
+    larger dimension rejects in a bootstrap Lepski test. It returns the smaller of
+    that dimension and the second-largest grid dimension.
 
-    The procedure involves two main steps. First, determine a maximum feasible dimension, :math:`\hat{J}_{\max}`,
-    based on the sample size and an estimate of the sieve measure of ill-posedness, :math:`\hat{s}_J^{-1}`.
-    This step defines the search grid :math:`\hat{\mathcal{J}}` as
+    Two details differ from [1]_. The grid starts at one segment and has no lower
+    cutoff. The truncation at the second-largest grid dimension also applies when
+    ``w`` equals ``x``. The regression version of the procedure in [1]_ keeps the
+    Lepski choice instead.
 
-    .. math::
-        \hat{J}_{\max} = \min \left\{ J \in \mathcal{T} : J \sqrt{\log J} \hat{s}_J^{-1} \leq c \sqrt{n} \right\}.
-
-    Second, use a Lepski-style method with a multiplier bootstrap to select the optimal dimension
-    :math:`\hat{J}` from the grid :math:`\hat{\mathcal{J}}`. This is done by comparing estimates across different
-    dimensions and selecting the smallest dimension that is not statistically different from estimates
-    at larger dimensions. The final choice is :math:`\tilde{J} = \min\{\hat{J}, \hat{J}_n\}`,
-    where :math:`\hat{J}_n` is a slightly smaller, more conservative dimension for stability.
-
-    .. math::
-        \hat{J} = \min \left\{ J \in \hat{\mathcal{J}} : \sup_{x, J_2 > J} \left|
-        \frac{\hat{h}_J(x) - \hat{h}_{J_2}(x)}{\hat{\sigma}_{J, J_2}(x)} \right|
-        \leq \theta_{1-\hat{\alpha}}^* \right\}.
+    When ``w`` equals ``x``, the instrument basis takes the degree and segments of
+    the basis for :math:`X` at every dimension. The function then ignores
+    ``k_w_degree`` and ``k_w_smooth``. Unless the range limits on ``w`` differ from
+    those on ``x``, the fits are least squares regressions on the basis for
+    :math:`X`.
 
     Parameters
     ----------
@@ -60,21 +55,21 @@ def npiv_choose_j(
     w : ndarray
         Instrument matrix.
     x_grid : ndarray, optional
-        Grid points for evaluation. If None, created automatically.
+        Points over which the fits are compared. If None, ``grid_num`` equally
+        spaced values between the smallest and largest value of each regressor.
     j_x_degree : int, default=3
-        Degree of B-spline basis for :math:`X`.
+        Degree of B-spline basis for :math:`X`, at least 1.
     k_w_degree : int, default=4
         Degree of B-spline basis for :math:`W`.
     k_w_smooth : int, default=2
-        Smoothness parameter for :math:`K` selection.
+        Number of dyadic refinements of the :math:`W` basis relative to the
+        :math:`X` basis at each grid point.
     knots : {"uniform", "quantiles"}, default="uniform"
         Knot placement method.
     basis : {"tensor", "additive", "glp"}, default="tensor"
-        Type of basis for multivariate :math:`X`:
-
-        - "tensor": Full tensor product of univariate bases
-        - "additive": Sum of univariate bases
-        - "glp": Generalized linear product (hierarchical)
+        Type of basis for multivariate :math:`X`, either the full tensor
+        product of the univariate bases, their sum, or the generalized
+        polynomial basis described in :func:`prodspline`.
     x_min, x_max, w_min, w_max : float, optional
         Range limits for basis construction.
     grid_num : int, default=50
@@ -91,18 +86,21 @@ def npiv_choose_j(
     dict
         Dictionary containing:
 
-        - **j_x_segments**: Selected number of segments for :math:`X`
-        - **k_w_segments**: Corresponding segments for :math:`W`
-        - **j_tilde**: Selected dimension
-        - **theta_star**: Bootstrap critical value
-        - **j_hat_max**: Maximum feasible dimension
-        - Additional diagnostic information
+        - **j_hat_max**: Largest grid dimension :math:`\hat{J}_{\max}`
+        - **j_hat_n**: Truncation point, the dimension of the second-largest grid entry
+        - **j_hat**: Dimension chosen by the Lepski test before truncation
+        - **j_tilde**: Selected dimension, the smaller of ``j_hat`` and ``j_hat_n``
+        - **j_x_seg**: Number of segments of the :math:`X` basis at ``j_tilde``
+        - **k_w_seg**: Number of segments of the :math:`W` basis paired with ``j_x_seg``
+        - **j_x_segments_set**: Grid of segments for :math:`X`
+        - **k_w_segments_set**: Grid of segments for :math:`W`
+        - **theta_star**: Bootstrap critical value of the Lepski test
 
     Examples
     --------
     Select the sieve dimension adaptively for the Engel curve IV problem.
-    The procedure determines the maximum feasible dimension and then applies
-    the Lepski test to choose the optimal number of B-spline segments:
+    The procedure determines the largest grid dimension and then applies
+    the Lepski test to choose the number of B-spline segments:
 
     .. ipython::
         :okwarning:
@@ -129,11 +127,10 @@ def npiv_choose_j(
     References
     ----------
 
-    .. [1] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
-        Adaptive Estimation and Uniform Confidence Bands for Nonparametric
-        Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
+    .. [1] Chen, X., Christensen, T. M., & Kankanala, S. (2024). Adaptive estimation and
+        uniform confidence bands for nonparametric structural functions and elasticities.
+        *Review of Economic Studies*, 92(1), 162-196. https://doi.org/10.1093/restud/rdae025.
     """
-    # Step 1: Compute maximum feasible J and data-driven grid
     tmp1 = npiv_jhat_max(
         x=x,
         w=w,
@@ -152,7 +149,6 @@ def npiv_choose_j(
     k_w_segments_set = tmp1["k_w_segments_set"]
     alpha_hat = tmp1["alpha_hat"]
 
-    # Step 2: Run Lepski test with bootstrap
     tmp2 = npiv_j(
         y=y,
         x=x,

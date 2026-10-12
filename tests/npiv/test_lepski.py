@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from moderndid.npiv import lepski
 from moderndid.npiv.lepski import npiv_j, npiv_jhat_max
 
 
@@ -285,3 +286,175 @@ def test_integrated_lepski_workflow(simple_data):
 
     assert lepski_result["j_tilde"] > 0
     assert lepski_result["j_tilde"] <= jhat_result["j_hat_max"]
+
+
+def test_jhat_max_stops_where_sieve_measure_is_zero(simple_data, monkeypatch):
+    _, x, w = simple_data
+    monkeypatch.setattr(lepski, "_compute_sieve_measure", lambda *args: 0.0 if args[2] >= 4 else 0.5)
+
+    result = npiv_jhat_max(x=x, w=w)
+
+    np.testing.assert_array_equal(result["j_x_segments_set"], [1, 2])
+    assert result["j_hat_max"] == 5
+
+
+def test_sieve_measure_failure_returns_zero(simple_data, monkeypatch):
+    _, x, w = simple_data
+
+    def broken_svd(*args, **kwargs):
+        raise np.linalg.LinAlgError("SVD did not converge")
+
+    monkeypatch.setattr(np.linalg, "svd", broken_svd)
+
+    assert (
+        lepski._compute_sieve_measure(x, w, 2, 8, 3, 4, 1, 1, "uniform", "tensor", None, None, None, None, 200) == 0.0
+    )
+
+
+def test_lepski_zero_support_bound_is_used(simple_data):
+    y, x, w = simple_data
+    kwargs = {"j_x_segments_set": np.array([2, 4]), "k_w_segments_set": np.array([8, 16]), "biters": 20, "seed": 1}
+
+    zero = npiv_j(y=y, x=x, w=w, w_min=0.0, w_max=1.0, **kwargs)
+    tiny = npiv_j(y=y, x=x, w=w, w_min=1e-300, w_max=1.0, **kwargs)
+    data = npiv_j(y=y, x=x, w=w, w_max=1.0, **kwargs)
+
+    assert zero["theta_star"] == pytest.approx(tiny["theta_star"], rel=1e-9)
+    assert zero["theta_star"] != data["theta_star"]
+
+
+def test_lepski_additive_matches_tensor_with_one_regressor(simple_data):
+    y, x, w = simple_data
+    kwargs = {
+        "j_x_segments_set": np.array([1, 2, 4]),
+        "k_w_segments_set": np.array([4, 8, 16]),
+        "biters": 30,
+        "seed": 2,
+    }
+
+    tensor = npiv_j(y=y, x=x, w=w, basis="tensor", **kwargs)
+    additive = npiv_j(y=y, x=x, w=w, basis="additive", **kwargs)
+
+    assert additive["theta_star"] == pytest.approx(tensor["theta_star"], rel=1e-8)
+    np.testing.assert_allclose(additive["z_sup"], tensor["z_sup"], rtol=1e-8)
+    assert additive["j_x_seg"] == tensor["j_x_seg"]
+
+
+def test_lepski_sieve_measure_additive_matches_tensor_with_one_regressor(simple_data):
+    _, x, w = simple_data
+    common = (x, w, 2, 8, 3, 4, 1, 1, "uniform")
+
+    tensor = lepski._compute_sieve_measure(*common, "tensor", None, None, None, None, len(x))
+    additive = lepski._compute_sieve_measure(*common, "additive", None, None, None, None, len(x))
+
+    assert additive == pytest.approx(tensor, rel=1e-8)
+
+
+def test_lepski_unidentified_dimension_raises(simple_data):
+    y, x, w = simple_data
+
+    with pytest.raises(ValueError, match="not identified"):
+        npiv_j(y=y, x=x, w=w, j_x_segments_set=np.array([2, 8]), k_w_segments_set=np.array([3, 4]), biters=10)
+
+
+def test_npiv_j_regression_truncates_lepski_choice(wiggly_regression_data):
+    y, x = wiggly_regression_data
+    segs = np.array([1, 2, 4, 8])
+
+    result = npiv_j(
+        y=y, x=x, w=x, j_x_degree=3, k_w_degree=3, j_x_segments_set=segs, k_w_segments_set=segs, biters=50, seed=1
+    )
+
+    assert result["j_hat"] == 11
+    assert result["j_hat_n"] == 7
+    assert result["j_tilde"] == 7
+    assert result["j_x_seg"] == 4
+    assert result["k_w_seg"] == 4
+
+
+def test_npiv_jhat_max_grid_has_no_lower_cutoff():
+    x = np.linspace(0, 1, 1250).reshape(-1, 1)
+
+    result = npiv_jhat_max(x=x, w=x, j_x_degree=1, k_w_degree=1, k_w_smooth=0)
+
+    np.testing.assert_array_equal(result["j_x_segments_set"], [1, 2, 4, 8, 16, 32, 64, 128])
+    assert result["j_hat_max"] == 129
+
+
+def test_npiv_j_regression_ignores_instrument_arguments(regression_data):
+    y, x, w = regression_data
+    segs = np.array([1, 2, 4, 8])
+
+    passed = npiv_j(y=y, x=x, w=w, k_w_degree=4, j_x_segments_set=segs, k_w_segments_set=4 * segs, biters=30, seed=1)
+    aligned = npiv_j(y=y, x=x, w=w, k_w_degree=3, j_x_segments_set=segs, k_w_segments_set=segs, biters=30, seed=1)
+
+    np.testing.assert_allclose(passed["z_sup"], aligned["z_sup"], rtol=1e-12)
+    assert passed["theta_star"] == pytest.approx(aligned["theta_star"], rel=1e-12)
+    assert passed["k_w_seg"] == passed["j_x_seg"]
+
+
+def test_npiv_jhat_max_regression_pairs_x_basis_with_itself(regression_data):
+    _, x, w = regression_data
+
+    result = npiv_jhat_max(x=x, w=w, k_w_smooth=2)
+
+    np.testing.assert_array_equal(result["k_w_segments_set"], result["j_x_segments_set"])
+
+
+def test_npiv_j_failed_comparison_raises(simple_data, monkeypatch):
+    y, x, w = simple_data
+    compute = lepski._compute_basis_and_influence
+
+    def fail_at_four_segments(x, w, x_grid, j_seg, *args):
+        if j_seg == 4:
+            raise np.linalg.LinAlgError("SVD did not converge")
+        return compute(x, w, x_grid, j_seg, *args)
+
+    monkeypatch.setattr(lepski, "_compute_basis_and_influence", fail_at_four_segments)
+
+    with pytest.raises(np.linalg.LinAlgError, match="SVD did not converge"):
+        npiv_j(
+            y=y,
+            x=x,
+            w=w,
+            j_x_segments_set=np.array([1, 2, 4]),
+            k_w_segments_set=np.array([4, 8, 16]),
+            biters=10,
+            seed=1,
+        )
+
+
+def test_npiv_j_one_entry_grid_has_zero_critical_value(simple_data):
+    y, x, w = simple_data
+
+    result = npiv_j(y=y, x=x, w=w, j_x_segments_set=np.array([2]), k_w_segments_set=np.array([8]), biters=10, seed=1)
+
+    assert result["theta_star"] == 0
+    assert result["j_hat"] == 5
+    assert result["j_hat_n"] == 5
+    assert result["j_tilde"] == 5
+
+
+def test_npiv_jhat_max_degree_zero_raises(simple_data):
+    _, x, w = simple_data
+
+    with pytest.raises(ValueError, match="needs j_x_degree of at least 1"):
+        npiv_jhat_max(x=x, w=w, j_x_degree=0)
+
+
+def test_npiv_j_degree_zero_raises(simple_data):
+    y, x, w = simple_data
+
+    with pytest.raises(ValueError, match="needs j_x_degree of at least 1, got 0"):
+        npiv_j(y=y, x=x, w=w, j_x_degree=0, j_x_segments_set=np.array([1, 2]), k_w_segments_set=np.array([4, 8]))
+
+
+def test_npiv_jhat_max_one_entry_grid_warns(four_valued_instrument_data):
+    _, x, w = four_valued_instrument_data
+
+    with pytest.warns(UserWarning, match="support only the smallest grid dimension, J = 4"):
+        result = npiv_jhat_max(x=x, w=w)
+
+    np.testing.assert_array_equal(result["j_x_segments_set"], [1])
+    np.testing.assert_array_equal(result["k_w_segments_set"], [4])
+    assert result["j_hat_max"] == 4

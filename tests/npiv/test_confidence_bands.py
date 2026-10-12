@@ -3,8 +3,12 @@
 import numpy as np
 import pytest
 
+from moderndid.npiv.cck_ucb import compute_cck_ucb
 from moderndid.npiv.confidence_bands import compute_ucb
-from moderndid.npiv.results import NPIVResult
+from moderndid.npiv.container import NPIVResult
+from moderndid.npiv.npiv import npiv
+from moderndid.npiv.selection import npiv_choose_j
+from moderndid.npiv.utils import _quantile_basis
 
 
 def test_basic_confidence_bands(simple_data):
@@ -315,3 +319,98 @@ def test_higher_order_derivatives(simple_data):
     assert result.deriv is not None
     assert result.h_lower_deriv is not None
     assert result.h_upper_deriv is not None
+
+
+@pytest.mark.parametrize(
+    "q,expected",
+    [
+        (0.95, 9.22),
+        (0.5, 3.1),
+        (0.6056, 4.91312),
+        (0.2, 0.97),
+    ],
+)
+def test_bootstrap_quantile_interpolates_between_half_steps(q, expected):
+    draws = np.array([3.1, 0.2, 5.5, 2.2, 4.8, 1.0, 9.3, 7.7, 6.1, 0.9, 2.5])
+
+    assert _quantile_basis(draws, q) == pytest.approx(expected, rel=1e-12)
+
+
+def test_default_k_w_segments_refine_j(simple_data):
+    y, x, w = simple_data
+
+    result = compute_ucb(y=y, x=x, w=w, j_x_segments=3, biters=30)
+    smoother = compute_ucb(y=y, x=x, w=w, j_x_segments=3, k_w_smooth=0, biters=30)
+
+    assert result.k_w_segments == 12
+    assert smoother.k_w_segments == 3
+
+
+def test_compute_ucb_routes_selection_without_segments(simple_data, five_point_selection):
+    y, x, w = simple_data
+    selection = five_point_selection(2)
+
+    routed = compute_ucb(y=y, x=x, w=w, biters=20, seed=5, selection_result=selection)
+    direct = compute_cck_ucb(y=y, x=x, w=w, biters=20, seed=5, selection_result=selection)
+
+    assert routed.args["cck_method"] is True
+    assert routed.j_x_segments == 2
+    assert routed.cv == pytest.approx(direct.cv, rel=1e-12)
+    np.testing.assert_allclose(routed.h_upper, direct.h_upper, rtol=1e-12)
+
+
+@pytest.mark.parametrize("j_seg,expected", [(2, 3), (8, 4)])
+def test_cck_bootstrap_set_holds_selected_dimension(simple_data, five_point_selection, j_seg, expected):
+    y, x, w = simple_data
+
+    result = compute_cck_ucb(y=y, x=x, w=w, biters=30, seed=3, selection_result=five_point_selection(j_seg))
+
+    assert result.args["n_j_boot"] == expected
+
+
+@pytest.mark.parametrize("j_seg", [2, 8])
+def test_cck_critical_value_has_no_envelope_branch(simple_data, five_point_selection, j_seg):
+    y, x, w = simple_data
+    margin = np.log(np.log(j_seg + 3)) * 1.3
+
+    full = compute_cck_ucb(y=y, x=x, w=w, biters=30, seed=3, selection_result=five_point_selection(j_seg))
+    bare = compute_cck_ucb(
+        y=y, x=x, w=w, biters=30, seed=3, selection_result=five_point_selection(j_seg, theta_star=0.0)
+    )
+
+    assert full.cv == pytest.approx(bare.cv + margin, rel=1e-12)
+    assert full.cv_deriv == pytest.approx(bare.cv_deriv + margin, rel=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize("j_tilde", [1, 2])
+def test_cck_dimension_below_e_adds_no_margin(simple_data, five_point_selection, j_tilde):
+    y, x, w = simple_data
+    selection = {**five_point_selection(1), "j_tilde": j_tilde}
+
+    full = compute_cck_ucb(y=y, x=x, w=w, biters=30, seed=3, selection_result=selection)
+    bare = compute_cck_ucb(y=y, x=x, w=w, biters=30, seed=3, selection_result={**selection, "theta_star": 0.0})
+
+    assert full.cv == bare.cv
+    assert full.cv_deriv == bare.cv_deriv
+
+
+def test_cck_regression_ignores_instrument_arguments(regression_data):
+    y, x, w = regression_data
+    selection = npiv_choose_j(y=y, x=x, w=w, biters=30, seed=4)
+
+    passed = compute_cck_ucb(y=y, x=x, w=w, k_w_degree=4, biters=30, seed=4, selection_result=selection)
+    aligned = compute_cck_ucb(y=y, x=x, w=w, k_w_degree=3, biters=30, seed=4, selection_result=selection)
+    via_npiv = npiv(y=y, x=x, w=w, biters=30, seed=4)
+
+    assert passed.cv == pytest.approx(aligned.cv, rel=1e-12)
+    assert passed.cv == pytest.approx(via_npiv.cv, rel=1e-12)
+    assert passed.cv_deriv == pytest.approx(via_npiv.cv_deriv, rel=1e-12)
+    np.testing.assert_allclose(passed.h_upper, via_npiv.h_upper, rtol=1e-12)
+
+
+def test_cck_without_selection_result_raises(simple_data):
+    y, x, w = simple_data
+
+    with pytest.raises(ValueError, match="needs selection_result"):
+        compute_cck_ucb(y=y, x=x, w=w, biters=10)

@@ -4,8 +4,10 @@ import numpy as np
 import polars as pl
 import pytest
 
+from moderndid.npiv import lepski
+from moderndid.npiv.confidence_bands import compute_ucb
+from moderndid.npiv.container import NPIVResult
 from moderndid.npiv.npiv import npiv
-from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_npiv(simple_data):
@@ -278,7 +280,117 @@ def test_multidimensional_y():
     assert result.h is not None
 
 
-# --- DataFrame API tests ---
+def test_npiv_default_k_w_segments_refine_j(simple_data):
+    y, x, w = simple_data
+
+    default = npiv(y=y, x=x, w=w, j_x_segments=3, biters=30, seed=1)
+    explicit = npiv(y=y, x=x, w=w, j_x_segments=3, k_w_segments=12, biters=30, seed=1)
+
+    assert default.k_w_segments == 12
+    np.testing.assert_array_equal(default.h, explicit.h)
+    assert default.cv == explicit.cv
+
+
+def test_npiv_instrument_basis_below_x_basis_raises(simple_data):
+    y, x, w = simple_data
+
+    with pytest.raises(ValueError, match="not identified"):
+        npiv(y=y, x=x, w=w, j_x_segments=5, k_w_segments=2)
+
+
+def test_npiv_negative_k_w_smooth_raises(simple_data):
+    y, x, w = simple_data
+
+    with pytest.raises(ValueError, match="k_w_smooth must be non-negative"):
+        npiv(y=y, x=x, w=w, j_x_segments=3, k_w_smooth=-1)
+
+
+def test_npiv_one_dimensional_inputs(simple_data):
+    y, x, w = simple_data
+    x_eval = np.linspace(0.1, 0.9, 25)
+
+    flat = npiv(y=y, x=x.ravel(), w=w.ravel(), x_eval=x_eval, j_x_segments=3, biters=30, seed=4)
+    column = npiv(y=y, x=x, w=w, x_eval=x_eval.reshape(-1, 1), j_x_segments=3, biters=30, seed=4)
+
+    assert len(flat.h) == 25
+    np.testing.assert_allclose(flat.h, column.h, rtol=1e-12)
+    np.testing.assert_allclose(flat.h_upper, column.h_upper, rtol=1e-12)
+
+
+def test_npiv_one_dimensional_eval_point_with_two_regressors(multivariate_data):
+    y, x, w = multivariate_data
+
+    result = npiv(y=y, x=x, w=w, x_eval=np.array([0.5, 0.5]), j_x_segments=2, ucb_h=False, ucb_deriv=False)
+
+    assert result.h.shape == (1,)
+
+
+def test_npiv_regression_selection_uses_x_basis(regression_data):
+    y, x, w = regression_data
+
+    result = npiv(y=y, x=x, w=w, biters=30, seed=2)
+
+    assert result.k_w_degree == result.j_x_degree
+    assert result.k_w_segments == result.j_x_segments
+    np.testing.assert_array_equal(result.args["k_w_segments_set"], result.args["j_x_segments_set"])
+
+
+def test_npiv_result_args_hold_no_internal_matrices(simple_data):
+    y, x, w = simple_data
+
+    result = npiv(y=y, x=x, w=w, biters=30, seed=3)
+
+    assert not {"tmp", "psi_x_eval", "psi_x_deriv_eval", "b_w", "b_w_deriv"} & set(result.args)
+    assert result.args["data_driven"] is True
+
+
+def test_npiv_degree_zero_selection_falls_back_to_fixed_segments(simple_data):
+    y, x, w = simple_data
+
+    with pytest.warns(UserWarning, match=r"for a fixed basis\. Using 10 segments for the basis of x instead\.$"):
+        result = npiv(y=y, x=x, w=w, j_x_degree=0, deriv_order=0, biters=20, seed=1)
+
+    assert "j_tilde" not in result.args
+    assert result.j_x_segments == 10
+    np.testing.assert_allclose(result.h, np.mean(y), rtol=1e-10)
+    assert np.isfinite(result.cv)
+
+
+def test_npiv_failed_lepski_comparison_falls_back_to_fixed_segments(simple_data, monkeypatch):
+    y, x, w = simple_data
+
+    def fail(*args):
+        raise np.linalg.LinAlgError("SVD did not converge")
+
+    monkeypatch.setattr(lepski, "_compute_basis_and_influence", fail)
+
+    with pytest.warns(
+        UserWarning, match=r"^Data-driven selection failed: SVD did not converge\. Using 3 segments for the basis of x"
+    ):
+        result = npiv(y=y, x=x, w=w, biters=20, seed=1)
+    fixed = compute_ucb(y=y, x=x, w=w, j_x_segments=3, biters=20, seed=1)
+
+    assert "j_tilde" not in result.args
+    assert result.j_x_segments == 3
+    assert result.k_w_segments == 12
+    assert result.cv == pytest.approx(fixed.cv, rel=1e-12)
+    assert result.cv_deriv == pytest.approx(fixed.cv_deriv, rel=1e-12)
+
+
+def test_npiv_one_entry_grid_warns_and_returns_fixed_dimension_band(four_valued_instrument_data):
+    y, x, w = four_valued_instrument_data
+
+    with pytest.warns(UserWarning, match="With a single candidate there is nothing to select"):
+        result = npiv(y=y, x=x, w=w, biters=30, seed=2)
+    fixed = compute_ucb(y=y, x=x, w=w, j_x_segments=1, k_w_segments=4, biters=30, seed=2)
+
+    assert result.j_x_segments == 1
+    assert result.k_w_segments == 4
+    assert result.args["j_tilde"] == 4
+    assert result.args["theta_star"] == 0
+    assert result.cv == pytest.approx(fixed.cv, rel=1e-12)
+    assert result.cv_deriv == pytest.approx(fixed.cv_deriv, rel=1e-12)
+    np.testing.assert_allclose(result.h_upper, fixed.h_upper, rtol=1e-12)
 
 
 def test_npiv_dataframe_polars():

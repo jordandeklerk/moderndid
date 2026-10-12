@@ -6,6 +6,7 @@ import pytest
 pytestmark = pytest.mark.slow
 
 from moderndid.npiv.prodspline import glp_model_matrix, tensor_prod_model_matrix
+from moderndid.npiv.utils import basis_dimension
 
 
 def test_tensor_prod_basic_functionality(simple_bases):
@@ -61,11 +62,11 @@ def test_tensor_prod_error_cases():
 def test_glp_basic_functionality(simple_bases):
     result = glp_model_matrix(simple_bases)
 
-    assert result.shape[0] == 3
-    assert result.shape[1] > 4
+    assert result.shape == (3, 5)
 
     assert np.allclose(result[:, :2], simple_bases[0])
-    assert np.allclose(result[:, 2:4], simple_bases[1])
+    assert np.allclose(result[:, 2], simple_bases[1][:, 0])
+    assert np.allclose(result[:, 4], simple_bases[1][:, 1])
 
 
 def test_glp_single_basis():
@@ -78,33 +79,39 @@ def test_glp_single_basis():
 def test_glp_interaction_structure(simple_bases):
     result = glp_model_matrix(simple_bases)
 
-    interaction_part = result[:, 4:]
-    expected_interactions = np.array(
-        [
-            [1 * 0.5, 1 * 1.5, 2 * 0.5, 2 * 1.5],
-            [3 * 2.5, 3 * 3.5, 4 * 2.5, 4 * 3.5],
-            [5 * 4.5, 5 * 5.5, 6 * 4.5, 6 * 5.5],
-        ]
-    )
+    np.testing.assert_allclose(result[:, 3], simple_bases[0][:, 0] * simple_bases[1][:, 0])
 
-    assert np.allclose(interaction_part, expected_interactions)
+
+def test_glp_keeps_low_order_interactions():
+    np.random.seed(0)
+    first, second = np.random.normal(0, 1, (20, 5)), np.random.normal(0, 1, (20, 3))
+    pairs = [(1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (0, 1), (1, 1), (2, 1), (3, 1), (4, 1)]
+    pairs += [(0, 2), (1, 2), (2, 2), (3, 2), (0, 3)]
+
+    result = glp_model_matrix([first, second])
+    expected = np.column_stack([(first[:, i - 1] if i else 1.0) * (second[:, j - 1] if j else 1.0) for i, j in pairs])
+
+    np.testing.assert_allclose(result, expected, rtol=1e-14)
 
 
 def test_glp_three_way_interactions():
+    np.random.seed(1)
+    bases = [np.random.normal(0, 1, (30, 3)) for _ in range(3)]
+
+    result = glp_model_matrix(bases)
+
+    assert result.shape == (30, basis_dimension("glp", degree=[3, 3, 3], segments=[1, 1, 1]))
+
+
+def test_glp_rejects_marginal_bases_it_cannot_combine():
     bases = [
         np.array([[1, 2], [3, 4]]),
         np.array([[1], [2]]),
         np.array([[0.5], [1.5]]),
     ]
 
-    result = glp_model_matrix(bases)
-
-    marginal_cols = 2 + 1 + 1
-    pairwise_cols = 2 * 1 + 2 * 1 + 1 * 1
-    threeway_cols = 2 * 1 * 1
-    expected_cols = marginal_cols + pairwise_cols + threeway_cols
-
-    assert result.shape == (2, expected_cols)
+    with pytest.raises(ValueError, match="glp"):
+        glp_model_matrix(bases)
 
 
 def test_glp_empty_bases():
@@ -140,7 +147,7 @@ def test_numerical_stability():
 
     assert tensor_result.shape == (1000, 50)
     assert glp_result.shape[0] == 1000
-    assert glp_result.shape[1] == 10 + 5 + 50
+    assert glp_result.shape[1] == basis_dimension("glp", degree=[10, 5], segments=[1, 1])
 
 
 @pytest.mark.parametrize("n_bases", [2, 3, 4, 5])
@@ -151,14 +158,8 @@ def test_scaling_behavior(n_bases):
     glp_result = glp_model_matrix(bases)
 
     assert tensor_result.shape == (50, 3**n_bases)
-
-    expected_glp_cols = 0
-    for order in range(1, n_bases + 1):
-        from math import comb
-
-        expected_glp_cols += comb(n_bases, order) * (3**order)
-
-    assert glp_result.shape[1] == expected_glp_cols
+    assert glp_result.shape[1] == basis_dimension("glp", degree=[3] * n_bases, segments=[1] * n_bases)
+    assert glp_result.shape[1] <= tensor_result.shape[1]
 
 
 def test_orthogonality_properties():
@@ -174,6 +175,6 @@ def test_orthogonality_properties():
 
     result = glp_model_matrix(bases)
 
-    assert result.shape == (3, 8)
+    assert result.shape == (3, 5)
     assert np.allclose(result[:, :2], bases[0])
-    assert np.allclose(result[:, 2:4], bases[1])
+    assert np.allclose(result[:, [2, 4]], bases[1])

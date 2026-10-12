@@ -1,23 +1,10 @@
 """Utility functions for nonparametric instrumental variables estimation."""
 
-from typing import NamedTuple
-
 import numpy as np
 
 from moderndid.cupy.backend import get_backend
 
-
-class FullRankCheckResult(NamedTuple):
-    """Container for full rank check results."""
-
-    #: Whether the matrix has full rank.
-    is_full_rank: bool
-    #: Condition number of the matrix.
-    condition_number: float
-    #: Minimum eigenvalue.
-    min_eigenvalue: float
-    #: Maximum eigenvalue.
-    max_eigenvalue: float
+from .container import FullRankCheckResult
 
 
 def is_full_rank(x, tol=None):
@@ -38,10 +25,10 @@ def is_full_rank(x, tol=None):
     FullRankCheckResult
         NamedTuple containing:
 
-        - is_full_rank: Whether the matrix has full rank
-        - condition_number: The condition number (max_eigenvalue/min_eigenvalue)
-        - min_eigenvalue: Minimum eigenvalue of :math:`X'X`
-        - max_eigenvalue: Maximum eigenvalue of :math:`X'X`
+        - **is_full_rank**: Whether the matrix has full rank
+        - **condition_number**: The condition number (max_eigenvalue/min_eigenvalue)
+        - **min_eigenvalue**: Minimum eigenvalue of :math:`X'X`
+        - **max_eigenvalue**: Maximum eigenvalue of :math:`X'X`
     """
     x = np.atleast_2d(x)
 
@@ -151,24 +138,43 @@ def _quantile_basis(x, q):
     if x.size == 0:
         return 0
 
-    return np.quantile(x, q, method="lower")
+    # Interpolating between the sorted draws at (k - 0.5) / n keeps the critical value continuous in the draws.
+    return np.quantile(x, q, method="hazen")
+
+
+def _as_matrix(a):
+    """Return the input as an n by p matrix.
+
+    A 1-d array becomes one column of observations.
+    """
+    xp = get_backend()
+    a = xp.asarray(a)
+    return a.reshape(-1, 1) if a.ndim == 1 else xp.atleast_2d(a)
+
+
+def _as_eval_points(a, p):
+    """Return the evaluation points as the rows of a matrix.
+
+    A 1-d array lists the points when ``p`` is 1 and holds a single point otherwise.
+    """
+    xp = get_backend()
+    a = xp.asarray(a)
+    if a.ndim == 1:
+        return a.reshape(-1, 1) if p == 1 else a.reshape(1, -1)
+    return xp.atleast_2d(a)
 
 
 def basis_dimension(basis="additive", degree=None, segments=None):
     """Compute dimension of multivariate basis without constructing it.
 
     Efficiently computes the dimension of additive, tensor product, or
-    generalized linear product (GLP) bases without the memory overhead
+    generalized polynomial (glp) bases without the memory overhead
     of constructing the full basis matrix.
 
     Parameters
     ----------
     basis : {"additive", "tensor", "glp"}, default="additive"
-        Type of basis to use:
-
-        - "additive": Sum of univariate bases
-        - "tensor": Full tensor product
-        - "glp": Generalized linear product
+        Type of basis, as in :func:`prodspline`.
     degree : ndarray, optional
         Polynomial degrees for each variable. Must be provided with segments.
     segments : ndarray, optional
@@ -231,7 +237,7 @@ def basis_dimension(basis="additive", degree=None, segments=None):
 
 
 def _compute_glp_dimension_step(d1, d2, nd1, pd12):
-    """Compute a step in the GLP dimension calculation."""
+    """Compute a step in the glp dimension calculation."""
     if d2 == 1:
         return {"d12": pd12, "nd1": nd1}
 

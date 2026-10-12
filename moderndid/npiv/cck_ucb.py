@@ -2,11 +2,11 @@
 
 import numpy as np
 
-from ..cupy.backend import get_backend, to_device
+from ..cupy.backend import get_backend, to_device, to_numpy
+from .container import NPIVResult
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
-from .results import NPIVResult
-from .utils import _quantile_basis, avoid_zero_division
+from .utils import _as_eval_points, _as_matrix, _quantile_basis, avoid_zero_division
 
 
 def compute_cck_ucb(
@@ -31,38 +31,30 @@ def compute_cck_ucb(
     seed=None,
     selection_result=None,
 ):
-    r"""Compute honest and adaptive UCBs.
+    r"""Compute data-driven uniform confidence bands.
 
-    Implements the data-driven uniform confidence band (UCB) construction from [1]_.
-    These UCBs are honest, guaranteeing uniform coverage over a class of data-generating
-    processes, and adaptive, contracting at or near the minimax optimal rate.
+    Implements the data-driven uniform confidence bands (UCBs) of [1]_ for :math:`h_0`
+    and its derivative at the dimension :math:`\tilde{J}` that :func:`npiv_choose_j`
+    selects. The critical value adds a margin for that data-driven choice to a bootstrap
+    quantile taken across several candidate dimensions. The band therefore needs no
+    undersmoothed dimension.
 
-    The UCB for :math:`h_0` is constructed as
+    In mildly ill-posed models, and so in nonparametric regression, [1]_ shows that these
+    bands cover :math:`h_0` uniformly over a class of functions. They contract within a
+    :math:`\log\log n` factor of the minimax sup-norm rate.
 
-    .. math::
+    The critical value takes the same form whether the Lepski test or the truncation at
+    the second-largest grid dimension sets :math:`\tilde{J}`. When truncation sets it,
+    the procedure in [1]_ adds a bias envelope that needs a lower bound on the smoothness
+    of :math:`h_0`. Since that bound is unknown in practice and the envelope depends on
+    the units of :math:`Y`, this function leaves it out. The coverage guarantee of [1]_
+    for severely ill-posed models assumes the envelope.
 
-        C_n(x) = \left[\hat{h}_{\tilde{J}}(x) \pm \text{cv}^*(x) \hat{\sigma}_{\tilde{J}}(x)\right],
-
-    where :math:`\tilde{J}` is the data-driven dimension choice. The critical value :math:`\text{cv}^*(x)`
-    is a combination of a bootstrap quantile :math:`z_{1-\alpha}^*` and a penalty term involving
-    the critical value from the dimension selection step, :math:`\theta_{1-\hat{\alpha}}^*`.
-
-    For models in the "mildly ill-posed" regime (including nonparametric regression),
-    the critical value is
-
-    .. math::
-
-        \text{cv}^*(x) = z_{1-\alpha}^* + (\log\log\tilde{J}) \theta_{1-\hat{\alpha}}^*.
-
-    The quantile :math:`z_{1-\alpha}^*` is the :math:`(1-\alpha)` quantile of
-
-    .. math::
-
-        \sup_{(x,J) \in \mathcal{X} \times \hat{\mathcal{J}}_-} |D_J^*(x) / \hat{\sigma}_J(x)|
-
-    ensuring robustness to the choice of :math:`J`. A similar construction applies to the
-    derivatives of :math:`h_0`. This method provides efficiency improvements over traditional
-    undersmoothing by adapting to the data.
+    When ``w`` equals ``x``, the instrument basis takes the degree and segments of the
+    basis for :math:`X` at every dimension. The function then ignores ``k_w_degree`` and
+    the instrument segments in ``selection_result``. Unless the range limits on ``w``
+    differ from those on ``x``, the fits are least squares regressions on the basis for
+    :math:`X`.
 
     Parameters
     ----------
@@ -104,20 +96,39 @@ def compute_cck_ucb(
         Maximum value for X range.
     seed : int, optional
         Random seed for reproducibility.
-    selection_result : dict, optional
-        Result from data-driven selection.
+    selection_result : dict
+        Output of :func:`npiv_choose_j`.
 
     Returns
     -------
     NPIVResult
-        NPIV results with CCK uniform confidence bands.
+        Named tuple with the following fields:
+
+        - **h**: Estimate :math:`\hat{h}_{\tilde{J}}(x)` at the evaluation points
+        - **h_lower**: Lower uniform confidence band for :math:`h_0`, or None when ``ucb_h`` is False
+        - **h_upper**: Upper uniform confidence band for :math:`h_0`, or None when ``ucb_h`` is False
+        - **deriv**: Estimate :math:`\partial^a \hat{h}_{\tilde{J}}(x)` at the evaluation points
+        - **h_lower_deriv**: Lower uniform confidence band for :math:`\partial^a h_0`, or None when ``ucb_deriv``
+          is False
+        - **h_upper_deriv**: Upper uniform confidence band for :math:`\partial^a h_0`, or None when ``ucb_deriv``
+          is False
+        - **beta**: Sieve coefficient vector :math:`\hat{c}_{\tilde{J}}`
+        - **asy_se**: Pointwise standard errors :math:`\hat{\sigma}_{\tilde{J}}(x)`
+        - **deriv_asy_se**: Pointwise standard errors :math:`\hat{\sigma}^a_{\tilde{J}}(x)` of the derivative
+        - **cv**: Critical value :math:`\text{cv}^*` of the function band
+        - **cv_deriv**: Critical value :math:`\text{cv}^{a*}` of the derivative band
+        - **residuals**: Residuals :math:`Y_i - \hat{h}_{\tilde{J}}(X_i)`
+        - **j_x_degree**: Degree of the basis for :math:`X`
+        - **j_x_segments**: Segments of the basis for :math:`X` at :math:`\tilde{J}`
+        - **k_w_degree**: Degree of the basis for :math:`W`
+        - **k_w_segments**: Segments of the basis for :math:`W`
+        - **args**: Diagnostic dictionary that also holds ``j_tilde``, ``theta_star``, and ``n_j_boot``, the
+          number of grid dimensions in the bootstrap
 
     Examples
     --------
-    Compute honest adaptive UCBs for the Engel curve using data-driven
-    dimension selection. This is typically called through :func:`npiv` with
-    ``j_x_segments=None`` (the default); this example shows the lower-level
-    two-step interface:
+    :func:`npiv` calls this function when ``j_x_segments`` is None. The example
+    runs the selection and the band for the Engel curve as two separate steps:
 
     .. ipython::
         :okwarning:
@@ -141,23 +152,76 @@ def compute_cck_ucb(
     --------
     compute_ucb : Compute UCBs using under-smoothing
 
+    Notes
+    -----
+    The band for :math:`h_0` is
+
+    .. math::
+
+        C_n(x) = \left[\hat{h}_{\tilde{J}}(x) \pm \text{cv}^* \hat{\sigma}_{\tilde{J}}(x)\right],
+        \qquad
+        \text{cv}^* = z_{1-\alpha}^* + \max\{0, \log\log\tilde{J}\}\, \theta_{1-\hat{\alpha}}^*,
+
+    where :math:`\theta_{1-\hat{\alpha}}^*` is the critical value of the Lepski test in
+    :func:`npiv_j`. The quantile :math:`z_{1-\alpha}^*` is the :math:`(1-\alpha)` quantile across
+    bootstrap draws of
+
+    .. math::
+
+        \sup_{x} \max_{J \in \mathcal{J}_b} \left| \frac{D_J^*(x)}{\hat{\sigma}_J(x)} \right|.
+
+    Here :math:`D_J^*` is the multiplier bootstrap process of :func:`compute_ucb`. The supremum runs
+    over the evaluation points. The set :math:`\mathcal{J}_b` holds the grid dimensions up to the
+    larger of :math:`\tilde{J}` and the third-largest grid dimension, or the whole grid when it has
+    two entries or fewer. When :math:`\tilde{J}` lies below the second-largest grid dimension
+    :math:`\hat{J}_n`, this is the set :math:`\hat{\mathcal{J}}_-` of [1]_. When
+    :math:`\tilde{J} = \hat{J}_n`, it holds every grid dimension but the largest. [1]_ then takes
+    the whole grid if truncation set :math:`\tilde{J}` and the dimensions below :math:`\hat{J}_n` if
+    the Lepski test did. Both cases apply when the test selects :math:`\hat{J}_n` itself.
+
+    For the derivative band, :math:`D_J^*` uses :math:`\partial^a \psi^J` in place of :math:`\psi^J`
+    and :math:`\hat{\sigma}^a_J` replaces :math:`\hat{\sigma}_J`. The resulting quantile
+    :math:`z^{a*}_{1-\alpha}` gets the same margin as the function band,
+
+    .. math::
+
+        \text{cv}^{a*} = z^{a*}_{1-\alpha} + \max\{0, \log\log\tilde{J}\}\, \theta_{1-\hat{\alpha}}^*.
+
+    When truncation sets :math:`\tilde{J}`, the procedure in [1]_ replaces
+    :math:`\theta_{1-\hat{\alpha}}^*` in the margin by
+
+    .. math::
+
+        \max\left\{\theta_{1-\hat{\alpha}}^*, \frac{\tilde{J}^{-p/d}}{\hat{\sigma}_{\tilde{J}}(x)}\right\}
+        \quad \text{and} \quad
+        \max\left\{\theta_{1-\hat{\alpha}}^*, \frac{\tilde{J}^{(|a|-p)/d}}{\hat{\sigma}^a_{\tilde{J}}(x)}\right\}
+
+    for the function and the derivative, where :math:`p` is a lower bound on the smoothness of
+    :math:`h_0` and :math:`d` is the number of regressors. These envelopes are left out here.
+
     References
     ----------
 
-    .. [1] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
-        Adaptive Estimation and Uniform Confidence Bands for Nonparametric
-        Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
+    .. [1] Chen, X., Christensen, T. M., & Kankanala, S. (2024). Adaptive estimation and
+        uniform confidence bands for nonparametric structural functions and elasticities.
+        *Review of Economic Studies*, 92(1), 162-196. https://doi.org/10.1093/restud/rdae025.
     """
     xp = get_backend()
     y = xp.asarray(y).ravel()
-    x = xp.atleast_2d(xp.asarray(x))
-    w = xp.atleast_2d(xp.asarray(w))
+    x = _as_matrix(x)
+    w = _as_matrix(w)
 
     n = len(y)
     p_x = x.shape[1]
     p_w = w.shape[1]
 
-    x_eval = x.copy() if x_eval is None else xp.atleast_2d(xp.asarray(x_eval))
+    x_eval = x.copy() if x_eval is None else _as_eval_points(x_eval, p_x)
+
+    if selection_result is None:
+        raise ValueError(
+            "compute_cck_ucb needs selection_result, the output of npiv_choose_j. Run npiv_choose_j first, or use "
+            "compute_ucb with a fixed j_x_segments."
+        )
 
     j_x_segments = selection_result["j_x_seg"]
     k_w_segments = selection_result["k_w_seg"]
@@ -165,6 +229,12 @@ def compute_cck_ucb(
     theta_star = selection_result["theta_star"]
     j_x_segments_set = selection_result["j_x_segments_set"]
     k_w_segments_set = selection_result["k_w_segments_set"]
+
+    if np.array_equal(to_numpy(x), to_numpy(w)):
+        # The instrument basis takes the degree and segments of the X basis, as in npiv_est and the selection step.
+        k_w_degree = j_x_degree
+        k_w_segments = j_x_segments
+        k_w_segments_set = j_x_segments_set
 
     main_result = npiv_est(
         y=y,
@@ -204,24 +274,25 @@ def compute_cck_ucb(
         for j_idx, j_seg in enumerate(j_segments_boot):
             k_seg = k_w_segments_set[np.where(j_x_segments_set == j_seg)[0][0]]
 
-            K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_seg)])
-            K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_seg)])
+            # prodspline takes the number of segments minus one, as in npiv_est and the selection step.
+            K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_seg - 1)])
+            K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_seg - 1)])
 
             psi_x = prodspline(
                 x=x,
                 K=K_x,
                 knots=knots,
                 basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
+                x_min=np.full(p_x, x_min) if x_min is not None else None,
+                x_max=np.full(p_x, x_max) if x_max is not None else None,
             ).basis
             b_w = prodspline(
                 x=w,
                 K=K_w,
                 knots=knots,
                 basis=basis,
-                x_min=np.full(p_w, w_min) if w_min else None,
-                x_max=np.full(p_w, w_max) if w_max else None,
+                x_min=np.full(p_w, w_min) if w_min is not None else None,
+                x_max=np.full(p_w, w_max) if w_max is not None else None,
             ).basis
 
             psi_x_eval = prodspline(
@@ -230,8 +301,8 @@ def compute_cck_ucb(
                 K=K_x,
                 knots=knots,
                 basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
+                x_min=np.full(p_x, x_min) if x_min is not None else None,
+                x_max=np.full(p_x, x_max) if x_max is not None else None,
             ).basis
 
             if ucb_deriv:
@@ -243,8 +314,8 @@ def compute_cck_ucb(
                     basis=basis,
                     deriv_index=deriv_index,
                     deriv=deriv_order,
-                    x_min=np.full(p_x, x_min) if x_min else None,
-                    x_max=np.full(p_x, x_max) if x_max else None,
+                    x_min=np.full(p_x, x_min) if x_min is not None else None,
+                    x_max=np.full(p_x, x_max) if x_max is not None else None,
                 ).basis
 
             if basis in ("additive", "glp"):
@@ -265,12 +336,13 @@ def compute_cck_ucb(
             weighted_tmp = tmp.T * residuals[:, None]
             D_inv_rho_D_inv = weighted_tmp.T @ weighted_tmp
 
+            # Row sums give the diagonal of psi D psi' without forming the m x m matrix.
             if ucb_h:
-                var_h = xp.diag(psi_x_eval @ D_inv_rho_D_inv @ psi_x_eval.T)
+                var_h = xp.sum((psi_x_eval @ D_inv_rho_D_inv) * psi_x_eval, axis=1)
                 asy_se_h = xp.sqrt(xp.maximum(var_h, 0))
 
             if ucb_deriv:
-                var_deriv = xp.diag(psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T)
+                var_deriv = xp.sum((psi_x_deriv_eval @ D_inv_rho_D_inv) * psi_x_deriv_eval, axis=1)
                 asy_se_deriv = xp.sqrt(xp.maximum(var_deriv, 0))
 
             for b in range(biters):
@@ -287,20 +359,16 @@ def compute_cck_ucb(
         cv_h = None
         cv_deriv = None
 
+        # The margin max{0, log log J} theta is 0 for J up to e. Checking J first avoids log(0) at J of 0 or 1.
+        margin = np.log(np.log(j_tilde)) * theta_star if j_tilde is not None and j_tilde > np.e else 0.0
+
         if ucb_h:
             z_boot_h = np.max(z_sup_boot_h, axis=1)
-            z_star_h = _quantile_basis(z_boot_h, 1 - alpha)
-
-            cv_h = z_star_h + max(0, np.log(np.log(j_tilde))) * theta_star if j_tilde is not None else z_star_h
+            cv_h = _quantile_basis(z_boot_h, 1 - alpha) + margin
 
         if ucb_deriv:
             z_boot_deriv = np.max(z_sup_boot_deriv, axis=1)
-            z_star_deriv = _quantile_basis(z_boot_deriv, 1 - alpha)
-
-            if j_tilde is not None:
-                cv_deriv = z_star_deriv + max(0, np.log(np.log(j_tilde))) * theta_star
-            else:
-                cv_deriv = z_star_deriv
+            cv_deriv = _quantile_basis(z_boot_deriv, 1 - alpha) + margin
 
         if ucb_h and cv_h is not None:
             h_lower = main_result.h - cv_h * main_result.asy_se
