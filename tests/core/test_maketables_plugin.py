@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from moderndid.core.result import extract_n_obs, extract_vcov_info
+from moderndid.core.result import extract_clustervar, extract_n_obs, extract_vcov_info
 from moderndid.did.container import AGGTEResult, MPResult
 from moderndid.didinter.container import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
 from moderndid.didtriple.container import (
@@ -121,7 +121,7 @@ def test_didinter_result_exposes_maketables_plugin():
     assert coef_table.index.tolist() == ["ATE", "Effect h=1", "Effect h=2", "Placebo h=-1"]
     assert {"ci95l", "ci95u"}.issubset(set(coef_table.columns))
     assert result.__maketables_stat__("N") == 120
-    assert result.__maketables_stat__("se_type") == "Clustered"
+    assert result.__maketables_stat__("se_type") == "Analytical clustered by id"
     assert result.__maketables_depvar__ == "outcome"
     assert "placebo_joint_pvalue" in result.__maketables_default_stat_keys__
 
@@ -171,7 +171,7 @@ def test_ddd_agg_result_exposes_maketables_plugin():
 def test_dose_result_exposes_maketables_plugin():
     pte_params = SimpleNamespace(
         yname="y",
-        alp=0.05,
+        alpha=0.05,
         control_group="notyettreated",
         dose_est_method="parametric",
         data=[1, 2, 3, 4],
@@ -307,7 +307,7 @@ def test_drdid_ci_matches_precomputed():
 
 
 def test_pte_result_delegates_maketables_plugin():
-    dummy_pte_params = SimpleNamespace(yname="y", alp=0.05, data=[1, 2], idname=None)
+    dummy_pte_params = SimpleNamespace(yname="y", alpha=0.05, data=[1, 2], idname=None)
     event_study = PTEAggteResult(
         overall_att=0.2,
         overall_se=0.05,
@@ -338,6 +338,135 @@ def test_pte_result_delegates_maketables_plugin():
 def test_extract_vcov_info(params, bootstrap_key, result_key, expected):
     info = extract_vcov_info(params, bootstrap_key=bootstrap_key)
     assert expected in str(info[result_key])
+
+
+@pytest.mark.parametrize(
+    "params, bootstrap_key, clustervar, vcov_clustervar",
+    [
+        (
+            {"bootstrap": True, "clustervars": ["state"], "cluster": np.array([1, 1, 2, 2])},
+            "bootstrap",
+            "state",
+            "state",
+        ),
+        (
+            {"bootstrap": False, "clustervars": ["state"], "cluster": np.array([1, 1, 2, 2])},
+            "bootstrap",
+            "state",
+            "state",
+        ),
+        ({"bootstrap": True, "clustervars": ["copy"], "cluster": np.array([1, 2, 3, 4])}, "bootstrap", None, None),
+        ({"bootstrap": True, "clustervars": [], "cluster": None}, "bootstrap", None, None),
+        ({"bootstrap": False, "clustervars": ["region"]}, "bootstrap", "region", "region"),
+        ({"boot": False, "cluster": "county"}, "boot", "county", "county"),
+        ({"boot": True, "cluster": True}, "boot", True, None),
+        ({"boot": True, "cluster": None}, "boot", None, None),
+    ],
+)
+def test_extract_clustervar_names_the_variable_rather_than_the_unit_clusters(
+    params, bootstrap_key, clustervar, vcov_clustervar
+):
+    assert extract_clustervar(params) == clustervar
+    assert extract_vcov_info(params, bootstrap_key=bootstrap_key)["clustervar"] == vcov_clustervar
+
+
+@pytest.mark.parametrize(
+    "params, expected_se_type, expected_vcov",
+    [
+        (
+            {"bootstrap": True, "clustervars": ["state"], "cluster": np.repeat(np.arange(5), 2)},
+            "Bootstrap clustered by state",
+            {"vcov_type": "bootstrap", "clustervar": "state"},
+        ),
+        (
+            {"bootstrap": False, "clustervars": ["state"], "cluster": np.repeat(np.arange(5), 2)},
+            "Analytical clustered by state",
+            {"vcov_type": "analytical", "clustervar": "state"},
+        ),
+        (
+            {"bootstrap": True, "clustervars": ["copy"], "cluster": np.arange(10)},
+            "Bootstrap",
+            {"vcov_type": "bootstrap", "clustervar": None},
+        ),
+    ],
+)
+def test_mp_and_aggte_results_name_the_clusters_of_their_standard_errors(params, expected_se_type, expected_vcov):
+    group_time = MPResult(
+        groups=np.array([2000, 2001]),
+        times=np.array([2001, 2002]),
+        att_gt=np.array([0.2, 0.4]),
+        vcov_analytical=np.eye(2),
+        se_gt=np.array([0.1, 0.15]),
+        critical_value=1.96,
+        influence_func=np.zeros((10, 2)),
+        n_units=10,
+        estimation_params=params,
+    )
+    aggregated = AGGTEResult(
+        overall_att=0.3,
+        overall_se=0.1,
+        aggregation_type="simple",
+        influence_func=np.zeros(10),
+        estimation_params=params,
+    )
+
+    for result in (group_time, aggregated):
+        assert result.__maketables_stat__("se_type") == expected_se_type
+        assert result.__maketables_vcov_info__ == expected_vcov
+
+
+@pytest.mark.parametrize("boot", [True, False])
+def test_ddd_results_name_their_cluster_column(boot):
+    args = {"boot": boot, "cluster": "county", "est_method": "dr", "alpha": 0.05}
+    multi_period = DDDMultiPeriodResult(
+        att=np.array([0.1]),
+        se=np.array([0.05]),
+        uci=np.array([0.2]),
+        lci=np.array([0.0]),
+        groups=np.array([2]),
+        times=np.array([2]),
+        glist=np.array([2]),
+        tlist=np.array([1, 2]),
+        inf_func_mat=np.zeros((6, 1)),
+        n=6,
+        args=args,
+        unit_groups=np.array([0, 0, 0, 2, 2, 2]),
+    )
+    aggregated = DDDAggResult(
+        overall_att=0.4,
+        overall_se=0.15,
+        aggregation_type="simple",
+        egt=None,
+        att_egt=None,
+        se_egt=None,
+        inf_func=None,
+        args=args,
+    )
+    two_period = [
+        cls(
+            att=0.5,
+            se=0.1,
+            uci=0.7,
+            lci=0.3,
+            boots=None,
+            att_inf_func=None,
+            did_atts={},
+            subgroup_counts={},
+            args={**args, "boot": True},
+        )
+        for cls in (DDDPanelResult, DDDRCResult)
+    ]
+    label = "Bootstrap" if boot else "Analytical"
+
+    for result in (multi_period, aggregated):
+        assert result.__maketables_stat__("se_type") == f"{label} clustered by county"
+        assert result.__maketables_vcov_info__ == {"vcov_type": label.lower(), "clustervar": "county"}
+    for result in two_period:
+        assert result.__maketables_stat__("se_type") == "Bootstrap clustered by county"
+        assert result.__maketables_vcov_info__ == {"vcov_type": "bootstrap", "clustervar": "county"}
+        unnamed = result._replace(args={**result.args, "cluster": True})
+        assert unnamed.__maketables_stat__("se_type") == "Bootstrap clustered"
+        assert unnamed.__maketables_vcov_info__ == {"vcov_type": "bootstrap", "clustervar": None}
 
 
 @pytest.mark.parametrize(

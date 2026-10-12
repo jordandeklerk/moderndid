@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import re
 import shutil
+import subprocess
 from contextvars import ContextVar
 
 import numpy as np
@@ -63,8 +65,8 @@ def use_backend(name):
     """Context manager that temporarily activates a backend.
 
     The previous backend is restored when the context exits, even if an
-    exception is raised.  Each ``copy_context()`` snapshot inherits the
-    value set here, so ``use_backend`` composes correctly with
+    exception is raised. Since each ``copy_context()`` snapshot inherits the
+    value set here, ``use_backend`` composes correctly with
     :func:`~moderndid.core.parallel.parallel_map`.
 
     Parameters
@@ -124,12 +126,11 @@ def to_numpy(arr):
 
 
 def _array_module(*arrays):
-    """Return ``cupy`` if any array is a CuPy ndarray, else ``numpy``.
+    """Return the array module that matches the given arrays.
 
-    This is used by Dask partition functions to detect whether their
-    input arrays are CuPy or NumPy and use the matching ``xp`` module,
-    without relying on the ``ContextVar``-based ``get_backend()`` which
-    does not propagate to Dask worker processes.
+    Unlike :func:`get_backend`, which reads the active backend, this reads the
+    arrays themselves. A helper that uses it always works in the module of the
+    arrays it receives.
 
     Parameters
     ----------
@@ -151,9 +152,6 @@ def _array_module(*arrays):
 @functools.lru_cache(1)
 def _detect_cuda_version():
     """Try to detect the CUDA major version."""
-    import re
-    import subprocess
-
     try:
         out = subprocess.check_output(
             ["nvidia-smi"],
@@ -193,13 +191,15 @@ def _cupy_install_message():
         return (
             f"CuPy is not installed. Detected CUDA {cuda_ver}.x on this machine.\n"
             f"Install the matching wheel:\n"
-            f"  uv pip install {wheel}"
+            f"  uv add {wheel}\n"
+            "Use pip install in place of uv add outside a uv project."
         )
     return (
         "CuPy is not installed. Install the wheel matching your CUDA version "
         "(run 'nvidia-smi' or 'nvcc --version' to check):\n"
-        "  uv pip install cupy-cuda11x   # CUDA 11.x\n"
-        "  uv pip install cupy-cuda12x   # CUDA 12.x"
+        "  uv add cupy-cuda11x   # CUDA 11.x\n"
+        "  uv add cupy-cuda12x   # CUDA 12.x\n"
+        "Use pip install in place of uv add outside a uv project."
     )
 
 
@@ -242,9 +242,9 @@ def _init_rmm_pool():
     """Activate the RMM memory-pool allocator for CuPy.
 
     When ``rmm`` is installed, this replaces CuPy's default per-allocation
-    ``cudaMalloc`` calls with a pool allocator that grows on demand, which
-    eliminates the ~1 ms overhead per allocation that otherwise dominates
-    bootstrap loops.  If ``rmm`` is not installed, this is a silent no-op.
+    ``cudaMalloc`` calls with a pool allocator that grows on demand. The pool
+    removes the roughly 1 ms overhead per allocation that otherwise dominates
+    bootstrap loops. If ``rmm`` is not installed, this is a silent no-op.
 
     If CuPy is already using the RMM allocator (for example, because the
     user configured RMM manually before importing ModernDiD), this function

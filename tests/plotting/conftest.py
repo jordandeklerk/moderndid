@@ -255,7 +255,7 @@ def didinter_result():
         n_units=100,
         n_switchers=50,
         n_never_switchers=50,
-        ci_level=95.0,
+        alpha=0.05,
     )
 
 
@@ -285,7 +285,7 @@ def didinter_result_with_placebos():
         n_units=100,
         n_switchers=50,
         n_never_switchers=50,
-        ci_level=95.0,
+        alpha=0.05,
     )
 
 
@@ -367,4 +367,62 @@ def dyn_balancing_result_with_coefs():
         },
         imbalances={},
         estimation_params={"alpha": 0.05, "n_periods": 2},
+    )
+
+
+@pytest.fixture
+def mp_result_float_periods():
+    """Group-time result whose whole-number cohorts and periods are stored as floats."""
+    return MPResult(
+        groups=np.array([2000.0, 2000.0, 2007.0, 2007.0]),
+        times=np.array([2004.0, 2007.0, 2004.0, 2007.0]),
+        att_gt=np.array([0.5, 1.2, 0.3, 0.9]),
+        vcov_analytical=np.eye(4),
+        se_gt=np.array([0.1, 0.15, 0.08, 0.13]),
+        critical_value=1.96,
+        influence_func=np.zeros((10, 4)),
+    )
+
+
+@pytest.fixture
+def aggte_result_dynamic_float():
+    """Event study whose whole-number event times are stored as floats."""
+    return AGGTEResult(
+        overall_att=0.7,
+        overall_se=0.15,
+        aggregation_type="dynamic",
+        event_times=np.array([-2.0, -1.0, 0.0, 1.0, 2.0]),
+        att_by_event=np.array([0.1, 0.05, 0.8, 1.2, 1.5]),
+        se_by_event=np.array([0.1, 0.09, 0.12, 0.15, 0.18]),
+    )
+
+
+@pytest.fixture
+def didinter_result_float_horizons():
+    """Intertemporal result whose whole-number horizons are stored as floats."""
+    effects = EffectsResult(
+        horizons=np.array([1.0, 2.0]),
+        estimates=np.array([0.5, 0.8]),
+        std_errors=np.array([0.1, 0.12]),
+        ci_lower=np.array([0.3, 0.56]),
+        ci_upper=np.array([0.7, 1.04]),
+        n_switchers=np.array([50, 45]),
+        n_observations=np.array([500, 450]),
+    )
+    placebos = PlacebosResult(
+        horizons=np.array([-1.0]),
+        estimates=np.array([0.02]),
+        std_errors=np.array([0.07]),
+        ci_lower=np.array([-0.12]),
+        ci_upper=np.array([0.16]),
+        n_switchers=np.array([50]),
+        n_observations=np.array([500]),
+    )
+    return DIDInterResult(
+        effects=effects,
+        placebos=placebos,
+        n_units=100,
+        n_switchers=50,
+        n_never_switchers=50,
+        alpha=0.05,
     )

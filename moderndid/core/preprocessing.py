@@ -4,14 +4,13 @@ import warnings
 
 import numpy as np
 
-from .dataframe import DataFrame
 from .preprocess.builders import PreprocessDataBuilder
 from .preprocess.config import ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
-from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
+from .preprocess.constants import EstimationMethod
 
 
 def preprocess_drdid(
-    data: DataFrame,
+    data,
     yname,
     tname,
     treat_col,
@@ -44,10 +43,11 @@ def preprocess_drdid(
     idname : str | None, default None
         Name of entity/unit identifier column. Required for panel data.
     xformla : str | None, default None
-        Formula for covariates as a string (e.g., "x1 + x2").
-        If None, only intercept is included.
+        Formula for the covariates, such as ``"~ x1 + x2"``. A transformed
+        term such as ``I(x**2)`` requires formulaic. If None, only the
+        intercept is included.
     panel : bool, default True
-        Whether data is in panel format (vs repeated cross-sections).
+        Whether the data are a panel rather than repeated cross-sections.
     weightsname : str | None, default None
         Name of sampling weights column.
     boot : bool, default False
@@ -59,7 +59,8 @@ def preprocess_drdid(
     inf_func : bool, default False
         Whether to compute influence functions.
     est_method : {"imp", "trad"}, default "imp"
-        Estimation method for nuisance parameters.
+        Estimation method for the nuisance parameters. "imp" selects the
+        improved doubly robust estimator and "trad" the traditional one.
     trim_level : float, default 0.995
         Propensity score trimming level.
     normalized : bool, default True
@@ -68,7 +69,19 @@ def preprocess_drdid(
     Returns
     -------
     TwoPeriodDIDData
-        Container with processed data for 2-period DiD estimation.
+        Container with the data of the two periods:
+
+        - **y1**: Post-treatment outcome of each unit in a panel, or None
+        - **y0**: Pre-treatment outcome of each unit in a panel, or None
+        - **y**: Outcome of each row in repeated cross-sections, or None
+        - **post**: Post-treatment indicator of each row in repeated cross-sections, or None
+        - **D**: Treatment indicator of each unit or row
+        - **covariates**: Covariate matrix with the intercept
+        - **weights**: Normalized sampling weights
+        - **covariate_names**: Names of the covariate columns
+        - **n_units**: Number of units in a panel
+        - **n_obs**: Number of rows in repeated cross-sections
+        - **config**: Configuration with all settings
     """
     config = TwoPeriodDIDConfig(
         yname=yname,
@@ -79,7 +92,7 @@ def preprocess_drdid(
         panel=panel,
         weightsname=weightsname,
         boot=boot,
-        boot_type=BootstrapType(boot_type),
+        boot_type=boot_type,
         biters=biters,
         est_method=est_method,
         trim_level=trim_level,
@@ -94,7 +107,7 @@ def preprocess_drdid(
 
 
 def preprocess_did(
-    data: DataFrame,
+    data,
     yname,
     tname,
     gname,
@@ -105,7 +118,7 @@ def preprocess_did(
     control_group="nevertreated",
     anticipation=0,
     weightsname=None,
-    alp=0.05,
+    alpha=0.05,
     boot=False,
     cband=False,
     biters=1000,
@@ -132,10 +145,10 @@ def preprocess_did(
     idname : str | None, default None
         Name of entity/unit identifier column. Required for panel data.
     xformla : str | None, default None
-        Formula for covariates in Wilkinson notation (e.g., "~ x1 + x2").
+        Formula for covariates in Wilkinson notation, such as ``"~ x1 + x2"``.
         If None, no covariates are included.
     panel : bool, default True
-        Whether data is in panel format (vs repeated cross-sections).
+        Whether the data are a panel rather than repeated cross-sections.
     allow_unbalanced_panel : bool, default True
         Whether to allow unbalanced panels.
     control_group : {"nevertreated", "notyettreated"}, default "nevertreated"
@@ -144,7 +157,7 @@ def preprocess_did(
         Number of time periods before treatment where effects may appear.
     weightsname : str | None, default None
         Name of sampling weights column.
-    alp : float, default 0.05
+    alpha : float, default 0.05
         Significance level for confidence intervals.
     boot : bool, default False
         Whether to use bootstrap for inference.
@@ -154,8 +167,9 @@ def preprocess_did(
         Number of bootstrap iterations.
     clustervars : list[str] | None, default None
         Variables to cluster standard errors on.
-    est_method : {"dr", "ipw", "reg"}, default "dr"
-        Estimation method: doubly robust, IPW, or regression.
+    est_method : {"dr", "ipw", "reg"} or callable, default "dr"
+        Estimation method. The built-in methods are doubly robust, IPW, and
+        regression. A function that estimates each 2x2 comparison works too.
     base_period : {"universal", "varying"}, default "varying"
         How to choose base period for comparisons.
     faster_mode : bool, default False
@@ -168,17 +182,21 @@ def preprocess_did(
     Returns
     -------
     DIDData
-        Container with all preprocessed data and parameters including:
+        Container with the preprocessed data and settings:
 
-        - data: Standardized panel/cross-section data
-        - weights: Normalized sampling weights
-        - config: Configuration with all settings
-        - Various tensors and matrices for computation
+        - **data**: Standardized panel or cross-section data
+        - **time_invariant_data**: One row for each unit with its group and weight
+        - **weights**: Normalized sampling weight of each unit
+        - **cohort_counts**: Number of units in each cohort
+        - **period_counts**: Number of rows in each period
+        - **crosstable_counts**: Number of rows in each period and cohort
+        - **config**: Configuration with all settings and the categorical options stored as enums
+        - **cluster**: Cluster of each unit, or None
+        - **outcomes_tensor**: Outcomes of each period for a balanced panel, or None
+        - **covariates_matrix**: Covariates of each row for repeated cross-sections and unbalanced panels, or None
+        - **covariates_tensor**: Covariates of each period for a balanced panel, or None
+        - **weights_tensor**: Weights of each period for a balanced panel, or None
     """
-    control_group_enum = ControlGroup(control_group)
-    est_method_enum = EstimationMethod(est_method)
-    base_period_enum = BasePeriod(base_period)
-
     config = DIDConfig(
         yname=yname,
         tname=tname,
@@ -187,16 +205,16 @@ def preprocess_did(
         xformla=xformla if xformla is not None else "~1",
         panel=panel,
         allow_unbalanced_panel=allow_unbalanced_panel,
-        control_group=control_group_enum,
+        control_group=control_group,
         anticipation=anticipation,
         weightsname=weightsname,
-        alp=alp,
+        alpha=alpha,
         boot=boot,
         cband=cband,
         biters=biters,
         clustervars=clustervars if clustervars is not None else [],
-        est_method=est_method_enum,
-        base_period=base_period_enum,
+        est_method=est_method,
+        base_period=base_period,
         faster_mode=faster_mode,
         pl=pl_parallel,
         cores=cores,
@@ -209,7 +227,7 @@ def preprocess_did(
 
 
 def preprocess_cont_did(
-    data: DataFrame,
+    data,
     yname,
     tname,
     gname,
@@ -221,8 +239,7 @@ def preprocess_cont_did(
     control_group="notyettreated",
     anticipation=0,
     weightsname=None,
-    alp=0.05,
-    boot=False,
+    alpha=0.05,
     cband=False,
     biters=1000,
     clustervars=None,
@@ -256,10 +273,10 @@ def preprocess_cont_did(
     idname : str | None, default None
         Name of entity/unit identifier column. Required for panel data.
     xformla : str | None, default None
-        Formula for covariates as a string (e.g., "x1 + x2").
-        If None, no covariates are included. Currently only "~1" is supported.
+        Formula for the covariates, such as ``"~ x1 + x2"``. If None, no
+        covariates are included. Currently only ``"~1"`` is supported.
     panel : bool, default True
-        Whether data is in panel format (vs repeated cross-sections).
+        Whether the data are a panel rather than repeated cross-sections.
     allow_unbalanced_panel : bool, default False
         Whether to allow unbalanced panels. Currently not supported.
     control_group : {"nevertreated", "notyettreated"}, default "notyettreated"
@@ -268,10 +285,8 @@ def preprocess_cont_did(
         Number of time periods before treatment where effects may appear.
     weightsname : str | None, default None
         Name of sampling weights column.
-    alp : float, default 0.05
+    alpha : float, default 0.05
         Significance level for confidence intervals.
-    boot : bool, default False
-        Whether to use bootstrap for inference.
     cband : bool, default False
         Whether to compute uniform confidence bands.
     biters : int, default 1000
@@ -283,39 +298,42 @@ def preprocess_cont_did(
     num_knots : int, default 0
         Number of interior knots for the B-spline.
     dvals : array-like | None, default None
-        Values of the treatment dose at which to compute effects.
-        If None, uses quantiles of the dose distribution among treated units.
+        Doses at which to evaluate the dose-response curves. If None, the
+        estimator uses 50 evenly spaced doses between the smallest and largest
+        treated dose.
     target_parameter : {"level", "slope"}, default "level"
-        Type of treatment effect to estimate:
-        - "level": Average treatment effect (ATT) at different dose levels
-        - "slope": Average causal response (ACRT), the derivative of dose-response
+        Type of treatment effect to estimate. "level" gives the average
+        treatment effect on the treated at each dose. "slope" gives the
+        average causal response, the derivative of the dose-response curve.
     aggregation : {"dose", "eventstudy"}, default "dose"
-        How to aggregate treatment effects:
-        - "dose": Average across timing-groups and time, report by dose
-        - "eventstudy": Average across timing-groups and doses, report by event time
+        How to aggregate treatment effects. "dose" averages across timing
+        groups and periods and reports by dose. "eventstudy" averages across
+        timing groups and doses and reports by event time.
     base_period : {"universal", "varying"}, default "varying"
         How to choose base period for comparisons.
-    boot_type : {"multiplier", "weighted"}, default "multiplier"
+    boot_type : {"multiplier", "weighted", "empirical"}, default "multiplier"
         Type of bootstrap to perform.
     required_pre_periods : int, default 0
         Minimum number of pre-treatment periods required.
+    dose_est_method : {"parametric", "cck"}, default "parametric"
+        Estimator of the dose-response curves.
 
     Returns
     -------
     ContDIDData
-        Container with all preprocessed data and parameters including:
+        Container with the preprocessed data and settings:
 
-        - data: Standardized panel/cross-section data with recoded time periods
-        - time_invariant_data: Unit-level data with group and dose info
-        - weights: Normalized sampling weights
-        - config: Configuration with all settings
-        - time_map: Mapping from original to recoded time periods
-        - cohort_counts: Count of units in each treatment cohort
-        - period_counts: Count of observations in each time period
+        - **data**: Standardized panel or cross-section data with each time period recoded to its position
+        - **time_invariant_data**: One row for each unit with its group and weight
+        - **weights**: Normalized sampling weight of each unit
+        - **cohort_counts**: Number of units in each cohort
+        - **period_counts**: Number of rows in each period
+        - **crosstable_counts**: Number of rows in each period and cohort
+        - **config**: Configuration with all settings and the categorical options stored as enums
+        - **cluster**: Cluster of each unit, or None
+        - **time_map**: Mapping from each time period in the data to its position
+        - **original_time_periods**: Time periods of the preprocessed data before recoding
     """
-    control_group_enum = ControlGroup(control_group)
-    base_period_enum = BasePeriod(base_period)
-    boot_type_enum = BootstrapType(boot_type)
     dvals_array = np.asarray(dvals) if dvals is not None else None
 
     if clustervars is None:
@@ -334,11 +352,10 @@ def preprocess_cont_did(
         xformla=xformla if xformla is not None else "~1",
         panel=panel,
         allow_unbalanced_panel=allow_unbalanced_panel,
-        control_group=control_group_enum,
+        control_group=control_group,
         anticipation=anticipation,
         weightsname=weightsname,
-        alp=alp,
-        boot=boot,
+        alpha=alpha,
         cband=cband,
         biters=biters,
         clustervars=clustervars_list,
@@ -347,8 +364,8 @@ def preprocess_cont_did(
         dvals=dvals_array,
         target_parameter=target_parameter,
         aggregation=aggregation,
-        base_period=base_period_enum,
-        boot_type=boot_type_enum,
+        base_period=base_period,
+        boot_type=boot_type,
         required_pre_periods=required_pre_periods,
         dose_est_method=dose_est_method,
     )
@@ -360,7 +377,7 @@ def preprocess_cont_did(
 
 
 def preprocess_ddd_2periods(
-    data: DataFrame,
+    data,
     yname,
     tname,
     idname,
@@ -371,13 +388,16 @@ def preprocess_ddd_2periods(
     weightsname=None,
     boot=False,
     boot_type="multiplier",
-    n_boot=999,
+    biters=999,
     cluster=None,
     cband=False,
-    alp=0.05,
+    alpha=0.05,
     inf_func=False,
 ):
     """Preprocess data for 2-period DDD estimation.
+
+    The inference options are stored as given. :func:`~moderndid.ddd` settles
+    them for every data layout before it calls this function.
 
     Parameters
     ----------
@@ -395,8 +415,8 @@ def preprocess_ddd_2periods(
     pname : str
         Name of partition/eligibility column (1=eligible, 0=ineligible).
     xformla : str | None, default None
-        Formula for covariates as a string (e.g., "x1 + x2").
-        If None, no covariates are included.
+        Formula for the covariates, such as ``"~ x1 + x2"``. If None, no
+        covariates are included.
     est_method : {"dr", "reg", "ipw"}, default "dr"
         Estimation method: doubly robust, regression, or IPW.
     weightsname : str | None, default None
@@ -405,13 +425,13 @@ def preprocess_ddd_2periods(
         Whether to use bootstrap for inference.
     boot_type : {"multiplier", "weighted"}, default "multiplier"
         Type of bootstrap.
-    n_boot : int, default 999
+    biters : int, default 999
         Number of bootstrap iterations.
     cluster : str | None, default None
         Name of cluster variable for clustered standard errors.
     cband : bool, default False
         Whether to compute uniform confidence bands.
-    alp : float, default 0.05
+    alpha : float, default 0.05
         Significance level for confidence intervals.
     inf_func : bool, default False
         Whether to compute influence functions.
@@ -419,46 +439,33 @@ def preprocess_ddd_2periods(
     Returns
     -------
     DDDData
-        Container with preprocessed data for DDD estimation including:
+        Container with the data of the two periods for each unit:
 
-        - y1, y0: Post and pre-treatment outcomes
-        - treat: Treatment indicator
-        - partition: Eligibility indicator
-        - subgroup: Subgroup assignment (1-4)
-        - covariates: Covariate matrix
-        - weights: Normalized sampling weights
-        - subgroup_counts: Count of units in each subgroup
+        - **y1**: Post-treatment outcomes
+        - **y0**: Pre-treatment outcomes
+        - **treat**: Treatment indicator
+        - **partition**: Eligibility indicator
+        - **subgroup**: Subgroup assignment from 1 to 4
+        - **covariates**: Covariate matrix
+        - **weights**: Normalized sampling weights
+        - **cluster**: Cluster of each unit, or None
+        - **n_units**: Number of units
+        - **subgroup_counts**: Count of units in each subgroup
+        - **covariate_names**: Names of the covariate columns
+        - **config**: Configuration with all settings and the categorical options stored as enums
     """
     if xformla is None:
         xformla = "~1"
 
-    if alp > 0.10:
-        warnings.warn(f"alp={alp} is high. Using alp=0.05.", stacklevel=2)
-        alp = 0.05
-
-    if boot and n_boot is None:
-        warnings.warn("n_boot not specified. Using 999.", stacklevel=2)
-        n_boot = 999
-
-    if boot and not cband:
-        warnings.warn("Setting cband=True for bootstrap.", stacklevel=2)
-        cband = True
-
-    if cluster is not None and not boot:
-        warnings.warn(
-            "Clustered SEs require bootstrap. Setting boot=True, cband=True.",
-            stacklevel=2,
-        )
-        boot = True
-        cband = True
-        if n_boot is None:
-            n_boot = 999
+    if boot and biters is None:
+        warnings.warn("biters not specified. Using 999.", stacklevel=2)
+        biters = 999
 
     if est_method not in ["dr", "reg", "ipw"]:
         raise ValueError(f"est_method must be 'dr', 'reg', or 'ipw', got '{est_method}'.")
 
-    if n_boot is None:
-        n_boot = 999
+    if biters is None:
+        biters = 999
 
     config = DDDConfig(
         yname=yname,
@@ -470,11 +477,11 @@ def preprocess_ddd_2periods(
         est_method=EstimationMethod(est_method),
         weightsname=weightsname,
         boot=boot,
-        boot_type=BootstrapType(boot_type),
-        n_boot=n_boot,
+        boot_type=boot_type,
+        biters=biters,
         cluster=cluster,
         cband=cband,
-        alp=alp,
+        alpha=alpha,
         inf_func=inf_func,
     )
 
@@ -499,7 +506,7 @@ def preprocess_didinter(
     only_never_switchers=False,
     same_switchers=False,
     same_switchers_pl=False,
-    ci_level=95.0,
+    alpha=0.05,
     less_conservative_se=False,
     trends_lin=False,
     continuous=0,
@@ -543,8 +550,8 @@ def preprocess_didinter(
         Use same switchers across all effects.
     same_switchers_pl : bool, default False
         Use same switchers for placebos.
-    ci_level : float, default 95.0
-        Confidence interval level.
+    alpha : float, default 0.05
+        Significance level for confidence intervals.
     less_conservative_se : bool, default False
         Use less conservative standard errors.
     trends_lin : bool, default False
@@ -557,7 +564,16 @@ def preprocess_didinter(
     Returns
     -------
     DIDInterData
-        Container with processed data for DIDInter estimation.
+        Container with the preprocessed data and settings:
+
+        - **data**: Standardized panel with each unit's switching information
+        - **time_invariant_data**: One row for each unit with its weight and switching information
+        - **weights**: Normalized sampling weight of each unit
+        - **cohort_counts**: Number of units by the direction of their first switch
+        - **period_counts**: Number of rows in each period
+        - **crosstable_counts**: Number of rows in each period by direction of the first switch
+        - **config**: Configuration with all settings
+        - **cluster**: Cluster of each unit, or None
     """
     config = DIDInterConfig(
         yname=yname,
@@ -576,7 +592,7 @@ def preprocess_didinter(
         only_never_switchers=only_never_switchers,
         same_switchers=same_switchers,
         same_switchers_pl=same_switchers_pl,
-        ci_level=ci_level,
+        alpha=alpha,
         less_conservative_se=less_conservative_se,
         trends_lin=trends_lin,
         continuous=continuous,

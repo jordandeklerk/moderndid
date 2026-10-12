@@ -1,1 +1,1 @@
-"""Doubly robust differences-in-differences with weak covariate overlap."""
+"""Doubly robust difference-in-differences with weak covariate overlap."""

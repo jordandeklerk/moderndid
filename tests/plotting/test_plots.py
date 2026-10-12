@@ -4,6 +4,7 @@ import pytest
 
 plotnine = pytest.importorskip("plotnine")
 
+import polars as pl
 from plotnine import ggplot
 
 from moderndid.plots import (
@@ -52,6 +53,13 @@ def test_plot_gt_invalid_input_raises():
         plot_gt("invalid")
 
 
+def test_plot_gt_reads_integer_cohorts_and_periods(mp_result_float_periods):
+    plot = plot_gt(mp_result_float_periods)
+    assert plot.data.schema["group"] == pl.Int64
+    assert plot.data.schema["time"] == pl.Int64
+    assert sorted(plot.data["group_label"].unique().to_list()) == ["2000", "2007"]
+
+
 def test_plot_event_study_aggte_result(aggte_result_dynamic):
     plot = plot_event_study(aggte_result_dynamic)
     assert isinstance(plot, ggplot)
@@ -89,8 +97,16 @@ def test_plot_event_study_wrong_ddd_aggregation_raises(ddd_agg_simple):
 
 
 def test_plot_event_study_invalid_input_raises():
-    with pytest.raises(TypeError, match="plot_event_study requires"):
+    with pytest.raises(
+        TypeError, match="plot_event_study requires AGGTEResult, PTEResult, DDDAggResult, or EmfxResult, got str"
+    ):
         plot_event_study("invalid")
+
+
+def test_plot_event_study_reads_integer_event_times(aggte_result_dynamic_float):
+    plot = plot_event_study(aggte_result_dynamic_float)
+    assert plot.data.schema["event_time"] == pl.Int64
+    assert plot.data["event_time"].to_list() == [-2, -1, 0, 1, 2]
 
 
 @pytest.mark.parametrize("fixture_name", ["aggte_result_group", "aggte_result_calendar"])
@@ -193,6 +209,12 @@ def test_plot_multiplegt_ref_line(didinter_result, ref_line):
 def test_plot_multiplegt_custom_labels(didinter_result):
     plot = plot_multiplegt(didinter_result, xlab="Event Horizon", ylab="Treatment Effect", title="Custom Title")
     assert isinstance(plot, ggplot)
+
+
+def test_plot_multiplegt_reads_integer_horizons(didinter_result_float_horizons):
+    plot = plot_multiplegt(didinter_result_float_horizons)
+    assert plot.data.schema["horizon"] == pl.Int64
+    assert plot.data["horizon"].to_list() == [-1, 1, 2]
 
 
 def test_plot_dyn_balancing_returns_ggplot(dyn_balancing_result):

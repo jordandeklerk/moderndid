@@ -1,1 +1,1 @@
-"""Differences-in-Differences with compositional changes."""
+"""Difference-in-differences with compositional changes."""

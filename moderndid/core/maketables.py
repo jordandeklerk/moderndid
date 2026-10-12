@@ -104,7 +104,7 @@ def build_coef_table_with_ci(
 
     When `critical_values` is provided, the CI columns use
     ``estimate ± crit * se`` so they match the estimator's own
-    inference (e.g. simultaneous confidence bands from a bootstrap).
+    inference, such as simultaneous confidence bands from a bootstrap.
     The ``t`` and ``p`` columns always use the pointwise normal
     approximation.
     """
@@ -147,9 +147,27 @@ def make_effect_names(values: Sequence[float] | np.ndarray, *, prefix: str) -> l
     return [f"{prefix} {format_effect_value(v)}" for v in values]
 
 
-def se_type_label(is_bootstrap: bool) -> str:
-    """Map bootstrap flag to a standard SE type label."""
-    return "Bootstrap" if is_bootstrap else "Analytical"
+def se_type_label(is_bootstrap, clustervar=None):
+    """Map the bootstrap flag and the cluster variable to a standard SE type label.
+
+    Parameters
+    ----------
+    is_bootstrap : bool
+        Whether the standard errors come from a bootstrap.
+    clustervar : str or bool, optional
+        Variable the standard errors cluster by, or True for clusters that have
+        no variable name.
+
+    Returns
+    -------
+    str
+        "Bootstrap" or "Analytical", followed by the clustering when there is
+        any, as in "Bootstrap clustered by state" or "Bootstrap clustered".
+    """
+    label = "Bootstrap" if is_bootstrap else "Analytical"
+    if clustervar is True:
+        return f"{label} clustered"
+    return f"{label} clustered by {clustervar}" if clustervar else label
 
 
 def control_group_label(raw: str | None) -> str | None:
@@ -185,13 +203,9 @@ def vcov_info_from_bootstrap(
     *,
     is_bootstrap: bool,
     cluster: object | None = None,
-    clustered_label: str | None = None,
 ) -> dict[str, str | None]:
     """Build standardized vcov info mapping for maketables."""
-    if clustered_label is not None and cluster is not None:
-        vcov_type = clustered_label
-    else:
-        vcov_type = "bootstrap" if is_bootstrap else "analytical"
+    vcov_type = "bootstrap" if is_bootstrap else "analytical"
     return {"vcov_type": vcov_type, "clustervar": cluster_label(cluster)}
 
 
@@ -247,7 +261,7 @@ def format_effect_value(value: float | int) -> str:
 
 
 def _safe_t_stat(estimate: np.ndarray, se: np.ndarray) -> np.ndarray:
-    """Compute t-statistics safely, returning NaN where undefined."""
+    """Compute t-statistics with NaN where they are undefined."""
     t_stat = np.full(estimate.shape, np.nan, dtype=float)
     valid = np.isfinite(se) & (se > 0)
     t_stat[valid] = estimate[valid] / se[valid]

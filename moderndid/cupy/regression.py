@@ -47,9 +47,9 @@ def cupy_logistic_irls(y, X, weights, max_iter=25, tol=1e-8):
         Design matrix of shape (n, k).
     weights : ndarray
         Non-negative weight vector of shape (n,).
-    max_iter : int, default 25
+    max_iter : int, default=25
         Maximum IRLS iterations.
-    tol : float, default 1e-8
+    tol : float, default=1e-8
         Convergence tolerance on max absolute parameter change.
 
     Returns

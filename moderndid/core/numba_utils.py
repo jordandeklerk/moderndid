@@ -24,47 +24,26 @@ __all__ = [
 ]
 
 
-def _compute_cluster_sums_impl(influence_func, cluster_ids, unique_clusters):
-    n_clusters = len(unique_clusters)
-    cluster_sums = np.zeros(n_clusters)
-    for i, c in enumerate(unique_clusters):
-        mask = cluster_ids == c
-        cluster_sums[i] = np.sum(influence_func[mask])
-    return cluster_sums
+def _compute_cluster_sums_impl(influence_func, cluster_codes, n_clusters):
+    return np.bincount(cluster_codes, weights=influence_func, minlength=n_clusters)
 
 
 def _multiplier_bootstrap_impl(inf_func, weights_matrix):
-    nboot = weights_matrix.shape[0]
+    biters = weights_matrix.shape[0]
     k = inf_func.shape[1]
-    bres = np.zeros((nboot, k))
+    bres = np.zeros((biters, k))
 
-    k1 = 0.5 * (1 - np.sqrt(5))
-    k2 = 0.5 * (1 + np.sqrt(5))
-
-    for b in range(nboot):
-        v = np.where(weights_matrix[b] == 1, k1, k2)
+    for b in range(biters):
+        v = np.where(weights_matrix[b] == 1, 1.0, -1.0)
         bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
 
     return bres
 
 
-def _aggregate_by_cluster_impl(inf_func, cluster, unique_clusters):
-    n_clusters = len(unique_clusters)
-    k = inf_func.shape[1]
-
-    cluster_mean_if = np.zeros((n_clusters, k))
-    cluster_counts = np.zeros(n_clusters)
-
-    for i, c in enumerate(unique_clusters):
-        mask = cluster == c
-        cluster_mean_if[i] = np.sum(inf_func[mask], axis=0)
-        cluster_counts[i] = np.sum(mask)
-
-    for i in range(n_clusters):
-        if cluster_counts[i] > 0:
-            cluster_mean_if[i] /= cluster_counts[i]
-
-    return cluster_mean_if
+def _aggregate_by_cluster_impl(inf_func, cluster_codes, n_clusters):
+    cluster_sums = np.zeros((n_clusters, inf_func.shape[1]))
+    np.add.at(cluster_sums, cluster_codes, inf_func)
+    return cluster_sums
 
 
 def _gather_bootstrap_indices_impl(sampled_cluster_ids, cluster_starts, cluster_counts):
@@ -116,73 +95,36 @@ def _compute_column_std_impl(matrix):
 if HAS_NUMBA:
 
     @nb.njit(cache=True)
-    def _compute_cluster_sums_impl(influence_func, cluster_ids, unique_clusters):
-        n_clusters = len(unique_clusters)
-        n = len(influence_func)
+    def _compute_cluster_sums_impl(influence_func, cluster_codes, n_clusters):
         cluster_sums = np.zeros(n_clusters)
-
-        max_cluster = 0
-        for i in range(n_clusters):
-            if unique_clusters[i] > max_cluster:
-                max_cluster = unique_clusters[i]
-
-        cluster_to_idx = np.full(max_cluster + 1, -1, dtype=np.int64)
-        for i in range(n_clusters):
-            cluster_to_idx[unique_clusters[i]] = i
-
-        for i in range(n):
-            c_idx = cluster_to_idx[cluster_ids[i]]
-            cluster_sums[c_idx] += influence_func[i]
-
+        for i in range(len(influence_func)):
+            cluster_sums[cluster_codes[i]] += influence_func[i]
         return cluster_sums
 
     @nb.njit(cache=True, parallel=True)
     def _multiplier_bootstrap_impl(inf_func, weights_matrix):
-        nboot, n = weights_matrix.shape
+        biters, n = weights_matrix.shape
         k = inf_func.shape[1]
-        bres = np.zeros((nboot, k))
+        bres = np.zeros((biters, k))
 
-        k1 = 0.5 * (1 - np.sqrt(5))
-        k2 = 0.5 * (1 + np.sqrt(5))
-
-        for b in nb.prange(nboot):
+        for b in nb.prange(biters):
             for j in range(k):
                 total = 0.0
                 for i in range(n):
-                    v = k1 if weights_matrix[b, i] == 1 else k2
+                    v = 1.0 if weights_matrix[b, i] == 1 else -1.0
                     total += inf_func[i, j] * v
                 bres[b, j] = total / n
 
         return bres
 
     @nb.njit(cache=True)
-    def _aggregate_by_cluster_impl(inf_func, cluster, unique_clusters):
-        n_clusters = len(unique_clusters)
+    def _aggregate_by_cluster_impl(inf_func, cluster_codes, n_clusters):
         n, k = inf_func.shape
-        cluster_mean_if = np.zeros((n_clusters, k))
-        cluster_counts = np.zeros(n_clusters)
-
-        max_cluster = 0
-        for i in range(n_clusters):
-            if unique_clusters[i] > max_cluster:
-                max_cluster = unique_clusters[i]
-
-        cluster_to_idx = np.full(max_cluster + 1, -1, dtype=np.int64)
-        for i in range(n_clusters):
-            cluster_to_idx[unique_clusters[i]] = i
-
+        cluster_sums = np.zeros((n_clusters, k))
         for i in range(n):
-            c_idx = cluster_to_idx[cluster[i]]
-            cluster_counts[c_idx] += 1
             for j in range(k):
-                cluster_mean_if[c_idx, j] += inf_func[i, j]
-
-        for i in range(n_clusters):
-            if cluster_counts[i] > 0:
-                for j in range(k):
-                    cluster_mean_if[i, j] /= cluster_counts[i]
-
-        return cluster_mean_if
+                cluster_sums[cluster_codes[i], j] += inf_func[i, j]
+        return cluster_sums
 
     @nb.njit(cache=True)
     def _gather_bootstrap_indices_impl(sampled_cluster_ids, cluster_starts, cluster_counts):
@@ -232,6 +174,27 @@ if HAS_NUMBA:
         return result
 
 
+def _cluster_codes(cluster_ids):
+    """Map cluster identifiers to codes from zero to one less than the number of clusters.
+
+    Parameters
+    ----------
+    cluster_ids : ndarray
+        Cluster identifiers of any type that can be sorted.
+
+    Returns
+    -------
+    tuple of ndarray
+        Tuple containing:
+
+        - **unique_clusters**: Cluster identifiers in sorted order
+        - **cluster_codes**: Position of each identifier in ``unique_clusters``
+    """
+    # Since a negative or very large identifier can't index a table of sums, integers get codes too.
+    unique_clusters, cluster_codes = np.unique(np.asarray(cluster_ids).ravel(), return_inverse=True)
+    return unique_clusters, np.ascontiguousarray(cluster_codes.ravel(), dtype=np.int64)
+
+
 def compute_cluster_sums(influence_func, cluster_ids):
     """Compute sum of influence function values within each cluster.
 
@@ -244,33 +207,26 @@ def compute_cluster_sums(influence_func, cluster_ids):
 
     Returns
     -------
-    cluster_sums : ndarray
-        Sum of influence function values for each cluster.
-    unique_clusters : ndarray
-        Unique cluster identifiers.
+    tuple of ndarray
+        Tuple containing:
+
+        - **cluster_sums**: Sum of the influence function values within each cluster
+        - **unique_clusters**: Cluster identifiers in sorted order, one for each sum
     """
     influence_func = np.asarray(influence_func, dtype=np.float64)
-    cluster_ids = np.asarray(cluster_ids)
-
-    if not np.issubdtype(cluster_ids.dtype, np.integer):
-        unique_clusters_orig = np.unique(cluster_ids)
-        cluster_int = np.searchsorted(unique_clusters_orig, cluster_ids).astype(np.int64)
-        unique_clusters = np.arange(len(unique_clusters_orig), dtype=np.int64)
-    else:
-        unique_clusters = np.unique(cluster_ids).astype(np.int64)
-        cluster_int = cluster_ids.astype(np.int64)
+    unique_clusters, cluster_codes = _cluster_codes(cluster_ids)
 
     cluster_sums = _compute_cluster_sums_impl(
         np.ascontiguousarray(influence_func),
-        np.ascontiguousarray(cluster_int),
-        np.ascontiguousarray(unique_clusters),
+        cluster_codes,
+        len(unique_clusters),
     )
 
     return cluster_sums, unique_clusters
 
 
 def multiplier_bootstrap(inf_func, biters, random_state=None):
-    """Run the multiplier bootstrap using Mammen weights.
+    """Run the multiplier bootstrap using Rademacher weights.
 
     Parameters
     ----------
@@ -297,7 +253,6 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
     n = inf_func.shape[0]
     k = inf_func.shape[1]
     rng = np.random.default_rng(random_state)
-    p_kappa = 0.5 * (1 + np.sqrt(5)) / np.sqrt(5)
     max_batch_bytes = 1 << 30
     batch_size = max(1, max_batch_bytes // n)
     batch_size = min(batch_size, biters)
@@ -305,20 +260,24 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
     inf_c = np.ascontiguousarray(inf_func)
 
     if batch_size >= biters:
-        weights_matrix = rng.binomial(1, p_kappa, size=(biters, n)).astype(np.int8)
+        weights_matrix = rng.binomial(1, 0.5, size=(biters, n)).astype(np.int8)
         return _multiplier_bootstrap_impl(inf_c, weights_matrix)
 
     bres = np.empty((biters, k), dtype=np.float64)
     for start in range(0, biters, batch_size):
         end = min(start + batch_size, biters)
         b = end - start
-        weights_batch = rng.binomial(1, p_kappa, size=(b, n)).astype(np.int8)
+        weights_batch = rng.binomial(1, 0.5, size=(b, n)).astype(np.int8)
         bres[start:end] = _multiplier_bootstrap_impl(inf_c, weights_batch)
     return bres
 
 
 def aggregate_by_cluster(inf_func, cluster):
-    """Aggregate influence functions by cluster for clustered bootstrap.
+    """Sum influence functions within clusters for the clustered bootstrap.
+
+    Since the units of a cluster share one multiplier in the clustered bootstrap,
+    each draw weights these sums. :func:`~moderndid.mboot` describes the scale
+    of the draws.
 
     Parameters
     ----------
@@ -329,38 +288,26 @@ def aggregate_by_cluster(inf_func, cluster):
 
     Returns
     -------
-    cluster_mean_if : ndarray
-        Mean influence function for each cluster, shape (n_clusters, k).
-    n_clusters : int
-        Number of unique clusters.
+    tuple of ndarray and int
+        Tuple containing:
+
+        - **cluster_sums**: Sum of the influence function within each cluster, one row per cluster in sorted order
+        - **n_clusters**: Number of unique clusters
     """
     inf_func = np.asarray(inf_func, dtype=np.float64)
     if inf_func.ndim == 1:
         inf_func = inf_func.reshape(-1, 1)
 
-    cluster = np.asarray(cluster)
-
-    if not np.issubdtype(cluster.dtype, np.integer):
-        unique_clusters_orig = np.unique(cluster)
-        cluster_int = np.searchsorted(unique_clusters_orig, cluster).astype(np.int64)
-        unique_clusters = np.arange(len(unique_clusters_orig), dtype=np.int64)
-    else:
-        unique_clusters = np.unique(cluster).astype(np.int64)
-        cluster_int = cluster.astype(np.int64)
-
+    unique_clusters, cluster_codes = _cluster_codes(cluster)
     n_clusters = len(unique_clusters)
 
     xp = get_backend()
     if xp is not np:
-        return _aggregate_by_cluster_cupy(inf_func, cluster_int, n_clusters), n_clusters
+        return _aggregate_by_cluster_cupy(inf_func, cluster_codes, n_clusters), n_clusters
 
-    cluster_mean_if = _aggregate_by_cluster_impl(
-        np.ascontiguousarray(inf_func),
-        np.ascontiguousarray(cluster_int),
-        np.ascontiguousarray(unique_clusters),
-    )
+    cluster_sums = _aggregate_by_cluster_impl(np.ascontiguousarray(inf_func), cluster_codes, n_clusters)
 
-    return cluster_mean_if, n_clusters
+    return cluster_sums, n_clusters
 
 
 def gather_bootstrap_indices(sampled_cluster_ids, cluster_starts, cluster_counts):

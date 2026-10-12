@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 import polars as pl
 
@@ -27,6 +26,7 @@ from moderndid.core.preprocess.utils import (
 from moderndid.core.preprocess.utils import (
     make_balanced_panel as _make_balanced_panel_impl,
 )
+from moderndid.core.preprocess.validators import check_columns
 
 __all__ = [
     "PanelDiagnostics",
@@ -62,23 +62,27 @@ class PanelDiagnostics:
     is_balanced : bool
         Whether every unit is observed in every period.
     n_duplicate_unit_time : int
-        Number of rows that share a unit-time pair with another row.
+        Number of rows that repeat the unit-time pair of an earlier row.
+        These are the rows that :func:`deduplicate_panel` removes.
     n_unbalanced_units : int
         Units observed in fewer than *n_periods* periods.
     n_gaps : int
         Missing unit-time combinations in the full cross-product.
     n_missing_rows : int
-        Rows containing at least one null value.
+        Rows with a null or NaN in any column or with an infinite unit or
+        period.
     n_single_period_units : int
         Units observed in only one period.
     n_early_treated : int or None
-        Units already treated in the first observed period.
+        Units whose treatment value is positive in the first period.
         ``None`` when no treatment column is provided.
     treatment_time_varying : bool or None
-        Whether the treatment indicator changes within units.
-        ``None`` when no treatment column is provided.
+        Whether the treatment indicator changes within units. A missing
+        value does not count as a change. ``None`` when no treatment column
+        is provided.
     suggestions : list[str]
-        Actionable remediation messages.
+        One message for each problem found. Most name the function that
+        resolves it.
     """
 
     n_units: int
@@ -103,27 +107,32 @@ class PanelDiagnostics:
         return _format_panel_diagnostics(self)
 
 
-def diagnose_panel(
-    data: Any,
-    idname: str,
-    tname: str,
-    treatname: str | None = None,
-) -> PanelDiagnostics:
+def diagnose_panel(data, idname, tname, treatname=None):
     """Run a diagnostic battery on panel data.
 
     Inspects the data for common issues that would cause estimation to fail
     or produce misleading results, including duplicate unit-time pairs,
-    unbalanced units, gaps in the panel, missing values, single-period
-    units, and early-treated units. When a treatment column is provided,
-    the check also flags whether treatment varies within units over time
-    (which usually indicates the data needs :func:`get_group` to derive the
-    group-timing variable).
+    unbalanced units, gaps in the panel, missing values, and single-period
+    units. When a treatment column is provided, the check also flags whether
+    treatment varies within units over time and counts the units treated in
+    the first period. For a treatment that varies, estimators that take
+    ``gname`` need :func:`get_group` to build the cohort column. They drop
+    the units already treated in the first period.
+
+    A null or NaN counts as a missing value, as it does in the estimators.
+    So does an infinite unit or period. An infinity in another column does
+    not count, since it can mark never-treated units in a cohort column.
+    Rows with a missing unit or period stay out of the checks of the panel
+    structure.
 
     The returned :class:`PanelDiagnostics` object includes a
-    ``suggestions`` list that maps each detected problem to the
-    appropriate remediation function (e.g., :func:`deduplicate_panel`,
-    :func:`fill_panel_gaps`, :func:`make_balanced_panel`), making it a
-    natural first step before calling any estimator.
+    ``suggestions`` list that maps each detected problem to the function
+    that addresses it, such as :func:`deduplicate_panel`,
+    :func:`fill_panel_gaps`, or :func:`make_balanced_panel`. Running the
+    diagnostics is a natural first step before calling any estimator.
+
+    See the :ref:`panel data utilities guide <panel-utilities-diagnosing>` for a
+    diagnosis of a county panel with gaps and how to read its report.
 
     Parameters
     ----------
@@ -142,17 +151,7 @@ def diagnose_panel(
     Returns
     -------
     PanelDiagnostics
-        Structured report with counts and actionable suggestions.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import diagnose_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: diag = diagnose_panel(df, idname="county", tname="year", treatname="inter_bra")
-           ...: diag
+        Structured report with counts and suggestions.
 
     See Also
     --------
@@ -162,55 +161,64 @@ def diagnose_panel(
     get_group : Derive group-timing from a binary treatment indicator.
     """
     df = to_polars(data)
-
-    n_units = df[idname].n_unique()
-    n_periods = df[tname].n_unique()
+    check_columns(df, idname=idname, tname=tname)
     n_obs = len(df)
 
-    balanced = bool(_is_balanced_panel_impl(df, tname, idname))
+    # Turning each NaN into a null lets one null check find every missing value outside the unit and period.
+    df = df.with_columns(pl.col(name).fill_nan(None) for name, dtype in df.schema.items() if dtype.is_float())
+    panel = df.filter(_key_mask(df, [idname, tname]))
+    n_missing_rows = n_obs - len(panel.drop_nulls())
 
-    deduped = df.unique(subset=[idname, tname])
-    n_dups = n_obs - len(deduped)
+    n_units = panel[idname].n_unique()
+    n_periods = panel[tname].n_unique()
 
-    counts = df.group_by(idname).agg(pl.col(tname).n_unique().alias("_n"))
+    deduped = panel.unique(subset=[idname, tname])
+    n_dups = len(panel) - len(deduped)
+
+    counts = panel.group_by(idname).agg(pl.col(tname).n_unique().alias("_n"))
     n_unbalanced = int((counts["_n"] < n_periods).sum())
+    balanced = n_unbalanced == 0
 
-    expected_full = n_units * n_periods
-    n_gaps = expected_full - len(deduped)
-
-    n_missing_rows = len(df) - len(df.drop_nulls())
-
+    n_gaps = n_units * n_periods - len(deduped)
     n_single = int((counts["_n"] == 1).sum())
 
-    n_early: int | None = None
+    n_early = None
+    treat_varying = None
     if treatname is not None and treatname in df.columns:
-        first_period = df[tname].min()
-        n_early = int(df.filter((pl.col(tname) == first_period) & (pl.col(treatname) > 0))[idname].n_unique())
-
-    treat_varying: bool | None = None
-    if treatname is not None and treatname in df.columns:
-        nuniq = df.group_by(idname).agg(pl.col(treatname).n_unique().alias("_nu"))
+        first_period = panel[tname].min()
+        n_early = 0
+        # Since a comparison with None warns and matches nothing, a panel without a usable period counts no units.
+        if first_period is not None:
+            first_rows = panel.filter((pl.col(tname) == first_period) & (pl.col(treatname) > 0))
+            n_early = int(first_rows[idname].n_unique())
+        nuniq = panel.group_by(idname).agg(pl.col(treatname).drop_nulls().n_unique().alias("_nu"))
         treat_varying = bool((nuniq["_nu"] > 1).any())
 
-    suggestions: list[str] = []
+    suggestions = []
     if n_dups > 0:
-        suggestions.append(f"Call deduplicate_panel() to remove {n_dups} duplicate unit-time pairs")
+        suggestions.append(f"Call deduplicate_panel() to remove {_count(n_dups, 'duplicate row')}")
     if n_gaps > 0:
-        suggestions.append(f"Call fill_panel_gaps() to fill {n_gaps} missing unit-time pairs")
+        suggestions.append(f"Call fill_panel_gaps() to fill {_count(n_gaps, 'missing unit-time pair')}")
     if n_unbalanced > 0 and n_dups == 0:
-        suggestions.append(f"Call make_balanced_panel() to drop {n_unbalanced} units not observed in all periods")
+        suggestions.append(
+            f"Call make_balanced_panel() to drop {_count(n_unbalanced, 'unit')} not observed in all periods"
+        )
     if n_missing_rows > 0:
-        suggestions.append(f"{n_missing_rows} rows contain missing values and will be dropped during preprocessing")
+        suggestions.append(
+            f"Missing values appear in {_count(n_missing_rows, 'row')}. Estimators check only the columns they use"
+        )
     if n_single > 0:
         suggestions.append(
-            f"Call complete_data() or make_balanced_panel() to drop {n_single} units observed in only one period"
-        )
-    if n_early is not None and n_early > 0:
-        suggestions.append(
-            f"{n_early} units are already treated in the first period and will be dropped during preprocessing"
+            f"Call complete_data(min_periods=2) to drop {_count(n_single, 'unit')} observed in only one period"
         )
     if treat_varying:
-        suggestions.append("Treatment varies within units — verify this is expected or call get_group()")
+        suggestions.append("Treatment varies within units. If your estimator takes gname, call get_group() to build it")
+        # Since a treatment that never changes within a unit records who is treated rather than when,
+        # its first-period values say nothing about early treatment.
+        if n_early > 0:
+            suggestions.append(
+                f"Estimators that take gname drop the {_count(n_early, 'unit')} already treated in the first period"
+            )
 
     return PanelDiagnostics(
         n_units=n_units,
@@ -228,24 +236,28 @@ def diagnose_panel(
     )
 
 
-def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: int | None = None) -> Any:
+def get_group(data, idname, tname, treatname, treat_period=None):
     """Extract treatment-group timing into a ``"G"`` column.
 
     Staggered difference-in-differences estimators like :func:`att_gt`
-    require a *group* variable (``gname``) that records the first period
+    require a group variable (``gname``) that records the first period
     each unit receives treatment. Many real-world datasets instead contain
     a binary treatment indicator that switches from 0 to 1 when treatment
     begins. This function converts that indicator into the group-timing
     variable ``"G"`` expected by the estimator. For each treated unit,
     ``G`` equals the first period where the treatment indicator is
-    positive. For never-treated units, ``G`` is 0.
+    positive. For never-treated units, ``G`` is 0. A row whose period is
+    null, NaN, or infinite never counts as a unit's first treated period.
 
-    When the treatment indicator is *static* (e.g., a region dummy that
-    equals 1 in every period for treated units), the first-switch logic
-    would incorrectly assign ``G`` to the earliest observed period.  In
-    this case, pass ``treat_period`` to directly specify the known
-    treatment onset: any unit with a positive value of *treatname* in any
-    period receives ``G = treat_period``, and all others receive ``G = 0``.
+    When the treatment indicator is static, such as a region dummy that
+    equals 1 in every period for treated units, the first-switch logic
+    would incorrectly assign ``G`` to the earliest observed period. In
+    this case, pass ``treat_period`` to specify the known treatment onset.
+    Any unit with a positive value of *treatname* in any period then
+    receives ``G = treat_period``. All other units receive ``G = 0``.
+
+    See the :ref:`panel data utilities guide <panel-utilities-group-timing>` for
+    building the ``gname`` column from a binary treatment indicator.
 
     Parameters
     ----------
@@ -262,39 +274,14 @@ def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: 
     treat_period : int or None
         Known treatment onset period.  When provided, units with any
         positive value of *treatname* are assigned ``G = treat_period``
-        and all others receive ``G = 0``, bypassing the first-switch
-        detection logic.  Useful for static treatment indicators that do
-        not switch on at a specific time.
+        and all others receive ``G = 0``.  Useful for static treatment
+        indicators that do not switch on at a specific time.
 
     Returns
     -------
     DataFrame
-        Original columns plus ``"G"``, in the same format as *data*.
-
-    Examples
-    --------
-    When the treatment indicator switches on at a specific period, the
-    default behaviour detects the first switch automatically:
-
-    .. ipython::
-
-        In [1]: from moderndid import get_group, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = get_group(df, idname="county", tname="year", treatname="inter_bra")
-           ...: df.select("county", "year", "inter_bra", "G").head(10)
-
-    When the treatment indicator is static (e.g., a region dummy), pass
-    ``treat_period`` to specify the known onset:
-
-    .. ipython::
-
-        In [2]: from moderndid import get_group, load_cai2016
-           ...:
-           ...: df = load_cai2016()
-           ...: df = get_group(df, idname="hhno", tname="year",
-           ...:                treatname="treatment", treat_period=2003)
-           ...: df.select("hhno", "year", "treatment", "G").head(10)
+        The data in its original format. A ``"G"`` column is added, or
+        replaced if the data already has one.
 
     See Also
     --------
@@ -305,13 +292,17 @@ def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: 
     return from_polars(result, data)
 
 
-def get_first_difference(data: Any, idname: str, yname: str, tname: str) -> Any:
+def get_first_difference(data, idname, yname, tname):
     r"""Add a ``"dy"`` column containing first-differenced outcomes.
 
     First-differencing computes :math:`\Delta Y_{it} = Y_{it} - Y_{i,t-1}`
-    for each unit, removing time-invariant unit fixed effects. The
-    :func:`att_gt` estimator performs this step internally, but exposing it
-    here allows inspection of the transformed data before estimation.
+    for each unit. The difference removes time-invariant unit fixed
+    effects. The :func:`att_gt` estimator performs this step internally.
+    Calling this function yourself lets you inspect the transformed data
+    before estimation.
+
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for first
+    differences alongside the other reshaping functions.
 
     Parameters
     ----------
@@ -331,16 +322,6 @@ def get_first_difference(data: Any, idname: str, yname: str, tname: str) -> Any:
     DataFrame
         Original columns plus ``"dy"``, in the same format as *data*.
 
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import get_first_difference, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = get_first_difference(df, idname="county", yname="Dl_vloans_b", tname="year")
-           ...: df.select("county", "year", "Dl_vloans_b", "dy").head(10)
-
     See Also
     --------
     att_gt : Estimate group-time average treatment effects.
@@ -349,7 +330,7 @@ def get_first_difference(data: Any, idname: str, yname: str, tname: str) -> Any:
     return from_polars(result, data)
 
 
-def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
+def make_balanced_panel(data, idname, tname):
     """Drop units not observed in every time period.
 
     Many difference-in-differences estimators require a strictly balanced
@@ -359,6 +340,13 @@ def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
     beforehand lets you inspect how many units will be dropped and decide
     whether balancing, gap-filling with :func:`fill_panel_gaps`, or a
     flexible threshold via :func:`complete_data` is more appropriate.
+
+    A unit stays when it has exactly one row in every period. A null, NaN,
+    or infinite unit or period counts as missing. Rows that lack either one
+    leave the result without counting as a period.
+
+    See the :ref:`panel data utilities guide <panel-utilities-gaps>` for dropping a
+    county panel's incomplete units and how that compares with filling their gaps.
 
     Parameters
     ----------
@@ -376,16 +364,6 @@ def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
     DataFrame
         Balanced panel in the same format as *data*.
 
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import make_balanced_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: balanced = make_balanced_panel(df, idname="county", tname="year")
-           ...: print(f"Before: {df.shape[0]} rows, After: {balanced.shape[0]} rows")
-
     See Also
     --------
     complete_data : Keep units observed in at least *min_periods* periods.
@@ -396,14 +374,22 @@ def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
     return from_polars(result, data)
 
 
-def is_balanced_panel(data: Any, idname: str, tname: str) -> bool:
+def is_balanced_panel(data, idname, tname):
     """Check whether the panel is balanced.
 
-    A balanced panel has exactly one observation for every unit-period
-    combination. This is a quick Boolean check you can run before passing
-    data to an estimator. If the panel is unbalanced, use
-    :func:`make_balanced_panel` to drop incomplete units or
-    :func:`fill_panel_gaps` to insert null rows for the missing pairs.
+    A balanced panel observes every unit in every period. This is a quick
+    Boolean check you can run before passing data to an estimator. If the
+    panel is unbalanced, use :func:`make_balanced_panel` to drop incomplete
+    units or :func:`fill_panel_gaps` to insert null rows for the missing
+    pairs.
+
+    A null, NaN, or infinite unit or period counts as missing. Rows that
+    lack either one are left out of the check. Repeated rows for one unit
+    and period do not make the panel unbalanced. :func:`diagnose_panel`
+    counts them.
+
+    See the :ref:`panel data utilities guide <panel-utilities-inspection>` for this
+    check alongside the other panel inspection helpers.
 
     Parameters
     ----------
@@ -421,15 +407,6 @@ def is_balanced_panel(data: Any, idname: str, tname: str) -> bool:
     bool
         ``True`` if every unit is observed in every period.
 
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import is_balanced_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: is_balanced_panel(df, idname="county", tname="year")
-
     See Also
     --------
     make_balanced_panel : Drop units not observed in every period.
@@ -438,14 +415,16 @@ def is_balanced_panel(data: Any, idname: str, tname: str) -> bool:
     return _is_balanced_panel_impl(data, tname, idname)
 
 
-def deduplicate_panel(data: Any, idname: str, tname: str, strategy: str = "last") -> Any:
+def deduplicate_panel(data, idname, tname, strategy="last"):
     """Remove duplicate unit-time pairs.
 
     Duplicate unit-time rows cause hard errors during the preprocessing
     pipeline because the data cannot be unambiguously reshaped or
     differenced. Run :func:`diagnose_panel` first to see how many
-    duplicates exist, then call this function to resolve them before
-    estimation.
+    duplicates exist. This function then resolves them before estimation.
+
+    See the :ref:`panel data utilities guide <panel-utilities-inspection>` for resolving
+    duplicate unit-time pairs by keeping the last row or averaging numeric columns.
 
     Parameters
     ----------
@@ -465,23 +444,6 @@ def deduplicate_panel(data: Any, idname: str, tname: str, strategy: str = "last"
     -------
     DataFrame
         Deduplicated panel in the same format as *data*.
-
-    Raises
-    ------
-    ValueError
-        If *strategy* is not one of ``"first"``, ``"last"``, ``"mean"``.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: import polars as pl
-           ...: from moderndid import deduplicate_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df_with_dups = pl.concat([df, df.head(5)])
-           ...: deduped = deduplicate_panel(df_with_dups, idname="county", tname="year")
-           ...: print(f"Before: {df_with_dups.shape[0]} rows, After: {deduped.shape[0]} rows")
 
     See Also
     --------
@@ -510,11 +472,18 @@ def deduplicate_panel(data: Any, idname: str, tname: str, strategy: str = "last"
     return from_polars(result, data)
 
 
-def fill_panel_gaps(data: Any, idname: str, tname: str) -> Any:
+def fill_panel_gaps(data, idname, tname):
     """Make the panel rectangular by inserting ``null`` rows for missing pairs.
 
-    Unlike :func:`make_balanced_panel` (which drops incomplete units), this
-    function *fills* gaps so that every unit appears in every period.
+    Unlike :func:`make_balanced_panel`, which drops incomplete units, this
+    function fills gaps so that every unit appears in every period.
+
+    A null, NaN, or infinite unit or period counts as missing. Rows with a
+    missing unit or period come back unchanged after the rectangular panel.
+
+    See the :ref:`panel data utilities guide <panel-utilities-gaps>` for filling a
+    county panel's missing years and how that compares with dropping incomplete
+    counties.
 
     Parameters
     ----------
@@ -532,41 +501,45 @@ def fill_panel_gaps(data: Any, idname: str, tname: str) -> Any:
     DataFrame
         Rectangular panel in the same format as *data*.
 
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import fill_panel_gaps, has_gaps, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: print(has_gaps(df, idname="county", tname="year"))
-
-        In [2]: filled = fill_panel_gaps(df, idname="county", tname="year")
-           ...: print(f"Before: {df.shape[0]} rows, After: {filled.shape[0]} rows")
-
     See Also
     --------
     scan_gaps : Inspect which pairs are missing before filling.
     make_balanced_panel : Drop incomplete units instead of filling gaps.
     """
     df = to_polars(data)
+    check_columns(df, idname=idname, tname=tname)
+    has_key = _key_mask(df, [idname, tname])
+    keyed = df.filter(has_key)
 
-    ids = df.select(idname).unique()
-    times = df.select(tname).unique()
+    ids = keyed.select(idname).unique()
+    times = keyed.select(tname).unique()
     full = ids.join(times, how="cross")
-    result = full.join(df, on=[idname, tname], how="left")
+    result = full.join(keyed, on=[idname, tname], how="left")
+
+    # Since a missing unit or period names no pair to fill, these rows skip the cross product.
+    # Inside it, a missing period would add an empty row for every unit.
+    unkeyed = df.filter(~has_key)
+    if unkeyed.height > 0:
+        result = pl.concat([result, unkeyed.select(result.columns)])
 
     return from_polars(result, data)
 
 
-def complete_data(data: Any, idname: str, tname: str, min_periods: int | None = None) -> Any:
+def complete_data(data, idname, tname, min_periods=None):
     """Keep units observed in at least *min_periods* time periods.
 
     Provides a flexible alternative to :func:`make_balanced_panel`. Rather
-    than requiring every unit to appear in *all* periods, you can set a
+    than requiring every unit to appear in all periods, you can set a
     threshold so that units with a reasonable amount of data are retained.
-    When *min_periods* is ``None`` the behaviour is identical to
-    :func:`make_balanced_panel`.
+    With *min_periods* left at ``None``, a unit must appear in every period
+    as in :func:`make_balanced_panel`. Unlike that function, this one keeps
+    a unit that has two rows for the same period.
+
+    A null, NaN, or infinite period does not count toward a unit's periods.
+    Rows with a missing unit leave, since they belong to no unit.
+
+    See the :ref:`panel data utilities guide <panel-utilities-inspection>` for keeping
+    only the units observed in enough periods.
 
     Parameters
     ----------
@@ -579,51 +552,46 @@ def complete_data(data: Any, idname: str, tname: str, min_periods: int | None = 
     tname : str
         Time period column.
     min_periods : int or None
-        Minimum number of observed periods.  ``None`` (default) means *all*
-        periods, equivalent to :func:`make_balanced_panel`.
+        Minimum number of observed periods. ``None`` (default) means all
+        periods.
 
     Returns
     -------
     DataFrame
         Filtered panel in the same format as *data*.
 
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import complete_data, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: filtered = complete_data(df, idname="county", tname="year", min_periods=10)
-           ...: print(f"Before: {df.shape[0]} rows, After: {filtered.shape[0]} rows")
-
     See Also
     --------
     make_balanced_panel : Strict balancing (all periods required).
     """
     df = to_polars(data)
+    check_columns(df, idname=idname, tname=tname)
 
     if df.is_empty():
         return from_polars(df, data)
 
+    keyed = df.filter(_key_mask(df, [idname, tname]))
     if min_periods is None:
-        min_periods = df[tname].n_unique()
+        min_periods = keyed[tname].n_unique()
 
-    counts = df.group_by(idname).agg(pl.col(tname).n_unique().alias("_n_periods"))
+    counts = keyed.group_by(idname).agg(pl.col(tname).n_unique().alias("_n_periods"))
     keep_ids = counts.filter(pl.col("_n_periods") >= min_periods)[idname].to_list()
     result = df.filter(pl.col(idname).is_in(keep_ids))
 
     return from_polars(result, data)
 
 
-def assign_rc_ids(data: Any) -> Any:
+def assign_rc_ids(data):
     """Add a unique ``"rowid"`` column for repeated cross-section data.
 
-    In repeated cross-section designs each observation is a different
-    individual, so there is no natural unit identifier to track over time.
-    This function assigns a sequential integer ``"rowid"`` that can be
+    Since each observation in a repeated cross-section design is a
+    different individual, no natural unit identifier exists to track over
+    time. This function assigns a sequential integer ``"rowid"`` that can be
     passed as the ``idname`` argument to :func:`att_gt` with
     ``panel=False``.
+
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for adding the
+    row ids that repeated cross-section estimators need.
 
     Parameters
     ----------
@@ -638,16 +606,6 @@ def assign_rc_ids(data: Any) -> Any:
         Original data plus an integer ``"rowid"`` column, in the same format
         as *data*.
 
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import assign_rc_ids, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = assign_rc_ids(df)
-           ...: df.select("rowid", "county", "year").head(5)
-
     See Also
     --------
     att_gt : Pass ``panel=False`` for repeated cross-section estimation.
@@ -657,15 +615,20 @@ def assign_rc_ids(data: Any) -> Any:
     return from_polars(result, data)
 
 
-def are_varying(data: Any, idname: str, cols: list[str] | None = None) -> dict[str, bool]:
+def are_varying(data, idname, cols=None):
     """Check which columns vary within units over time.
 
     Difference-in-differences estimators distinguish between time-varying
-    and time-invariant covariates. Time-invariant covariates (e.g.,
-    baseline demographics) are appropriate for inclusion in the propensity
-    score or outcome regression model, while time-varying covariates
-    require additional assumptions. This function classifies columns so you
-    can make informed covariate-selection decisions before estimation.
+    and time-invariant covariates. Time-invariant covariates, such as
+    baseline demographics, are appropriate for inclusion in the propensity
+    score or outcome regression model. Time-varying covariates require
+    additional assumptions. This function classifies columns so you can
+    make informed covariate-selection decisions before estimation.
+
+    Since a null or NaN is a missing value rather than a change, a column
+    whose observed values stay the same within each unit does not vary.
+    Rows with a null, NaN, or infinite unit belong to no unit and are left
+    out.
 
     Parameters
     ----------
@@ -692,23 +655,31 @@ def are_varying(data: Any, idname: str, cols: list[str] | None = None) -> dict[s
 
     if cols is None:
         cols = [c for c in df.columns if c != idname]
+    check_columns(df, idname=idname, cols=cols)
 
-    nuniq = df.group_by(idname).agg([pl.col(c).n_unique().alias(c) for c in cols])
+    observed = [pl.col(c).fill_nan(None) if df.schema[c].is_float() else pl.col(c) for c in cols]
+    keyed = df.filter(_key_mask(df, [idname]))
+    nuniq = keyed.group_by(idname).agg(
+        [value.drop_nulls().n_unique().alias(c) for value, c in zip(observed, cols, strict=True)]
+    )
 
-    result: dict[str, bool] = {}
+    result = {}
     for c in cols:
         result[c] = bool((nuniq[c] > 1).any())
     return result
 
 
-def scan_gaps(data: Any, idname: str, tname: str) -> Any:
+def scan_gaps(data, idname, tname):
     """Identify missing unit-time combinations.
 
     Returns a DataFrame listing every unit-period pair that is absent from
     the data. Inspecting these gaps helps you decide whether to drop
     incomplete units with :func:`make_balanced_panel` or fill them with
     null rows using :func:`fill_panel_gaps`. For a quick Boolean check
-    without materialising the gaps, use :func:`has_gaps`.
+    without listing the gaps, use :func:`has_gaps`.
+
+    A null, NaN, or infinite unit or period counts as missing. Rows that
+    lack either one are left out of the units, periods, and pairs.
 
     Parameters
     ----------
@@ -724,7 +695,7 @@ def scan_gaps(data: Any, idname: str, tname: str) -> Any:
     Returns
     -------
     DataFrame
-        Rows with ``idname`` and ``tname`` columns for every *absent* pair,
+        Rows with ``idname`` and ``tname`` columns for every absent pair,
         returned in the same format as *data*.
 
     See Also
@@ -733,23 +704,28 @@ def scan_gaps(data: Any, idname: str, tname: str) -> Any:
     fill_panel_gaps : Insert null rows for missing pairs.
     """
     df = to_polars(data)
+    check_columns(df, idname=idname, tname=tname)
+    pairs = df.filter(_key_mask(df, [idname, tname])).select([idname, tname])
 
-    ids = df.select(idname).unique()
-    times = df.select(tname).unique()
+    ids = pairs.select(idname).unique()
+    times = pairs.select(tname).unique()
     full = ids.join(times, how="cross")
-    gaps = full.join(df.select([idname, tname]).unique(), on=[idname, tname], how="anti")
+    gaps = full.join(pairs.unique(), on=[idname, tname], how="anti")
 
     return from_polars(gaps, data)
 
 
-def has_gaps(data: Any, idname: str, tname: str) -> bool:
+def has_gaps(data, idname, tname):
     """Check whether the panel has any implicit missing unit-time pairs.
 
     A lightweight Boolean check that compares the number of observed
     unit-period pairs against the full cross-product. If this returns
-    ``True``, call :func:`scan_gaps` to see which specific pairs are
-    missing, then decide whether to fill them with :func:`fill_panel_gaps`
-    or drop incomplete units with :func:`make_balanced_panel`.
+    ``True``, :func:`scan_gaps` shows which pairs are missing. You can then
+    fill them with :func:`fill_panel_gaps` or drop incomplete units with
+    :func:`make_balanced_panel`.
+
+    A null, NaN, or infinite unit or period counts as missing. Rows that
+    lack either one are left out of the check.
 
     Parameters
     ----------
@@ -769,24 +745,29 @@ def has_gaps(data: Any, idname: str, tname: str) -> bool:
 
     See Also
     --------
-    scan_gaps : Materialise the missing unit-time pairs.
+    scan_gaps : List the missing unit-time pairs.
     fill_panel_gaps : Insert null rows for the missing pairs.
     """
     df = to_polars(data)
+    check_columns(df, idname=idname, tname=tname)
+    pairs = df.filter(_key_mask(df, [idname, tname])).select([idname, tname])
 
-    n_units = df[idname].n_unique()
-    n_periods = df[tname].n_unique()
-    n_unique_pairs = df.select([idname, tname]).unique().height
+    n_units = pairs[idname].n_unique()
+    n_periods = pairs[tname].n_unique()
+    n_unique_pairs = pairs.unique().height
 
     return n_unique_pairs < n_units * n_periods
 
 
-def panel_to_wide(data: Any, idname: str, tname: str, separator: str = "_") -> Any:
+def panel_to_wide(data, idname, tname, separator="_"):
     """Pivot a long panel to wide format.
 
     Reshapes the data so that each unit occupies a single row. Time-varying
     columns are spread into one column per period while time-invariant
     columns are kept as-is.
+
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for reshaping
+    a panel to wide format and back with ``wide_to_panel``.
 
     Parameters
     ----------
@@ -807,17 +788,6 @@ def panel_to_wide(data: Any, idname: str, tname: str, separator: str = "_") -> A
     DataFrame
         Wide-format DataFrame with one row per unit, in the same format
         as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import make_balanced_panel, panel_to_wide, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = make_balanced_panel(df, idname="county", tname="year")
-           ...: wide = panel_to_wide(df, idname="county", tname="year")
-           ...: wide.head(5)
 
     See Also
     --------
@@ -854,19 +824,16 @@ def panel_to_wide(data: Any, idname: str, tname: str, separator: str = "_") -> A
     return from_polars(result, data)
 
 
-def wide_to_panel(
-    data: Any,
-    idname: str,
-    stub_names: list[str],
-    separator: str = "_",
-    tname: str = "time",
-) -> Any:
+def wide_to_panel(data, idname, stub_names, separator="_", tname="time"):
     """Unpivot wide-format data into a long panel.
 
     Gathers time-varying columns back into long format using the stub
     names and separator to identify which wide columns belong to each
     variable and period. All other columns (except *idname*) are treated
     as time-invariant and repeated for every period.
+
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for reshaping
+    a wide panel back to long format after ``panel_to_wide``.
 
     Parameters
     ----------
@@ -879,7 +846,7 @@ def wide_to_panel(
     stub_names : list[str]
         Variable-name prefixes that identify the time-varying columns.
         For example, ``["y", "x"]`` will match ``y_1``, ``y_2``,
-        ``x_1``, ``x_2``, etc.
+        ``x_1``, ``x_2``, and so on.
     separator : str
         Delimiter between the stub and the period label.  Default ``"_"``.
     tname : str
@@ -889,18 +856,6 @@ def wide_to_panel(
     -------
     DataFrame
         Long-format panel in the same format as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import make_balanced_panel, panel_to_wide, wide_to_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = make_balanced_panel(df, idname="county", tname="year")
-           ...: wide = panel_to_wide(df, idname="county", tname="year")
-           ...: long = wide_to_panel(wide, idname="county", stub_names=["Dl_vloans_b", "Dl_hpi"], tname="year")
-           ...: long.head(10)
 
     See Also
     --------
@@ -955,7 +910,23 @@ def wide_to_panel(
     return from_polars(result, data)
 
 
-def _format_panel_diagnostics(diag: PanelDiagnostics) -> str:
+def _count(n, noun):
+    """Return the count with the noun in the singular or the plural."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def _key_mask(df, columns):
+    """Return an expression that is true for the rows whose listed columns all hold a value."""
+    mask = pl.lit(True)
+    for name in columns:
+        # A NaN or infinite unit or period counts as missing. Since is_finite raises on other types,
+        # only float columns get that check.
+        present = pl.col(name).is_finite() if df.schema[name].is_float() else pl.col(name).is_not_null()
+        mask = mask & present.fill_null(False)
+    return mask
+
+
+def _format_panel_diagnostics(diag):
     """Pretty-print a :class:`PanelDiagnostics` instance."""
 
     def _bool_str(val: bool | None) -> str:
@@ -975,12 +946,12 @@ def _format_panel_diagnostics(diag: PanelDiagnostics) -> str:
         ("Periods", str(diag.n_periods)),
         ("Observations", str(diag.n_observations)),
         ("Balanced", _bool_str(diag.is_balanced)),
-        ("Duplicate unit-time pairs", str(diag.n_duplicate_unit_time)),
+        ("Duplicate rows", str(diag.n_duplicate_unit_time)),
         ("Unbalanced units", str(diag.n_unbalanced_units)),
         ("Gaps", str(diag.n_gaps)),
         ("Rows with missing values", str(diag.n_missing_rows)),
         ("Single-period units", str(diag.n_single_period_units)),
-        ("Early-treated units", _bool_or_count(diag.n_early_treated)),
+        ("Treated in first period", _bool_or_count(diag.n_early_treated)),
         ("Treatment time-varying", _bool_str(diag.treatment_time_varying)),
     ]
 

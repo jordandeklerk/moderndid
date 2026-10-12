@@ -42,6 +42,7 @@ class DIDData(PreprocessedData):
     outcomes_tensor: list[np.ndarray] | None = None
     covariates_matrix: np.ndarray | None = None
     covariates_tensor: list[np.ndarray] | None = None
+    weights_tensor: list[np.ndarray] | None = None
 
     config: DIDConfig = field(default_factory=DIDConfig)
 
@@ -238,10 +239,3 @@ class ValidationResult:
         if not self.is_valid:
             error_msg = "\n".join(self.errors)
             raise ValueError(f"Validation failed:\n{error_msg}")
-
-    def _warnings(self) -> None:
-        """Warnings."""
-        import warnings
-
-        for warning in self.warnings:
-            warnings.warn(warning, UserWarning, stacklevel=2)

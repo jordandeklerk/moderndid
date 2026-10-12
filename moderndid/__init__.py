@@ -1,6 +1,7 @@
 """Modern difference-in-differences estimators."""
 
 import importlib as _importlib
+from contextlib import suppress as _suppress
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
@@ -126,10 +127,6 @@ __all__ = [
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
     # Core data
-    "dask_att_gt",
-    "dask_cont_did",
-    "dask_ddd",
-    "dask_did_multiplegt",
     "data",
     "ddd",
     "ddd_mp",
@@ -164,7 +161,6 @@ __all__ = [
     "gen_ddd_scalable",
     "gen_did_scalable",
     "gen_simple_ddd_data",
-    "generate_simple_ddd_data",
     # GPU backend
     "get_backend",
     "get_first_difference",
@@ -183,6 +179,7 @@ __all__ = [
     "load_ehec",
     "load_engel",
     "load_favara_imbs",
+    "load_fracking",
     "load_mpdta",
     "load_nsw",
     "lp_conditional_test",
@@ -227,11 +224,6 @@ __all__ = [
     "setup_pte",
     "setup_pte_basic",
     "setup_pte_cont",
-    "simulate_cont_did_data",
-    "spark_att_gt",
-    "spark_cont_did",
-    "spark_ddd",
-    "spark_did_multiplegt",
     "std_ipw_did_panel",
     "std_ipw_did_rc",
     "summary_mp_pretest",
@@ -239,6 +231,10 @@ __all__ = [
     "test_in_identified_set_flci_hybrid",
     "test_in_identified_set_lf_hybrid",
     "test_in_identified_set_max",
+    # Optional: plot themes (requires plotnine)
+    "theme_minimal",
+    "theme_moderndid",
+    "theme_publication",
     "to_df",
     "twfe_did_panel",
     "twfe_did_rc",
@@ -265,10 +261,8 @@ __all__ = [
     "wols_rc",
 ]
 
-# Submodules that can be loaded lazily
-# Note: drdid and didml are excluded because we want `from moderndid import drdid` /
-# `from moderndid import didml` to resolve to the function, not the submodule. Access
-# submodules via moderndid.drdid / moderndid.didml.
+# Subpackages that load on first access. drdid, didml, and etwfe stay out since functions use those names.
+# The eager import of npiv below binds the name to the function as well.
 _submodules = [
     "core",
     "did",
@@ -283,7 +277,7 @@ _submodules = [
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
-    # core.backend
+    # cupy.backend
     "HAS_CUPY": "moderndid.cupy.backend",
     "get_backend": "moderndid.cupy.backend",
     "set_backend": "moderndid.cupy.backend",
@@ -294,9 +288,9 @@ _lazy_imports = {
     "load_ehec": "moderndid.core.data",
     "load_engel": "moderndid.core.data",
     "load_favara_imbs": "moderndid.core.data",
+    "load_fracking": "moderndid.core.data",
     "load_mpdta": "moderndid.core.data",
     "load_nsw": "moderndid.core.data",
-    "simulate_cont_did_data": "moderndid.core.data",
     # core.preprocess
     "DIDData": "moderndid.core.preprocess",
     "preprocess_did": "moderndid.core.preprocess",
@@ -386,9 +380,6 @@ _lazy_imports = {
     "ipw_rc": "moderndid.drdid.propensity.ipw_estimators",
     "calculate_pscore_ipt": "moderndid.drdid.propensity.pscore_ipt",
     # didinter
-    "DIDInterATEResult": "moderndid.didinter.container",
-    "DIDInterEffectsResult": "moderndid.didinter.container",
-    "DIDInterPlacebosResult": "moderndid.didinter.container",
     "DIDInterResult": "moderndid.didinter.container",
     "did_multiplegt": "moderndid.didinter.did_multiplegt",
     # didtriple
@@ -409,12 +400,8 @@ _lazy_imports = {
     "gen_ddd_2periods": "moderndid.core.data",
     "gen_ddd_mult_periods": "moderndid.core.data",
     "gen_ddd_scalable": "moderndid.core.data",
-    "gen_dgp_2periods": "moderndid.core.data",
-    "gen_dgp_mult_periods": "moderndid.core.data",
-    "gen_dgp_scalable": "moderndid.core.data",
     "gen_did_scalable": "moderndid.core.data",
     "gen_simple_ddd_data": "moderndid.core.data",
-    "generate_simple_ddd_data": "moderndid.core.data",
     "mboot_ddd": "moderndid.didtriple.bootstrap",
     "wboot_ddd": "moderndid.didtriple.bootstrap",
     # npiv (standalone, no extra deps)
@@ -545,16 +532,6 @@ _optional_imports = {
     "emfx": ("moderndid.etwfe", "etwfe"),
     "format_etwfe_result": ("moderndid.etwfe", "etwfe"),
     "format_emfx_result": ("moderndid.etwfe", "etwfe"),
-    # dask (requires dask + distributed)
-    "dask_att_gt": ("moderndid.dask._did", "dask"),
-    "dask_cont_did": ("moderndid.dask._didcont", "dask"),
-    "dask_ddd": ("moderndid.dask._ddd", "dask"),
-    "dask_did_multiplegt": ("moderndid.dask._didinter", "dask"),
-    # spark (requires pyspark)
-    "spark_att_gt": ("moderndid.spark._did", "spark"),
-    "spark_cont_did": ("moderndid.spark._didcont", "spark"),
-    "spark_ddd": ("moderndid.spark._ddd", "spark"),
-    "spark_did_multiplegt": ("moderndid.spark._didinter", "spark"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),
@@ -566,6 +543,9 @@ _optional_imports = {
     "plot_gt": ("moderndid.plots", "plots"),
     "plot_multiplegt": ("moderndid.plots", "plots"),
     "plot_sensitivity": ("moderndid.plots", "plots"),
+    "theme_minimal": ("moderndid.plots", "plots"),
+    "theme_moderndid": ("moderndid.plots", "plots"),
+    "theme_publication": ("moderndid.plots", "plots"),
 }
 
 # Aliased imports (different name in source module)
@@ -585,8 +565,8 @@ def __getattr__(name: str) -> Any:
         module = _importlib.import_module(module_path)
         return getattr(module, attr_name)
 
-    # Base lazy imports (always available) - check before submodules
-    # so that e.g. `drdid` resolves to the function, not the module
+    # Base lazy imports (always available) come before submodules so that a name in both lists
+    # resolves to the function rather than the subpackage.
     if name in _lazy_imports:
         module = _importlib.import_module(_lazy_imports[name])
         return getattr(module, name)
@@ -598,9 +578,12 @@ def __getattr__(name: str) -> Any:
             module = _importlib.import_module(module_path)
             return getattr(module, name)
         except ImportError as e:
-            raise ImportError(f"'{name}' requires extra dependencies: uv pip install 'moderndid[{extra}]'") from e
+            raise ImportError(
+                f"'{name}' requires extra dependencies. Install them with "
+                f"uv add 'moderndid[{extra}]' or pip install 'moderndid[{extra}]'"
+            ) from e
 
-    # Submodules - checked last so specific imports take precedence
+    # Submodules come last so that specific imports take precedence.
     if name in _submodules:
         return _importlib.import_module(f"moderndid.{name}")
 
@@ -611,8 +594,6 @@ def __getattr__(name: str) -> Any:
 # This is needed because `from X import Y` bypasses __getattr__ when Y is a subpackage
 from moderndid.drdid.drdid import drdid
 from moderndid.npiv.npiv import npiv
-
-from contextlib import suppress as _suppress
 
 with _suppress(ImportError):
     from moderndid.didml.didml import didml

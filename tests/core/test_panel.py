@@ -8,6 +8,7 @@ pl = importorskip("polars")
 pd = importorskip("pandas")
 pa = importorskip("pyarrow")
 
+from moderndid import att_gt
 from moderndid.core.panel import (
     PanelDiagnostics,
     are_varying,
@@ -107,6 +108,19 @@ def test_get_group_treat_period_all_untreated():
     assert (result["G"] == 0).all()
 
 
+@pytest.mark.parametrize(
+    "converter",
+    [lambda df: df, lambda df: df.to_pandas(), lambda df: df.to_arrow()],
+    ids=["polars", "pandas", "pyarrow"],
+)
+def test_get_group_keeps_user_group_column(converter, staggered_panel):
+    data = converter(staggered_panel.with_columns(pl.lit(9).alias("_group")))
+    result = pl.DataFrame(get_group(data, "id", "time", "treat"))
+    assert result.columns == ["id", "time", "y", "treat", "_group", "G"]
+    assert result["_group"].to_list() == [9] * 12
+    assert result["G"].to_list() == [3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0]
+
+
 def test_are_varying_time_invariant():
     df = pl.DataFrame(
         {
@@ -142,6 +156,38 @@ def test_are_varying_single_obs_per_unit():
     assert result["x"] is False
 
 
+def test_are_varying_ignores_missing_values(static_treatment_panel):
+    incomplete = static_treatment_panel.filter(~((pl.col("id") == 1) & (pl.col("time") == 2)))
+    filled = fill_panel_gaps(incomplete, "id", "time")
+    with_nan = static_treatment_panel.with_columns(
+        pl.when((pl.col("id") == 2) & (pl.col("time") == 2)).then(float("nan")).otherwise(pl.col("x")).alias("x")
+    )
+    assert are_varying(filled, "id", cols=["treat", "x"]) == {"treat": False, "x": False}
+    assert with_nan["x"].is_nan().sum() == 1
+    assert are_varying(with_nan, "id", cols=["x"]) == {"x": False}
+
+
+def test_are_varying_names_a_missing_column(balanced_panel):
+    with pytest.raises(ValueError, match=r"^'z' in cols is not a column in the data\.$"):
+        are_varying(balanced_panel, "id", cols=["x", "z"])
+
+
+def test_are_varying_names_a_missing_unit_column(balanced_panel):
+    with pytest.raises(ValueError, match=r"^idname='unit' is not a column in the data\.$"):
+        are_varying(balanced_panel, "unit", cols=["x"])
+
+
+@pytest.mark.parametrize("func", [diagnose_panel, fill_panel_gaps, complete_data, scan_gaps, has_gaps])
+def test_panel_utilities_name_a_missing_period_column(func, balanced_panel):
+    with pytest.raises(ValueError, match=r"^tname='year' is not a column in the data\.$"):
+        func(balanced_panel, "id", "year")
+
+
+def test_diagnose_suggests_the_closest_unit_column(balanced_panel):
+    with pytest.raises(ValueError, match=r"^idname='ids' is not a column in the data\. Did you mean 'id'\?$"):
+        diagnose_panel(balanced_panel, "ids", "time")
+
+
 def test_scan_gaps_no_gaps(balanced_panel):
     gaps = scan_gaps(balanced_panel, "id", "time")
     assert len(gaps) == 0
@@ -161,6 +207,17 @@ def test_scan_gaps_multiple():
     assert len(gaps) == 3
 
 
+def test_scan_gaps_ignores_missing_period(panel_with_null_period):
+    gaps = scan_gaps(panel_with_null_period, "id", "time")
+    assert gaps.to_dicts() == [{"id": 2, "time": 2}]
+
+
+def test_scan_gaps_ignores_nan_period(panel_with_null_period):
+    data = panel_with_null_period.with_columns(pl.col("time").cast(pl.Float64).fill_null(float("nan")))
+    gaps = scan_gaps(data, "id", "time")
+    assert gaps.to_dicts() == [{"id": 2, "time": 2.0}]
+
+
 def test_fill_panel_gaps_fills_missing(unbalanced_panel):
     result = fill_panel_gaps(unbalanced_panel, "id", "time")
     assert len(result) == 12
@@ -177,6 +234,14 @@ def test_fill_panel_gaps_balanced_unchanged(balanced_panel):
     result = fill_panel_gaps(balanced_panel, "id", "time")
     assert len(result) == len(balanced_panel)
     assert result["y"].null_count() == 0
+
+
+def test_fill_panel_gaps_keeps_row_with_missing_period(panel_with_null_period):
+    result = fill_panel_gaps(panel_with_null_period, "id", "time")
+    assert len(result) == 10
+    assert result.columns == ["id", "time", "y"]
+    assert result.filter(pl.col("time").is_null()).to_dicts() == [{"id": 2, "time": None, "y": 22.0}]
+    assert result.filter((pl.col("id") == 2) & (pl.col("time") == 2))["y"].to_list() == [None]
 
 
 def test_complete_data_default_all_periods(unbalanced_panel):
@@ -199,6 +264,18 @@ def test_complete_data_empty():
     empty = pl.DataFrame({"id": [], "time": [], "y": []})
     result = complete_data(empty, "id", "time")
     assert len(result) == 0
+
+
+def test_complete_data_ignores_missing_period(panel_with_null_period):
+    result = complete_data(panel_with_null_period, "id", "time")
+    assert sorted(result["id"].unique().to_list()) == [1, 3]
+    assert len(result) == 6
+
+
+def test_complete_data_keeps_unit_with_repeated_period():
+    df = pl.DataFrame({"id": [1, 1, 1, 2, 2], "time": [1, 2, 2, 1, 2], "y": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    assert sorted(complete_data(df, "id", "time")["id"].unique().to_list()) == [1, 2]
+    assert make_balanced_panel(df, "id", "time")["id"].unique().to_list() == [2]
 
 
 def test_deduplicate_panel_keep_last(panel_with_duplicates):
@@ -268,19 +345,48 @@ def test_diagnose_unbalanced(unbalanced_panel):
     assert diag.n_gaps == 1
     assert diag.n_missing_rows == 0
     assert diag.n_single_period_units == 0
-    assert any("fill_panel_gaps" in s for s in diag.suggestions)
+    assert diag.suggestions == [
+        "Call fill_panel_gaps() to fill 1 missing unit-time pair",
+        "Call make_balanced_panel() to drop 1 unit not observed in all periods",
+    ]
 
 
 def test_diagnose_with_duplicates(panel_with_duplicates):
     diag = diagnose_panel(panel_with_duplicates, "id", "time")
     assert diag.n_duplicate_unit_time == 2
-    assert any("deduplicate_panel" in s for s in diag.suggestions)
+    assert diag.suggestions == [
+        "Call deduplicate_panel() to remove 2 duplicate rows",
+        "Call fill_panel_gaps() to fill 1 missing unit-time pair",
+    ]
+
+
+def test_diagnose_counts_rows_beyond_the_first_of_a_repeated_pair(panel_with_repeated_pair):
+    diag = diagnose_panel(panel_with_repeated_pair, "id", "time")
+    assert diag.n_duplicate_unit_time == 2
+    assert len(deduplicate_panel(panel_with_repeated_pair, "id", "time")) == 3
+    assert diag.suggestions == [
+        "Call deduplicate_panel() to remove 2 duplicate rows",
+        "Call fill_panel_gaps() to fill 1 missing unit-time pair",
+        "Call complete_data(min_periods=2) to drop 1 unit observed in only one period",
+    ]
+    assert any(line.split() == ["│", "Duplicate", "rows", "│", "2", "│"] for line in str(diag).splitlines())
 
 
 def test_diagnose_treatment_varying(staggered_panel):
     diag = diagnose_panel(staggered_panel, "id", "time", treatname="treat")
     assert diag.treatment_time_varying is True
-    assert any("Treatment varies" in s for s in diag.suggestions)
+    assert diag.suggestions == [
+        "Treatment varies within units. If your estimator takes gname, call get_group() to build it"
+    ]
+
+
+def test_diagnose_static_treatment_after_fill_panel_gaps(static_treatment_panel):
+    incomplete = static_treatment_panel.filter(~((pl.col("id") == 1) & (pl.col("time") == 2)))
+    filled = fill_panel_gaps(incomplete, "id", "time")
+    diag = diagnose_panel(filled, "id", "time", treatname="treat")
+    assert filled["treat"].null_count() == 1
+    assert diag.treatment_time_varying is False
+    assert diag.suggestions == ["Missing values appear in 1 row. Estimators check only the columns they use"]
 
 
 def test_diagnose_treatment_invariant():
@@ -310,6 +416,60 @@ def test_has_gaps_false(balanced_panel):
 
 def test_has_gaps_with_duplicates(panel_with_duplicates):
     assert has_gaps(panel_with_duplicates, "id", "time") is True
+
+
+def test_has_gaps_ignores_row_with_missing_period(balanced_panel):
+    extra = pl.DataFrame({"id": [1], "time": [None], "y": [11], "x": [1.05]}, schema=balanced_panel.schema)
+    data = pl.concat([balanced_panel, extra])
+    assert has_gaps(data, "id", "time") is False
+
+
+def test_diagnose_ignores_missing_period_in_panel_structure(panel_with_null_period):
+    diag = diagnose_panel(panel_with_null_period, "id", "time")
+    assert diag.n_units == 3
+    assert diag.n_periods == 3
+    assert diag.n_gaps == 1
+    assert diag.n_unbalanced_units == 1
+    assert diag.n_missing_rows == 1
+    assert diag.is_balanced is False
+    assert diag.suggestions == [
+        "Call fill_panel_gaps() to fill 1 missing unit-time pair",
+        "Call make_balanced_panel() to drop 1 unit not observed in all periods",
+        "Missing values appear in 1 row. Estimators check only the columns they use",
+    ]
+
+
+def test_diagnose_counts_infinite_period_as_missing(panel_with_null_period):
+    data = panel_with_null_period.with_columns(pl.col("time").cast(pl.Float64).fill_null(float("inf")))
+    diag = diagnose_panel(data, "id", "time")
+    assert diag.n_periods == 3
+    assert diag.n_gaps == 1
+    assert diag.n_missing_rows == 1
+
+
+def test_balancing_utilities_follow_diagnose_panel_on_missing_period(panel_with_null_period):
+    diag = diagnose_panel(panel_with_null_period, "id", "time")
+    balanced = make_balanced_panel(panel_with_null_period, "id", "time")
+    assert diag.n_unbalanced_units == 1
+    assert is_balanced_panel(panel_with_null_period, "id", "time") is False
+    assert balanced.equals(panel_with_null_period.filter(pl.col("id") != 2))
+
+
+def test_balancing_utilities_follow_diagnose_panel_on_row_without_period(balanced_panel):
+    extra = pl.DataFrame({"id": [1], "time": [None], "y": [11], "x": [1.05]}, schema=balanced_panel.schema)
+    data = pl.concat([balanced_panel, extra])
+    assert diagnose_panel(data, "id", "time").is_balanced is True
+    assert is_balanced_panel(data, "id", "time") is True
+    assert make_balanced_panel(data, "id", "time").equals(balanced_panel)
+
+
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_diagnose_without_a_usable_period_counts_no_early_treated_units():
+    df = pl.DataFrame({"id": [1, 2], "time": pl.Series([None, None], dtype=pl.Int64), "treat": [0, 1]})
+    diag = diagnose_panel(df, "id", "time", treatname="treat")
+    assert diag.n_early_treated == 0
+    assert diag.treatment_time_varying is False
+    assert diag.suggestions == ["Missing values appear in 2 rows. Estimators check only the columns they use"]
 
 
 def test_panel_to_wide_basic(balanced_panel):
@@ -539,7 +699,33 @@ def test_diagnose_missing_values():
     )
     diag = diagnose_panel(df, "id", "time")
     assert diag.n_missing_rows == 1
-    assert any("missing values" in s for s in diag.suggestions)
+    assert diag.suggestions == ["Missing values appear in 1 row. Estimators check only the columns they use"]
+
+
+@pytest.mark.parametrize(
+    "converter",
+    [lambda df: df, lambda df: df.to_pandas()],
+    ids=["polars", "pandas"],
+)
+def test_diagnose_counts_nan_as_missing(converter, mpdta_with_nan):
+    diag = diagnose_panel(converter(mpdta_with_nan), "countyreal", "year")
+    assert diag.n_missing_rows == 2
+    assert diag.suggestions == ["Missing values appear in 2 rows. Estimators check only the columns they use"]
+
+
+def test_diagnose_does_not_count_infinite_cohort_as_missing(two_by_two_panel):
+    diag = diagnose_panel(two_by_two_panel, "id", "period")
+    assert diag.n_missing_rows == 0
+    assert diag.suggestions == []
+
+
+@pytest.mark.filterwarnings("error:Dropped")
+def test_diagnose_missing_value_in_unused_column_leaves_att_gt_sample_unchanged(mpdta):
+    data = mpdta.with_columns(pl.Series("unused", [None] + [1.0] * (mpdta.height - 1)))
+    diag = diagnose_panel(data, "countyreal", "year")
+    result = att_gt(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat", boot=False)
+    assert diag.n_missing_rows == 1
+    assert result.n_units == 500
 
 
 def test_diagnose_no_missing_values(balanced_panel):
@@ -557,7 +743,11 @@ def test_diagnose_single_period_units():
     )
     diag = diagnose_panel(df, "id", "time")
     assert diag.n_single_period_units == 1
-    assert any("observed in only one period" in s for s in diag.suggestions)
+    assert diag.suggestions == [
+        "Call fill_panel_gaps() to fill 1 missing unit-time pair",
+        "Call make_balanced_panel() to drop 1 unit not observed in all periods",
+        "Call complete_data(min_periods=2) to drop 1 unit observed in only one period",
+    ]
 
 
 def test_diagnose_no_single_period(balanced_panel):
@@ -576,7 +766,20 @@ def test_diagnose_early_treated():
     )
     diag = diagnose_panel(df, "id", "time", treatname="treat")
     assert diag.n_early_treated == 1
-    assert any("already treated in the first period" in s for s in diag.suggestions)
+    assert diag.suggestions == [
+        "Treatment varies within units. If your estimator takes gname, call get_group() to build it",
+        "Estimators that take gname drop the 1 unit already treated in the first period",
+    ]
+
+
+def test_diagnose_static_treatment_has_no_early_treated_suggestion(static_treatment_panel):
+    diag = diagnose_panel(static_treatment_panel, "id", "time", treatname="treat")
+    rows = [line.split() for line in str(diag).splitlines()]
+    assert diag.n_early_treated == 2
+    assert diag.treatment_time_varying is False
+    assert diag.suggestions == []
+    assert ["│", "Treated", "in", "first", "period", "│", "2", "│"] in rows
+    assert "Early-treated" not in str(diag)
 
 
 def test_diagnose_no_early_treated(staggered_panel):
