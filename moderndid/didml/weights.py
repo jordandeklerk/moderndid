@@ -1,4 +1,4 @@
-"""Minimax weighting solver for the doubly-robust ML DiD estimator."""
+"""Minimax weighting solver for the doubly robust ML DiD estimator."""
 
 from __future__ import annotations
 
@@ -12,22 +12,27 @@ def amle_weights(
     cohort_indicator,
     *,
     zeta=0.5,
+    sample_weights=None,
     solver=None,
     verbose=False,
 ):
     r"""Solve the augmented minimax-linear balancing weights for one group-time cell.
 
     Computes the weight vector :math:`\hat{\gamma} \in \mathbb{R}^n` that
-    enters the doubly-robust ATT estimator as the residual correction term
+    enters the doubly robust ATT estimator as the residual correction term
     :math:`\hat{\gamma}_i (Y_i - \hat{y}_i)`.
 
     The weights solve the Augmented Minimax Linear Estimation (AMLE)
-    program of [1]_, adapted to the doubly-robust DiD setting by [2]_.
+    program of [1]_ in the version that [2]_ adapts to the doubly robust
+    DiD setting, with the exact balance of the intercepts that [3]_ states.
 
-    Balance conditions cover covariate moments together with
-    covariate-by-:math:`T`, covariate-by-:math:`G`, and
-    covariate-by-:math:`T \cdot G` interactions, matching the treated cell
-    :math:`(T = G = 1)` to the full-sample covariate mean.
+    The weights sum to one within the treated cell :math:`(T = G = 1)` and
+    to zero within the whole sample, the post period, and the treated
+    cohort. Covariate moments and their interactions with :math:`T` and
+    :math:`G` are balanced up to slack variables. The covariate moments of
+    the treated cell are balanced against that cell's own covariate mean.
+    That mean uses ``sample_weights`` when given. The weights therefore
+    target the average conditional effect over the treated cell.
 
     Parameters
     ----------
@@ -41,6 +46,9 @@ def amle_weights(
     zeta : float, default=0.5
         Mixing weight in :math:`(0, 1)`. Higher values prioritize tighter
         moment balance; lower values prioritize smaller raw weights.
+    sample_weights : ndarray of shape (n,), optional
+        Non-negative sampling weight of each observation. Defaults to equal
+        weights.
     solver : str, optional
         Name of the cvxpy solver to use. Defaults to ``"ECOS"``.
     verbose : bool, default=False
@@ -70,18 +78,21 @@ def amle_weights(
     .. math::
 
         \begin{aligned}
-            \sum_{i=1}^n g_i &= 0,\\
+            \sum_{i=1}^n g_i = \sum_{i=1}^n T_i g_i
+            = \sum_{i=1}^n G_i g_i &= 0,\\
             \big|X^\top g_{1:n}\big|_j &\le g_{n+1},\\
             \big|X^\top (T \odot g_{1:n})\big|_j &\le g_{n+2},\\
             \big|X^\top (G \odot g_{1:n})\big|_j &\le g_{n+3},\\
             \sum_{i=1}^n T_i G_i g_i &= 1,\\
-            \big|X^\top (T \odot G \odot g_{1:n}) - \bar{X}\big|_j
+            \big|X^\top (T \odot G \odot g_{1:n}) - \bar{X}_{1}\big|_j
             &\le g_{n+4},
         \end{aligned}
 
     where :math:`T \in \{0, 1\}^n` is the post-period indicator,
     :math:`G \in \{0, 1\}^n` is the treated-cohort indicator, and
-    :math:`\bar{X}` is the column mean of ``covariates``. The objective
+    :math:`\bar{X}_{1}` is the column mean of ``covariates`` over the rows
+    with :math:`T_i G_i = 1`, weighted by ``sample_weights`` when given. The
+    objective
     trades off raw weight magnitude (small :math:`\zeta`) against tighter
     moment balance (large :math:`\zeta`). The returned weights are scaled
     to :math:`\hat{\gamma} = n \cdot g_{1:n}^\star`.
@@ -99,6 +110,10 @@ def amle_weights(
            Laan (Eds.), Handbook of Statistical Methods for Precision Medicine
            (Ch. 9). Chapman and Hall/CRC.
            https://doi.org/10.1201/9781003216223-9
+
+    .. [3] Lu, C., Nie, X., & Wager, S. (2019). "Robust nonparametric
+           difference-in-differences estimation." arXiv:1905.11622v1.
+           https://arxiv.org/abs/1905.11622v1
     """
     if not 0 < zeta < 1:
         raise ValueError(f"zeta must lie in the open interval (0, 1), got {zeta!r}.")
@@ -115,13 +130,21 @@ def amle_weights(
         raise ValueError(f"post_indicator length {post_indicator.shape} does not match covariates row count {n}.")
     if cohort_indicator.shape != (n,):
         raise ValueError(f"cohort_indicator length {cohort_indicator.shape} does not match covariates row count {n}.")
+    if sample_weights is not None:
+        sample_weights = np.asarray(sample_weights, dtype=float)
+        if sample_weights.shape != (n,):
+            raise ValueError(f"sample_weights length {sample_weights.shape} does not match covariates row count {n}.")
+        if np.any(sample_weights < 0) or not np.sum(sample_weights) > 0:
+            raise ValueError("sample_weights must be non-negative with a positive sum.")
     if np.sum(post_indicator * cohort_indicator) <= 0:
         raise ValueError(
             "No observations with post_indicator == 1 and cohort_indicator == 1; "
             "the equality constraint sum(T*G*g) = 1 cannot be satisfied."
         )
 
-    column_means = covariates.mean(axis=0)
+    treated_cell = post_indicator * cohort_indicator
+    row_weights = np.ones(n) if sample_weights is None else sample_weights
+    treated_means = np.average(covariates, axis=0, weights=treated_cell * row_weights)
 
     g = cp.Variable(n + 4)
     g_main = g[:n]
@@ -132,20 +155,23 @@ def amle_weights(
     main_balance = covariates.T @ g_main
     post_balance = covariates.T @ cp.multiply(post_indicator, g_main)
     cohort_balance = covariates.T @ cp.multiply(cohort_indicator, g_main)
-    interaction = cp.multiply(post_indicator * cohort_indicator, g_main)
-    interaction_balance = covariates.T @ interaction
+    interaction_balance = covariates.T @ cp.multiply(treated_cell, g_main)
 
+    # Since cvxpy infers the shape of cp.sum by summing an uninitialized array that can overflow and warn, the
+    # sums below are inner products.
     constraints = [
-        cp.sum(g_main) == 0,
+        np.ones(n) @ g_main == 0,
+        post_indicator @ g_main == 0,
+        cohort_indicator @ g_main == 0,
         main_balance <= s1,
         -main_balance <= s1,
         post_balance <= s2,
         -post_balance <= s2,
         cohort_balance <= s3,
         -cohort_balance <= s3,
-        cp.sum(interaction) == 1,
-        interaction_balance - column_means <= s4,
-        -(interaction_balance - column_means) <= s4,
+        treated_cell @ g_main == 1,
+        interaction_balance - treated_means <= s4,
+        -(interaction_balance - treated_means) <= s4,
     ]
 
     problem = cp.Problem(objective, constraints)

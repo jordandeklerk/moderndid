@@ -1,4 +1,4 @@
-"""Nuisance estimators for the doubly-robust ML DiD score."""
+"""Nuisance estimators for the doubly robust ML DiD score."""
 
 from .causal_forest import fit_causal_forest
 from .delta import fit_delta

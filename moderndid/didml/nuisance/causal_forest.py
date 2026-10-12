@@ -1,4 +1,4 @@
-"""Causal-forest nuisance backend for the doubly-robust ML DiD score."""
+"""Causal-forest nuisance backend for the doubly robust ML DiD score."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def fit_causal_forest(
     n_jobs=None,
     random_state=None,
 ):
-    r"""Fit a causal-forest nuisance backend for the doubly-robust score.
+    r"""Fit a causal-forest nuisance backend for the doubly robust score.
 
     Estimates the conditional mean contrast
 
@@ -29,20 +29,22 @@ def fit_causal_forest(
         \tau(x) = \mathbb{E}[Y \mid X = x, D = 1]
                 - \mathbb{E}[Y \mid X = x, D = 0],
 
-    where :math:`D` is whichever binary indicator is passed as
-    ``treatment``, either the post-period indicator or the cohort
-    indicator, using the generalized-random-forest DML estimator of [1]_.
+    where :math:`D` is the binary indicator passed as ``treatment``. The
+    doubly robust score passes either the post-period indicator or the
+    cohort indicator. The fit uses the generalized-random-forest DML
+    estimator of [1]_.
 
-    Both the outcome and the indicator are residualized against the
-    covariates with cross-fitted regression forests. An honest causal
-    forest fit on the residualized data then predicts
-    :math:`\hat{\tau}(x)` at each training row.
+    Cross-fitted regression forests estimate the outcome regression
+    :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]` and the propensity
+    :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]`. An honest causal forest
+    fit to the residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
+    :math:`\tilde{D} = D - \hat{e}(X)` then predicts :math:`\hat{\tau}(x)`
+    at each training row.
 
     Returns the same dictionary shape as :func:`fit_rlearner` so the
-    nuisance backend is interchangeable in the doubly-robust score
-    computation. The fields ``tau_coef`` and ``best_penalty_factor`` are
-    set to ``None`` because the forest has no linear coefficients and no
-    L1 penalty schedule to tune.
+    nuisance backend is interchangeable in the doubly robust score
+    computation. The field ``tau_coef`` is ``None`` because the forest has
+    no linear coefficients.
 
     Parameters
     ----------
@@ -81,20 +83,6 @@ def fit_causal_forest(
         - **m_hat**: Length-:math:`n` array of cross-fitted outcome
           regressions :math:`\hat{m}(X_i) = \mathbb{E}[Y \mid X_i]`
         - **tau_coef**: ``None`` (forests have no linear coefficients)
-        - **best_penalty_factor**: ``None`` (no penalty schedule)
-
-    Notes
-    -----
-    The estimator proceeds in four steps:
-
-    1. Cross-fit a regression-forest model for the outcome
-       :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]`.
-    2. Cross-fit a regression-forest model for the indicator
-       :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]`.
-    3. Form residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
-       :math:`\tilde{D} = D - \hat{e}(X)`.
-    4. Fit an honest causal forest on the residualized data, returning
-       :math:`\hat{\tau}(X)` predictions at each training row.
 
     References
     ----------
@@ -107,7 +95,8 @@ def fit_causal_forest(
         from econml.dml import CausalForestDML
     except ImportError as exc:
         raise ImportError(
-            "The 'cf' nuisance backend requires the econml package. Install it with: uv pip install 'moderndid[didml]'"
+            "The 'cf' nuisance backend requires the econml package. Install it with "
+            "uv add 'moderndid[didml]' or pip install 'moderndid[didml]'"
         ) from exc
 
     X = np.asarray(X, dtype=float)
@@ -171,5 +160,4 @@ def fit_causal_forest(
         "p_hat": p_hat,
         "m_hat": m_hat,
         "tau_coef": None,
-        "best_penalty_factor": None,
     }

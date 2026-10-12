@@ -22,19 +22,21 @@ def cv_lasso_with_oof(
 ):
     r"""Cross-validated lasso returning out-of-fold predictions and the chosen alpha.
 
-    A single shared alpha grid is built from the full design, every fold
-    traces the entire path with warm starts, and the out-of-fold predictions
-    stored against that path come from the same fold partition that selects
-    the optimal :math:`\lambda`. The final coefficient vector is refit on the
+    The function builds one alpha grid from the full design. Every fold
+    traces the entire path with warm starts. The out-of-fold predictions
+    along that path come from the same fold partition that selects the
+    optimal :math:`\lambda`. The final coefficient vector is refit on the
     full data at the selected alpha so it is consistent with the
-    out-of-fold predictions.
+    out-of-fold predictions. A fold in which every alpha on the path
+    exceeds the largest covariate score, such as a fold with a constant
+    response, takes the exact all-zero solution without running the solver.
 
     Per-column relative penalty weights use a column-scaling identity.
     Dividing column :math:`j` by ``penalty_factor[j]`` before fitting and
     dividing the resulting coefficient by the same factor leaves the loss
     unchanged but rescales the implicit per-coefficient penalty.
-    Zero-penalty columns are partialled out via Frisch-Waugh-Lovell, where
-    both ``y`` and the penalized columns of ``X`` are residualized against
+    Zero-penalty columns are partialled out via Frisch-Waugh-Lovell. Both
+    ``y`` and the penalized columns of ``X`` are residualized against
     ``[1, X_unp]`` so the lasso on the residualized problem reproduces the
     joint KKT solution of the partially-penalized problem.
 
@@ -61,7 +63,7 @@ def cv_lasso_with_oof(
     lambda_choice : {"lambda.min", "lambda.1se"}, default="lambda.min"
         Selection rule for the alpha along the path.
     max_iter : int, default=10000
-        Iteration cap for the inner Lasso solver.
+        Iteration cap for the inner lasso solver.
 
     Returns
     -------
@@ -120,10 +122,8 @@ def cv_lasso_with_oof(
         col_std_safe = np.ones(p, dtype=float)
         X_scaled = X.copy()
 
-    # Force zero-variance columns out of the model entirely. Drop them from
-    # the unpenalized OLS (where they are collinear with the intercept) and
-    # from the lasso path (where they would otherwise be absorbed into the
-    # intercept)
+    # Zero-variance columns leave both blocks since they are collinear with the intercept in the unpenalized OLS
+    # and the lasso path would otherwise absorb them into the intercept.
     active_mask = ~zero_var_mask
     unpenalized_mask = (penalty_factor == 0) & active_mask
     penalized_mask = (penalty_factor > 0) & active_mask
@@ -133,10 +133,8 @@ def cv_lasso_with_oof(
     pf_pen = penalty_factor[pen_idx]
     X_pen_scaled_full = X_scaled[:, pen_idx] / pf_pen[None, :] if pen_idx.size > 0 else X_scaled[:, pen_idx]
 
-    # Residualize both the response and the penalized columns against the
-    # intercept and the unpenalized columns so the alpha grid is built on the
-    # same residualized problem the lasso will see, matching the joint KKT
-    # solution rather than treating the two column blocks as orthogonal
+    # Building the alpha grid on the residualized problem the lasso sees matches the joint KKT solution
+    # instead of treating the penalized and unpenalized blocks as orthogonal.
     y_for_grid, X_pen_for_grid = _residualize_for_grid(X_scaled, y, X_pen_scaled_full, unp_idx)
 
     if pen_idx.size > 0:
@@ -161,36 +159,38 @@ def cv_lasso_with_oof(
             X_pen_train_scaled = X_train_scaled[:, pen_idx] / pf_pen[None, :]
             X_pen_test_scaled = X_test_scaled[:, pen_idx] / pf_pen[None, :]
 
-            # Apply Frisch-Waugh-Lovell to project both the response and the
-            # penalized columns out of the unpenalized columns and intercept
-            # on the training fold so the lasso sees the partialled-out
-            # problem implied by the joint KKT solution. Residualizing only
-            # the response is correct when the unpenalized and penalized
-            # columns are orthogonal but biases coefficients otherwise
+            # Residualizing only the response biases the coefficients unless the two column blocks are
+            # orthogonal. Frisch-Waugh-Lovell on the training fold projects the penalized columns too.
             y_train_res, X_pen_train_res = _residualize_for_grid(X_train_scaled, y_train, X_pen_train_scaled, unp_idx)
 
-            # Pre-center BOTH X and y so lasso_path with no intercept matches
-            # what Lasso(fit_intercept=True) would produce internally
+            # Pre-centering both X and y makes lasso_path without an intercept match
+            # what Lasso(fit_intercept=True) would produce internally.
             train_mean_X = X_pen_train_res.mean(axis=0)
             train_mean_y = y_train_res.mean()
 
             X_pen_train_centered = X_pen_train_res - train_mean_X[None, :]
             y_train_centered = y_train_res - train_mean_y
 
-            try:
-                _, coefs_path, _ = lasso_path(
-                    X_pen_train_centered,
-                    y_train_centered,
-                    alphas=alphas,
-                    max_iter=max_iter,
-                )
-            except FloatingPointError:
-                fold_converged[k] = False
-                continue
+            # When every alpha on the path exceeds the fold's largest score, as in a propensity fold without treated
+            # rows, zero coefficients solve the lasso exactly. Since the solver's tolerance scales with a constant
+            # response and falls to zero, it would otherwise report a convergence failure at every alpha.
+            fold_alpha_max = float(np.max(np.abs(X_pen_train_centered.T @ y_train_centered))) / train_idx.size
+            if fold_alpha_max <= alphas.min():
+                coefs_path = np.zeros((pen_idx.size, alphas.size))
+            else:
+                try:
+                    _, coefs_path, _ = lasso_path(
+                        X_pen_train_centered,
+                        y_train_centered,
+                        alphas=alphas,
+                        max_iter=max_iter,
+                    )
+                except FloatingPointError:
+                    fold_converged[k] = False
+                    continue
 
-            # Predictions must be formed on the raw test columns rather than
-            # residualized ones, since the residualized coordinates are only
-            # defined relative to the training-fold projection
+            # Predictions use the raw test columns since the residualized coordinates exist only
+            # relative to the training-fold projection.
             y_train_post = y_train[:, None] - X_pen_train_scaled @ coefs_path
             beta_unp_path, intercept_unp_path = _recover_unpenalized_path(X_train_scaled, y_train_post, unp_idx)
             unp_predictions_test = _predict_unpenalized_path(X_test_scaled, unp_idx, beta_unp_path, intercept_unp_path)
@@ -238,10 +238,8 @@ def cv_lasso_with_oof(
         max_iter=max_iter,
     )
 
-    # Convert from standardized scale back to raw scale. Standardization is
-    # column-wise division by ``col_std`` with no centering, so the
-    # intercept passes through unchanged and only the coefficients rescale
-    # by ``col_std``
+    # Standardization divides each column by col_std without centering. The intercept therefore stays
+    # on the raw scale and only the coefficients rescale.
     coef = coef_full_scaled / col_std_safe
 
     return {
@@ -260,13 +258,8 @@ def _build_alpha_grid(X, y, *, n_alphas, eps):
     y_centered = y - y.mean()
     alpha_max = float(np.max(np.abs(X.T @ y_centered))) / n
 
-    # When the response is orthogonal to every column by construction
-    # (e.g., a balanced post-period indicator with time-invariant
-    # covariates), alpha_max is pure floating-point cancellation noise
-    # and a path built from it makes the solver grind on a problem whose
-    # exact solution is the null model. Detect that case against the
-    # rounding-error scale of the inner products and pin the grid to a
-    # single alpha at which the all-zero solution holds on any subsample
+    # A response orthogonal to every column, such as a balanced post-period indicator with time-invariant covariates,
+    # leaves alpha_max at rounding noise. One alpha where the all-zero fit holds on any subsample replaces the path.
     x_extreme = float(np.max(np.abs(X))) if X.size else 0.0
     y_extreme = float(np.max(np.abs(y_centered))) if y_centered.size else 0.0
     noise_floor = np.finfo(float).eps * x_extreme * y_extreme
@@ -291,7 +284,10 @@ def _residualize_for_grid(X_scaled, y, X_pen_scaled, unp_idx):
 
 
 def _fit_unpenalized(X_scaled, y, unp_idx):
-    """Fit OLS on unpenalized columns; return slope coefficients, residual y, and intercept."""
+    """Regress y on an intercept and the unpenalized columns by OLS.
+
+    Returns the slope coefficients, the residual of y, and the intercept.
+    """
     if unp_idx.size == 0:
         return np.zeros(0), y, 0.0
     Z = np.column_stack([np.ones(X_scaled.shape[0]), X_scaled[:, unp_idx]])
@@ -327,7 +323,10 @@ def _predict_unpenalized_path(X_scaled, unp_idx, beta_unp_path, intercept_path):
 
 
 def _refit_full(X_scaled, y, *, unp_idx, pen_idx, pf_pen, alpha, max_iter):
-    """Refit the full model at the chosen alpha on standardized X, returning coefs in scaled space."""
+    """Refit the full model at the chosen alpha on the standardized X.
+
+    The coefficients come back on the standardized scale.
+    """
     p = X_scaled.shape[1]
     coef = np.zeros(p)
 

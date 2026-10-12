@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 from sklearn.linear_model import Lasso, LassoCV
-from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 
 from .cv_lasso import cv_lasso_with_oof
@@ -16,7 +15,6 @@ def fit_rlearner(
     treatment,
     *,
     k_folds=10,
-    tune_penalty=False,
     penalty_factor=None,
     lambda_choice="lambda.min",
     random_state=None,
@@ -30,18 +28,15 @@ def fit_rlearner(
         \tau(x) = \mathbb{E}[Y \mid X = x, D = 1]
                 - \mathbb{E}[Y \mid X = x, D = 0],
 
-    where :math:`D` is whichever binary indicator is passed as
-    ``treatment``, either the post-period indicator or the cohort
-    indicator, using the residualization method of [1]_.
+    where :math:`D` is the binary indicator passed as ``treatment``. The
+    doubly robust score passes either the post-period indicator or the
+    cohort indicator. The estimator follows the residualization method of
+    [1]_.
 
     Both the outcome and the indicator are first residualized against the
     covariates with cross-fitted lasso nuisances. A penalized regression
     of the outcome residual on the indicator residual interacted with the
     covariates then recovers a linear model for :math:`\tau(x)`.
-
-    With ``tune_penalty=True``, an outer k-fold grid search selects the
-    scalar penalty factor for the residual lasso before the final fit,
-    using the candidate grid documented under ``tune_penalty``.
 
     Parameters
     ----------
@@ -53,13 +48,9 @@ def fit_rlearner(
         Binary 0/1 treatment indicator.
     k_folds : int, default=10
         Number of folds for outer cross-fitting and inner cross-validation.
-    tune_penalty : bool, default=False
-        If True, grid-search a single penalty-factor scalar over
-        :math:`\{0.01, 0.25, 0.5, 0.75, 0.99, 1\}` by outer k-fold cross
-        validation, then refit on the full sample with the best value.
     penalty_factor : ndarray of shape (p,), optional
         Per-coefficient L1 penalty multipliers for the residual lasso.
-        Ignored when ``tune_penalty=True``. Defaults to a vector of ones.
+        Defaults to a vector of ones.
     lambda_choice : {'lambda.min', 'lambda.1se'}, default='lambda.min'
         Cross-validation rule for selecting the lasso :math:`\lambda` in the
         final residual fit. ``'lambda.1se'`` returns the largest
@@ -81,38 +72,28 @@ def fit_rlearner(
           :math:`\hat{m}(X_i) = \mathbb{E}[Y \mid X_i]`
         - **tau_coef**: Length-:math:`(p+1)` array of CATE linear-model
           coefficients with intercept first
-        - **best_penalty_factor**: Scalar penalty factor used in the residual
-          lasso (equals ``penalty_factor[0]`` when ``tune_penalty=False``)
 
     Notes
     -----
-    The estimator proceeds in four steps:
+    Cross-fitted lasso regressions estimate the nuisances
+    :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]` and
+    :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]`. Their out-of-fold
+    predictions come from the same k folds that choose :math:`\lambda`.
 
-    1. Cross-fit nuisances :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]` and
-       :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]` via k-fold lasso
-       regression. Each fold is fit by an inner lasso with cross-validated
-       :math:`\lambda` selection.
-    2. Form residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
-       :math:`\tilde{D} = D - \hat{e}(X)`.
-    3. Solve the residualized lasso problem
+    The residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
+    :math:`\tilde{D} = D - \hat{e}(X)` enter the residualized lasso problem
 
-       .. math::
+    .. math::
 
-           \hat{\beta} = \operatorname*{argmin}_{\beta}
-           \frac{1}{n} \sum_{i=1}^{n}
-               \bigl(\tilde{Y}_i - \tilde{D}_i \cdot [1, X_i]^\top \beta\bigr)^2
-           + \lambda \sum_{j \ge 1} w_j \, |\beta_j|
+        \hat{\beta} = \operatorname*{argmin}_{\beta}
+        \frac{1}{n} \sum_{i=1}^{n}
+            \bigl(\tilde{Y}_i - \tilde{D}_i \cdot [1, X_i]^\top \beta\bigr)^2
+        + \lambda \sum_{j \ge 1} w_j \, |\beta_j|.
 
-       with the intercept-equivalent coefficient :math:`\beta_0` left
-       unpenalized and per-coefficient penalty factors :math:`w_j` for
-       :math:`j \ge 1`.
-    4. Predict :math:`\hat{\tau}(X_i) = [1, X_i]^\top \hat{\beta}` at each
-       training row.
-
-    The ``tune_penalty=True`` grid search evaluates each candidate penalty
-    factor by the mean squared error of the held-out :math:`\tau`
-    predictions against the held-out outcomes, then refits on the full
-    sample with the minimizing value.
+    The intercept-equivalent coefficient :math:`\beta_0` stays unpenalized.
+    The weights :math:`w_j` are the per-coefficient penalty factors for
+    :math:`j \ge 1`. The prediction at each training row is
+    :math:`\hat{\tau}(X_i) = [1, X_i]^\top \hat{\beta}`.
 
     References
     ----------
@@ -149,21 +130,6 @@ def fit_rlearner(
         if np.any(penalty_factor <= 0):
             raise ValueError("penalty_factor entries must be strictly positive.")
 
-    best_pf_scalar = float(penalty_factor[0]) if not tune_penalty else None
-
-    if tune_penalty:
-        candidate_factors = (0.01, 0.25, 0.5, 0.75, 0.99, 1.0)
-        best_pf_scalar = _select_penalty_factor(
-            X=X,
-            Y=Y,
-            treatment=treatment,
-            candidates=candidate_factors,
-            k_folds=k_folds,
-            lambda_choice=lambda_choice,
-            random_state=random_state,
-        )
-        penalty_factor = np.full(p, best_pf_scalar, dtype=float)
-
     return _fit_rlasso(
         X=X,
         Y=Y,
@@ -172,7 +138,6 @@ def fit_rlearner(
         k_folds=k_folds,
         lambda_choice=lambda_choice,
         random_state=random_state,
-        best_penalty_factor=best_pf_scalar,
     )
 
 
@@ -185,9 +150,8 @@ def _fit_rlasso(
     k_folds,
     lambda_choice,
     random_state,
-    best_penalty_factor,
 ):
-    """Single R-learner fit at the given penalty factor."""
+    """Single R-learner fit at the given penalty factors."""
     n = X.shape[0]
 
     scaler = StandardScaler().fit(X)
@@ -239,51 +203,7 @@ def _fit_rlasso(
         "p_hat": p_hat,
         "m_hat": m_hat,
         "tau_coef": tau_coef,
-        "best_penalty_factor": best_penalty_factor,
     }
-
-
-def _select_penalty_factor(
-    *,
-    X,
-    Y,
-    treatment,
-    candidates,
-    k_folds,
-    lambda_choice,
-    random_state,
-):
-    """Outer k-fold grid search picking the best penalty-factor scalar."""
-    p = X.shape[1]
-    kf = KFold(n_splits=k_folds, shuffle=True, random_state=random_state)
-    fold_indices = list(kf.split(X))
-
-    cv_errors = np.empty(len(candidates))
-
-    for i, pf_scalar in enumerate(candidates):
-        fold_errors = np.empty(k_folds)
-        pf_train = np.full(p, float(pf_scalar))
-
-        for k, (train_idx, test_idx) in enumerate(fold_indices):
-            fit_kwargs = dict(
-                X=X[train_idx],
-                Y=Y[train_idx],
-                treatment=treatment[train_idx],
-                penalty_factor=pf_train,
-                k_folds=min(k_folds, len(train_idx) - 1),
-                lambda_choice=lambda_choice,
-                random_state=random_state,
-                best_penalty_factor=float(pf_scalar),
-            )
-            fit = _fit_rlasso(**fit_kwargs)
-
-            design_test = np.column_stack([np.ones(len(test_idx)), X[test_idx]])
-            tau_pred = design_test @ fit["tau_coef"]
-            fold_errors[k] = float(np.mean((Y[test_idx] - tau_pred) ** 2))
-
-        cv_errors[i] = float(np.mean(fold_errors))
-
-    return float(candidates[int(np.argmin(cv_errors))])
 
 
 def _cross_fit_lasso(X, y, *, k_folds, random_state):
@@ -301,7 +221,7 @@ def _cross_fit_lasso(X, y, *, k_folds, random_state):
 
 
 def _fit_lasso_with_lambda_choice(features, y, *, k_folds, lambda_choice, random_state):
-    r"""Fit LassoCV and return coefficients at the chosen :math:`\lambda`."""
+    r"""Fit a cross-validated lasso and return the coefficients at the chosen :math:`\lambda`."""
     inner_cv = max(2, min(k_folds, features.shape[0] - 1))
     model = LassoCV(
         cv=inner_cv,
@@ -327,6 +247,6 @@ def _fit_lasso_with_lambda_choice(features, y, *, k_folds, lambda_choice, random
 
 
 def _refit_lasso_at_alpha(features, y, alpha):
-    """Refit a plain Lasso at the supplied ``alpha`` and return its coefficients."""
+    """Refit a lasso at the supplied ``alpha`` and return its coefficients."""
     model = Lasso(alpha=alpha, fit_intercept=False, max_iter=10_000).fit(features, y)
     return np.asarray(model.coef_, dtype=float)

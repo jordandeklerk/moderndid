@@ -14,13 +14,13 @@ from .container import BLPResult, CLANResult
 def het_prep(data, dynamic_cates_df, *, idname, tname, gname):
     r"""Merge dynamic per-unit CATTs back to the unit-level panel by event time.
 
-    Produces the long-format panel frame consumed by :func:`blp_eventtimes`,
-    :func:`clan_glhtest`, and :func:`clan_ttest`. Restricts to treated units
-    (``gname > 0``), computes :math:`e = t - g` per row, and left-joins the
-    output of :func:`dynamic_cates` so each unit-period row carries its
-    aggregated CATT (or DR score) at the matching event time. Pre-treatment
-    rows where ``e < 0`` carry the corresponding pre-treatment aggregate;
-    rows with no matching event time receive a null.
+    Produces the long-format panel that :func:`blp_eventtimes`,
+    :func:`clan_glhtest`, and :func:`clan_ttest` take as input. Restricts to
+    treated units (``gname > 0``), computes :math:`e = t - g` per row, and
+    left-joins the output of :func:`dynamic_cates` so each unit-period row
+    carries its aggregated CATT (or DR score) at the matching event time.
+    Pre-treatment rows where ``e < 0`` carry the corresponding pre-treatment
+    aggregate. Rows with no matching event time receive a null.
 
     Parameters
     ----------
@@ -40,16 +40,18 @@ def het_prep(data, dynamic_cates_df, *, idname, tname, gname):
     Returns
     -------
     polars.DataFrame
-        Long-format frame keyed by ``(idname, tname)`` with the original
+        Long-format data keyed by ``(idname, tname)`` with the original
         covariates plus:
 
         - **event_time**: Integer :math:`e = t - g`
-        - **dynamic_cate**: Aggregated per-unit CATT at this event time, joined from
-          ``dynamic_cates_df``; present when the input holds CATTs
-        - **dynamic_score**: Aggregated per-unit DR score at this event time, joined from
-          ``dynamic_cates_df``; present when the input holds scores
+        - **period**: Copy of the time period column that :func:`blp_eventtimes` uses for
+          calendar-period dummies
+        - **dynamic_cate**: Aggregated per-unit CATT at this event time from
+          ``dynamic_cates_df``, present when the input holds CATTs
+        - **dynamic_score**: Aggregated per-unit DR score at this event time from
+          ``dynamic_cates_df``, present when the input holds scores
         - **e{k}**: 0/1 dummy columns, one per distinct event time, named ``e0``, ``e1``,
-          and so on, with negative event times written with an underscore as ``e_1``, ``e_2``
+          and so on. Negative event times use an underscore, as in ``e_1`` and ``e_2``
     """
     if isinstance(data, pl.DataFrame):
         df = data
@@ -83,10 +85,10 @@ def het_prep(data, dynamic_cates_df, *, idname, tname, gname):
 def blp_eventtimes(het_data, *, n_periods, rhs_formula=None, value_col=None):
     r"""Fit Best Linear Predictor regressions of CATTs on covariates by event time.
 
-    Implements the per-event-time BLP analysis of [1]_, which regresses the
+    Implements the per-event-time BLP analysis of [1]_. It regresses the
     per-unit dynamic CATTs on observed covariates by ordinary least squares
-    separately within each post-treatment exposure horizon. For each event
-    time :math:`e \in \{0, 1, \ldots, E\}`, where :math:`E` is set by
+    within each post-treatment exposure horizon. For each event time
+    :math:`e \in \{0, 1, \ldots, E\}`, where :math:`E` is set by
     ``n_periods``, the paper's specification is
 
     .. math::
@@ -103,8 +105,8 @@ def blp_eventtimes(het_data, *, n_periods, rhs_formula=None, value_col=None):
     ``n_periods - 1``.
 
     When outcomes are noisy, [1]_ recommends regressing the doubly robust
-    scores rather than the raw CATTs, which corresponds to
-    ``value_col="dynamic_score"``.
+    scores rather than the raw CATTs. Pass ``value_col="dynamic_score"`` to
+    do so.
 
     Parameters
     ----------
@@ -116,7 +118,7 @@ def blp_eventtimes(het_data, *, n_periods, rhs_formula=None, value_col=None):
         Highest event time at which to fit the regression. Regressions are
         fit for every event time from 0 through ``n_periods``.
     rhs_formula : str, optional
-        Right-hand-side covariate formula in formulaic syntax, e.g.
+        Right-hand-side covariate formula in formulaic syntax, such as
         ``"cov1 + cov2 + cov3"``. ``None`` fits the intercept-only model.
     value_col : str, optional
         Column to use as the dependent variable. Defaults to
@@ -190,13 +192,14 @@ def blp_eventtimes(het_data, *, n_periods, rhs_formula=None, value_col=None):
 
 
 def clan_ttest(het_data, *, affected, threshold=0.2, value_col=None):
-    r"""Run Welch t-tests of covariate means in the top vs. bottom CATT-quantile groups.
+    r"""Compare covariate means in the top and bottom CATT-quantile groups with Welch t-tests.
 
     Implements the simple variant of Classification Analysis (CLAN) from
-    [1]_. For each event time, defines the high-effect group as units with
-    dynamic CATT above the :math:`(1 - \mathrm{threshold})` quantile and
-    the low-effect group as units below the ``threshold`` quantile, then
-    runs a Welch two-sample t-test on each affected covariate. Covariates
+    [1]_. For each post-treatment event time, the high-effect group holds
+    the units whose dynamic CATT lies above the
+    :math:`(1 - \mathrm{threshold})` quantile. The low-effect group holds
+    the units below the ``threshold`` quantile. A Welch two-sample t-test
+    then compares the two groups on each affected covariate. Covariates
     with significantly different means across the two groups identify
     candidate drivers of treatment effect heterogeneity.
 
@@ -216,8 +219,9 @@ def clan_ttest(het_data, *, affected, threshold=0.2, value_col=None):
     Returns
     -------
     list[CLANResult]
-        One :class:`CLANResult` per event time, in increasing order. Each
-        result has ``test_type='t'``.
+        One :class:`CLANResult` per post-treatment event time, in increasing
+        order. An event time whose ``value_col`` entries are all null is
+        skipped. Each result has ``test_type='t'``.
 
     References
     ----------
@@ -281,8 +285,9 @@ def clan_ttest(het_data, *, affected, threshold=0.2, value_col=None):
 def clan_glhtest(het_data, *, affected, threshold=0.2, alpha=0.05, value_col=None):
     r"""Test equality of high and low CATT-quantile group means with a general linear hypothesis.
 
-    Implements the GLH variant of Classification Analysis (CLAN) from [1]_,
-    adapted from [2]_. For each event time and each affected covariate, fits
+    Implements the GLH variant of Classification Analysis (CLAN) that [1]_
+    adapts from [2]_. For each post-treatment event time and each affected
+    covariate, the function fits
 
     .. math::
 
@@ -290,10 +295,10 @@ def clan_glhtest(het_data, *, affected, threshold=0.2, alpha=0.05, value_col=Non
 
     where :math:`H_i` and :math:`L_i` are 0/1 indicators for membership in
     the top-:math:`\mathrm{threshold}` and bottom-:math:`\mathrm{threshold}`
-    CATT-quantile groups respectively. The high-minus-low contrast
-    :math:`\hat\beta_h - \hat\beta_l` is tested for equality to zero with a
-    general linear hypothesis test on the OLS coefficients, implementing
-    the most-versus-least-affected comparison of [2]_.
+    CATT-quantile groups respectively. A general linear hypothesis test on
+    the OLS coefficients checks whether the high-minus-low contrast
+    :math:`\hat\beta_h - \hat\beta_l` equals zero. This test is the
+    most-versus-least-affected comparison of [2]_.
 
     Parameters
     ----------
@@ -304,7 +309,8 @@ def clan_glhtest(het_data, *, affected, threshold=0.2, alpha=0.05, value_col=Non
     threshold : float, default=0.2
         Tail proportion used to define top and bottom groups.
     alpha : float, default=0.05
-        Significance level used implicitly by downstream summaries.
+        Not used by the test. Compare the reported p-values with the level
+        you choose.
     value_col : str, optional
         Column to use for ranking. Defaults to ``dynamic_cate`` if present,
         else ``dynamic_score``.
@@ -312,8 +318,9 @@ def clan_glhtest(het_data, *, affected, threshold=0.2, alpha=0.05, value_col=Non
     Returns
     -------
     list[CLANResult]
-        One :class:`CLANResult` per event time, in increasing order. Each
-        result has ``test_type='glh'``.
+        One :class:`CLANResult` per post-treatment event time, in increasing
+        order. An event time whose ``value_col`` entries are all null is
+        skipped. Each result has ``test_type='glh'``.
 
     References
     ----------

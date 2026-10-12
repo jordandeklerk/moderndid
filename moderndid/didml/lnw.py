@@ -1,4 +1,4 @@
-"""Nie-Lu-Wager doubly-robust score for the ML DiD estimator."""
+"""Nie-Lu-Wager doubly robust score for the ML DiD estimator."""
 
 from __future__ import annotations
 
@@ -22,15 +22,14 @@ def lnw_did(
     delta_model="glm",
     t_func=False,
     k_folds=10,
-    tune_penalty=False,
     lambda_choice="lambda.min",
     random_state=None,
 ):
-    r"""Compute the doubly-robust ML score for one group-time cell.
+    r"""Compute the doubly robust ML score for one group-time cell.
 
-    Implements the orthogonal decomposition of [1]_ for difference-in-
-    differences with cross-fitted machine-learning nuisance estimates.
-    The estimator is built on the structural representation
+    Implements the orthogonal decomposition of [1]_ for
+    difference-in-differences with cross-fitted machine-learning nuisance
+    estimates. The estimator is built on the structural representation
 
     .. math::
 
@@ -84,38 +83,38 @@ def lnw_did(
     delta_model : {"glm", "stack"}, default="glm"
         Nuisance backend for the conditional covariance term.
     t_func : bool, default=False
-        Whether to use the estimated post-period propensity. The stacked
-        cell holds one pre-period and one post-period row per unit, so
-        the post-period probability is exactly 0.5 by construction and
-        the default replaces the estimate with that constant.
+        Whether to use the estimated post-period propensity. Since the
+        stacked cell holds one pre-period and one post-period row per unit,
+        the post-period probability is exactly 0.5 by construction. The
+        default replaces the estimate with that constant.
     k_folds : int, default=10
         Number of folds for cross-fitting.
-    tune_penalty : bool, default=False
-        Whether to grid-search penalty factors for the nuisance and tau
-        fits.
     lambda_choice : {"lambda.min", "lambda.1se"}, default="lambda.min"
-        Cross-validation rule for selecting the penalty in the
-        non-constant tau fit.
+        Cross-validation rule for selecting the lasso penalty of each
+        R-learner backend's residual fit and of the non-constant tau fit.
     random_state : int, optional
         Seed controlling cross-fit fold splits.
 
     Returns
     -------
     dict
-        Dictionary containing the doubly-robust score outputs:
+        Dictionary containing the doubly robust score outputs:
 
-        - **TAU_hat**: Scalar cell-level ATT estimate
-        - **std_err**: Standard error for ``TAU_hat`` (HC3 OLS for the
-          constant case; ``NaN`` when ``gamma`` is None for the
-          non-constant case)
+        - **TAU_hat**: Scalar cell-level ATT estimate over the treated cell :math:`T = G = 1`
+        - **std_err**: Standard error for ``TAU_hat`` that treats the rows as
+          independent observations (HC3 OLS for the constant case; ``NaN``
+          when ``gamma`` is None for the non-constant case)
         - **tau_hat**: Length-:math:`n` array of CATT predictions
           :math:`\hat{\tau}(X_i)` (``None`` for ``constant_eff='constant'``)
-        - **score**: Length-:math:`n` array of doubly-robust score
+        - **score**: Length-:math:`n` array of doubly robust score
           contributions :math:`\hat{\tau}(X_i) + \hat{\gamma}_i (Y_i -
           \hat{y}_i)` (``None`` when ``gamma`` is missing or
           ``constant_eff='constant'``)
         - **y_hat**: Length-:math:`n` array of orthogonal-decomposition
-          fitted values :math:`\hat{y}_i`
+          fitted values :math:`\hat{y}_i` (``None`` for ``constant_eff='constant'``)
+        - **tau_coef**: Length-:math:`(p+1)` coefficient vector of the linear CATT
+          :math:`\hat{\tau}(x) = (1, x)^\top \hat{\beta}`, present only for
+          ``constant_eff='non_constant'``
         - **m_hat**: Cross-fitted outcome regression :math:`\hat{m}(X_i)`
         - **t_hat**: Cross-fitted post-period propensity :math:`\hat{t}(X_i)`
         - **s_hat**: Cross-fitted cohort propensity :math:`\hat{g}(X_i)`
@@ -167,7 +166,7 @@ def lnw_did(
     isolates the :math:`\tau` signal. With ``constant_eff='constant'``,
     :math:`H = \tau \cdot C + \text{noise}` is fit by no-intercept OLS
     with HC3 robust standard errors. With ``constant_eff='non_constant'``
-    a penalized linear CATE :math:`\hat{\tau}(x) = (1, x)^\top \hat{\beta}`
+    a penalized linear CATT :math:`\hat{\tau}(x) = (1, x)^\top \hat{\beta}`
     is fit via the residualized lasso
 
     .. math::
@@ -181,13 +180,15 @@ def lnw_did(
     is held unpenalized so it can absorb the intercept of
     :math:`\hat{\tau}(x)`.
 
-    The cell-level ATT combines :math:`\hat{\tau}(X_i)` with the
-    augmented minimax-linear weights :math:`\hat{\gamma}_i` when supplied
+    The cell-level ATT averages :math:`\hat{\tau}(X_i)` over the
+    :math:`n_1` rows of the treated cell, where :math:`T_i G_i = 1`, and adds
+    the residual correction with the augmented minimax-linear weights
+    :math:`\hat{\gamma}_i` when supplied
 
     .. math::
 
-        \widehat{ATT} = \frac{1}{n} \sum_{i=1}^{n}
-        \bigl[\hat{\tau}(X_i) + \hat{\gamma}_i (Y_i - \hat{y}_i)\bigr],
+        \widehat{ATT} = \frac{1}{n_1} \sum_{i : T_i G_i = 1} \hat{\tau}(X_i)
+        + \frac{1}{n} \sum_{i=1}^{n} \hat{\gamma}_i (Y_i - \hat{y}_i),
 
     where the orthogonal-decomposition fitted values are
 
@@ -196,9 +197,11 @@ def lnw_did(
         \hat{y}_i = \hat{m}(X_i) + A_i \hat{\nu}(X_i)
                   + B_i \hat{\zeta}(X_i) + C_i \hat{\tau}(X_i).
 
-    When ``gamma`` is omitted the estimator reduces to
-    :math:`\widehat{ATT} = (1/n) \sum_i \hat{\tau}(X_i)` and standard
-    errors are not returned.
+    Since the weights of :func:`~moderndid.didml.amle_weights` balance the
+    treated cell against its own covariate mean, the correction targets the
+    same average. When ``gamma`` is omitted the estimator reduces to the
+    treated-cell average of :math:`\hat{\tau}(X_i)` and returns NaN for the
+    standard error.
 
     References
     ----------
@@ -247,7 +250,14 @@ def lnw_did(
         if gamma.shape != (n,):
             raise ValueError(f"gamma length {gamma.shape} does not match X row count {n}.")
 
-    nu_kwargs = dict(k_folds=k_folds, tune_penalty=tune_penalty, random_state=random_state)
+    treated_cell = post_indicator * cohort_indicator == 1
+    if not treated_cell.any():
+        raise ValueError(
+            "post_indicator and cohort_indicator are never 1 on the same row. Pass rows of the treated cohort in the "
+            "post period."
+        )
+
+    nu_kwargs = dict(k_folds=k_folds, random_state=random_state)
 
     if nu_model == "rlearner":
         nu_fit = fit_rlearner(X, Y, post_indicator, lambda_choice=lambda_choice, **nu_kwargs)
@@ -278,7 +288,6 @@ def lnw_did(
         response,
         model=delta_model,
         k_folds=k_folds,
-        tune_penalty=tune_penalty,
         random_state=random_state,
     )
     delta_hat = np.asarray(delta_fit["delta_hat"], dtype=float)
@@ -341,16 +350,18 @@ def lnw_did(
     tau_hat = design @ tau_coef
     y_hat = m_hat + A_hat * nu_hat + B_hat * sigma_hat + C_hat * tau_hat
 
+    plug_in = float(np.mean(tau_hat[treated_cell]))
     if gamma is None:
-        TAU_hat = float(np.mean(tau_hat))
+        TAU_hat = plug_in
         std_err = float("nan")
         score = None
     else:
-        score = tau_hat + gamma * (Y - y_hat)
-        TAU_hat = float(np.mean(score))
+        correction = gamma * (Y - y_hat)
+        score = tau_hat + correction
+        TAU_hat = plug_in + float(np.mean(correction))
 
-        residual_var = np.mean((tau_hat - TAU_hat) ** 2 + gamma**2 * (Y - y_hat) ** 2)
-        std_err = float(np.sqrt(residual_var / n))
+        row_influence = (n / treated_cell.sum()) * treated_cell * (tau_hat - plug_in) + correction - np.mean(correction)
+        std_err = float(np.sqrt(row_influence @ row_influence) / n)
 
     return {
         "TAU_hat": TAU_hat,

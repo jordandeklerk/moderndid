@@ -1,4 +1,4 @@
-"""Delta nuisance backend for the doubly-robust ML DiD score."""
+"""Delta nuisance backend for the doubly robust ML DiD score."""
 
 from __future__ import annotations
 
@@ -39,12 +39,11 @@ def fit_delta(
     *,
     model="glm",
     k_folds=10,
-    tune_penalty=False,
     random_state=None,
 ):
     r"""Fit the conditional covariance (delta) nuisance model.
 
-    The doubly-robust ML score requires an estimate of the conditional
+    The doubly robust ML score requires an estimate of the conditional
     covariance of the post-period indicator :math:`T` and the cohort
     indicator :math:`G`,
 
@@ -55,14 +54,14 @@ def fit_delta(
     where :math:`t(x) = \mathbb{E}[T \mid X = x]` and
     :math:`g(x) = \mathbb{E}[G \mid X = x]` are the post-period and cohort
     propensities. The function takes the pointwise product of the
-    indicators residualized at their estimated propensities,
+    indicators residualized at their estimated propensities
 
     .. math::
 
-        \text{response}_i = (T_i - \hat{t}(X_i))(G_i - \hat{g}(X_i)),
+        \text{response}_i = (T_i - \hat{t}(X_i))(G_i - \hat{g}(X_i))
 
-    and regresses it on the covariates, returning cross-fitted predictions
-    :math:`\hat{\Delta}(X_i)`.
+    and regresses it on the covariates. The result holds the cross-fitted
+    predictions :math:`\hat{\Delta}(X_i)`.
 
     Parameters
     ----------
@@ -79,11 +78,6 @@ def fit_delta(
         learners combined by a non-negative least-squares meta-learner.
     k_folds : int, default=10
         Number of folds for cross-fitting.
-    tune_penalty : bool, default=False
-        For the ``'glm'`` backend, when True, grid-search over per-coefficient
-        penalty factors in :math:`\{0.01, 0.25, 0.5, 0.75, 0.99, 1\}` to find
-        the value minimizing the mean squared out-of-fold error, then refit
-        at the chosen penalty factor.
     random_state : int, optional
         Seed controlling fold splits and the inner CV of the base estimators.
 
@@ -96,8 +90,6 @@ def fit_delta(
           :math:`\hat{\Delta}(X_i)`
         - **best_l1_ratio**: Always ``1.0`` for the ``'glm'`` backend (lasso),
           ``None`` for the ``'stack'`` backend
-        - **best_penalty_factor**: Selected penalty factor scalar (``None``
-          for the ``'stack'`` backend or when ``tune_penalty=False``)
     """
     if model not in ("glm", "stack"):
         raise ValueError(f"model must be 'glm' or 'stack', got {model!r}.")
@@ -116,60 +108,30 @@ def fit_delta(
         raise ValueError(f"k_folds={k_folds} exceeds sample size n={n}.")
 
     if model == "glm":
-        return _fit_delta_glm(X, response, k_folds=k_folds, tune_penalty=tune_penalty, random_state=random_state)
+        return _fit_delta_glm(X, response, k_folds=k_folds, random_state=random_state)
     return _fit_delta_stack(X, response, k_folds=k_folds, random_state=random_state)
 
 
-def _fit_delta_glm(X, y, *, k_folds, tune_penalty, random_state):
-    """Single-pass CV lasso for the delta nuisance, optionally tuning a scalar penalty factor."""
-    _, p = X.shape
-
+def _fit_delta_glm(X, y, *, k_folds, random_state):
+    """Fit the delta nuisance by single-pass CV lasso on standardized covariates."""
     scaler = StandardScaler().fit(X)
-    X_scl = scaler.transform(X)
-
-    if tune_penalty:
-        pf_grid = (0.01, 0.25, 0.5, 0.75, 0.99, 1.0)
-        best_score = np.inf
-        best_pf = 1.0
-
-        for pf in pf_grid:
-            penalty_factor = np.full(p, float(pf))
-            candidate = cv_lasso_with_oof(
-                X_scl,
-                y,
-                k_folds=k_folds,
-                random_state=random_state,
-                penalty_factor=penalty_factor,
-                standardize=False,
-                lambda_choice="lambda.min",
-            )
-            cv_score = float(np.mean((y - candidate["oof_predictions"]) ** 2))
-
-            if cv_score < best_score:
-                best_score = cv_score
-                best_pf = float(pf)
-    else:
-        best_pf = 1.0
-
-    final = cv_lasso_with_oof(
-        X_scl,
+    fit = cv_lasso_with_oof(
+        scaler.transform(X),
         y,
         k_folds=k_folds,
         random_state=random_state,
-        penalty_factor=np.full(p, best_pf),
         standardize=False,
         lambda_choice="lambda.min",
     )
 
     return {
-        "delta_hat": np.asarray(final["oof_predictions"], dtype=float),
+        "delta_hat": np.asarray(fit["oof_predictions"], dtype=float),
         "best_l1_ratio": 1.0,
-        "best_penalty_factor": best_pf,
     }
 
 
 def _fit_delta_stack(X, y, *, k_folds, random_state):
-    """SuperLearner-style stacking ensemble with NNLS meta-learner."""
+    """Fit a super learner stacking ensemble with a non-negative least-squares meta-learner."""
     p = X.shape[1]
     base_estimators = [
         ("lasso", LassoCV(cv=10, n_alphas=100, max_iter=10_000, random_state=random_state)),
@@ -206,5 +168,4 @@ def _fit_delta_stack(X, y, *, k_folds, random_state):
     return {
         "delta_hat": np.asarray(delta_hat, dtype=float),
         "best_l1_ratio": None,
-        "best_penalty_factor": None,
     }

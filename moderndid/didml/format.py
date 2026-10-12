@@ -68,8 +68,6 @@ def _format_ml_estimation_details(params):
     if k_folds is not None:
         lines.append(f" Cross-fit folds:    {int(k_folds)}")
 
-    if params.get("tune_penalty") is not None:
-        lines.append(f" Tune penalty:       {bool(params.get('tune_penalty'))}")
     if params.get("use_gamma") is not None:
         lines.append(f" AMLE weights:       {bool(params.get('use_gamma'))}")
     zeta = params.get("zeta")
@@ -79,8 +77,15 @@ def _format_ml_estimation_details(params):
     return lines
 
 
+def _inference_line(params):
+    """Describe how the standard errors were computed."""
+    if params.get("bootstrap", False):
+        return f" Bootstrap standard errors ({params.get('biters')} refits of every cell)"
+    return " Analytical standard errors (influence-function based)"
+
+
 def _format_data_info(params):
-    """Render the data-info block (control group, anticipation)."""
+    """Render the data-info block with the control group and anticipation."""
     lines = []
     control_group = params.get("control_group")
     if control_group:
@@ -105,6 +110,10 @@ def format_didml_result(result):
     conf_lower = result.att_gt - crit * result.se_gt
     conf_upper = result.att_gt + crit * result.se_gt
 
+    bootstrap = result.estimation_params.get("bootstrap", False)
+    uniform_bands = result.estimation_params.get("uniform_bands", False)
+    cb_label = "Simult. Conf. Band" if bootstrap and uniform_bands else "Pointwise Conf. Band"
+
     lines.extend(
         format_group_time_table(
             result.groups,
@@ -114,7 +123,7 @@ def format_didml_result(result):
             conf_lower,
             conf_upper,
             conf_level,
-            "Pointwise Conf. Band",
+            cb_label,
         )
     )
 
@@ -145,11 +154,7 @@ def format_didml_result(result):
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {result.alpha}")
-    bootstrap = result.estimation_params.get("bootstrap", False)
-    if bootstrap:
-        lines.append(" Bootstrap standard errors")
-    else:
-        lines.append(" Analytical standard errors (influence-function based)")
+    lines.append(_inference_line(result.estimation_params))
 
     lines.extend(format_footer("Reference: Hatamyar, Kreif, Rocha, and Huber (2023)"))
 
@@ -244,10 +249,7 @@ def format_didml_agg_result(result):
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {alpha}")
-    if result.estimation_params.get("bootstrap", False):
-        lines.append(" Bootstrap standard errors")
-    else:
-        lines.append(" Analytical standard errors (influence-function based)")
+    lines.append(_inference_line(result.estimation_params))
 
     lines.extend(format_footer("Reference: Hatamyar, Kreif, Rocha, and Huber (2023)"))
 
