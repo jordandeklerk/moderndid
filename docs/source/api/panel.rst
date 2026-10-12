@@ -1,11 +1,18 @@
 .. _api-panel:
 
-Panel Utilities
+Panel utilities
 ===============
 
-The panel module provides diagnostic, validation, and transformation tools
-for preparing panel data before estimation. All functions accept any
-Arrow-compatible DataFrame and return the same format.
+Before estimating an effect, inspect whether the panel follows each unit
+through the periods your comparison needs. The diagnostic and validation
+functions below help you locate missing periods, duplicates, and changes
+within units. The transformation functions reshape or complete the panel
+once you've decided how to handle those observations.
+
+The utilities accept supported Arrow-compatible DataFrames, and functions
+that return a transformed DataFrame preserve its input type. The
+:ref:`panel utilities guide <panel-utilities>` follows an incomplete panel
+through those decisions.
 
 .. currentmodule:: moderndid.core.panel
 

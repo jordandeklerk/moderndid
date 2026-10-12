@@ -1,16 +1,24 @@
 .. _api-drdid:
 
-Doubly Robust DiD
-=================
+Two-period DiD
+==============
 
-The drdid module provides all two-period difference-in-differences estimators,
-including doubly robust, inverse propensity weighted, and outcome regression methods.
-These estimators follow the frameworks from `Sant'Anna and Zhao (2020) <https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_
-and related literature.
+With an outcome measured before and after treatment, you can estimate the
+average effect on treated units using :func:`~moderndid.drdid`,
+:func:`~moderndid.ipwdid`, or :func:`~moderndid.ordid`. These functions use
+doubly robust estimation, inverse probability weighting, and outcome
+regression, respectively. Choose the sampling design as well as the method:
+a panel follows the same units through both periods, while repeated
+cross-sections observe different samples.
+
+The lower-level routines below accept arrays prepared for one of those
+designs. The :ref:`background page <background-drdid>` explains why their
+calculations differ and derives the doubly robust estimators of
+`Sant'Anna and Zhao (2020) <https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_.
 
 .. currentmodule:: moderndid
 
-Main Functions
+Main functions
 --------------
 
 .. autosummary::
@@ -21,7 +29,7 @@ Main Functions
    ipwdid
    ordid
 
-Panel Data Estimators
+Panel data estimators
 ---------------------
 
 .. autosummary::
@@ -35,7 +43,7 @@ Panel Data Estimators
    reg_did_panel
    twfe_did_panel
 
-Repeated Cross-Section Estimators
+Repeated cross-section estimators
 ---------------------------------
 
 .. autosummary::
