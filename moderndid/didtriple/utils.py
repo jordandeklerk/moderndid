@@ -4,12 +4,13 @@ import warnings
 
 import numpy as np
 
-from moderndid.core.dataframe import DataFrame, to_polars
+from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.utils import (
     add_intercept,
     extract_covariates,
+    extract_vars_from_formula,
     is_balanced_panel,
-    parse_formula,
+    nonfinite_to_null,
 )
 from moderndid.core.preprocess.validators import _check_panel_mismatch
 
@@ -25,8 +26,11 @@ __all__ = [
 ]
 
 
-def get_covariate_names(xformla: str | None) -> list[str] | None:
+def get_covariate_names(xformla):
     """Extract covariate column names from a formula.
+
+    As in :func:`~moderndid.core.preprocess.utils.extract_vars_from_formula`,
+    a left-hand side raises an error.
 
     Parameters
     ----------
@@ -40,22 +44,41 @@ def get_covariate_names(xformla: str | None) -> list[str] | None:
     """
     if xformla is None or xformla == "~1":
         return None
-
-    formula_str = xformla.strip()
-    if formula_str.startswith("~"):
-        formula_str = "y " + formula_str
-
-    parsed = parse_formula(formula_str)
-    covariate_names = parsed["predictors"]
-
-    if not covariate_names or covariate_names == ["1"]:
-        return None
-
-    return [c for c in covariate_names if c != "1"]
+    return extract_vars_from_formula(xformla) or None
 
 
-def detect_multiple_periods(data: DataFrame, tname: str, gname: str) -> bool:
+def _complete_rows(data, columns, gname):
+    """Return the rows that the missing-data step keeps.
+
+    A null, NaN, or infinite value in one of the columns counts as missing.
+    Since an infinite cohort marks a never-treated unit, it stays. When the
+    checks that pick the estimator read these rows, a row that the estimation
+    never sees can't change their choice.
+
+    Parameters
+    ----------
+    data : DataFrame
+        The input data.
+    columns : list of str or None
+        Names of the columns that the call uses. An entry of None names no
+        column.
+    gname : str
+        Name of the cohort column.
+
+    Returns
+    -------
+    pl.DataFrame
+        The named columns of the rows without a missing value.
+    """
+    used = list(dict.fromkeys(column for column in columns if column is not None))
+    return nonfinite_to_null(to_polars(data).select(used), keep_infinite=[gname]).drop_nulls()
+
+
+def detect_multiple_periods(data, tname, gname):
     """Detect whether data has multiple periods.
+
+    Rows with a missing period or cohort don't count. The missing-data step
+    drops them before the estimation.
 
     Parameters
     ----------
@@ -72,16 +95,19 @@ def detect_multiple_periods(data: DataFrame, tname: str, gname: str) -> bool:
         True if data has more than 2 time periods or treatment groups.
     """
     df = to_polars(data)
-    n_time_periods = df[tname].n_unique()
+    periods = df[tname].drop_nulls()
+    if periods.dtype.is_float():
+        periods = periods.filter(periods.is_finite())
+    n_time_periods = periods.n_unique()
 
-    gvals = df[gname].unique().to_list()
+    gvals = df[gname].drop_nulls().unique().to_list()
     finite_gvals = [g for g in gvals if np.isfinite(g)]
     n_groups = len(finite_gvals)
 
     return max(n_time_periods, n_groups) > 2
 
 
-def detect_rcs_mode(data: DataFrame, tname: str, idname: str | None, panel: bool, allow_unbalanced_panel: bool) -> bool:
+def detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel):
     """Detect whether to use repeated cross-section mode.
 
     Parameters
@@ -119,14 +145,21 @@ def detect_rcs_mode(data: DataFrame, tname: str, idname: str | None, panel: bool
     return bool(allow_unbalanced_panel and not is_balanced_panel(data, tname, idname))
 
 
-def get_comparison_description(condition_subgroup: int) -> str:
+def _clusters_group_units(cluster):
+    """Tell whether some cluster holds more than one unit."""
+    if cluster is None:
+        return False
+    cluster = np.asarray(cluster).ravel()
+    return len(np.unique(cluster)) < len(cluster)
+
+
+def get_comparison_description(condition_subgroup):
     """Get descriptive comparison name for a subgroup.
 
-    Subgroup encoding:
-      4 = Treated + Eligible (focal group)
-      3 = Treated + Ineligible
-      2 = Eligible + Untreated
-      1 = Untreated + Ineligible
+    Every comparison contrasts subgroup 4, the eligible units of the treated
+    cohort, with one other subgroup. Subgroup 3 holds the ineligible units of
+    the treated cohort, subgroup 2 the eligible units of the comparison
+    cohort, and subgroup 1 its ineligible units.
 
     Parameters
     ----------
@@ -139,19 +172,14 @@ def get_comparison_description(condition_subgroup: int) -> str:
         Human-readable description of the comparison.
     """
     descriptions = {
-        3: "Treated-Eligible vs Treated-Ineligible",
-        2: "Treated-Eligible vs Eligible-Untreated",
-        1: "Treated-Eligible vs Untreated-Ineligible",
+        3: "Treated-Eligible versus Treated-Ineligible",
+        2: "Treated-Eligible versus Eligible-Untreated",
+        1: "Treated-Eligible versus Untreated-Ineligible",
     }
     return descriptions.get(condition_subgroup, f"Unknown comparison ({condition_subgroup})")
 
 
-def check_overlap_and_warn(
-    propensity_scores: np.ndarray,
-    condition_subgroup: int,
-    threshold: float = 1e-3,
-    max_proportion: float = 0.05,
-) -> None:
+def check_overlap_and_warn(propensity_scores, condition_subgroup, threshold=1e-3, max_proportion=0.05):
     """Check propensity score overlap and warn if poor.
 
     Parameters
@@ -177,8 +205,8 @@ def check_overlap_and_warn(
     msg = (
         f"Poor propensity score overlap detected.\n"
         f"  Comparison: {comparison_desc} units.\n"
-        f"  Diagnostics: {prop_below * 100:.1f}% of units have propensity score < {threshold}.\n"
-        f"  Consider checking covariate balance or using fewer/different covariates."
+        f"  {prop_below * 100:.1f} percent of units have a propensity score below {threshold}.\n"
+        f"  Consider checking covariate balance or using fewer or different covariates."
     )
 
     warnings.warn(msg, UserWarning, stacklevel=4)

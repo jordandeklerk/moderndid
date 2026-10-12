@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 from scipy import stats
 
-from .bootstrap.mboot_ddd import mboot_ddd
+from .bootstrap.mboot_ddd import mboot_ddd, sum_within_clusters
 from .container import DDDAggResult
 
 
@@ -26,45 +26,44 @@ def compute_agg_ddd(
 ):
     """Compute aggregated treatment effect parameters for DDD.
 
-    Aggregates group-time average treatment effects into different summary
-    measures based on the specified aggregation type.
+    Averages the group-time average treatment effects into the summary that
+    ``aggregation_type`` names. :func:`agg_ddd` describes each summary and
+    what it reports when no post-treatment effect is left. Since the
+    ineligible units of an enabling cohort are never treated, the cohort
+    shares count only its eligible units. When ``ddd_result`` holds the
+    cluster of each unit, the standard errors and the bootstrap sum the
+    influence functions within clusters.
 
     Parameters
     ----------
-    ddd_result : DDDMultiPeriodResult
-        Multi-period result object containing group-time ATTs and their
-        influence functions.
+    ddd_result : DDDMultiPeriodResult or DDDMultiPeriodRCResult
+        Multi-period result that holds the group-time effects, their
+        influence functions, and the partition of each unit.
     aggregation_type : {'simple', 'eventstudy', 'group', 'calendar'}, default='eventstudy'
-        Type of aggregation to perform:
-
-        - 'simple': Simple weighted average of all post-treatment ATTs
-        - 'eventstudy': Event-study aggregation by relative time
-        - 'group': Aggregation by treatment group
-        - 'calendar': Aggregation by calendar time
+        Aggregation to compute.
     balance_e : int, optional
-        For event studies, balance the sample with respect to event time.
-        If balance_e=2, groups not exposed for at least 3 periods are dropped.
+        Event time through which every cohort in an event study must be observed.
     min_e : float, default=-inf
-        Minimum event time to include in eventstudy aggregation.
+        Earliest event time in an event study.
     max_e : float, default=inf
-        Maximum event time to include in aggregation.
+        Latest event time in the simple, group, and event-study aggregations.
     dropna : bool, default=False
-        Whether to remove NA values before aggregation.
+        Whether to drop missing ATT(g,t) before aggregating.
     boot : bool, default=True
-        Whether to use bootstrap for standard errors.
+        Whether the multiplier bootstrap computes the standard errors.
     biters : int, default=1000
-        Number of bootstrap iterations.
+        Number of bootstrap draws.
     cband : bool, default=True
-        Whether to compute uniform confidence bands.
+        Whether to compute simultaneous confidence bands. Requires boot=True.
     alpha : float, default=0.05
-        Significance level.
+        Significance level of the confidence intervals.
     random_state : int, Generator, optional
-        Controls randomness of the bootstrap.
+        Seed or generator for the bootstrap.
 
     Returns
     -------
     DDDAggResult
-        Aggregated treatment effect results.
+        The result that :func:`agg_ddd` describes.
     """
     if aggregation_type not in ["simple", "eventstudy", "group", "calendar"]:
         raise ValueError(
@@ -81,7 +80,26 @@ def compute_agg_ddd(
     n = ddd_result.n
     tlist = ddd_result.tlist.copy()
     glist = ddd_result.glist.copy()
-    unit_groups = ddd_result.unit_groups.copy()
+    unit_partition = getattr(ddd_result, "unit_partition", None)
+    if unit_partition is None:
+        raise ValueError(
+            "ddd_result has no unit_partition. Since only eligible units are treated, the cohort shares need the "
+            "partition of every unit. Pass a result of ddd, ddd_mp, or ddd_mp_rc. A result saved by an earlier "
+            "version needs a new fit."
+        )
+    # Since an ineligible unit is never treated, its treatment cohort is 0 whatever its enabling cohort.
+    unit_cohorts = np.where(np.asarray(unit_partition) == 1, ddd_result.unit_groups, 0)
+    unit_weights = (
+        np.ones(len(unit_cohorts))
+        if ddd_result.unit_weights is None
+        else np.asarray(ddd_result.unit_weights, dtype=float)
+    )
+    if not np.any(unit_weights[np.isin(unit_cohorts, glist)] > 0):
+        raise ValueError(
+            "No cohort in ddd_result has an eligible unit. Since only eligible units are treated, it holds no "
+            "treatment effect to aggregate. Check that the partition marks the eligible units with 1."
+        )
+    cluster = getattr(ddd_result, "unit_clusters", None)
 
     args = {
         "aggregation_type": aggregation_type,
@@ -94,30 +112,30 @@ def compute_agg_ddd(
     for key in ("yname", "pname", "est_method", "control_group", "base_period", "panel"):
         if key in src_args:
             args[key] = src_args[key]
+    if cluster is not None:
+        args["cluster"] = src_args.get("cluster")
+
+    if len(att) == 0:
+        raise ValueError(
+            "ddd_result holds no group-time effects to aggregate. The ddd warnings name the cells that failed to "
+            "estimate. Fewer covariates or control_group='notyettreated' can recover them."
+        )
 
     if not dropna and np.any(np.isnan(att)):
         raise ValueError("Missing values in ATT(g,t) found. Set dropna=True to remove them.")
 
     if dropna:
         notna = ~np.isnan(att)
+        if not notna.any():
+            raise ValueError(
+                "Every ATT(g,t) in ddd_result is NaN. The ddd warnings name the cells that failed to estimate. Fewer "
+                "covariates or control_group='notyettreated' can recover them."
+            )
         groups = groups[notna]
         periods = periods[notna]
         att = att[notna]
         inf_func_mat = inf_func_mat[:, notna]
         glist = np.sort(np.unique(groups))
-
-        if aggregation_type == "group":
-            groups_with_att = []
-            for g in glist:
-                whichg = (groups == g) & (g <= periods)
-                if whichg.any() and not np.isnan(np.mean(att[whichg])):
-                    groups_with_att.append(g)
-            keep = np.isin(groups, groups_with_att)
-            groups = groups[keep]
-            periods = periods[keep]
-            att = att[keep]
-            inf_func_mat = inf_func_mat[:, keep]
-            glist = np.sort(np.unique(groups))
 
     orig_periods = periods.copy()
     orig_group = groups.copy()
@@ -132,7 +150,7 @@ def compute_agg_ddd(
     tlist_recoded = np.unique(t)
     max_t = int(t.max())
 
-    pgg = np.array([np.mean(unit_groups == g) for g in orig_glist])
+    pgg = np.array([np.mean(unit_weights * (unit_cohorts == g)) for g in orig_glist])
     pg = pgg.copy()
     pg_obs = np.zeros(len(group))
     for i, g in enumerate(glist_recoded):
@@ -141,7 +159,24 @@ def compute_agg_ddd(
     keepers = np.where((group <= t) & (t <= group + max_e))[0]
 
     if aggregation_type == "simple":
-        return _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, args, random_state)
+        return _compute_simple(
+            att,
+            inf_func_mat,
+            keepers,
+            pg_obs,
+            t - group,
+            max_e,
+            n,
+            boot,
+            biters,
+            alpha,
+            args,
+            random_state,
+            orig_group,
+            unit_cohorts,
+            unit_weights,
+            cluster,
+        )
 
     if aggregation_type == "group":
         return _compute_group(
@@ -162,7 +197,9 @@ def compute_agg_ddd(
             cband,
             args,
             random_state,
-            unit_groups,
+            unit_cohorts,
+            unit_weights,
+            cluster,
         )
 
     if aggregation_type == "calendar":
@@ -182,6 +219,10 @@ def compute_agg_ddd(
             cband,
             args,
             random_state,
+            orig_group,
+            unit_cohorts,
+            unit_weights,
+            cluster,
         )
 
     return _compute_eventstudy(
@@ -205,20 +246,44 @@ def compute_agg_ddd(
         cband,
         args,
         random_state,
+        unit_cohorts,
+        unit_weights,
+        cluster,
     )
 
 
-def _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, args, random_state):
+def _compute_simple(
+    att,
+    inf_func_mat,
+    keepers,
+    pg_obs,
+    event_times,
+    max_e,
+    n,
+    boot,
+    biters,
+    alpha,
+    args,
+    random_state,
+    orig_group,
+    unit_cohorts,
+    unit_weights,
+    cluster=None,
+):
     """Compute simple ATT aggregation."""
-    simple_att = np.sum(att[keepers] * pg_obs[keepers]) / pg_obs[keepers].sum()
-
-    if np.isnan(simple_att):
+    if pg_obs[keepers].sum() == 0:
+        _warn_without_post_treatment_effects(event_times, max_e)
         simple_att = np.nan
-
-    weights = pg_obs[keepers] / pg_obs[keepers].sum()
-    simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights)
-
-    simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
+        simple_se = np.nan
+        simple_if = np.zeros(n)
+    else:
+        simple_att = np.sum(att[keepers] * pg_obs[keepers]) / pg_obs[keepers].sum()
+        weights = pg_obs[keepers] / pg_obs[keepers].sum()
+        wif = _get_weight_influence(
+            keepers=keepers, pg=pg_obs, unit_cohorts=unit_cohorts, glist=orig_group, unit_weights=unit_weights
+        )
+        simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights) + wif @ att[keepers]
+        simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state, cluster)
 
     return DDDAggResult(
         overall_att=simple_att,
@@ -252,16 +317,26 @@ def _compute_group(
     cband,
     args,
     random_state,
-    unit_groups,
+    unit_cohorts,
+    unit_weights,
+    cluster=None,
 ):
     """Compute group-specific ATT aggregation."""
+    # A cohort without a post-treatment cell in the window has nothing to average, whether the fit skipped its
+    # failed cells or dropna removed them.
+    has_cell = np.array([np.any((group == g) & (g <= t) & (t <= g + max_e)) for g in glist_recoded], dtype=bool)
+    glist_recoded = glist_recoded[has_cell]
+    orig_glist = orig_glist[has_cell]
+    pgg = pgg[has_cell]
+
     selective_att_g = np.zeros(len(glist_recoded))
     selective_inf_funcs = []
 
     for i, g in enumerate(glist_recoded):
         whichg = np.where((group == g) & (g <= t) & (t <= g + max_e))[0]
 
-        if len(whichg) > 0:
+        # Since a cohort without eligible units has no treated unit, it has no effect to average.
+        if pg_obs[whichg].sum() > 0:
             selective_att_g[i] = np.mean(att[whichg])
             weights_g = pg_obs[whichg] / pg_obs[whichg].sum()
             inf_func_g = _get_agg_inf_func(inf_func_mat, whichg, weights_g)
@@ -271,7 +346,7 @@ def _compute_group(
 
         selective_inf_funcs.append(inf_func_g)
 
-    selective_inf_func_g = np.column_stack(selective_inf_funcs)
+    selective_inf_func_g = np.column_stack(selective_inf_funcs) if selective_inf_funcs else np.zeros((n, 0))
 
     selective_se_g, selective_crit_val, _bres = _batched_bootstrap(
         selective_inf_func_g,
@@ -281,21 +356,28 @@ def _compute_group(
         alpha,
         cband,
         random_state,
+        cluster,
     )
 
-    selective_att_g_clean = np.where(np.isnan(selective_att_g), 0, selective_att_g)
-    selective_att = np.sum(selective_att_g_clean * pgg) / pgg.sum()
-
-    weights_overall = pgg / pgg.sum()
-    wif = _get_weight_influence(
-        keepers=np.arange(len(glist_recoded)),
-        pg=pgg,
-        unit_groups=unit_groups,
-        glist=orig_glist,
-    )
-
-    selective_inf_func = selective_inf_func_g @ weights_overall + wif @ selective_att_g_clean
-    selective_se = _compute_se(selective_inf_func, n, boot, biters, alpha, random_state)
+    # Like the other aggregations, the overall effect averages only the cohorts with a post-treatment effect.
+    valid = ~np.isnan(selective_att_g)
+    if valid.any():
+        weights_overall = pgg[valid] / pgg[valid].sum()
+        selective_att = selective_att_g[valid] @ weights_overall
+        wif = _get_weight_influence(
+            keepers=np.where(valid)[0],
+            pg=pgg,
+            unit_cohorts=unit_cohorts,
+            glist=orig_glist,
+            unit_weights=unit_weights,
+        )
+        selective_inf_func = selective_inf_func_g[:, valid] @ weights_overall + wif @ selective_att_g[valid]
+        selective_se = _compute_se(selective_inf_func, n, boot, biters, alpha, random_state, cluster)
+    else:
+        _warn_without_post_treatment_effects(t - group, max_e)
+        selective_att = np.nan
+        selective_se = np.nan
+        selective_inf_func = np.zeros(n)
 
     return DDDAggResult(
         overall_att=selective_att,
@@ -327,10 +409,16 @@ def _compute_calendar(
     cband,
     args,
     random_state,
+    orig_group,
+    unit_cohorts,
+    unit_weights,
+    cluster=None,
 ):
     """Compute calendar time ATT aggregation."""
-    min_g = group.min()
-    calendar_tlist = tlist_recoded[tlist_recoded >= min_g]
+    # A period enters only when one of its cells is treated. Since a cohort whose treated cells all failed keeps its
+    # earlier cells, it would otherwise add periods with nothing to average.
+    has_treated_cell = np.array([np.any((t == t1) & (group <= t1)) for t1 in tlist_recoded], dtype=bool)
+    calendar_tlist = tlist_recoded[has_treated_cell]
 
     calendar_att_t = np.zeros(len(calendar_tlist))
     calendar_inf_funcs = []
@@ -338,17 +426,21 @@ def _compute_calendar(
     for i, t1 in enumerate(calendar_tlist):
         whicht = np.where((t == t1) & (group <= t))[0]
 
-        if len(whicht) > 0:
+        # As in the event study, a period whose cohorts all have a share of 0 has no effect.
+        if pg_obs[whicht].sum() > 0:
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
-            inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt)
+            wif_t = _get_weight_influence(
+                keepers=whicht, pg=pg_obs, unit_cohorts=unit_cohorts, glist=orig_group, unit_weights=unit_weights
+            )
+            inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt) + wif_t @ att[whicht]
         else:
             calendar_att_t[i] = np.nan
             inf_func_t = np.zeros(n)
 
         calendar_inf_funcs.append(inf_func_t)
 
-    calendar_inf_func_t = np.column_stack(calendar_inf_funcs)
+    calendar_inf_func_t = np.column_stack(calendar_inf_funcs) if calendar_inf_funcs else np.zeros((n, 0))
 
     calendar_se_t, calendar_crit_val, bres = _batched_bootstrap(
         calendar_inf_func_t,
@@ -358,21 +450,25 @@ def _compute_calendar(
         alpha,
         cband,
         random_state,
+        cluster,
     )
 
-    calendar_att = np.nanmean(calendar_att_t)
-
-    weights_calendar = np.ones(len(calendar_tlist)) / len(calendar_tlist)
-    calendar_inf_func = calendar_inf_func_t @ weights_calendar
-    if boot and bres is not None:
-        calendar_se = _overall_se_from_bres(
-            bres,
-            np.ones(len(calendar_tlist), dtype=bool),
-            weights_calendar,
-            n,
-        )
+    # The overall effect and its influence function average only the periods that have a cell.
+    valid = ~np.isnan(calendar_att_t)
+    if valid.any():
+        calendar_att = np.mean(calendar_att_t[valid])
+        weights_calendar = np.ones(valid.sum()) / valid.sum()
+        calendar_inf_func = calendar_inf_func_t[:, valid] @ weights_calendar
+        if boot and bres is not None:
+            calendar_se = _overall_se_from_bres(bres, valid, weights_calendar, n, cluster)
+        else:
+            calendar_se = _compute_se(calendar_inf_func, n, False, biters, alpha, random_state, cluster)
     else:
-        calendar_se = _compute_se(calendar_inf_func, n, False, biters, alpha, random_state)
+        # Since the calendar aggregation ignores max_e, the warning must not name it as the cause.
+        _warn_without_post_treatment_effects(t - group, np.inf)
+        calendar_att = np.nan
+        calendar_se = np.nan
+        calendar_inf_func = np.zeros(n)
 
     orig_calendar_tlist = np.array([_t2orig(tc, orig_gtlist, uniquet) for tc in calendar_tlist])
 
@@ -411,6 +507,9 @@ def _compute_eventstudy(
     cband,
     args,
     random_state,
+    unit_cohorts,
+    unit_weights,
+    cluster=None,
 ):
     """Compute event study ATT aggregation."""
     eseq = np.unique(orig_periods - orig_group)
@@ -430,6 +529,12 @@ def _compute_eventstudy(
         eseq = eseq[(eseq <= balance_e) & (eseq >= balance_e - max_orig_t + min_orig_t)]
 
     eseq = eseq[(eseq >= min_e) & (eseq <= max_e)]
+    if len(eseq) == 0:
+        window = f"min_e={min_e} and max_e={max_e}" + ("" if balance_e is None else f" with balance_e={balance_e}")
+        raise ValueError(
+            f"No group-time effect has an event time within {window}. Widen the window or check the ddd warnings "
+            "for cells that failed to estimate."
+        )
 
     dynamic_att_e = np.zeros(len(eseq))
     dynamic_inf_funcs = []
@@ -437,17 +542,21 @@ def _compute_eventstudy(
     for i, e in enumerate(eseq):
         whiche = np.where(((orig_periods - orig_group) == e) & include_balanced_gt)[0]
 
-        if len(whiche) > 0:
+        # A cohort without eligible units has a share of 0 and can be the only cohort with a base-period cell at e.
+        if pg_obs[whiche].sum() > 0:
             pge = pg_obs[whiche] / pg_obs[whiche].sum()
             dynamic_att_e[i] = np.sum(att[whiche] * pge)
-            inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge)
+            wif_e = _get_weight_influence(
+                keepers=whiche, pg=pg_obs, unit_cohorts=unit_cohorts, glist=orig_group, unit_weights=unit_weights
+            )
+            inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge) + wif_e @ att[whiche]
         else:
             dynamic_att_e[i] = np.nan
             inf_func_e = np.zeros(n)
 
         dynamic_inf_funcs.append(inf_func_e)
 
-    dynamic_inf_func_e = np.column_stack(dynamic_inf_funcs) if dynamic_inf_funcs else np.zeros((n, 0))
+    dynamic_inf_func_e = np.column_stack(dynamic_inf_funcs)
 
     dynamic_se_e, dynamic_crit_val, bres = _batched_bootstrap(
         dynamic_inf_func_e,
@@ -455,20 +564,23 @@ def _compute_eventstudy(
         boot,
         biters,
         alpha,
-        cband and len(eseq) > 0,
+        cband,
         random_state,
+        cluster,
     )
 
-    epos = eseq >= 0
-    if epos.any():
-        dynamic_att = np.nanmean(dynamic_att_e[epos])
-        n_pos = epos.sum()
-        dynamic_inf_func = dynamic_inf_func_e[:, epos] @ (np.ones(n_pos) / n_pos)
+    # The overall effect and its influence function average only the post-treatment event times that have an effect.
+    valid = (eseq >= 0) & ~np.isnan(dynamic_att_e)
+    if valid.any():
+        weights_dynamic = np.ones(valid.sum()) / valid.sum()
+        dynamic_att = np.mean(dynamic_att_e[valid])
+        dynamic_inf_func = dynamic_inf_func_e[:, valid] @ weights_dynamic
         if boot and bres is not None:
-            dynamic_se = _overall_se_from_bres(bres, epos, np.ones(n_pos) / n_pos, n)
+            dynamic_se = _overall_se_from_bres(bres, valid, weights_dynamic, n, cluster)
         else:
-            dynamic_se = _compute_se(dynamic_inf_func, n, False, biters, alpha, random_state)
+            dynamic_se = _compute_se(dynamic_inf_func, n, False, biters, alpha, random_state, cluster)
     else:
+        _warn_without_post_treatment_effects((orig_periods - orig_group)[include_balanced_gt], max_e)
         dynamic_att = np.nan
         dynamic_se = np.nan
         dynamic_inf_func = np.zeros(n)
@@ -492,13 +604,39 @@ def _compute_eventstudy(
     )
 
 
-def _compute_se(inf_func, n, boot, biters, alpha, random_state):
+def _warn_without_post_treatment_effects(event_times, max_e):
+    """Warn that the overall effect is NaN and name what left out the post-treatment effects.
+
+    Parameters
+    ----------
+    event_times : ndarray
+        Event time of each group-time effect that reached the aggregation.
+    max_e : float
+        Latest event time the aggregation includes.
+    """
+    if np.any((event_times >= 0) & (event_times > max_e)):
+        message = (
+            f"The overall effect is NaN because max_e={max_e} leaves out every post-treatment group-time effect. "
+            "Pass a larger max_e to estimate it."
+        )
+    else:
+        message = (
+            "The overall effect is NaN because no post-treatment group-time effect is left to average. The ddd "
+            "warnings name the cells that failed to estimate. Fewer covariates or control_group='notyettreated' "
+            "can recover them."
+        )
+    warnings.warn(message, UserWarning)
+
+
+def _compute_se(inf_func, n, boot, biters, alpha, random_state, cluster=None):
     """Compute standard error from influence function."""
     if boot:
-        boot_result = mboot_ddd(inf_func.reshape(-1, 1), biters, alpha, random_state=random_state)
+        boot_result = mboot_ddd(inf_func.reshape(-1, 1), biters, alpha, cluster=cluster, random_state=random_state)
         se = boot_result.se[0]
-    else:
+    elif cluster is None:
         se = np.sqrt(np.mean(inf_func**2) / n)
+    else:
+        se = np.sqrt(np.sum(sum_within_clusters(inf_func.reshape(-1, 1), cluster) ** 2)) / n
 
     if not np.isnan(se) and se <= np.sqrt(np.finfo(float).eps) * 10:
         se = np.nan
@@ -506,7 +644,7 @@ def _compute_se(inf_func, n, boot, biters, alpha, random_state):
     return se
 
 
-def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state):
+def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state, cluster=None):
     """Compute per-column SEs and critical value from stacked influence functions."""
     k = inf_func_mat.shape[1]
     pointwise_crit = stats.norm.ppf(1 - alpha / 2)
@@ -515,12 +653,15 @@ def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state
         return np.array([]), pointwise_crit, None
 
     if not boot:
-        se_array = np.sqrt(np.mean(inf_func_mat**2, axis=0) / n)
+        if cluster is None:
+            se_array = np.sqrt(np.mean(inf_func_mat**2, axis=0) / n)
+        else:
+            se_array = np.sqrt(np.sum(sum_within_clusters(inf_func_mat, cluster) ** 2, axis=0)) / n
         eps_thresh = np.sqrt(np.finfo(float).eps) * 10
         se_array = np.where((~np.isnan(se_array)) & (se_array <= eps_thresh), np.nan, se_array)
         return se_array, pointwise_crit, None
 
-    boot_result = mboot_ddd(inf_func_mat, biters, alpha, random_state=random_state)
+    boot_result = mboot_ddd(inf_func_mat, biters, alpha, cluster=cluster, random_state=random_state)
     se_array = boot_result.se.copy()
 
     eps_thresh = np.sqrt(np.finfo(float).eps) * 10
@@ -541,19 +682,20 @@ def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state
     return se_array, crit_val, boot_result.bres
 
 
-def _overall_se_from_bres(bres, col_mask, weights, n):
+def _overall_se_from_bres(bres, col_mask, weights, n, cluster=None):
     """Derive overall SE from stacked bootstrap draws."""
     overall_bres = bres[:, col_mask] @ weights
 
-    q75 = np.percentile(overall_bres, 75)
-    q25 = np.percentile(overall_bres, 25)
+    q75 = np.percentile(overall_bres, 75, method="inverted_cdf")
+    q25 = np.percentile(overall_bres, 25, method="inverted_cdf")
     b_sigma = (q75 - q25) / 1.3489795
 
     eps_thresh = np.sqrt(np.finfo(float).eps) * 10
     if np.isnan(b_sigma) or b_sigma <= eps_thresh:
         return np.nan
 
-    se = b_sigma / np.sqrt(n)
+    # The draws scale with the number of clusters, as in mboot_ddd.
+    se = b_sigma / np.sqrt(n) if cluster is None else b_sigma * np.sqrt(len(np.unique(cluster))) / n
     if se <= eps_thresh:
         return np.nan
 
@@ -581,10 +723,16 @@ def _get_crit_val(inf_func_mat, biters, alpha, random_state):
     return crit_val
 
 
-def _get_weight_influence(keepers, pg, unit_groups, glist):
-    """Compute influence function for estimated weights."""
+def _get_weight_influence(keepers, pg, unit_cohorts, glist, unit_weights):
+    """Compute influence function for estimated weights.
+
+    ``keepers`` indexes both ``pg`` and ``glist``. They hold one entry per group in the group
+    aggregation and one per group-time cell in the other aggregations. ``unit_cohorts`` holds
+    the treatment cohort of each unit, 0 for a unit that is never treated. Each unit enters the
+    group shares with its sampling weight.
+    """
     sum_pg = pg[keepers].sum()
-    indicators = np.column_stack([(unit_groups == glist[ki]).astype(float) for ki in keepers])
+    indicators = np.column_stack([unit_weights * (unit_cohorts == glist[ki]) for ki in keepers])
 
     if1 = (indicators - pg[keepers]) / sum_pg
     row_sums = (indicators - pg[keepers]).sum(axis=1)

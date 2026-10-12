@@ -178,6 +178,53 @@ def test_did_rc_inf_func_mean(rcs_nuisance_data):
     assert np.var(inf_func) > 0
 
 
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize("est_method", ["dr", "ipw"])
+def test_did_rc_unit_pscore_where_control_weights_vanish(rcs_nuisance_data, forbid_errstate, est_method):
+    y, post, subgroup, covariates, weights = rcs_nuisance_data
+    pscores, or_results = compute_all_nuisances_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        weights=weights,
+        est_method=est_method,
+    )
+    forbid_errstate()
+
+    results = []
+    for value in [1.0, 0.5]:
+        edited = []
+        for comparison, pscore in zip([3, 2, 1], pscores):
+            sub = subgroup[(subgroup == 4) | (subgroup == comparison)]
+            keep_ps = (sub == 4) | (np.arange(len(sub)) % 7 != 0)
+            edited.append(
+                pscore._replace(
+                    propensity_scores=np.where((sub == 4) | ~keep_ps, value, pscore.propensity_scores),
+                    keep_ps=keep_ps,
+                )
+            )
+        results.append(
+            compute_all_did_rc(
+                y=y,
+                post=post,
+                subgroup=subgroup,
+                covariates=covariates,
+                weights=weights,
+                pscores=edited,
+                or_results=or_results,
+                est_method=est_method,
+                n_total=len(y),
+            )
+        )
+
+    (did_at_one, ddd_at_one, inf_func_at_one), (did_at_half, ddd_at_half, _) = results
+    assert np.isfinite(ddd_at_one)
+    assert np.all(np.isfinite(inf_func_at_one))
+    assert ddd_at_one == ddd_at_half
+    assert [result.dr_att for result in did_at_one] == [result.dr_att for result in did_at_half]
+
+
 def test_outcome_reg_rc_result():
     result = OutcomeRegRCResult(
         y=np.array([1.0, 2.0]),

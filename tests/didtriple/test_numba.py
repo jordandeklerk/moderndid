@@ -1,5 +1,7 @@
 """Tests for Numba optimizations in didtriple module."""
 
+from importlib import import_module
+
 import numpy as np
 import pytest
 
@@ -8,18 +10,13 @@ from moderndid.didtriple import numba
 
 
 def _multiplier_bootstrap_py(inf_func, biters, random_state):
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    p_kappa = 0.5 * (1 + sqrt5) / sqrt5
-
     n, k = inf_func.shape
     rng = np.random.default_rng(random_state)
     bres = np.zeros((biters, k))
 
     for b in range(biters):
-        v = rng.binomial(1, p_kappa, size=n)
-        v = np.where(v == 1, k1, k2)
+        v = rng.binomial(1, 0.5, size=n)
+        v = np.where(v == 1, 1.0, -1.0)
         bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
 
     return bres
@@ -30,13 +27,13 @@ def _aggregate_by_cluster_py(inf_func, cluster):
     n_clusters = len(unique_clusters)
     k = inf_func.shape[1]
 
-    cluster_mean_if = np.zeros((n_clusters, k))
+    cluster_sums = np.zeros((n_clusters, k))
 
     for i, c in enumerate(unique_clusters):
         mask = cluster == c
-        cluster_mean_if[i] = np.mean(inf_func[mask], axis=0)
+        cluster_sums[i] = np.sum(inf_func[mask], axis=0)
 
-    return cluster_mean_if, n_clusters
+    return cluster_sums, n_clusters
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
@@ -76,15 +73,8 @@ def test_aggregate_by_cluster_string_clusters():
 
     assert result_numba.shape == (4, k)
     assert n_clusters_numba == 4
-
-    mask_a = cluster == "A"
-    expected_a_mean = np.mean(inf_func[mask_a], axis=0)
-    found = False
-    for i in range(4):
-        if np.allclose(result_numba[i], expected_a_mean, rtol=1e-10):
-            found = True
-            break
-    assert found, "Cluster 'A' mean not found in results"
+    expected = np.vstack([np.sum(inf_func[cluster == label], axis=0) for label in ["A", "B", "C", "D"]])
+    np.testing.assert_allclose(result_numba, expected, rtol=1e-10)
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
@@ -117,21 +107,43 @@ def test_aggregate_by_cluster_single_cluster():
     result, n_clusters = numba.aggregate_by_cluster(inf_func, cluster)
 
     assert n_clusters == 1
-    expected = np.mean(inf_func, axis=0)
+    expected = np.sum(inf_func, axis=0)
     np.testing.assert_allclose(result[0], expected)
 
 
-def test_multiplier_bootstrap_mammen_weights():
+@pytest.mark.parametrize(
+    "cluster",
+    [np.array([5, -3, 5, 5]), np.array([10**12, 7, 10**12, 10**12])],
+    ids=["negative", "large"],
+)
+def test_aggregate_by_cluster_maps_integer_ids_to_sorted_clusters(cluster):
+    inf_func = np.array([[1.0, 0.5], [2.0, -1.0], [3.0, 2.0], [4.0, 0.0]])
+
+    result, n_clusters = numba.aggregate_by_cluster(inf_func, cluster)
+
+    assert n_clusters == 2
+    np.testing.assert_allclose(result, [[2.0, -1.0], [8.0, 2.5]])
+
+
+def test_aggregate_by_cluster_gpu_branch_sums_within_sorted_clusters(monkeypatch):
+    monkeypatch.setattr(import_module("moderndid.core.numba_utils"), "get_backend", lambda: object())
+    inf_func = np.array([[1.0, 0.5], [2.0, -1.0], [3.0, 2.0], [4.0, 0.0]])
+
+    result, n_clusters = numba.aggregate_by_cluster(inf_func, np.array([5, -3, 5, 5]))
+
+    assert n_clusters == 2
+    np.testing.assert_allclose(result, [[2.0, -1.0], [8.0, 2.5]])
+
+
+def test_multiplier_bootstrap_rademacher_weights():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal((50, 3)).astype(np.float64)
-    weights_matrix = rng.binomial(1, 0.7, size=(20, 50)).astype(np.int8)
+    weights_matrix = rng.binomial(1, 0.5, size=(20, 50)).astype(np.int8)
 
     result = _multiplier_bootstrap_impl(np.ascontiguousarray(inf_func), weights_matrix)
 
-    k1 = 0.5 * (1 - np.sqrt(5))
-    k2 = 0.5 * (1 + np.sqrt(5))
     for b in range(20):
-        v = np.where(weights_matrix[b] == 1, k1, k2)
+        v = np.where(weights_matrix[b] == 1, 1.0, -1.0)
         expected = np.mean(inf_func * v[:, np.newaxis], axis=0)
         np.testing.assert_allclose(result[b], expected, rtol=1e-10)
 
@@ -140,13 +152,10 @@ def test_aggregate_by_cluster_correctness():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal((30, 3)).astype(np.float64)
     cluster = np.repeat(np.arange(5), 6).astype(np.int64)
-    unique_clusters = np.arange(5, dtype=np.int64)
 
-    result = _aggregate_by_cluster_impl(
-        np.ascontiguousarray(inf_func), np.ascontiguousarray(cluster), np.ascontiguousarray(unique_clusters)
-    )
+    result = _aggregate_by_cluster_impl(np.ascontiguousarray(inf_func), np.ascontiguousarray(cluster), 5)
 
     for i in range(5):
         mask = cluster == i
-        expected = np.mean(inf_func[mask], axis=0)
+        expected = np.sum(inf_func[mask], axis=0)
         np.testing.assert_allclose(result[i], expected, rtol=1e-10)

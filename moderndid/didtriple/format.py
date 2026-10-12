@@ -11,8 +11,10 @@ from moderndid.core.format import (
     format_section_header,
     format_significance_note,
     format_single_result_table,
+    format_standard_errors,
     format_title,
 )
+from moderndid.core.result import extract_clustervar
 
 from .container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult, DDDPanelResult, DDDRCResult
 
@@ -48,12 +50,8 @@ def _inference_lines(args):
     alpha = args.get("alpha", 0.05)
     lines.append(f" Significance level: {alpha}")
     boot = args.get("boot", False)
-    if boot:
-        boot_type = args.get("boot_type", "multiplier")
-        biters = args.get("biters", 1000)
-        lines.append(f" Bootstrap standard errors ({boot_type}, {biters} reps)")
-    else:
-        lines.append(" Analytical standard errors")
+    detail = f"{args.get('boot_type', 'multiplier')}, {args.get('biters', 1000)} reps" if boot else None
+    lines.append(format_standard_errors(boot, extract_clustervar(args), detail))
     return lines
 
 
@@ -192,8 +190,7 @@ def format_ddd_mp_result(result):
     lines.extend(_estimation_method_lines(est_method_lower))
 
     lines.extend(format_section_header("Inference"))
-    lines.append(f" Significance level: {alpha}")
-    lines.append(" Analytical standard errors")
+    lines.extend(_inference_lines(args))
 
     lines.extend(format_footer(_DDD_REFERENCE))
 
@@ -328,8 +325,7 @@ def format_ddd_mp_rc_result(result):
     lines.extend(_estimation_method_lines(est_method_lower, mp_rc=True))
 
     lines.extend(format_section_header("Inference"))
-    lines.append(f" Significance level: {alpha}")
-    lines.append(" Analytical standard errors")
+    lines.extend(_inference_lines(args))
 
     lines.extend(format_footer(_DDD_REFERENCE))
 
@@ -438,10 +434,7 @@ def format_ddd_agg_result(result):
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {alpha}")
     boot = result.args.get("boot", False)
-    if boot:
-        lines.append(" Bootstrap standard errors")
-    else:
-        lines.append(" Analytical standard errors")
+    lines.append(format_standard_errors(boot, extract_clustervar(result.args)))
 
     lines.extend(format_footer(_DDD_REFERENCE))
 

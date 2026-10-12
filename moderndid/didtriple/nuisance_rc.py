@@ -10,6 +10,7 @@ import statsmodels.api as sm
 
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
+from moderndid.drdid.utils import _divide_by_complement
 
 from .utils import check_overlap_and_warn, get_comparison_description
 
@@ -111,20 +112,17 @@ def compute_all_nuisances_rc(
     weights : ndarray
         A 1D array of observation weights.
     est_method : {"dr", "reg", "ipw"}, default "dr"
-        Estimation method.
-
-        - "dr": Doubly robust (both propensity score and outcome regression)
-        - "reg": Outcome regression only
-        - "ipw": Inverse probability weighting only
-
+        Estimation method. The doubly robust "dr" estimates both the
+        propensity score and the outcome regression. "reg" estimates only the
+        outcome regression. "ipw" estimates only the propensity score.
     trim_level : float, default 0.995
         Trimming level for propensity scores.
 
     Returns
     -------
-    tuple[list[PScoreRCResult], list[OutcomeRegRCResult]]
-        Lists of propensity score and outcome regression results for
-        comparison subgroups [3, 2, 1].
+    tuple
+        - **pscores**: Propensity score result of each comparison, for subgroups 3, 2, and 1
+        - **or_results**: Outcome regression result of each comparison, for subgroups 3, 2, and 1
 
     See Also
     --------
@@ -194,12 +192,10 @@ def compute_all_did_rc(
 
     Returns
     -------
-    tuple[list[DIDRCResult], float, ndarray]
-        A tuple containing:
-
-        - List of DiD results for each comparison [3, 2, 1]
-        - The DDD ATT estimate
-        - The combined influence function (rescaled by subgroup sizes)
+    tuple
+        - **did_results**: DiD result of each comparison, for subgroups 3, 2, and 1
+        - **ddd_att**: The DDD ATT estimate
+        - **inf_func**: The combined influence function, rescaled by subgroup sizes
 
     See Also
     --------
@@ -285,13 +281,8 @@ def _compute_did_rc(
         w_cont_post = None
         w_reg_control = keep_ps * sub_weights * pa4
     else:
-        if xp is np:
-            with np.errstate(divide="ignore", invalid="ignore"):
-                w_cont_pre = keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
-                w_cont_post = keep_ps * sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
-        else:
-            w_cont_pre = keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
-            w_cont_post = keep_ps * sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
+        w_cont_pre = _divide_by_complement(keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post), pscore)
+        w_cont_post = _divide_by_complement(keep_ps * sub_weights * pscore * pa_comp * sub_post, pscore)
         w_cont_pre = xp.nan_to_num(w_cont_pre)
         w_cont_post = xp.nan_to_num(w_cont_post)
         w_reg_control = None

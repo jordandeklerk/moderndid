@@ -7,11 +7,13 @@ import warnings
 import numpy as np
 from scipy import stats
 
+from moderndid.core.format import warn_few_clusters
 from moderndid.cupy.backend import get_backend, to_numpy
 
 from ..bootstrap.mboot_ddd import mboot_ddd, wboot_ddd
 from ..container import DDDPanelResult
 from ..nuisance import compute_all_did, compute_all_nuisances
+from ..utils import _clusters_group_units
 
 
 def ddd_panel(
@@ -27,13 +29,14 @@ def ddd_panel(
     influence_func=False,
     alpha=0.05,
     random_state=None,
+    cluster=None,
 ):
     r"""Compute the 2-period doubly robust DDD estimator for the ATT with panel data.
 
     Implements the triple difference-in-differences estimator from [1]_. The DDD
     design exploits three dimensions of variation: treatment status :math:`S`
-    (treated vs untreated groups), eligibility :math:`Q` (eligible vs ineligible
-    for treatment), and time (pre vs post-treatment periods). This allows for
+    (treated or untreated groups), eligibility :math:`Q` (eligible or ineligible
+    for treatment), and time (periods before or after treatment). This allows for
     weaker identification assumptions than standard DiD by differencing out both
     treatment-specific and eligibility-specific heterogeneous trends.
 
@@ -80,13 +83,12 @@ def ddd_panel(
         A 1D array of outcomes from the pre-treatment period :math:`Y_{g-1}`.
     subgroup : ndarray
         A 1D array of subgroup indicators (1, 2, 3, or 4) for each unit,
-        corresponding to the four cells of the :math:`S \times Q` partition:
-
-        - 4: :math:`S=g, Q=1` (Treated AND Eligible - target group)
-        - 3: :math:`S=g, Q=0` (Treated BUT Ineligible)
-        - 2: :math:`S=g_c, Q=1` (Eligible BUT Untreated)
-        - 1: :math:`S=g_c, Q=0` (Untreated AND Ineligible)
-
+        corresponding to the four cells of the :math:`S \times Q` partition.
+        Subgroup 4, the target group, holds the eligible units of the treated
+        cohort (:math:`S=g, Q=1`). Subgroup 3 holds its ineligible units
+        (:math:`S=g, Q=0`), subgroup 2 the eligible units of the comparison
+        cohort (:math:`S=g_c, Q=1`), and subgroup 1 the ineligible units of the
+        comparison cohort (:math:`S=g_c, Q=0`).
     covariates : ndarray
         A 2D array of pre-treatment covariates :math:`X` for propensity score
         and outcome regression models. An intercept must be included if desired.
@@ -98,8 +100,8 @@ def ddd_panel(
     boot : bool, default False
         Whether to use bootstrap for inference.
     boot_type : {"multiplier", "weighted"}, default "multiplier"
-        Type of bootstrap. Multiplier bootstrap uses Rademacher weights on the
-        influence function; weighted bootstrap re-estimates with exponential weights.
+        Type of bootstrap. The multiplier bootstrap draws Rademacher weights on the
+        influence function. The weighted bootstrap re-estimates with exponential weights.
     biters : int, default 1000
         Number of bootstrap repetitions.
     influence_func : bool, default False
@@ -108,20 +110,24 @@ def ddd_panel(
         Significance level for confidence intervals.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
+    cluster : ndarray, optional
+        A 1D array that gives the cluster of each unit for clustered standard
+        errors. It requires boot=True and boot_type="multiplier".
 
     Returns
     -------
     DDDPanelResult
         A NamedTuple containing:
 
-        - att: The DDD point estimate
-        - se: Standard error
-        - uci, lci: Confidence interval bounds
-        - boots: Bootstrap draws (if requested)
-        - att_inf_func: Influence function (if requested)
-        - did_atts: Individual DiD ATT estimates for each comparison
-        - subgroup_counts: Number of units in each subgroup
-        - args: Estimation arguments
+        - **att**: The DDD point estimate
+        - **se**: Standard error
+        - **uci**: Upper bound of the confidence interval
+        - **lci**: Lower bound of the confidence interval
+        - **boots**: Bootstrap draws (if requested)
+        - **att_inf_func**: Influence function (if requested)
+        - **did_atts**: Individual DiD ATT estimates for each comparison
+        - **subgroup_counts**: Number of units in each subgroup
+        - **args**: Estimation arguments
 
     See Also
     --------
@@ -151,6 +157,9 @@ def ddd_panel(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
+    if cluster is not None and not (boot and boot_type == "multiplier"):
+        raise ValueError("cluster requires boot=True and boot_type='multiplier'.")
+
     xp = get_backend()
     y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(xp, y1, y0, subgroup, covariates, i_weights)
 
@@ -198,7 +207,9 @@ def ddd_panel(
         lci = ddd_att - z_val * se_ddd
     else:
         if boot_type == "multiplier":
-            boot_result = mboot_ddd(inf_func, biters, alpha, random_state=random_state)
+            boot_result = mboot_ddd(inf_func, biters, alpha, cluster=cluster, random_state=random_state)
+            if cluster is not None:
+                warn_few_clusters(cluster, {None: np.asarray(cluster).ravel()[to_numpy(subgroup) == 4]})
             dr_boot = boot_result.bres.flatten()
             se_ddd = boot_result.se[0]
             cv = boot_result.crit_val if np.isfinite(boot_result.crit_val) else z_val
@@ -238,6 +249,8 @@ def ddd_panel(
         "boot_type": boot_type,
         "biters": biters,
         "alpha": alpha,
+        # Since a cluster array carries no column name, the report can only say that the standard errors cluster.
+        "cluster": True if _clusters_group_units(cluster) else None,
     }
 
     return DDDPanelResult(

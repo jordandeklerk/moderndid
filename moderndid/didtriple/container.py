@@ -15,9 +15,8 @@ from moderndid.core.maketables import (
     make_group_time_names,
     n_from_first_dim,
     se_type_label,
-    vcov_info_from_bootstrap,
 )
-from moderndid.core.result import extract_vcov_info
+from moderndid.core.result import extract_clustervar, extract_vcov_info
 
 
 class DDDAggResult(NamedTuple):
@@ -105,7 +104,7 @@ class DDDAggResult(NamedTuple):
         if key == "aggregation":
             return self.aggregation_type
         if key == "se_type":
-            return se_type_label(bool(self.args.get("boot", False)))
+            return se_type_label(bool(self.args.get("boot", False)), extract_clustervar(self.args))
         if key == "control_group":
             return control_group_label(self.args.get("control_group"))
         if key == "est_method":
@@ -160,9 +159,9 @@ class DDDPanelResult(NamedTuple):
     se : float
         Standard error of the ATT estimate.
     uci : float
-        Upper bound of the 95% confidence interval.
+        Upper bound of the confidence interval at level 1 - alpha.
     lci : float
-        Lower bound of the 95% confidence interval.
+        Lower bound of the confidence interval at level 1 - alpha.
     boots : ndarray or None
         Bootstrap draws if bootstrap inference was used.
     att_inf_func : ndarray or None
@@ -179,9 +178,9 @@ class DDDPanelResult(NamedTuple):
     att: float
     #: Standard error of the ATT estimate.
     se: float
-    #: Upper bound of the 95% confidence interval.
+    #: Upper bound of the confidence interval at level 1 - alpha.
     uci: float
-    #: Lower bound of the 95% confidence interval.
+    #: Lower bound of the confidence interval at level 1 - alpha.
     lci: float
     #: Bootstrap draws if bootstrap inference was used.
     boots: np.ndarray | None
@@ -204,7 +203,7 @@ class DDDPanelResult(NamedTuple):
         if key == "N":
             return int(sum(self.subgroup_counts.values()))
         if key == "se_type":
-            return se_type_label(bool(self.args.get("boot", False)))
+            return se_type_label(bool(self.args.get("boot", False)), extract_clustervar(self.args))
         if key == "est_method":
             return self.args.get("est_method")
         return None
@@ -222,7 +221,7 @@ class DDDPanelResult(NamedTuple):
     @property
     def __maketables_vcov_info__(self) -> dict[str, str | None]:
         """Return variance-covariance metadata."""
-        return vcov_info_from_bootstrap(is_bootstrap=bool(self.args.get("boot", False)))
+        return extract_vcov_info(self.args, bootstrap_key="boot")
 
     @property
     def __maketables_stat_labels__(self) -> dict[str, str]:
@@ -248,9 +247,9 @@ class DDDRCResult(NamedTuple):
     se : float
         Standard error of the ATT estimate.
     uci : float
-        Upper bound of the 95% confidence interval.
+        Upper bound of the confidence interval at level 1 - alpha.
     lci : float
-        Lower bound of the 95% confidence interval.
+        Lower bound of the confidence interval at level 1 - alpha.
     boots : ndarray or None
         Bootstrap draws if bootstrap inference was used.
     att_inf_func : ndarray or None
@@ -267,9 +266,9 @@ class DDDRCResult(NamedTuple):
     att: float
     #: Standard error of the ATT estimate.
     se: float
-    #: Upper bound of the 95% confidence interval.
+    #: Upper bound of the confidence interval at level 1 - alpha.
     uci: float
-    #: Lower bound of the 95% confidence interval.
+    #: Lower bound of the confidence interval at level 1 - alpha.
     lci: float
     #: Bootstrap draws if bootstrap inference was used.
     boots: np.ndarray | None
@@ -292,7 +291,7 @@ class DDDRCResult(NamedTuple):
         if key == "N":
             return int(sum(self.subgroup_counts.values()))
         if key == "se_type":
-            return se_type_label(bool(self.args.get("boot", False)))
+            return se_type_label(bool(self.args.get("boot", False)), extract_clustervar(self.args))
         if key == "est_method":
             return self.args.get("est_method")
         return None
@@ -310,7 +309,7 @@ class DDDRCResult(NamedTuple):
     @property
     def __maketables_vcov_info__(self) -> dict[str, str | None]:
         """Return variance-covariance metadata."""
-        return vcov_info_from_bootstrap(is_bootstrap=bool(self.args.get("boot", False)))
+        return extract_vcov_info(self.args, bootstrap_key="boot")
 
     @property
     def __maketables_stat_labels__(self) -> dict[str, str]:
@@ -357,7 +356,7 @@ class DDDMultiPeriodResult(NamedTuple):
     times : ndarray
         Array of time period identifiers for each estimate.
     glist : ndarray
-        Unique treatment cohorts.
+        Cohorts with ATT(g,t) estimates.
     tlist : ndarray
         Unique time periods.
     inf_func_mat : ndarray
@@ -367,7 +366,16 @@ class DDDMultiPeriodResult(NamedTuple):
     args : dict
         Arguments used for estimation.
     unit_groups : ndarray
-        Array of treatment group for each unit (length n).
+        Enabling cohort of each unit (length n), or 0 for a unit whose group
+        never enables treatment.
+    unit_weights : ndarray or None
+        Sampling weight of each unit (length n), or None without weights.
+    unit_clusters : ndarray or None
+        Cluster of each unit (length n), or None without a cluster.
+    unit_partition : ndarray or None
+        Eligibility of each unit (length n), 1 if eligible and 0 if not.
+        :func:`~moderndid.agg_ddd` needs it to count the eligible units of
+        each cohort.
     """
 
     #: Array of ATT(g,t) point estimates.
@@ -382,7 +390,7 @@ class DDDMultiPeriodResult(NamedTuple):
     groups: np.ndarray
     #: Array of time period identifiers for each estimate.
     times: np.ndarray
-    #: Unique treatment cohorts.
+    #: Cohorts with ATT(g,t) estimates.
     glist: np.ndarray
     #: Unique time periods.
     tlist: np.ndarray
@@ -392,8 +400,14 @@ class DDDMultiPeriodResult(NamedTuple):
     n: int
     #: Arguments used for estimation.
     args: dict
-    #: Array of treatment group for each unit.
+    #: Enabling cohort of each unit, or 0 for a unit whose group never enables treatment.
     unit_groups: np.ndarray
+    #: Sampling weight of each unit, or None without weights.
+    unit_weights: np.ndarray | None = None
+    #: Cluster of each unit, or None without a cluster.
+    unit_clusters: np.ndarray | None = None
+    #: Eligibility of each unit, 1 if eligible and 0 if not.
+    unit_partition: np.ndarray | None = None
 
     @property
     def __maketables_coef_table__(self):
@@ -411,7 +425,7 @@ class DDDMultiPeriodResult(NamedTuple):
         if key == "n_periods":
             return len(self.tlist)
         if key == "se_type":
-            return se_type_label(bool(self.args.get("boot", False)))
+            return se_type_label(bool(self.args.get("boot", False)), extract_clustervar(self.args))
         if key == "control_group":
             return control_group_label(self.args.get("control_group"))
         if key == "base_period":
@@ -486,7 +500,7 @@ class DDDMultiPeriodRCResult(NamedTuple):
     times : ndarray
         Array of time period identifiers for each estimate.
     glist : ndarray
-        Unique treatment cohorts.
+        Cohorts with ATT(g,t) estimates.
     tlist : ndarray
         Unique time periods.
     inf_func_mat : ndarray
@@ -496,7 +510,16 @@ class DDDMultiPeriodRCResult(NamedTuple):
     args : dict
         Arguments used for estimation.
     unit_groups : ndarray
-        Array of treatment group for each observation (length n).
+        Enabling cohort of each observation (length n), or 0 for an
+        observation whose group never enables treatment.
+    unit_weights : ndarray or None
+        Sampling weight of each observation (length n), or None without weights.
+    unit_clusters : ndarray or None
+        Cluster of each observation (length n), or None without a cluster.
+    unit_partition : ndarray or None
+        Eligibility of each observation (length n), 1 if eligible and 0 if
+        not. :func:`~moderndid.agg_ddd` needs it to count the eligible
+        observations of each cohort.
     """
 
     #: Array of ATT(g,t) point estimates.
@@ -511,7 +534,7 @@ class DDDMultiPeriodRCResult(NamedTuple):
     groups: np.ndarray
     #: Array of time period identifiers for each estimate.
     times: np.ndarray
-    #: Unique treatment cohorts.
+    #: Cohorts with ATT(g,t) estimates.
     glist: np.ndarray
     #: Unique time periods.
     tlist: np.ndarray
@@ -521,8 +544,14 @@ class DDDMultiPeriodRCResult(NamedTuple):
     n: int
     #: Arguments used for estimation.
     args: dict
-    #: Array of treatment group for each observation.
+    #: Enabling cohort of each observation, or 0 for an observation whose group never enables treatment.
     unit_groups: np.ndarray
+    #: Sampling weight of each observation, or None without weights.
+    unit_weights: np.ndarray | None = None
+    #: Cluster of each observation, or None without a cluster.
+    unit_clusters: np.ndarray | None = None
+    #: Eligibility of each observation, 1 if eligible and 0 if not.
+    unit_partition: np.ndarray | None = None
 
     @property
     def __maketables_coef_table__(self):
@@ -540,7 +569,7 @@ class DDDMultiPeriodRCResult(NamedTuple):
         if key == "n_periods":
             return len(self.tlist)
         if key == "se_type":
-            return se_type_label(bool(self.args.get("boot", False)))
+            return se_type_label(bool(self.args.get("boot", False)), extract_clustervar(self.args))
         if key == "control_group":
             return control_group_label(self.args.get("control_group"))
         if key == "base_period":

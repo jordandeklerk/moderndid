@@ -8,13 +8,20 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
-from moderndid.core.dataframe import to_polars
-from moderndid.core.preprocess.utils import parse_formula
+from moderndid.core.format import warn_few_clusters
+from moderndid.core.preprocess.config import DDDConfig
+from moderndid.core.preprocess.transformers import DDDColumnSelector, MissingDataHandler
+from moderndid.core.preprocess.validators import (
+    _ddd_partition_error,
+    _ddd_subgroup_error,
+    _duplicate_unit_period_error,
+)
 from moderndid.cupy.backend import get_backend, to_numpy
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from ..container import DDDRCResult
 from ..nuisance_rc import compute_all_did_rc, compute_all_nuisances_rc
+from ..utils import _clusters_group_units, get_covariate_names
 
 
 def ddd_rc(
@@ -31,6 +38,7 @@ def ddd_rc(
     alpha=0.05,
     trim_level=0.995,
     random_state=None,
+    cluster=None,
 ):
     r"""Compute the 2-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
@@ -77,13 +85,12 @@ def ddd_rc(
         A 1D array of post-treatment dummies (1 if post-treatment, 0 if pre-treatment).
     subgroup : ndarray
         A 1D array of subgroup indicators (1, 2, 3, or 4) for each observation,
-        corresponding to the four cells of the :math:`S \times Q` partition:
-
-        - 4: :math:`S=g, Q=1` (Treated AND Eligible - target group)
-        - 3: :math:`S=g, Q=0` (Treated BUT Ineligible)
-        - 2: :math:`S=g_c, Q=1` (Eligible BUT Untreated)
-        - 1: :math:`S=g_c, Q=0` (Untreated AND Ineligible)
-
+        corresponding to the four cells of the :math:`S \times Q` partition.
+        Subgroup 4, the target group, holds the eligible units of the treated
+        cohort (:math:`S=g, Q=1`). Subgroup 3 holds its ineligible units
+        (:math:`S=g, Q=0`), subgroup 2 the eligible units of the comparison
+        cohort (:math:`S=g_c, Q=1`), and subgroup 1 the ineligible units of the
+        comparison cohort (:math:`S=g_c, Q=0`).
     covariates : ndarray
         A 2D array of pre-treatment covariates :math:`X` for propensity score
         and outcome regression models. An intercept must be included if desired.
@@ -91,17 +98,15 @@ def ddd_rc(
         A 1D array of observation weights. If None, weights are uniform.
         Weights are normalized to have a mean of 1.
     est_method : {"dr", "reg", "ipw"}, default "dr"
-        Estimation method to use:
-
-        - "dr": Doubly robust (propensity score + outcome regression)
-        - "reg": Regression adjustment only (:math:`ATT_{ra}`)
-        - "ipw": Inverse probability weighting only (:math:`ATT_{ipw}`)
-
+        Estimation method. The doubly robust "dr" combines the propensity
+        score with the outcome regression. "reg" uses only the outcome
+        regression (:math:`ATT_{ra}`). "ipw" uses only inverse probability
+        weighting (:math:`ATT_{ipw}`).
     boot : bool, default False
         Whether to use bootstrap for inference.
     boot_type : {"multiplier", "weighted"}, default "multiplier"
-        Type of bootstrap. Multiplier bootstrap uses Rademacher weights on the
-        influence function; weighted bootstrap re-estimates with exponential weights.
+        Type of bootstrap. The multiplier bootstrap draws Rademacher weights on the
+        influence function. The weighted bootstrap re-estimates with exponential weights.
     biters : int, default 1000
         Number of bootstrap repetitions.
     influence_func : bool, default False
@@ -112,20 +117,24 @@ def ddd_rc(
         Trimming level for propensity scores.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
+    cluster : ndarray, optional
+        A 1D array that gives the cluster of each observation for clustered
+        standard errors. It requires boot=True and boot_type="multiplier".
 
     Returns
     -------
     DDDRCResult
         A NamedTuple containing:
 
-        - att: The DDD point estimate
-        - se: Standard error
-        - uci, lci: Confidence interval bounds
-        - boots: Bootstrap draws (if requested)
-        - att_inf_func: Influence function (if requested)
-        - did_atts: Individual DiD ATT estimates for each comparison
-        - subgroup_counts: Number of observations in each subgroup
-        - args: Estimation arguments
+        - **att**: The DDD point estimate
+        - **se**: Standard error
+        - **uci**: Upper bound of the confidence interval
+        - **lci**: Lower bound of the confidence interval
+        - **boots**: Bootstrap draws (if requested)
+        - **att_inf_func**: Influence function (if requested)
+        - **did_atts**: Individual DiD ATT estimates for each comparison
+        - **subgroup_counts**: Number of observations in each subgroup
+        - **args**: Estimation arguments
 
     See Also
     --------
@@ -144,6 +153,9 @@ def ddd_rc(
         Journal of Econometrics, 219(1), 101-122.
         https://doi.org/10.1016/j.jeconom.2020.06.003
     """
+    if cluster is not None and not (boot and boot_type == "multiplier"):
+        raise ValueError("cluster requires boot=True and boot_type='multiplier'.")
+
     xp = get_backend()
     y, post, subgroup, covariates, i_weights, n_obs = _validate_inputs_rc(xp, y, post, subgroup, covariates, i_weights)
 
@@ -186,44 +198,29 @@ def ddd_rc(
     ddd_att = float(ddd_att)
 
     dr_boot = None
-    z_val = stats.norm.ppf(1 - alpha / 2)
 
     if not boot:
         se_ddd = np.std(inf_func, ddof=1) / np.sqrt(n_obs)
+        z_val = stats.norm.ppf(1 - alpha / 2)
         uci = ddd_att + z_val * se_ddd
         lci = ddd_att - z_val * se_ddd
+    elif boot_type == "multiplier":
+        se_ddd, lci, uci, dr_boot = _multiplier_interval(ddd_att, inf_func, biters, alpha, cluster, random_state)
+        if cluster is not None:
+            warn_few_clusters(cluster, {None: np.asarray(cluster).ravel()[to_numpy(subgroup) == 4]})
     else:
-        if boot_type == "multiplier":
-            boot_result = mboot_ddd(inf_func, biters, alpha, random_state=random_state)
-            dr_boot = boot_result.bres.flatten()
-            se_ddd = boot_result.se[0]
-            cv = boot_result.crit_val if np.isfinite(boot_result.crit_val) else z_val
-            if np.isfinite(se_ddd) and se_ddd > 0:
-                uci = ddd_att + cv * se_ddd
-                lci = ddd_att - cv * se_ddd
-            else:
-                uci = lci = ddd_att
-                warnings.warn("Bootstrap standard error is zero or NaN.", UserWarning)
-        else:
-            dr_boot = _wboot_ddd_rc(
-                y=y,
-                post=post,
-                subgroup=subgroup,
-                covariates=covariates,
-                i_weights=i_weights,
-                est_method=est_method,
-                trim_level=trim_level,
-                biters=biters,
-                random_state=random_state,
-            )
-            se_ddd = stats.iqr(dr_boot - ddd_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-            if se_ddd > 0:
-                cv = np.nanquantile(np.abs((dr_boot - ddd_att) / se_ddd), 1 - alpha)
-                uci = ddd_att + cv * se_ddd
-                lci = ddd_att - cv * se_ddd
-            else:
-                uci = lci = ddd_att
-                warnings.warn("Bootstrap standard error is zero.", UserWarning)
+        dr_boot = _wboot_ddd_rc(
+            y=y,
+            post=post,
+            subgroup=subgroup,
+            covariates=covariates,
+            i_weights=i_weights,
+            est_method=est_method,
+            trim_level=trim_level,
+            biters=biters,
+            random_state=random_state,
+        )
+        se_ddd, lci, uci = _weighted_interval(ddd_att, dr_boot, alpha)
 
     if not influence_func:
         inf_func = None
@@ -236,6 +233,8 @@ def ddd_rc(
         "biters": biters,
         "alpha": alpha,
         "trim_level": trim_level,
+        # Since a cluster array carries no column name, the report can only say that the standard errors cluster.
+        "cluster": True if _clusters_group_units(cluster) else None,
     }
 
     return DDDRCResult(
@@ -266,8 +265,17 @@ def _ddd_rc_2period(
     alpha,
     trim_level,
     random_state,
+    cluster=None,
+    idname=None,
+    panel=False,
 ):
-    """Run 2-period DDD estimator for repeated cross-section data.
+    """Run the 2-period DDD estimator on repeated cross-sections or on the rows of an unbalanced panel.
+
+    Rows with a null, NaN, or infinite value in a column that the call names
+    leave the data with a warning before any check runs. Since an infinite
+    cohort marks a never-treated unit, it stays. When a unit of an unbalanced
+    panel loses one of its two rows this way, its other row stays as an
+    observation.
 
     Parameters
     ----------
@@ -299,26 +307,62 @@ def _ddd_rc_2period(
         Trimming level for propensity scores.
     random_state : int, Generator, or None
         Random state for reproducibility.
+    cluster : str or None, default None
+        Name of the cluster column. It requires boot=True and boot_type="multiplier".
+    idname : str or None, default None
+        Name of the unit column. A unit's rows must share one cluster. With
+        panel=True, a unit has at most one row in each period.
+    panel : bool, default False
+        Whether the rows follow the units in idname over time, as the rows of an
+        unbalanced panel do. The influence function is then summed within units.
 
     Returns
     -------
     DDDRCResult
-        The result from the RCS estimator.
+        The result from the RCS estimator. With panel=True, its influence
+        function holds one entry per unit.
     """
-    data = to_polars(data)
+    config = DDDConfig(
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        gname=gname,
+        pname=pname,
+        xformla=xformla or "~1",
+        weightsname=weightsname,
+        cluster=cluster,
+        panel=panel,
+    )
+    # Since these routes skip the preprocessing pipeline, its missing-data step runs here.
+    data = MissingDataHandler().transform(DDDColumnSelector().transform(data, config), config)
+
+    # A panel's unit id names one row per period even when the unbalanced panel takes the cross-section route.
+    if panel:
+        duplicate_error = _duplicate_unit_period_error(data, idname, tname)
+        if duplicate_error is not None:
+            raise ValueError(duplicate_error)
 
     tlist = np.sort(data[tname].unique().to_numpy())
     if len(tlist) != 2:
         raise ValueError("2-period RCS estimator requires exactly 2 time periods.")
+
+    cluster_arr = None
+    if cluster is not None:
+        if idname is not None and data.select(pl.col(cluster).n_unique().over(idname).max()).item() > 1:
+            raise ValueError("Cluster variable must be time-invariant within units.")
+        cluster_arr = data[cluster].to_numpy()
+
+    partition_error = _ddd_partition_error(data, pname)
+    if partition_error is not None:
+        raise ValueError(partition_error)
 
     t1 = tlist[1]
 
     y = data[yname].to_numpy()
     post = (data[tname] == t1).cast(pl.Int64).to_numpy()
 
-    treat = (pl.col(gname) != 0) & pl.col(gname).is_finite()
-    data = data.with_columns(treat.alias("_treat"))
-    treat_arr = data["_treat"].to_numpy()
+    # Since the indicator never becomes a column of the data, no column the call names can be overwritten.
+    treat_arr = data.select((pl.col(gname) != 0) & pl.col(gname).is_finite()).to_series().to_numpy()
     partition = data[pname].to_numpy()
 
     subgroup = (
@@ -328,25 +372,37 @@ def _ddd_rc_2period(
         + 1 * ((~treat_arr) * (partition == 0))
     )
 
-    if xformla is not None and xformla != "~1":
-        formula_str = xformla.strip()
-        if formula_str.startswith("~"):
-            formula_str = "y " + formula_str
+    subgroup_error = _ddd_subgroup_error(subgroup, gname, pname)
+    if subgroup_error is not None:
+        raise ValueError(subgroup_error)
 
-        parsed = parse_formula(formula_str)
-        covariate_names = parsed["predictors"]
-        covariate_names = [c for c in covariate_names if c != "1"]
-
-        if covariate_names:
-            X = data.select(covariate_names).to_numpy()
-            intercept = np.ones((X.shape[0], 1))
-            covariates = np.hstack([intercept, X])
-        else:
-            covariates = np.ones((len(y), 1))
+    covariate_names = get_covariate_names(xformla)
+    if covariate_names is not None:
+        X = data.select(covariate_names).to_numpy()
+        intercept = np.ones((X.shape[0], 1))
+        covariates = np.hstack([intercept, X])
     else:
         covariates = np.ones((len(y), 1))
 
     i_weights = data[weightsname].to_numpy() if weightsname is not None else None
+
+    if panel:
+        return _ddd_rc_units(
+            y=y,
+            post=post,
+            subgroup=subgroup,
+            covariates=covariates,
+            i_weights=i_weights,
+            units=data[idname].to_numpy(),
+            cluster=cluster_arr,
+            est_method=est_method,
+            boot=boot,
+            boot_type=boot_type,
+            biters=biters,
+            alpha=alpha,
+            trim_level=trim_level,
+            random_state=random_state,
+        )
 
     return ddd_rc(
         y=y,
@@ -362,7 +418,184 @@ def _ddd_rc_2period(
         alpha=alpha,
         trim_level=trim_level,
         random_state=random_state,
+        cluster=cluster_arr,
     )
+
+
+def _ddd_rc_units(
+    y,
+    post,
+    subgroup,
+    covariates,
+    i_weights,
+    units,
+    cluster,
+    est_method,
+    boot,
+    boot_type,
+    biters,
+    alpha,
+    trim_level,
+    random_state,
+):
+    """Run the 2-period repeated cross-section estimator on the rows of an unbalanced panel.
+
+    The estimator treats every row as an observation. Since the two rows of a
+    unit are not independent draws, the influence function is summed within
+    units before the standard error and the bootstrap use it.
+
+    Parameters
+    ----------
+    y : ndarray
+        Outcome of each row.
+    post : ndarray
+        Post-treatment indicator of each row.
+    subgroup : ndarray
+        Subgroup indicator (1, 2, 3, or 4) of each row.
+    covariates : ndarray
+        Covariates matrix including intercept.
+    i_weights : ndarray or None
+        Sampling weight of each row.
+    units : ndarray
+        Unit of each row.
+    cluster : ndarray or None
+        Cluster of each row. The rows of a unit share one cluster.
+    est_method : {"dr", "reg", "ipw"}
+        Estimation method.
+    boot : bool
+        Whether to use bootstrap.
+    boot_type : {"multiplier", "weighted"}
+        Type of bootstrap.
+    biters : int
+        Number of bootstrap iterations.
+    alpha : float
+        Significance level.
+    trim_level : float
+        Trimming level for propensity scores.
+    random_state : int, Generator, or None
+        Random state for reproducibility.
+
+    Returns
+    -------
+    DDDRCResult
+        The result with one entry of the influence function per unit.
+    """
+    if cluster is not None and not (boot and boot_type == "multiplier"):
+        raise ValueError("cluster requires boot=True and boot_type='multiplier'.")
+
+    unit_ids, first_rows, unit_idx = np.unique(units, return_index=True, return_inverse=True)
+    n_units = len(unit_ids)
+    result = ddd_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        i_weights=i_weights,
+        est_method=est_method,
+        boot_type=boot_type,
+        biters=biters,
+        influence_func=True,
+        alpha=alpha,
+        trim_level=trim_level,
+    )
+    inf_func = (n_units / len(y)) * np.bincount(unit_idx, weights=result.att_inf_func, minlength=n_units)
+
+    boots = None
+    if not boot:
+        se = np.std(inf_func, ddof=1) / np.sqrt(n_units)
+        z_val = stats.norm.ppf(1 - alpha / 2)
+        lci, uci = result.att - z_val * se, result.att + z_val * se
+    elif boot_type == "multiplier":
+        unit_cluster = None if cluster is None else cluster[first_rows]
+        se, lci, uci, boots = _multiplier_interval(result.att, inf_func, biters, alpha, unit_cluster, random_state)
+        if unit_cluster is not None:
+            warn_few_clusters(unit_cluster, {None: unit_cluster[subgroup[first_rows] == 4]})
+    else:
+        boots = _wboot_ddd_rc(
+            y=y,
+            post=post,
+            subgroup=subgroup,
+            covariates=covariates,
+            i_weights=np.ones(len(y)) if i_weights is None else i_weights,
+            est_method=est_method,
+            trim_level=trim_level,
+            biters=biters,
+            random_state=random_state,
+            unit_idx=unit_idx,
+        )
+        se, lci, uci = _weighted_interval(result.att, boots, alpha)
+
+    clustered = _clusters_group_units(None if cluster is None else cluster[first_rows])
+    return result._replace(
+        se=se,
+        uci=uci,
+        lci=lci,
+        boots=boots,
+        att_inf_func=inf_func,
+        args=result.args | {"boot": boot, "cluster": True if clustered else None},
+    )
+
+
+def _multiplier_interval(att, inf_func, biters, alpha, cluster, random_state):
+    """Compute the multiplier bootstrap standard error and interval of a 2-period estimate.
+
+    Parameters
+    ----------
+    att : float
+        The DDD point estimate.
+    inf_func : ndarray
+        Influence function with one entry per independent draw.
+    biters : int
+        Number of bootstrap iterations.
+    alpha : float
+        Significance level.
+    cluster : ndarray or None
+        Cluster of each entry of the influence function.
+    random_state : int, Generator, or None
+        Random state for reproducibility.
+
+    Returns
+    -------
+    tuple
+        - **se**: Bootstrap standard error
+        - **lci**: Lower bound of the interval
+        - **uci**: Upper bound of the interval
+        - **boots**: Bootstrap draws
+    """
+    boot_result = mboot_ddd(inf_func, biters, alpha, cluster=cluster, random_state=random_state)
+    se = boot_result.se[0]
+    cv = boot_result.crit_val if np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
+    if np.isfinite(se) and se > 0:
+        return se, att - cv * se, att + cv * se, boot_result.bres.flatten()
+    warnings.warn("Bootstrap standard error is zero or NaN.", UserWarning)
+    return se, att, att, boot_result.bres.flatten()
+
+
+def _weighted_interval(att, boots, alpha):
+    """Compute the weighted bootstrap standard error and interval of a 2-period estimate.
+
+    Parameters
+    ----------
+    att : float
+        The DDD point estimate.
+    boots : ndarray
+        Estimates from the weighted bootstrap draws.
+    alpha : float
+        Significance level.
+
+    Returns
+    -------
+    tuple
+        - **se**: Bootstrap standard error
+        - **lci**: Lower bound of the interval
+        - **uci**: Upper bound of the interval
+    """
+    se = stats.iqr(boots - att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+    if se > 0:
+        cv = np.nanquantile(np.abs((boots - att) / se), 1 - alpha)
+        return se, att - cv * se, att + cv * se
+    warnings.warn("Bootstrap standard error is zero.", UserWarning)
+    return se, att, att
 
 
 def _wboot_ddd_rc(
@@ -375,6 +608,7 @@ def _wboot_ddd_rc(
     trim_level=0.995,
     biters=1000,
     random_state=None,
+    unit_idx=None,
 ):
     """Weighted bootstrap for DDD RC estimator using exponential weights.
 
@@ -398,6 +632,10 @@ def _wboot_ddd_rc(
         Number of bootstrap iterations.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
+    unit_idx : ndarray or None, default None
+        Index of the unit of each observation when the observations follow
+        units over time. Each unit then draws one weight for all its
+        observations.
 
     Returns
     -------
@@ -409,7 +647,10 @@ def _wboot_ddd_rc(
     boot_estimates = np.zeros(biters)
 
     for b in range(biters):
-        boot_weights = rng.exponential(scale=1.0, size=n)
+        if unit_idx is None:
+            boot_weights = rng.exponential(scale=1.0, size=n)
+        else:
+            boot_weights = rng.exponential(scale=1.0, size=unit_idx.max() + 1)[unit_idx]
         boot_weights = boot_weights * i_weights
         boot_weights = boot_weights / np.mean(boot_weights)
 

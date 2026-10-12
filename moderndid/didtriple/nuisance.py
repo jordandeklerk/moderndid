@@ -86,8 +86,8 @@ def compute_all_nuisances(
 ):
     """Compute all nuisance parameters for DDD estimation.
 
-    Estimates propensity scores and outcome regressions for all three
-    subgroup comparisons (4 vs 3, 4 vs 2, 4 vs 1).
+    Estimates propensity scores and outcome regressions for the comparisons
+    of subgroup 4 with subgroups 3, 2, and 1.
 
     Parameters
     ----------
@@ -102,21 +102,18 @@ def compute_all_nuisances(
     weights : ndarray
         A 1D array of observation weights.
     est_method : {"dr", "reg", "ipw"}, default "dr"
-        Estimation method.
-
-        - "dr": Doubly robust (both propensity score and outcome regression)
-        - "reg": Outcome regression only
-        - "ipw": Inverse probability weighting only
-
+        Estimation method. The doubly robust "dr" estimates both the
+        propensity score and the outcome regression. "reg" estimates only the
+        outcome regression. "ipw" estimates only the propensity score.
     trim_level : float, default 0.995
         Trimming level for propensity scores. Control units with propensity
         scores >= trim_level will be excluded from estimation.
 
     Returns
     -------
-    tuple[list[PScoreResult], list[OutcomeRegResult]]
-        Lists of propensity score and outcome regression results for
-        comparison subgroups [3, 2, 1].
+    tuple
+        - **pscores**: Propensity score result of each comparison, for subgroups 3, 2, and 1
+        - **or_results**: Outcome regression result of each comparison, for subgroups 3, 2, and 1
 
     See Also
     --------
@@ -157,7 +154,8 @@ def compute_all_did(
     """Compute all DiD components and combine into DDD estimate.
 
     Computes the DiD for each of the three subgroup comparisons and combines
-    them using the triple difference formula: DDD = DiD(4vs3) + DiD(4vs2) - DiD(4vs1).
+    them with the triple difference formula, the sum of the DiD of subgroup 4
+    against subgroups 3 and 2 minus its DiD against subgroup 1.
 
     Parameters
     ----------
@@ -178,12 +176,10 @@ def compute_all_did(
 
     Returns
     -------
-    tuple[list[DIDResult], float, ndarray]
-        A tuple containing:
-
-        - List of DiD results for each comparison [3, 2, 1]
-        - The DDD ATT estimate
-        - The combined influence function (rescaled by subgroup sizes)
+    tuple
+        - **did_results**: DiD result of each comparison, for subgroups 3, 2, and 1
+        - **ddd_att**: The DDD ATT estimate
+        - **inf_func**: The combined influence function, rescaled by subgroup sizes
 
     See Also
     --------
