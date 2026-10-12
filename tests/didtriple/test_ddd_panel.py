@@ -1,5 +1,7 @@
 """Tests for the DDD panel estimator."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -201,6 +203,52 @@ def test_validate_inputs_1d_covariates():
     result = _validate_inputs(np, y1, y0, subgroup, covariates, None)
     assert result[3].ndim == 2
     assert result[3].shape == (4, 1)
+
+
+@pytest.mark.parametrize("boot, boot_type", [(False, "multiplier"), (True, "weighted")])
+def test_ddd_panel_cluster_requires_multiplier_bootstrap(ddd_data_no_covariates, boot, boot_type):
+    ddd_data, covariates = ddd_data_no_covariates
+
+    with pytest.raises(ValueError, match="cluster requires boot=True and boot_type='multiplier'"):
+        ddd_panel(
+            y1=ddd_data.y1,
+            y0=ddd_data.y0,
+            subgroup=ddd_data.subgroup,
+            covariates=covariates,
+            boot=boot,
+            boot_type=boot_type,
+            cluster=np.arange(ddd_data.n_units) % 20,
+        )
+
+
+@pytest.mark.parametrize(
+    ("modulus", "line", "se_type", "warned"),
+    [
+        (3, " Bootstrap standard errors clustered (multiplier, 99 reps)", "Bootstrap clustered", True),
+        (10**9, " Bootstrap standard errors (multiplier, 99 reps)", "Bootstrap", False),
+    ],
+    ids=["three_clusters", "one_unit_each"],
+)
+def test_ddd_panel_labels_a_cluster_array_without_a_column_name(ddd_data_no_covariates, modulus, line, se_type, warned):
+    ddd_data, covariates = ddd_data_no_covariates
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = ddd_panel(
+            y1=ddd_data.y1,
+            y0=ddd_data.y0,
+            subgroup=ddd_data.subgroup,
+            covariates=covariates,
+            boot=True,
+            biters=99,
+            random_state=3,
+            cluster=np.arange(ddd_data.n_units) % modulus,
+        )
+
+    assert line in str(result).splitlines()
+    assert result.__maketables_stat__("se_type") == se_type
+    assert result.__maketables_vcov_info__ == {"vcov_type": "bootstrap", "clustervar": None}
+    assert [w.filename for w in caught if "very few clusters" in str(w.message)] == [__file__] * warned
 
 
 def test_validate_inputs_weight_normalization():

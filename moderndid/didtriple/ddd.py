@@ -1,16 +1,21 @@
 """Main wrapper for Triple Difference-in-Differences estimation."""
 
+import warnings
+
 import numpy as np
 import polars as pl
 
 from moderndid.core.dataframe import to_polars
+from moderndid.core.preprocess.constants import ROW_ID_COLUMN, WEIGHTS_COLUMN
+from moderndid.core.preprocess.utils import get_column_terms
+from moderndid.core.preprocess.validators import _reserved_name_errors, check_columns
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
-from .estimators.ddd_mp import ddd_mp
-from .estimators.ddd_mp_rc import ddd_mp_rc
+from .estimators.ddd_mp import _check_options, _ddd_mp, _preprocess_multiple_periods
+from .estimators.ddd_mp_rc import _ddd_mp_rc
 from .estimators.ddd_panel import ddd_panel
 from .estimators.ddd_rc import _ddd_rc_2period
-from .utils import add_intercept, detect_multiple_periods, detect_rcs_mode, get_covariate_names
+from .utils import _complete_rows, add_intercept, detect_multiple_periods, detect_rcs_mode, get_covariate_names
 
 
 def ddd(
@@ -35,8 +40,6 @@ def ddd(
     allow_unbalanced_panel=False,
     random_state=None,
     n_jobs=1,
-    n_partitions=None,
-    max_cohorts=None,
     backend=None,
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
@@ -73,6 +76,14 @@ def ddd(
     parallel trends within or across groups, making DDD appealing when such assumptions
     are implausible.
 
+    With a cluster, a warning appears when the eligible units of an enabling
+    cohort fall in fewer than 5 clusters or all units fall in fewer than 30.
+    Cluster-robust inference from so few clusters can give confidence
+    intervals that are too narrow.
+
+    See the :ref:`triple differences example <example_triple_did>` for a full analysis of
+    the crop insurance data.
+
     Parameters
     ----------
     data : DataFrame
@@ -84,14 +95,18 @@ def ddd(
     tname : str
         Name of time period column.
     idname : str, optional
-        Name of unit identifier column. Required for panel data. For repeated
-        cross-section data (panel=False), this can be omitted and a row index
-        will be used automatically.
+        Name of unit identifier column. Required for panel data, where each
+        unit may appear only once per period. For repeated cross-section data
+        (panel=False), this can be omitted and a row index will be used
+        automatically.
     gname : str
         Name of treatment group column. For 2-period data, this should be
         0 for never-treated and a positive value for treated units. For
         multi-period data, this is the first period when treatment is enabled
-        for the unit's group (use 0 or np.inf for never-treated units).
+        for the unit's group (use 0 or np.inf for never-treated units). A unit
+        first treated after the last period counts as never treated. Since a
+        unit already treated in the first period has no earlier period to
+        compare with, ddd drops it with a warning.
     pname : str
         Name of partition/eligibility column (1=eligible, 0=ineligible).
         This identifies which units within a treatment group are actually
@@ -101,67 +116,64 @@ def ddd(
         intercept is used.
     control_group : {"nevertreated", "notyettreated"}, default="nevertreated"
         Which units to use as controls in multi-period settings.
-        This parameter is ignored for 2-period data.
+        This parameter is ignored for 2-period data. "nevertreated" requires
+        at least one never-treated unit. Without never-treated units,
+        "notyettreated" leaves out the periods from the first period of the
+        latest cohort on. That cohort then serves only as a comparison and
+        gets no ATT(g,t) of its own.
     base_period : {"universal", "varying"}, default="universal"
         Base period selection for multi-period settings.
         This parameter is ignored for 2-period data.
     est_method : {"dr", "reg", "ipw"}, default="dr"
         Estimation method: doubly robust, regression, or IPW.
     weightsname : str, optional
-        Name of the column containing observation weights.
+        Name of the column of sampling weights. With panel data, a unit must
+        keep the same weight in every period.
     boot : bool, default=False
-        Whether to use bootstrap for inference.
+        Whether to use bootstrap for inference. Its intervals are pointwise.
+        For simultaneous bands, pass the result to :func:`~moderndid.agg_ddd`.
     boot_type : {"multiplier", "weighted"}, default="multiplier"
         Type of bootstrap for 2-period data (only used if boot=True).
         Multi-period data always uses multiplier bootstrap.
     biters : int, default=1000
         Number of bootstrap repetitions (only used if boot=True).
     cluster : str, optional
-        Name of the clustering variable for clustered standard errors.
-        Currently only supported for 2-period data with bootstrap.
+        Name of the column that assigns each unit to a cluster, such as its
+        county. A unit must keep the same cluster in every period. The standard
+        errors then sum the influence function within clusters. The bootstrap
+        draws one multiplier per cluster. With two periods, a cluster sets
+        boot=True and requires boot_type="multiplier". The aggregations of
+        :func:`~moderndid.agg_ddd` cluster by the same column.
     alpha : float, default=0.05
-        Significance level for confidence intervals.
+        Significance level for confidence intervals. A value above 0.10 is
+        replaced by 0.05 with a warning.
     trim_level : float, default=0.995
-        Trimming level for propensity scores. Only used for repeated cross-section
-        data (panel=False).
+        Trimming level for propensity scores. Only used for repeated
+        cross-section data (panel=False) and for unbalanced panels with
+        allow_unbalanced_panel=True.
     panel : bool, default=True
         Whether the data is panel data (True) or repeated cross-section data (False).
         Panel data has the same units observed across time periods. Repeated
         cross-section data has different samples in each period.
     allow_unbalanced_panel : bool, default=False
-        If True and panel=True, allows unbalanced panel data. For multi-period
-        settings, estimation stays in panel mode (preserving panel efficiency)
-        while handling units that appear in different subsets of periods. For
-        2-period settings, unbalanced data falls back to repeated cross-section
-        mode. If the panel is unbalanced and this is False, an error will be
-        raised.
+        Whether to keep the units of a panel that miss some periods. If True,
+        an unbalanced panel takes the repeated cross-section estimator. If
+        False, the units that miss one of the remaining periods leave the data
+        with a warning. The periods that "notyettreated" leaves out without
+        never-treated units don't count. A balanced panel takes the panel
+        estimators either way. Since rows with a missing value leave the data
+        first, a unit that loses a row this way misses that period.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation in multi-period
         settings. 1 = sequential (default), -1 = all cores, >1 = that many
         workers. Ignored for 2-period data.
-    n_partitions : int or None, default=None
-        Number of Dask partitions per cell. Only used when ``data`` is a Dask
-        DataFrame; ignored for non-Dask inputs.
-    max_cohorts : int or None, default=None
-        Maximum number of treatment cohorts to process in parallel when
-        using the Dask distributed backend. Each cohort's group-time cells
-        are computed concurrently within a thread, so this controls how
-        many cohorts share the cluster simultaneously. Higher values
-        increase throughput but require more memory on workers to hold
-        the per-cohort wide-pivoted DataFrames. When ``None``, defaults
-        to the number of Dask workers. Ignored for non-Dask inputs.
-
-        For best performance, set this equal to the total number of
-        treatment cohorts so that all cohorts run concurrently. Reduce
-        the value if the cluster runs out of memory.
     backend : {"numpy", "cupy"} or None, default=None
         Array backend to use for this call only. When set, the backend is
         activated for the duration of this call and reverted automatically
         when the call returns. ``None`` (the default) uses whatever backend
-        is currently active (see :func:`~moderndid.set_backend`). Ignored
-        when ``data`` is a Dask DataFrame.
+        is currently active (see :func:`~moderndid.set_backend`).
 
     Returns
     -------
@@ -170,7 +182,8 @@ def ddd(
 
         - **att**: The DDD point estimate
         - **se**: Standard error
-        - **uci**, **lci**: Confidence interval bounds
+        - **uci**: Upper bound of the confidence interval
+        - **lci**: Lower bound of the confidence interval
         - **boots**: Bootstrap draws (if requested)
         - **att_inf_func**: Influence function
         - **did_atts**: Individual DiD ATT estimates
@@ -184,124 +197,23 @@ def ddd(
 
         - **att**: Array of ATT(g,t) point estimates
         - **se**: Standard errors for each ATT(g,t)
-        - **uci**, **lci**: Confidence interval bounds
-        - **groups**, **times**: Treatment cohort and time for each estimate
-        - **glist**, **tlist**: Unique cohorts and periods
+        - **uci**: Upper confidence interval bounds
+        - **lci**: Lower confidence interval bounds
+        - **groups**: Treatment cohort of each estimate
+        - **times**: Time period of each estimate
+        - **glist**: Cohorts with ATT(g,t) estimates
+        - **tlist**: Unique periods
         - **inf_func_mat**: Influence function matrix
         - **n**: Number of units
         - **args**: Estimation arguments
+        - **unit_groups**: Enabling cohort of each unit, or 0 for a unit whose group never enables treatment
+        - **unit_weights**: Normalized sampling weight of each unit, or None without weights
+        - **unit_clusters**: Cluster of each unit, or None without a cluster
+        - **unit_partition**: Eligibility of each unit, 1 if eligible and 0 if not
 
         For multi-period repeated cross-section data, returns DDDMultiPeriodRCResult
-        with the same structure.
-
-    Examples
-    --------
-    We can generate synthetic data for a 2-period DDD setup using the ``gen_ddd_2periods``
-    function. The data contains treatment status (``state``), eligibility within treatment
-    groups  (``partition``), and covariates.
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from moderndid import ddd, gen_ddd_2periods
-           ...:
-           ...: dgp = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
-           ...: df = dgp["data"]
-           ...: df.head()
-
-    Now we can compute the DDD estimate using the doubly robust estimator. The ``pname``
-    parameter identifies which units within a treatment group are eligible to receive
-    treatment, which is the key distinction from standard DiD.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = ddd(
-           ...:     data=df,
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     idname="id",
-           ...:     gname="state",
-           ...:     pname="partition",
-           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
-           ...:     est_method="dr",
-           ...: )
-           ...: result
-
-    The function automatically detects multi-period data with staggered treatment adoption.
-    When there are more than two time periods or treatment cohorts, it returns group-time
-    ATT estimates that can be aggregated using ``agg_ddd``.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: from moderndid import gen_ddd_mult_periods
-           ...:
-           ...: dgp_mp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
-           ...: result_mp = ddd(
-           ...:     data=dgp_mp["data"],
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     idname="id",
-           ...:     gname="group",
-           ...:     pname="partition",
-           ...:     control_group="nevertreated",
-           ...:     base_period="varying",
-           ...:     est_method="dr",
-           ...: )
-           ...: result_mp
-
-    The function also supports repeated cross-section data where different units are
-    sampled in each time period. Set ``panel=False`` to use this mode.
-
-    .. ipython::
-        :okwarning:
-
-        In [4]: dgp_rcs = gen_ddd_2periods(n=2000, dgp_type=1, panel=False, random_state=42)
-           ...: result_rcs = ddd(
-           ...:     data=dgp_rcs["data"],
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     gname="state",
-           ...:     pname="partition",
-           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
-           ...:     est_method="dr",
-           ...:     panel=False,
-           ...: )
-           ...: result_rcs
-
-    For multi-period repeated cross-section data with staggered treatment adoption,
-    set ``panel=False`` with multiple time periods.
-
-    .. ipython::
-        :okwarning:
-
-        In [5]: dgp_mp_rcs = gen_ddd_mult_periods(n=500, dgp_type=1, panel=False, random_state=42)
-           ...: result_mp_rcs = ddd(
-           ...:     data=dgp_mp_rcs["data"],
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     gname="group",
-           ...:     pname="partition",
-           ...:     control_group="notyettreated",
-           ...:     base_period="universal",
-           ...:     est_method="dr",
-           ...:     panel=False,
-           ...: )
-           ...: result_mp_rcs
-
-    Notes
-    -----
-    The DDD estimator identifies treatment effects in settings where units must satisfy
-    two criteria to be treated: belonging to a group that enables treatment (e.g., a state
-    that passes a policy) and being in an eligible partition (e.g., women eligible for
-    maternity benefits). This allows for violations of standard DiD parallel trends
-    assumptions, as long as these violations are stable across groups.
-
-    When ``est_method="dr"`` (the default), the function implements doubly robust
-    DDD estimators that combine outcome regression and inverse probability weighting.
-    These estimators are consistent if either the outcome model or the propensity
-    score model is correctly specified.
+        with the same structure. Its unit-level arrays hold one entry per
+        observation.
 
     See Also
     --------
@@ -310,6 +222,23 @@ def ddd(
     ddd_mp : Multi-period DDD estimator for staggered adoption with panel data.
     ddd_mp_rc : Multi-period DDD estimator for staggered adoption with RCS data.
     agg_ddd : Aggregate group-time DDD effects.
+
+    Notes
+    -----
+    The DDD estimator identifies treatment effects in settings where a unit is
+    treated only when its group enables the treatment, such as a state that passes
+    a policy, and when the unit belongs to the eligible partition, such as women
+    eligible for maternity benefits. This allows for violations of standard DiD
+    parallel trends assumptions, as long as these violations are stable across
+    groups.
+
+    When ``est_method="dr"`` (the default), the function implements doubly robust
+    DDD estimators that combine outcome regression and inverse probability weighting.
+    These estimators are consistent if either the outcome model or the propensity
+    score model is correctly specified.
+
+    With ``allow_unbalanced_panel=True`` on an unbalanced panel, the standard
+    errors come from each unit's influence function summed over its observations.
 
     References
     ----------
@@ -344,70 +273,8 @@ def ddd(
                 allow_unbalanced_panel=allow_unbalanced_panel,
                 random_state=random_state,
                 n_jobs=n_jobs,
-                n_partitions=n_partitions,
-                max_cohorts=max_cohorts,
                 backend=None,
             )
-
-    from moderndid.dask._utils import is_dask_collection
-
-    if is_dask_collection(data):
-        from moderndid.dask._ddd import dask_ddd
-
-        return dask_ddd(
-            data,
-            yname,
-            tname,
-            idname,
-            gname,
-            pname,
-            xformla,
-            control_group=control_group,
-            base_period=base_period,
-            est_method=est_method,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cluster=cluster,
-            alpha=alpha,
-            trim_level=trim_level,
-            panel=panel,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            backend=backend,
-        )
-
-    from moderndid.spark._utils import is_spark_dataframe
-
-    if is_spark_dataframe(data):
-        from moderndid.spark._ddd import spark_ddd
-
-        return spark_ddd(
-            data,
-            yname,
-            tname,
-            idname,
-            gname,
-            pname,
-            xformla,
-            control_group=control_group,
-            base_period=base_period,
-            est_method=est_method,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cluster=cluster,
-            alpha=alpha,
-            trim_level=trim_level,
-            panel=panel,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            backend=backend,
-        )
 
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
@@ -415,44 +282,70 @@ def ddd(
         raise ValueError("pname is required. Please specify the partition/eligibility column.")
     if panel and idname is None:
         raise ValueError("idname must be provided when panel=True.")
-    if est_method not in ("dr", "reg", "ipw"):
-        raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'reg', or 'ipw'.")
-    if control_group not in ("nevertreated", "notyettreated"):
-        raise ValueError(f"control_group='{control_group}' is not valid. Must be 'nevertreated' or 'notyettreated'.")
-    if base_period not in ("universal", "varying"):
-        raise ValueError(f"base_period='{base_period}' is not valid. Must be 'universal' or 'varying'.")
-    if not 0 < alpha < 1:
-        raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
-    if not isinstance(biters, int) or biters < 1:
-        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
-    if boot_type not in ("weighted", "multiplier"):
-        raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
-    if not 0 < trim_level < 1:
-        raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
-    if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
-        raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
-
-    is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
-
+    _check_options(est_method, control_group, base_period, alpha, biters, trim_level, n_jobs, boot_type)
+    named_columns = {
+        "yname": yname,
+        "tname": tname,
+        "idname": idname,
+        "gname": gname,
+        "pname": pname,
+        "xformla": xformla,
+        "weightsname": weightsname,
+        "cluster": cluster,
+    }
     data = to_polars(data)
-    if is_rcs and idname is None:
-        data = data.with_columns(pl.Series("_row_id", np.arange(len(data))))
-        idname = "_row_id"
+    check_columns(data, **named_columns)
+    covariate_terms = get_column_terms(xformla) if xformla else []
+    # Since the cross-section routes number the rows in an internal column, no named column may take its name.
+    reserved = _reserved_name_errors(named_columns | {"xformla": covariate_terms}, (ROW_ID_COLUMN,))
+    if reserved:
+        raise ValueError("\n".join(reserved))
 
-    multiple_periods = detect_multiple_periods(data, tname, gname)
+    # Since a missing value must not pick the route, the routing reads the rows that the missing-data step keeps.
+    # The route's own missing-data step still drops the rows with a missing value and warns once.
+    complete = _complete_rows(data, [yname, tname, idname, gname, pname, cluster, weightsname, *covariate_terms], gname)
+    is_rcs = detect_rcs_mode(complete, tname, idname, panel, allow_unbalanced_panel)
+
+    if is_rcs and idname is None:
+        data = data.with_columns(pl.Series(ROW_ID_COLUMN, np.arange(len(data))))
+        idname = ROW_ID_COLUMN
+
+    multiple_periods = detect_multiple_periods(complete, tname, gname)
+
+    # Settling the inference options before routing gives every data layout the same interval level.
+    if alpha > 0.10:
+        warnings.warn(f"alpha={alpha} is above 0.10. Using alpha=0.05.", UserWarning, stacklevel=2)
+        alpha = 0.05
+    if cluster is not None and not multiple_periods:
+        if boot_type != "multiplier":
+            raise ValueError("cluster requires boot_type='multiplier' with two periods.")
+        if not boot:
+            warnings.warn("Clustered SEs require bootstrap. Setting boot=True.", UserWarning, stacklevel=2)
+            boot = True
+    # Every route reports pointwise intervals. agg_ddd builds the simultaneous bands.
+    cband = False
 
     if multiple_periods:
         covariate_cols = get_covariate_names(xformla)
-
-        if covariate_cols is not None:
-            missing_covs = [c for c in covariate_cols if c not in data.columns]
-            if missing_covs:
-                raise ValueError(f"Covariates not found in data: {missing_covs}")
-
-        use_panel = panel and idname is not None and idname != "_row_id"
-        if not use_panel:
-            return ddd_mp_rc(
+        data, glist = _preprocess_multiple_periods(
+            data,
+            yname,
+            tname,
+            idname,
+            gname,
+            pname,
+            covariate_cols,
+            weightsname,
+            cluster,
+            panel,
+            allow_unbalanced_panel,
+            control_group,
+        )
+        weights_col = None if weightsname is None else WEIGHTS_COLUMN
+        if not panel:
+            return _ddd_mp_rc(
                 data=data,
+                glist=glist,
                 y_col=yname,
                 time_col=tname,
                 id_col=idname,
@@ -464,15 +357,17 @@ def ddd(
                 est_method=est_method,
                 boot=boot,
                 biters=biters,
-                cband=False,
+                cband=cband,
                 cluster=cluster,
                 alpha=alpha,
                 trim_level=trim_level,
                 random_state=random_state,
                 n_jobs=n_jobs,
+                weights_col=weights_col,
             )
-        return ddd_mp(
+        return _ddd_mp(
             data=data,
+            glist=glist,
             y_col=yname,
             time_col=tname,
             id_col=idname,
@@ -484,15 +379,18 @@ def ddd(
             est_method=est_method,
             boot=boot,
             biters=biters,
-            cband=False,
+            cband=cband,
             cluster=cluster,
             alpha=alpha,
+            allow_unbalanced_panel=allow_unbalanced_panel,
             random_state=random_state,
             n_jobs=n_jobs,
+            weights_col=weights_col,
+            trim_level=trim_level,
         )
 
     if is_rcs:
-        return _ddd_rc_2period(
+        result = _ddd_rc_2period(
             data=data,
             yname=yname,
             tname=tname,
@@ -507,39 +405,45 @@ def ddd(
             alpha=alpha,
             trim_level=trim_level,
             random_state=random_state,
+            cluster=cluster,
+            idname=idname,
+            panel=panel,
+        )
+    else:
+        ddd_data = preprocess_ddd_2periods(
+            data=data,
+            yname=yname,
+            tname=tname,
+            idname=idname,
+            gname=gname,
+            pname=pname,
+            xformla=xformla,
+            est_method=est_method,
+            weightsname=weightsname,
+            boot=boot,
+            boot_type=boot_type,
+            biters=biters,
+            cluster=cluster,
+            cband=cband,
+            alpha=alpha,
+            inf_func=True,
+        )
+        result = ddd_panel(
+            y1=ddd_data.y1,
+            y0=ddd_data.y0,
+            subgroup=ddd_data.subgroup,
+            covariates=add_intercept(ddd_data.covariates),
+            i_weights=ddd_data.weights,
+            est_method=est_method,
+            boot=boot,
+            boot_type=boot_type,
+            biters=biters,
+            influence_func=True,
+            alpha=alpha,
+            random_state=random_state,
+            cluster=ddd_data.cluster,
         )
 
-    ddd_data = preprocess_ddd_2periods(
-        data=data,
-        yname=yname,
-        tname=tname,
-        idname=idname,
-        gname=gname,
-        pname=pname,
-        xformla=xformla,
-        est_method=est_method,
-        weightsname=weightsname,
-        boot=boot,
-        boot_type=boot_type,
-        n_boot=biters,
-        cluster=cluster,
-        alp=alpha,
-        inf_func=True,
-    )
-
-    covariates_with_intercept = add_intercept(ddd_data.covariates)
-
-    return ddd_panel(
-        y1=ddd_data.y1,
-        y0=ddd_data.y0,
-        subgroup=ddd_data.subgroup,
-        covariates=covariates_with_intercept,
-        i_weights=ddd_data.weights,
-        est_method=est_method,
-        boot=ddd_data.config.boot,
-        boot_type=ddd_data.config.boot_type.value,
-        biters=ddd_data.config.n_boot,
-        influence_func=True,
-        alpha=ddd_data.config.alp,
-        random_state=random_state,
-    )
+    # Since the two-period estimators work on arrays, the report learns the column names here.
+    named_cluster = cluster if result.args.get("cluster") else None
+    return result._replace(args=result.args | {"yname": yname, "pname": pname, "cluster": named_cluster})

@@ -6,14 +6,20 @@ import warnings
 
 import numpy as np
 import polars as pl
-from scipy import stats
 
-from moderndid.core.dataframe import to_polars
+from moderndid.core.format import warn_few_clusters
 from moderndid.core.parallel import parallel_map
 
-from ..bootstrap.mboot_ddd import mboot_ddd
 from ..container import ATTgtRCResult, DDDMultiPeriodRCResult
-from .ddd_mp import _gmm_aggregate
+from ..utils import _clusters_group_units
+from .ddd_mp import (
+    _cell_inference,
+    _check_and_prepare,
+    _check_options,
+    _gmm_aggregate,
+    _subgroup,
+    _warn_failed_comparison,
+)
 from .ddd_rc import ddd_rc
 
 
@@ -36,6 +42,7 @@ def ddd_mp_rc(
     trim_level=0.995,
     random_state=None,
     n_jobs=1,
+    weights_col=None,
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
@@ -77,6 +84,10 @@ def ddd_mp_rc(
             {\mathbf{1}' \widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
             \widehat{ATT}_{\mathrm{dr}}(g,t).
 
+    Before the estimation, the data go through the checks and cleaning of
+    :func:`~moderndid.ddd` with ``panel=False``. A call with the same data and
+    options therefore gives the same estimates, warnings, and errors.
+
     Parameters
     ----------
     data : DataFrame
@@ -86,19 +97,28 @@ def ddd_mp_rc(
         Name of the outcome variable column.
     time_col : str
         Name of the time period column.
-    id_col : str
+    id_col : str or None
         Name of the observation identifier column. For RCS, this can be a row index
-        since units are not tracked across periods.
+        since units are not tracked across periods. If None, every row is an
+        observation of its own.
     group_col : str
-        Name of the treatment group column (first period when treatment enabled).
-        Use 0 or np.inf for never-treated units.
+        Name of the treatment group column, the first period in which
+        treatment is enabled for the unit's group. Use 0 or np.inf for
+        never-treated units. A unit first treated after the last period counts
+        as never treated. Since an observation already treated in the first
+        period has no earlier period to compare with, it leaves the data with a
+        warning.
     partition_col : str
         Name of the partition/eligibility column (1 = eligible, 0 = ineligible).
     covariate_cols : list of str or None, default None
         Names of covariate columns in the data. If None, uses intercept only.
     control_group : {"nevertreated", "notyettreated"}, default "nevertreated"
-        Which units to use as controls. With "notyettreated", multiple comparison
-        groups may be available, triggering GMM aggregation.
+        Which units to use as controls. "nevertreated" requires at least one
+        never-treated unit. With "notyettreated", a cell that has several
+        comparison groups pools them with GMM weights. Without never-treated
+        units, "notyettreated" leaves out the periods from the first period of
+        the latest cohort on. That cohort then serves only as a comparison and
+        gets no ATT(g,t) of its own.
     base_period : {"universal", "varying"}, default "universal"
         Base period selection. "universal" uses period g-1 as baseline for all
         comparisons; "varying" uses period t-1 for each t.
@@ -111,11 +131,12 @@ def ddd_mp_rc(
     cband : bool, default False
         Whether to compute uniform confidence bands (only used if boot=True).
     cluster : str or None, default None
-        Name of the column containing cluster identifiers for clustered
-        standard errors. If provided, the bootstrap resamples at the cluster
-        level (only used if boot=True).
+        Name of the column that assigns each observation to a cluster. The
+        standard errors then sum the influence function within clusters. With
+        boot=True, the bootstrap draws one multiplier per cluster.
     alpha : float, default 0.05
-        Significance level for confidence intervals.
+        Significance level for confidence intervals. A value above 0.10 is
+        replaced by 0.05 with a warning.
     trim_level : float, default 0.995
         Trimming level for propensity scores.
     random_state : int, Generator, or None, default None
@@ -123,26 +144,40 @@ def ddd_mp_rc(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
+    weights_col : str or None, default None
+        Name of the column of sampling weights. If None, every observation
+        has weight 1.
 
     Returns
     -------
     DDDMultiPeriodRCResult
         A NamedTuple containing:
 
-        - att: Array of ATT(g,t) point estimates
-        - se: Standard errors for each ATT(g,t)
-        - uci, lci: Confidence interval bounds
-        - groups: Treatment cohort for each estimate
-        - times: Time period for each estimate
-        - glist, tlist: Unique cohorts and periods
-        - inf_func_mat: Influence function matrix (n_obs x k)
-        - n: Number of observations
-        - args: Estimation arguments
+        - **att**: Array of ATT(g,t) point estimates
+        - **se**: Standard errors for each ATT(g,t)
+        - **uci**: Upper confidence interval bounds
+        - **lci**: Lower confidence interval bounds
+        - **groups**: Treatment cohort for each estimate
+        - **times**: Time period for each estimate
+        - **glist**: Cohorts with ATT(g,t) estimates
+        - **tlist**: Unique periods
+        - **inf_func_mat**: Influence function matrix (n_obs x k)
+        - **n**: Number of observations
+        - **args**: Estimation arguments
+        - **unit_groups**: Enabling cohort of each observation, or 0 for one whose group never enables treatment
+        - **unit_weights**: Normalized sampling weight of each observation, or None without weights
+        - **unit_clusters**: Cluster of each observation, or None without a cluster
+        - **unit_partition**: Eligibility of each observation, 1 if eligible and 0 if not
 
     See Also
     --------
     ddd_rc : Two-period DDD estimator for repeated cross-section data.
     ddd_mp : Multi-period DDD estimator for panel data.
+
+    Notes
+    -----
+    The standard errors follow :func:`ddd_mp` with one row of the influence
+    function matrix per observation.
 
     References
     ----------
@@ -156,11 +191,80 @@ def ddd_mp_rc(
         Journal of Econometrics, 219(1), 101-122.
         https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    data = to_polars(data)
+    _check_options(est_method, control_group, base_period, alpha, biters, trim_level, n_jobs)
+    data, glist, alpha, weights_col = _check_and_prepare(
+        data,
+        y_col,
+        time_col,
+        id_col,
+        group_col,
+        partition_col,
+        covariate_cols,
+        weights_col,
+        cluster,
+        panel=False,
+        allow_unbalanced_panel=False,
+        control_group=control_group,
+        alpha=alpha,
+    )
+    return _ddd_mp_rc(
+        data=data,
+        glist=glist,
+        y_col=y_col,
+        time_col=time_col,
+        id_col=id_col,
+        group_col=group_col,
+        partition_col=partition_col,
+        covariate_cols=covariate_cols,
+        control_group=control_group,
+        base_period=base_period,
+        est_method=est_method,
+        boot=boot,
+        biters=biters,
+        cband=cband,
+        cluster=cluster,
+        alpha=alpha,
+        trim_level=trim_level,
+        random_state=random_state,
+        n_jobs=n_jobs,
+        weights_col=weights_col,
+    )
 
+
+def _ddd_mp_rc(
+    data,
+    glist,
+    y_col,
+    time_col,
+    id_col,
+    group_col,
+    partition_col,
+    covariate_cols,
+    control_group,
+    base_period,
+    est_method,
+    boot,
+    biters,
+    cband,
+    cluster,
+    alpha,
+    trim_level,
+    random_state,
+    n_jobs,
+    weights_col,
+):
+    """Estimate every group-time cell of repeated cross-sections that :func:`_preprocess_multiple_periods` prepared.
+
+    The arguments follow :func:`ddd_mp_rc`. Here ``weights_col`` names the
+    column of normalized weights that the preparation adds. The cells belong
+    to the cohorts in the ``glist`` that the preparation returns.
+
+    Returns
+    -------
+    DDDMultiPeriodRCResult
+        The result that :func:`ddd_mp_rc` describes.
+    """
     tlist = np.sort(data[time_col].unique().to_numpy())
-    glist_raw = data[group_col].unique().to_numpy()
-    glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
 
     n_obs = len(data)
     n_periods = len(tlist)
@@ -172,15 +276,13 @@ def ddd_mp_rc(
     inf_func_mat = np.zeros((n_obs, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    data_with_idx = data.with_columns(pl.Series("_obs_idx", np.arange(len(data))))
-
     args_list = []
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
             args_list.append(
                 (
-                    data_with_idx,
+                    data,
                     g,
                     t,
                     t_idx,
@@ -196,22 +298,25 @@ def ddd_mp_rc(
                     est_method,
                     trim_level,
                     n_obs,
+                    weights_col,
                 )
             )
 
     cell_results = parallel_map(_process_gt_cell_rc, args_list, n_jobs=n_jobs)
 
     attgt_list = []
-    for counter, result in enumerate(cell_results):
-        if result is not None:
-            att_entry, inf_data, se_val = result
-            if att_entry is not None:
-                attgt_list.append(att_entry)
-                if inf_data is not None:
-                    inf_func_scaled, obs_indices = inf_data
-                    _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter)
-                if se_val is not None:
-                    se_array[counter] = se_val
+    for result in cell_results:
+        if result is None or result[0] is None:
+            continue
+        att_entry, inf_data, se_val = result
+        # Since a skipped cell takes no column, each kept cell's column sits at its position among the estimates.
+        column = len(attgt_list)
+        attgt_list.append(att_entry)
+        if inf_data is not None:
+            inf_func_scaled, obs_indices = inf_data
+            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, column)
+        if se_val is not None:
+            se_array[column] = se_val
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -222,36 +327,20 @@ def ddd_mp_rc(
 
     inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
 
+    obs_groups = data[group_col].to_numpy()
+    obs_partition = data[partition_col].cast(pl.Int64).to_numpy()
+    obs_weights = None if weights_col is None else data[weights_col].to_numpy()
+
     cluster_vals = None
     if cluster is not None:
-        cluster_vals = data_with_idx[cluster].to_numpy()
+        cluster_vals = data[cluster].to_numpy()
+        # Since only the eligible units of an enabling cohort are treated, they alone count toward its clusters.
+        obs_cohorts = np.where(obs_partition == 1, obs_groups, 0)
+        warn_few_clusters(cluster_vals, {g: cluster_vals[obs_cohorts == g] for g in np.unique(groups_array)})
 
-    if boot:
-        boot_result = mboot_ddd(
-            inf_func=inf_func_trimmed,
-            biters=biters,
-            alpha=alpha,
-            cluster=cluster_vals,
-            random_state=random_state,
-        )
-        se_computed = boot_result.se.copy()
-
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
-
-        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-
-        cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
-    else:
-        V = inf_func_trimmed.T @ inf_func_trimmed / n_obs
-        se_computed = np.sqrt(np.diag(V) / n_obs)
-
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
-
-        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-
-        cv = stats.norm.ppf(1 - alpha / 2)
+    se_computed, cv = _cell_inference(
+        inf_func_trimmed, se_array[: len(attgt_list)], boot, biters, alpha, cband, cluster_vals, random_state
+    )
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
@@ -266,12 +355,11 @@ def ddd_mp_rc(
         "boot": boot,
         "biters": biters if boot else None,
         "cband": cband if boot else None,
-        "cluster": cluster,
+        # Since clusters of one unit each leave the standard errors at the unit level, the report names none.
+        "cluster": cluster if _clusters_group_units(cluster_vals) else None,
         "alpha": alpha,
         "trim_level": trim_level,
     }
-
-    obs_groups = data[group_col].to_numpy()
 
     return DDDMultiPeriodRCResult(
         att=att_array,
@@ -286,6 +374,9 @@ def ddd_mp_rc(
         n=n_obs,
         args=args,
         unit_groups=obs_groups,
+        unit_weights=obs_weights,
+        unit_clusters=cluster_vals,
+        unit_partition=obs_partition,
     )
 
 
@@ -306,6 +397,7 @@ def _process_gt_cell_rc(
     est_method,
     trim_level,
     n_obs,
+    weights_col=None,
 ):
     """Process a single (g,t) cell and return results for RCS.
 
@@ -330,7 +422,7 @@ def _process_gt_cell_rc(
     if base_period == "universal" and pret == t:
         return (ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
 
-    cell_data, available_controls = _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col)
+    cell_data, obs_indices, available_controls = _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col)
 
     if cell_data is None or len(available_controls) == 0:
         return None
@@ -340,6 +432,7 @@ def _process_gt_cell_rc(
     if len(available_controls) == 1:
         result = _process_single_control_rc(
             cell_data,
+            obs_indices,
             y_col,
             time_col,
             group_col,
@@ -352,6 +445,8 @@ def _process_gt_cell_rc(
             trim_level,
             n_obs,
             n_cell,
+            available_controls[0],
+            weights_col,
         )
         att_result, inf_func_scaled, obs_indices = result
         if att_result is not None:
@@ -364,6 +459,7 @@ def _process_gt_cell_rc(
     else:
         result = _process_multiple_controls_rc(
             cell_data,
+            obs_indices,
             available_controls,
             y_col,
             time_col,
@@ -376,7 +472,7 @@ def _process_gt_cell_rc(
             est_method,
             trim_level,
             n_obs,
-            n_cell,
+            weights_col,
         )
         if result[0] is not None:
             att_gmm, inf_func_scaled, obs_indices, se_gmm = result
@@ -399,7 +495,7 @@ def _get_base_period_rc(g, t_idx, tlist, base_period):
 
 
 def _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col):
-    """Get data for a specific (g,t) cell and available controls for RCS."""
+    """Get the rows of a (g,t) cell with their positions and the available controls for RCS."""
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
@@ -412,15 +508,26 @@ def _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col):
     treat_expr = pl.col(group_col) == g
     cell_expr = treat_expr | control_expr
     time_expr = pl.col(time_col).is_in([t, pret])
-    cell_data = data.filter(cell_expr & time_expr)
+    in_cell = _row_mask(data, cell_expr & time_expr)
+    cell_data = data.filter(pl.Series(in_cell))
 
     if len(cell_data) == 0:
-        return None, []
+        return None, None, []
 
     control_data = cell_data.filter(~pl.col(group_col).is_in([g]))
     available_controls = [c for c in control_data[group_col].unique().to_list() if c != g]
 
-    return cell_data, available_controls
+    return cell_data, np.flatnonzero(in_cell), available_controls
+
+
+def _row_mask(frame, condition):
+    """Return whether each row meets a condition.
+
+    A missing result counts as not meeting it. Since the row positions come
+    from this mask rather than from an index column, no column of the data can
+    stand in for them.
+    """
+    return frame.select(condition.fill_null(False)).to_series().to_numpy()
 
 
 def _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter):
@@ -432,6 +539,7 @@ def _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, count
 
 def _process_single_control_rc(
     cell_data,
+    obs_indices,
     y_col,
     time_col,
     group_col,
@@ -444,10 +552,24 @@ def _process_single_control_rc(
     trim_level,
     n_obs,
     n_cell,
+    ctrl,
+    weights_col=None,
 ):
     """Process a (g,t) cell with a single control group for RCS."""
-    att_result, inf_func, obs_indices = _compute_single_ddd_rc(
-        cell_data, y_col, time_col, group_col, partition_col, g, t, pret, covariate_cols, est_method, trim_level
+    att_result, inf_func = _compute_single_ddd_rc(
+        cell_data,
+        y_col,
+        time_col,
+        group_col,
+        partition_col,
+        g,
+        t,
+        pret,
+        covariate_cols,
+        est_method,
+        trim_level,
+        ctrl,
+        weights_col,
     )
 
     if att_result is None:
@@ -459,6 +581,7 @@ def _process_single_control_rc(
 
 def _process_multiple_controls_rc(
     cell_data,
+    obs_indices,
     available_controls,
     y_col,
     time_col,
@@ -471,68 +594,70 @@ def _process_multiple_controls_rc(
     est_method,
     trim_level,
     n_obs,
-    n_cell,
+    weights_col=None,
 ):
     """Process a (g,t) cell with multiple control groups using GMM aggregation for RCS."""
     ddd_results = []
-    inf_funcs_local = []
-
-    cell_obs_indices = cell_data["_obs_idx"].to_numpy()
-    cell_idx_to_local = {idx: i for i, idx in enumerate(cell_obs_indices)}
+    inf_cols = []
 
     for ctrl in available_controls:
-        ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
-        subset_data = cell_data.filter(ctrl_expr)
+        in_subset = _row_mask(cell_data, (pl.col(group_col) == g) | (pl.col(group_col) == ctrl))
+        subset_data = cell_data.filter(pl.Series(in_subset))
 
-        att_result, inf_func, subset_obs_indices = _compute_single_ddd_rc(
-            subset_data, y_col, time_col, group_col, partition_col, g, t, pret, covariate_cols, est_method, trim_level
+        att_result, inf_func = _compute_single_ddd_rc(
+            subset_data,
+            y_col,
+            time_col,
+            group_col,
+            partition_col,
+            g,
+            t,
+            pret,
+            covariate_cols,
+            est_method,
+            trim_level,
+            ctrl,
+            weights_col,
         )
 
         if att_result is None:
             continue
 
-        n_subset = len(subset_data)
-        inf_func_scaled = (n_cell / n_subset) * inf_func
         ddd_results.append(att_result)
-
-        inf_full = np.zeros(n_cell)
-        for i, idx in enumerate(subset_obs_indices):
-            if idx in cell_idx_to_local and i < len(inf_func_scaled):
-                inf_full[cell_idx_to_local[idx]] = inf_func_scaled[i]
-
-        inf_funcs_local.append(inf_full)
+        # Scaling every comparison to the whole sample makes the GMM standard error agree with the cell's column.
+        inf_col = np.zeros(n_obs)
+        inf_col[obs_indices[in_subset]] = (n_obs / len(subset_data)) * inf_func
+        inf_cols.append(inf_col)
 
     if len(ddd_results) == 0:
         return None, None, None, None
 
-    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_obs)
-    inf_func_scaled = (n_obs / n_cell) * if_gmm
-    return att_gmm, inf_func_scaled, cell_obs_indices, se_gmm
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_cols), n_obs)
+    return att_gmm, if_gmm[obs_indices], obs_indices, se_gmm
 
 
 def _compute_single_ddd_rc(
-    cell_data, y_col, time_col, group_col, partition_col, g, t, _pret, covariate_cols, est_method, trim_level
+    cell_data,
+    y_col,
+    time_col,
+    group_col,
+    partition_col,
+    g,
+    t,
+    _pret,
+    covariate_cols,
+    est_method,
+    trim_level,
+    ctrl,
+    weights_col=None,
 ):
     """Compute DDD for a single (g,t) cell with a single control group using RCS."""
-    treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
-    subgroup_expr = (
-        4 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
-        + 3 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
-        + 2 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
-        + 1 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
-    ).alias("subgroup")
-
-    cell_data = cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
-    post_col = (pl.col(time_col) == t).cast(pl.Int64).alias("_post")
-    cell_data = cell_data.with_columns([post_col])
-
     y = cell_data[y_col].to_numpy()
-    post = cell_data["_post"].to_numpy()
-    subgroup = cell_data["subgroup"].to_numpy()
-    obs_indices = cell_data["_obs_idx"].to_numpy()
+    post = (cell_data[time_col] == t).cast(pl.Int64).to_numpy()
+    subgroup = _subgroup(cell_data, group_col, partition_col, g)
 
     if 4 not in set(subgroup):
-        return None, None, None
+        return None, None
 
     if covariate_cols is None:
         X = np.ones((len(y), 1))
@@ -547,10 +672,12 @@ def _compute_single_ddd_rc(
             post=post,
             subgroup=subgroup,
             covariates=X,
+            i_weights=None if weights_col is None else cell_data[weights_col].to_numpy(),
             est_method=est_method,
             trim_level=trim_level,
             influence_func=True,
         )
-        return result.att, result.att_inf_func, obs_indices
-    except (ValueError, np.linalg.LinAlgError):
-        return None, None, None
+        return result.att, result.att_inf_func
+    except (ValueError, np.linalg.LinAlgError) as error:
+        _warn_failed_comparison(g, t, ctrl, error)
+        return None, None

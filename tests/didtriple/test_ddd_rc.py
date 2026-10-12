@@ -1,5 +1,7 @@
 """Tests for the DDD repeated cross-section estimator."""
 
+import warnings
+
 import numpy as np
 import polars as pl
 import pytest
@@ -328,6 +330,52 @@ def test_ddd_rc_1d_covariates(two_period_rcs_data):
 
     assert np.isfinite(result.att)
     assert 0.5 < result.att < 4.0
+
+
+@pytest.mark.parametrize("boot, boot_type", [(False, "multiplier"), (True, "weighted")])
+def test_ddd_rc_cluster_requires_multiplier_bootstrap(two_period_rcs_data, boot, boot_type):
+    data = two_period_rcs_data
+
+    with pytest.raises(ValueError, match="cluster requires boot=True and boot_type='multiplier'"):
+        ddd_rc(
+            y=data["y"].to_numpy(),
+            post=data["time"].to_numpy(),
+            subgroup=_create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy()),
+            covariates=np.ones((len(data), 1)),
+            boot=boot,
+            boot_type=boot_type,
+            cluster=data["id"].to_numpy() % 20,
+        )
+
+
+@pytest.mark.parametrize(
+    ("modulus", "line", "se_type", "warned"),
+    [
+        (3, " Bootstrap standard errors clustered (multiplier, 99 reps)", "Bootstrap clustered", True),
+        (10**9, " Bootstrap standard errors (multiplier, 99 reps)", "Bootstrap", False),
+    ],
+    ids=["three_clusters", "one_unit_each"],
+)
+def test_ddd_rc_labels_a_cluster_array_without_a_column_name(two_period_rcs_data, modulus, line, se_type, warned):
+    data = two_period_rcs_data
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = ddd_rc(
+            y=data["y"].to_numpy(),
+            post=data["time"].to_numpy(),
+            subgroup=_create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy()),
+            covariates=np.ones((len(data), 1)),
+            boot=True,
+            biters=99,
+            random_state=3,
+            cluster=np.arange(len(data)) % modulus,
+        )
+
+    assert line in str(result).splitlines()
+    assert result.__maketables_stat__("se_type") == se_type
+    assert result.__maketables_vcov_info__ == {"vcov_type": "bootstrap", "clustervar": None}
+    assert [w.filename for w in caught if "very few clusters" in str(w.message)] == [__file__] * warned
 
 
 def test_validate_inputs_rc_weight_normalization():

@@ -36,7 +36,6 @@ __all__ = [
     "gen_ddd_mult_periods",
     "gen_ddd_scalable",
     "gen_simple_ddd_data",
-    "generate_simple_ddd_data",
     "mboot_ddd",
     "wboot_ddd",
 ]
@@ -46,7 +45,6 @@ _DGP_NAMES = {
     "gen_ddd_mult_periods",
     "gen_ddd_scalable",
     "gen_simple_ddd_data",
-    "generate_simple_ddd_data",
 }
 
 

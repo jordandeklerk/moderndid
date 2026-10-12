@@ -1,3 +1,4 @@
+import re
 import warnings
 
 import numpy as np
@@ -19,12 +20,24 @@ from moderndid.didtriple.utils import (
         ("~ x1 + x2 + x3", ["x1", "x2", "x3"]),
         ("~ x1 + x2", ["x1", "x2"]),
         ("  ~ x1 + x2  ", ["x1", "x2"]),
+        ("~ cov.1 + `cov 2`", ["cov.1", "cov 2"]),
         (None, None),
         ("~1", None),
     ],
 )
 def test_get_covariate_names(formula, expected):
     assert get_covariate_names(formula) == expected
+
+
+@pytest.mark.parametrize("formula, term", [("~ x1 + I(x1**2)", "I(x1**2)"), ("~ x1:x2", "x1:x2")])
+def test_get_covariate_names_rejects_transforms(formula, term):
+    with pytest.raises(ValueError, match=re.escape(f"xformla term '{term}'")):
+        get_covariate_names(formula)
+
+
+def test_get_covariate_names_rejects_left_hand_side():
+    with pytest.raises(ValueError, match=re.escape("xformla='cov1 ~ 1' has a left-hand side.")):
+        get_covariate_names("cov1 ~ 1")
 
 
 @pytest.mark.parametrize(
@@ -58,6 +71,20 @@ def test_detect_multiple_periods_with_inf_groups():
 
 
 @pytest.mark.parametrize(
+    "times,groups",
+    [
+        ([1, 1, 2, 2, None], [0, 3, 0, 3, 3]),
+        ([1.0, 1.0, 2.0, 2.0, np.nan], [0, 3, 0, 3, 3]),
+        ([1.0, 1.0, 2.0, 2.0, np.inf], [0, 3, 0, 3, 3]),
+        ([1, 1, 2, 2, 2], [0, 3, 0, 3, None]),
+    ],
+)
+def test_detect_multiple_periods_ignores_missing_periods_and_cohorts(times, groups):
+    df = pl.DataFrame({"time": times, "group": groups})
+    assert detect_multiple_periods(df, "time", "group") is False
+
+
+@pytest.mark.parametrize(
     "times,ids,panel,allow_unbalanced,expected",
     [
         ([1, 2], [1, 2], False, False, True),
@@ -78,9 +105,9 @@ def test_detect_rcs_mode_no_idname():
 @pytest.mark.parametrize(
     "subgroup,expected",
     [
-        (3, "Treated-Eligible vs Treated-Ineligible"),
-        (2, "Treated-Eligible vs Eligible-Untreated"),
-        (1, "Treated-Eligible vs Untreated-Ineligible"),
+        (3, "Treated-Eligible versus Treated-Ineligible"),
+        (2, "Treated-Eligible versus Eligible-Untreated"),
+        (1, "Treated-Eligible versus Untreated-Ineligible"),
     ],
 )
 def test_get_comparison_description(subgroup, expected):
@@ -101,3 +128,4 @@ def test_check_overlap_and_warn():
         check_overlap_and_warn(ps_poor, condition_subgroup=2, threshold=1e-3, max_proportion=0.05)
         assert len(w) == 1
         assert "Poor propensity score overlap" in str(w[0].message)
+        assert "20.0 percent of units have a propensity score below 0.001." in str(w[0].message)

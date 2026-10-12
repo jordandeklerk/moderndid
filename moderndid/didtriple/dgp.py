@@ -4,24 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-_MEAN_Z1 = np.exp(0.25 / 2)
-_SD_Z1 = np.sqrt((np.exp(0.25) - 1) * np.exp(0.25))
-_MEAN_Z2 = 10.0
-_SD_Z2 = 0.54164
-_MEAN_Z3 = 0.21887
-_SD_Z3 = 0.04453
-_MEAN_Z4 = 402.0
-_SD_Z4 = 56.63891
-
 _MOVED_NAMES = {
     "gen_ddd_2periods",
     "gen_ddd_mult_periods",
     "gen_ddd_scalable",
-    "gen_dgp_2periods",
-    "gen_dgp_mult_periods",
-    "gen_dgp_scalable",
     "gen_simple_ddd_data",
-    "generate_simple_ddd_data",
 }
 
 
@@ -42,10 +29,11 @@ def _transform_covariates(x: np.ndarray) -> np.ndarray:
     z3_tilde = (x1 * x3 / 25 + 0.6) ** 3
     z4_tilde = (x1 + x4 + 20) ** 2
 
-    z1 = (z1_tilde - _MEAN_Z1) / _SD_Z1
-    z2 = (z2_tilde - _MEAN_Z2) / _SD_Z2
-    z3 = (z3_tilde - _MEAN_Z3) / _SD_Z3
-    z4 = (z4_tilde - _MEAN_Z4) / _SD_Z4
+    # Standardizing with population moments keeps Z on the scale that the generators' coefficients assume.
+    z1 = (z1_tilde - np.exp(0.25 / 2)) / np.sqrt((np.exp(0.25) - 1) * np.exp(0.25))
+    z2 = (z2_tilde - 10.0) / 0.54164
+    z3 = (z3_tilde - 0.21887) / 0.04453
+    z4 = (z4_tilde - 402.0) / 56.63891
 
     return np.column_stack([z1, z2, z3, z4])
 

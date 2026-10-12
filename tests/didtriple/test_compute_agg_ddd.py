@@ -117,3 +117,31 @@ def test_compute_agg_ddd_se_derivation(mp_ddd_result):
     inf_func_var = np.var(result.inf_func_overall, ddof=0)
     expected_se = np.sqrt(inf_func_var / mp_ddd_result.n)
     assert np.isclose(result.overall_se, expected_se, rtol=0.1)
+
+
+def test_compute_agg_ddd_share_influence_function_counts_eligible_units(ddd_mp_share_result):
+    result = compute_agg_ddd(ddd_mp_share_result, aggregation_type="eventstudy", boot=False, cband=False)
+    column = result.inf_func[:, result.egt == 0][:, 0]
+
+    np.testing.assert_array_equal(result.egt, [-2, -1, 0, 1])
+    np.testing.assert_allclose(result.att_egt, [0.2, 0.0, 2.0, 1.5], rtol=1e-12)
+    np.testing.assert_allclose(column, [0, 0, 0, 0, -10 / 3, -10 / 3, 0, 20 / 3, 0, 0], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result.se_egt[result.egt == 0], np.sqrt(2 / 3), rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att, 1.75, rtol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("agg_type", "overall", "effects"),
+    [
+        ("simple", 1.8, None),
+        ("group", 0.65 / 0.3, [1.25, 4.0]),
+        ("calendar", (1.0 + 0.7 / 0.3) / 2, [1.0, 0.7 / 0.3]),
+    ],
+)
+def test_compute_agg_ddd_cohort_shares_count_eligible_units(ddd_mp_share_result, agg_type, overall, effects):
+    result = compute_agg_ddd(ddd_mp_share_result, aggregation_type=agg_type, boot=False, cband=False)
+
+    np.testing.assert_allclose(result.overall_att, overall, rtol=1e-12)
+    np.testing.assert_allclose(result.inf_func_overall[[6, 8, 9]], 0.0, atol=1e-12)
+    if effects is not None:
+        np.testing.assert_allclose(result.att_egt, effects, rtol=1e-12)
