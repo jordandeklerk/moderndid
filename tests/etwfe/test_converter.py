@@ -31,6 +31,13 @@ def test_emfxresult_to_polars_event_has_treatment_status(etwfe_baseline):
     assert "treatment_status" in df.columns
 
 
+def test_emfxresult_to_polars_drops_reference_period(etwfe_never):
+    result = emfx(etwfe_never, type="event", post_only=False)
+    df = emfxresult_to_polars(result)
+    assert -1.0 not in df["event_time"].to_list()
+    assert len(df) == len(result.event_times) - 1
+
+
 def test_emfxresult_to_polars_simple_raises(etwfe_baseline):
     result = emfx(etwfe_baseline, type="simple")
     with pytest.raises(ValueError, match="Simple aggregation"):

@@ -18,71 +18,80 @@ class EtwfeResult(NamedTuple):
     This class implements the ``maketables`` plug-in interface for
     publication-quality tables. See :ref:`publication_tables`.
 
-    Returned by :func:`~moderndid.etwfe.estimator.etwfe`. Stores the saturated
+    Returned by :func:`~moderndid.etwfe.etwfe.etwfe`. Stores the saturated
     TWFE regression coefficients and variance-covariance matrix needed by
     :func:`~moderndid.etwfe.emfx.emfx` for aggregation.
 
     Attributes
     ----------
     coefficients : ndarray
-        Coefficient estimates for each cohort x time interaction term.
+        Estimate for each treatment cell, NaN for a cell the regression dropped
+        as collinear. Nonlinear families report it on the index scale.
     std_errors : ndarray
-        Standard errors for each coefficient.
+        Standard error of each cell estimate.
     vcov : ndarray
-        Variance-covariance matrix of the interaction coefficients.
+        Variance-covariance matrix of all regression coefficients.
     coef_names : list[str]
-        Names for each coefficient (from pyfixest).
+        Names of all regression coefficients.
     gt_pairs : list[tuple[float, float]]
-        (group, time) pair for each coefficient.
+        (group, time) pair of each treatment cell.
     n_obs : int
         Number of observations used in estimation.
     n_units : int
-        Number of unique cross-sectional units.
+        Number of units in the estimation sample, or of observations when
+        ``idname`` is None.
     r_squared : float or None
-        R-squared of the regression.
+        R-squared of the regression, NaN for nonlinear families.
     adj_r_squared : float or None
-        Adjusted R-squared of the regression.
+        Adjusted R-squared of the regression, NaN for nonlinear families.
     data : object or None
         Preprocessed DataFrame (used by emfx for cell counts).
     config : object or None
         EtwfeConfig used for estimation.
     estimation_params : dict
-        Additional estimation parameters.
+        Additional estimation parameters. Its ``formula`` entry names the
+        internal columns the regression fits.
+    model_coefficients : ndarray or None
+        Estimates of all regression coefficients, ordered as ``coef_names``.
     """
 
-    #: Coefficient estimates for each cohort x time interaction term.
+    #: Estimate for each treatment cell, NaN for a cell dropped as collinear.
     coefficients: np.ndarray
-    #: Standard errors for each coefficient.
+    #: Standard error of each cell estimate.
     std_errors: np.ndarray
-    #: Variance-covariance matrix of the interaction coefficients.
+    #: Variance-covariance matrix of all regression coefficients.
     vcov: np.ndarray
-    #: Names for each coefficient from pyfixest.
+    #: Names of all regression coefficients.
     coef_names: list
-    #: (group, time) pair for each coefficient.
+    #: (group, time) pair of each treatment cell.
     gt_pairs: list
     #: Number of observations used in estimation.
     n_obs: int
-    #: Number of unique cross-sectional units.
+    #: Number of units in the estimation sample.
     n_units: int
-    #: R-squared of the regression.
+    #: R-squared of the regression, NaN for nonlinear families.
     r_squared: float | None = None
-    #: Adjusted R-squared of the regression.
+    #: Adjusted R-squared of the regression, NaN for nonlinear families.
     adj_r_squared: float | None = None
     #: Preprocessed DataFrame (used by emfx for aggregation).
     data: object = None
     #: EtwfeConfig used for estimation.
     config: object = None
-    #: Estimation parameters (yname, cgroup, formula, etc.).
+    #: Estimation details, such as ``yname``, ``cgroup``, and ``formula``.
     estimation_params: dict = {}
+    #: Estimates of all regression coefficients, ordered as ``coef_names``.
+    model_coefficients: np.ndarray | None = None
 
     @property
     def __maketables_coef_table__(self):
         """Return canonical coefficient table for maketables."""
         alpha = float(self.estimation_params.get("alpha", 0.05))
+        # Nonlinear cell coefficients are index-scale parameters, not ATTs.
+        linear = self.estimation_params.get("family") in (None, "gaussian")
         names = make_group_time_names(
             [g for g, _ in self.gt_pairs],
             [t for _, t in self.gt_pairs],
-            prefix="ATT",
+            prefix="ATT" if linear else "Coef",
         )
         return build_coef_table_with_ci(names, self.coefficients, self.std_errors, alpha=alpha)
 
@@ -92,9 +101,9 @@ class EtwfeResult(NamedTuple):
             return self.n_obs
         if key == "n_units":
             return self.n_units
-        if key == "R2":
+        if key == "r2":
             return self.r_squared
-        if key == "R2_adj":
+        if key == "adj_r2":
             return self.adj_r_squared
         if key == "se_type":
             return self.estimation_params.get("vcov_type", "CRV1")
@@ -108,7 +117,9 @@ class EtwfeResult(NamedTuple):
     @property
     def __maketables_fixef_string__(self) -> str | None:
         """Return fixed-effects formula string."""
-        return self.estimation_params.get("fe_spec")
+        fe_spec = self.estimation_params.get("fe_spec")
+        # Since a split on "+" must return each name unchanged, the string drops the spaces the report prints.
+        return fe_spec.replace(" + ", "+") if fe_spec else None
 
     @property
     def __maketables_vcov_info__(self) -> dict[str, str | None]:
@@ -121,14 +132,14 @@ class EtwfeResult(NamedTuple):
     @property
     def __maketables_stat_labels__(self) -> dict[str, str]:
         """Return custom labels for model-level statistics."""
-        return {"n_units": "Units", "R2": "R-squared", "R2_adj": "Adj. R-squared"}
+        return {"n_units": "Units", "r2": "R-squared", "adj_r2": "Adj. R-squared"}
 
     @property
     def __maketables_default_stat_keys__(self) -> list[str]:
         """Default model-level stats to display in ETable."""
         keys = ["N", "n_units", "se_type"]
-        if self.r_squared is not None:
-            keys.append("R2")
+        if self.r_squared is not None and not np.isnan(self.r_squared):
+            keys.append("r2")
         return keys
 
 
@@ -143,9 +154,10 @@ class EmfxResult(NamedTuple):
     Attributes
     ----------
     overall_att : float
-        Overall average treatment effect on the treated.
+        Summary effect for the aggregation type, as described in
+        :func:`~moderndid.etwfe.emfx.emfx`.
     overall_se : float
-        Standard error for the overall ATT.
+        Standard error of the summary effect.
     aggregation_type : str
         Type of aggregation: ``"simple"``, ``"group"``, ``"calendar"``,
         or ``"event"``.
@@ -167,9 +179,9 @@ class EmfxResult(NamedTuple):
         Additional estimation parameters.
     """
 
-    #: Overall average treatment effect on the treated.
+    #: Summary effect for the aggregation type.
     overall_att: float
-    #: Standard error for the overall ATT.
+    #: Standard error of the summary effect.
     overall_se: float
     #: Type of aggregation: "simple", "group", "calendar", or "event".
     aggregation_type: str
@@ -187,7 +199,7 @@ class EmfxResult(NamedTuple):
     critical_value: float = 1.96
     #: Number of observations in the original regression.
     n_obs: int = 0
-    #: Estimation parameters (alpha, vcov_type, etc.).
+    #: Estimation details carried over from the regression, such as ``alpha`` and ``vcov_type``.
     estimation_params: dict = {}
 
     @property

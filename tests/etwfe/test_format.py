@@ -29,8 +29,8 @@ from moderndid.etwfe.format import format_emfx_result, format_etwfe_result
         "Extended TWFE (OLS)",
         "R-squared:",
         "Significance level:",
-        "hetero",
-        "Wooldridge (2021, 2023)",
+        "CRV1 clustered by countyreal",
+        "Reference: Wooldridge (2023, 2025)",
     ],
 )
 def test_format_etwfe_result_contains(etwfe_baseline, expected):
@@ -47,6 +47,31 @@ def test_format_etwfe_poisson_family(mpdta_data):
     mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
     output = format_etwfe_result(mod)
     assert "Extended TWFE (poisson)" in output
+
+
+def test_format_etwfe_nonlinear_labels_index_estimates(etwfe_poisson_id):
+    output = format_etwfe_result(etwfe_poisson_id)
+    assert "ATT(g,t)" not in output
+    assert "│ Estimate │" in output
+    assert "log scale" in output
+    assert "Units:  500" in output
+
+
+@pytest.mark.parametrize("family,yname", [("poisson", "lemp"), ("logit", "ybin"), ("probit", "ybin")])
+def test_format_etwfe_nonlinear_leaves_out_r_squared(mpdta_moderators, family, yname):
+    mod = etwfe(
+        data=mpdta_moderators, yname=yname, tname="year", gname="first.treat", idname="countyreal", family=family
+    )
+    output = format_etwfe_result(mod)
+    assert f"Estimation Method:  Extended TWFE ({family})" in output
+    assert "R-squared" not in output
+
+
+def test_format_etwfe_hetero_without_cluster_variable(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", vcov="hetero")
+    output = format_etwfe_result(mod)
+    assert "Std. errors: hetero" in output
+    assert "clustered by" not in output
 
 
 @pytest.mark.parametrize("method", [str, repr])
@@ -83,6 +108,7 @@ def test_format_emfx_by_type(etwfe_baseline, agg_type, expected_strings):
         "Observations:",
         "Delta method standard errors",
         "Extended TWFE (OLS)",
+        "Reference: Wooldridge (2023, 2025)",
     ],
 )
 def test_format_emfx_data_info(etwfe_baseline, expected):
@@ -114,17 +140,23 @@ def test_etwfe_maketables_coef_table(etwfe_baseline):
     [
         ("N", 2500),
         ("n_units", 500),
-        ("se_type", "hetero"),
+        ("se_type", "CRV1"),
     ],
 )
 def test_etwfe_maketables_stat(etwfe_baseline, key, expected):
     assert etwfe_baseline.__maketables_stat__(key) == expected
 
 
-def test_etwfe_maketables_stat_R2(etwfe_baseline):
-    r2 = etwfe_baseline.__maketables_stat__("R2")
-    assert r2 is not None
+def test_etwfe_maketables_stat_r2(etwfe_baseline):
+    r2 = etwfe_baseline.__maketables_stat__("r2")
+    assert r2 == etwfe_baseline.r_squared
     assert 0 < r2 <= 1
+
+
+@pytest.mark.parametrize("key,expected", [("r2", 0.5), ("adj_r2", 0.25), ("R2", None), ("R2_adj", None)])
+def test_etwfe_maketables_stat_r_squared_keys(etwfe_baseline, key, expected):
+    result = etwfe_baseline._replace(r_squared=0.5, adj_r_squared=0.25)
+    assert result.__maketables_stat__(key) == expected
 
 
 def test_etwfe_maketables_stat_unknown_returns_none(etwfe_baseline):
@@ -136,13 +168,29 @@ def test_etwfe_maketables_depvar(etwfe_baseline):
 
 
 def test_etwfe_maketables_fixef(etwfe_baseline):
-    assert etwfe_baseline.__maketables_fixef_string__ == "countyreal + year"
+    assert etwfe_baseline.__maketables_fixef_string__ == "countyreal+year"
+
+
+def test_etwfe_maketables_fixef_without_idname(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat")
+    assert mod.__maketables_fixef_string__ == "first.treat+year"
+    assert "Fixed Effects:  first.treat + year" in format_etwfe_result(mod)
+
+
+def test_etwfe_maketables_fixef_none_without_fixed_effects(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", fe="none")
+    assert mod.__maketables_fixef_string__ is None
 
 
 def test_etwfe_maketables_vcov_info(etwfe_baseline):
     info = etwfe_baseline.__maketables_vcov_info__
-    assert info["vcov_type"] == "hetero"
-    assert info["clustervar"] is None
+    assert info["vcov_type"] == "CRV1"
+    assert info["clustervar"] == "countyreal"
+
+
+def test_etwfe_maketables_nonlinear_names_cells_as_coefficients(etwfe_poisson_id):
+    table = etwfe_poisson_id.__maketables_coef_table__
+    assert all(name.startswith("Coef(") for name in table.index)
 
 
 def test_emfx_maketables_coef_table(etwfe_baseline):
@@ -180,8 +228,7 @@ def test_emfx_maketables_vcov_info(etwfe_baseline):
 
 def test_etwfe_maketables_stat_labels(etwfe_baseline):
     labels = etwfe_baseline.__maketables_stat_labels__
-    assert "n_units" in labels
-    assert "R2" in labels
+    assert labels == {"n_units": "Units", "r2": "R-squared", "adj_r2": "Adj. R-squared"}
 
 
 def test_etwfe_maketables_default_stat_keys(etwfe_baseline):
@@ -193,7 +240,16 @@ def test_etwfe_maketables_default_stat_keys(etwfe_baseline):
 
 def test_etwfe_maketables_default_stat_keys_includes_r2(etwfe_baseline):
     keys = etwfe_baseline.__maketables_default_stat_keys__
-    assert "R2" in keys
+    assert keys == ["N", "n_units", "se_type", "r2"]
+
+
+def test_etwfe_maketables_default_stat_keys_without_r2(etwfe_baseline):
+    keys = etwfe_baseline._replace(r_squared=None).__maketables_default_stat_keys__
+    assert keys == ["N", "n_units", "se_type"]
+
+
+def test_etwfe_maketables_default_stat_keys_nonlinear_leave_out_r2(etwfe_poisson_id):
+    assert etwfe_poisson_id.__maketables_default_stat_keys__ == ["N", "n_units", "se_type"]
 
 
 def test_emfx_maketables_stat_labels(etwfe_baseline):
@@ -232,7 +288,7 @@ def test_format_emfx_poisson_family(mpdta_data):
     "key,expected",
     [
         ("N", 2500),
-        ("se_type", "hetero"),
+        ("se_type", "CRV1"),
     ],
 )
 def test_emfx_maketables_stat_n_and_se_type(etwfe_baseline, key, expected):
@@ -240,6 +296,7 @@ def test_emfx_maketables_stat_n_and_se_type(etwfe_baseline, key, expected):
     assert result.__maketables_stat__(key) == expected
 
 
-def test_etwfe_maketables_stat_r2_adj(etwfe_baseline):
-    val = etwfe_baseline.__maketables_stat__("R2_adj")
-    assert val is None or isinstance(val, float)
+def test_etwfe_maketables_stat_adj_r2(etwfe_baseline):
+    val = etwfe_baseline.__maketables_stat__("adj_r2")
+    assert val == etwfe_baseline.adj_r_squared
+    assert val == pytest.approx(0.9915306, abs=1e-6)
