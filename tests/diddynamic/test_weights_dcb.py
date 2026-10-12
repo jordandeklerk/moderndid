@@ -3,13 +3,18 @@
 import numpy as np
 import pytest
 
+from moderndid.diddynamic.container import DCBResult
+from moderndid.diddynamic.estimation.coefficients import compute_coefficients
 from moderndid.diddynamic.estimation.weights_dcb import (
-    DCBResult,
     _build_balance_bounds,
+    _compute_bias,
+    _is_infeasible,
+    _max_violation,
     _solve_balance_qp,
     _solve_qp_first_period,
     _solve_qp_sequential,
     compute_dcb_estimator,
+    compute_imbalances,
 )
 
 
@@ -559,3 +564,101 @@ def test_mu_hat_approximates_conditional_mean(rng):
         tolerance=1e-8,
     )
     assert result.mu_hat == pytest.approx(4.0, abs=0.5)
+
+
+def test_linear_program_flags_infeasible_balance(rng):
+    x_sub = rng.standard_normal((5, 2)) + 100
+    bounds = np.full(2, 1e-10)
+    upper = np.log(5) * 5 ** (-2 / 3)
+    assert _is_infeasible(x_sub, -bounds, bounds, 1e-8, upper)
+
+
+def test_linear_program_accepts_feasible_balance(rng):
+    x_sub = rng.standard_normal((15, 2))
+    x_bar = x_sub.mean(axis=0)
+    upper = np.log(15) * 15 ** (-2 / 3)
+    assert not _is_infeasible(x_sub, x_bar - 5.0, x_bar + 5.0, 1e-8, upper)
+
+
+def test_accepted_weights_satisfy_constraints(rng):
+    x_sub = rng.standard_normal((15, 2))
+    x_bar = x_sub.mean(axis=0)
+    bounds_vec = np.full(2, 0.5)
+    gamma = _solve_balance_qp(x_sub, x_bar, 15, bounds_vec, tolerance=1e-8)
+    upper = np.log(15) * 15 ** (-2 / 3)
+    assert gamma is not None
+    assert _max_violation(gamma, x_sub, x_bar - bounds_vec, x_bar + bounds_vec, 1e-8, upper) <= 1e-8
+
+
+def test_max_violation_measures_balance_gap(rng):
+    x_sub = rng.standard_normal((10, 2))
+    gamma = np.full(10, 0.1)
+    balance = x_sub.T @ gamma
+    upper = np.log(10) * 10 ** (-2 / 3)
+    violation = _max_violation(gamma, x_sub, balance + 1.0, balance + 2.0, 1e-8, upper)
+    assert violation == pytest.approx(np.max(1.0 / (1.0 + np.abs(balance + 2.0))))
+
+
+def test_fewer_than_two_units_is_infeasible(rng):
+    x_sub = rng.standard_normal((1, 2))
+    assert _solve_balance_qp(x_sub, x_sub[0], 1, np.full(2, 5.0), tolerance=1e-8) is None
+
+
+def test_bias_vanishes_when_every_resample_refits_the_same_coefficients(exact_linear_panel, rng):
+    outcome, treatment, covariates, ds = exact_linear_panel
+    n = len(outcome)
+    coefs = compute_coefficients(2, outcome, treatment, covariates, ds, "lasso_plain", False, 10)
+    gammas = rng.dirichlet(np.ones(n), size=2).T
+    bias = _compute_bias(
+        n,
+        2,
+        outcome,
+        treatment,
+        covariates,
+        ds,
+        "lasso_plain",
+        False,
+        10,
+        None,
+        0,
+        coefs.coef_t,
+        coefs.covariates_nonna,
+        coefs.not_nas,
+        gammas,
+        np.random.default_rng(0),
+    )
+    assert abs(bias) < 1e-6
+
+
+def test_debias_depends_only_on_random_state(estimation_panel):
+    outcome, treatment, covariates, ds = estimation_panel
+    kwargs = dict(
+        method="lasso_plain", regularization=False, debias=True, adaptive_balancing=False, ub=20.0, grid_length=50
+    )
+    first = compute_dcb_estimator(3, outcome, treatment, covariates, ds, random_state=3, **kwargs)
+    second = compute_dcb_estimator(3, outcome, treatment, covariates, ds, random_state=3, **kwargs)
+    assert np.isfinite(first.bias)
+    assert first.bias == second.bias
+
+
+def test_imbalances_compare_with_equal_then_previous_weights(rng):
+    n = 30
+    covariates = {t: rng.standard_normal((n, 2)) for t in range(2)}
+    gammas = rng.dirichlet(np.ones(n), size=2).T
+    not_nas = [np.arange(n), np.arange(n)]
+    result = compute_imbalances(gammas, not_nas, covariates)
+    first = (gammas[:, 0] - 1 / n) @ covariates[0] / covariates[0].std(axis=0, ddof=1)
+    second = (gammas[:, 1] - gammas[:, 0]) @ covariates[1] / covariates[1].std(axis=0, ddof=1)
+    np.testing.assert_allclose(result, np.vstack([first, second]), rtol=1e-12)
+
+
+def test_imbalances_skip_missing_rows_and_keep_constant_columns_raw(rng):
+    n = 30
+    x = np.column_stack([rng.standard_normal(n), np.full(n, 2.0)])
+    x[0, 0] = np.nan
+    gammas = np.zeros((n, 1))
+    gammas[1:, 0] = rng.dirichlet(np.ones(n - 1))
+    result = compute_imbalances(gammas, [np.arange(n)], {0: x})
+    expected = (gammas[1:, 0] - 1 / (n - 1)) @ x[1:, 0] / x[1:, 0].std(ddof=1)
+    assert result[0, 0] == pytest.approx(expected, rel=1e-12)
+    assert result[0, 1] == pytest.approx(0.0, abs=1e-12)

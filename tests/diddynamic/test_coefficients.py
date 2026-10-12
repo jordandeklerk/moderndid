@@ -3,7 +3,14 @@
 import numpy as np
 import pytest
 
-from moderndid.diddynamic.estimation.coefficients import CoefficientResult, compute_coefficients
+from moderndid.diddynamic.container import CoefficientResult
+from moderndid.diddynamic.estimation.coefficients import (
+    _fit_penalized,
+    _free_coefficients,
+    _interpolation_weights,
+    _one_se_index,
+    compute_coefficients,
+)
 
 
 @pytest.mark.parametrize("method", ["lasso_plain", "lasso_subsample"])
@@ -231,6 +238,17 @@ def test_very_few_matching_units(rng):
     assert len(result.coef_t) == 2
 
 
+@pytest.mark.parametrize("n_matching", [0, 1])
+def test_lasso_subsample_needs_two_matching_units(rng, n_matching):
+    n = 40
+    treatment = np.zeros((n, 2))
+    treatment[:n_matching, :] = 1.0
+    covariates = {t: rng.standard_normal((n, 2)) for t in range(2)}
+    outcome = rng.standard_normal(n)
+    with pytest.raises(ValueError, match=r"Fewer than two units .* history \[1, 1\] through period 2"):
+        compute_coefficients(2, outcome, treatment, covariates, np.ones(2), method="lasso_subsample")
+
+
 @pytest.mark.filterwarnings("ignore::sklearn.exceptions.ConvergenceWarning")
 def test_constant_outcome_intercept_near_value(rng):
     n = 40
@@ -253,3 +271,68 @@ def test_zero_outcome_predictions_near_zero(rng):
     ds = np.array([0.0, 0.0])
     result = compute_coefficients(2, outcome, treatment, covariates, ds, method="lasso_subsample", nfolds=3)
     assert np.allclose(result.pred_t[1], 0.0, atol=0.5)
+
+
+def test_lasso_plain_predictions_come_from_penalized_fit(estimation_panel):
+    outcome, treatment, covariates, ds = estimation_panel
+    lasso = compute_coefficients(3, outcome, treatment, covariates, ds, method="lasso_plain", nfolds=3)
+    ridge = compute_coefficients(
+        3, outcome, treatment, covariates, ds, method="lasso_plain", regularization=False, nfolds=3
+    )
+    assert not np.allclose(lasso.pred_t[2], ridge.pred_t[2], atol=1e-3)
+
+
+def test_lasso_plain_stores_intercept(rng):
+    n = 80
+    treatment = np.zeros((n, 2))
+    treatment[:40, :] = 1.0
+    covariates = {t: rng.standard_normal((n, 2)) for t in range(2)}
+    outcome = 5.0 + rng.standard_normal(n)
+    result = compute_coefficients(2, outcome, treatment, covariates, np.zeros(2), method="lasso_plain", nfolds=5)
+    assert result.coef_t[1][0] == pytest.approx(5.0, abs=0.5)
+
+
+def test_lasso_plain_invariant_to_covariate_scale(estimation_panel):
+    outcome, treatment, covariates, ds = estimation_panel
+    scaled = {t: cov * np.array([10.0, 1.0, 0.1]) for t, cov in covariates.items()}
+    base = compute_coefficients(3, outcome, treatment, covariates, ds, method="lasso_plain", nfolds=3)
+    rescaled = compute_coefficients(3, outcome, treatment, scaled, ds, method="lasso_plain", nfolds=3)
+    for t in range(3):
+        np.testing.assert_allclose(rescaled.pred_t[t], base.pred_t[t], atol=1e-6)
+
+
+def test_lags_penalize_older_treatments(lagged_effect_panel):
+    outcome, treatment, covariates, ds = lagged_effect_panel
+    free = compute_coefficients(2, outcome, treatment, covariates, ds, method="lasso_plain", nfolds=5)
+    one_lag = compute_coefficients(2, outcome, treatment, covariates, ds, method="lasso_plain", nfolds=5, lags=1)
+    assert not np.allclose(free.pred_t[1], one_lag.pred_t[1], atol=1e-6)
+
+
+def test_unpenalized_column_keeps_least_squares_value(lagged_effect_panel):
+    outcome, treatment, covariates, _ = lagged_effect_panel
+    x = np.column_stack([covariates[1], treatment])
+    penalized = np.array([True, True, True, False, False])
+    _, coefs = _fit_penalized(x, outcome, penalized, 5)
+    free = np.column_stack([np.ones(len(outcome)), treatment])
+    expected = np.linalg.lstsq(free, outcome - covariates[1] @ coefs[:3], rcond=None)[0]
+    np.testing.assert_allclose(coefs[3:], expected[1:], atol=1e-10)
+
+
+def test_one_se_index_picks_largest_penalty_within_one_se():
+    folds = np.repeat(np.arange(3), 10)
+    fold_errors = np.array([[1.0, 0.5, 0.3], [1.0, 0.6, 0.6], [1.0, 0.4, 0.45]])
+    errors = fold_errors[folds]
+    assert _one_se_index(errors, folds, 30) == 1
+
+
+def test_interpolation_weights_hold_ends_and_interpolate():
+    grid = np.array([4.0, 2.0, 1.0])
+    weights = _interpolation_weights(grid, np.array([5.0, 4.0, 3.0, 1.5, 0.5]))
+    np.testing.assert_allclose(np.array([10.0, 20.0, 30.0]) @ weights, [10.0, 10.0, 15.0, 25.0, 30.0])
+
+
+def test_free_coefficients_zero_for_repeated_column(rng):
+    d = rng.integers(0, 2, size=50).astype(float)
+    free = np.column_stack([np.ones(50), d, d])
+    coefs = _free_coefficients(free, 1.0 + 2.0 * d)
+    np.testing.assert_allclose(coefs, [1.0, 2.0, 0.0], atol=1e-10)

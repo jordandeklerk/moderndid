@@ -1,12 +1,17 @@
 """Tests for the main dynamic covariate balancing estimator function."""
 
+import re
+
 import numpy as np
 import polars as pl
 import pytest
+from scipy.stats import chi2
 
 import moderndid.diddynamic.format  # noqa: F401
+from moderndid.core.converters import dynbalancinghetresult_to_polars, dynbalancingresult_to_polars
 from moderndid.diddynamic.container import DynBalancingResult
 from moderndid.diddynamic.dyn_balancing import dyn_balancing
+from tests.diddynamic.conftest import dropped_messages
 
 
 def test_returns_result(estimator_panel):
@@ -25,6 +30,32 @@ def test_returns_result(estimator_panel):
         adaptive_balancing=False,
     )
     assert isinstance(result, DynBalancingResult)
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"treatment_name": "DD"}, "treatment_name='DD' is not a column in the data. Did you mean 'D'?"),
+        (
+            {"clustervars": ["clustr_var"]},
+            "'clustr_var' in clustervars is not a column in the data. Did you mean 'cluster_var'?",
+        ),
+        ({"histories_length": [1, 2], "xformla": "~ X3"}, "'X3' in xformla is not a column in the data."),
+    ],
+)
+def test_dyn_balancing_names_misspelled_columns(estimator_panel, changes, message):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "treatment_name": "D",
+        "ds1": [0, 1, 1],
+        "ds2": [0, 0, 0],
+        "xformla": "~ X1",
+    } | changes
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        dyn_balancing(data=estimator_panel, **spec)
 
 
 def test_att_is_finite(estimator_panel):
@@ -99,8 +130,8 @@ def test_missing_treatment_name_raises(estimator_panel):
         )
 
 
-def test_invalid_alp_raises(estimator_panel):
-    with pytest.raises(ValueError, match="alp must be between"):
+def test_invalid_alpha_raises(estimator_panel):
+    with pytest.raises(ValueError, match="alpha must be between"):
         dyn_balancing(
             data=estimator_panel,
             yname="y",
@@ -109,7 +140,21 @@ def test_invalid_alp_raises(estimator_panel):
             treatment_name="D",
             ds1=[0, 1, 1],
             ds2=[0, 0, 0],
-            alp=1.5,
+            alpha=1.5,
+        )
+
+
+def test_dyn_balancing_rejects_the_removed_alp_argument(estimator_panel):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'alp'"):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            alp=0.1,
         )
 
 
@@ -180,9 +225,9 @@ def test_empty_ds2_raises(estimator_panel):
         )
 
 
-@pytest.mark.parametrize("alp", [0.0, 1.0, -0.1, 2.0])
-def test_boundary_alp_raises(estimator_panel, alp):
-    with pytest.raises(ValueError, match="alp must be between"):
+@pytest.mark.parametrize("alpha", [0.0, 1.0, -0.1, 2.0])
+def test_boundary_alpha_raises(estimator_panel, alpha):
+    with pytest.raises(ValueError, match="alpha must be between"):
         dyn_balancing(
             data=estimator_panel,
             yname="y",
@@ -191,7 +236,7 @@ def test_boundary_alp_raises(estimator_panel, alp):
             treatment_name="D",
             ds1=[0, 1, 1],
             ds2=[0, 0, 0],
-            alp=alp,
+            alpha=alpha,
         )
 
 
@@ -211,7 +256,7 @@ def test_lb_greater_than_ub_raises(estimator_panel):
 
 
 def test_continuous_treatment_raises_not_implemented(estimator_panel):
-    with pytest.raises(NotImplementedError, match="not yet implemented"):
+    with pytest.raises(NotImplementedError, match="not implemented yet"):
         dyn_balancing(
             data=estimator_panel,
             yname="y",
@@ -235,7 +280,7 @@ def test_large_alpha_warns(estimator_panel):
             ds1=[0, 1, 1],
             ds2=[0, 0, 0],
             xformla="~ X1",
-            alp=0.2,
+            alpha=0.2,
             ub=20.0,
             grid_length=50,
             nfolds=3,
@@ -261,7 +306,7 @@ def test_single_period_ds_warns(estimator_panel):
         )
 
 
-@pytest.mark.filterwarnings("ignore:pooled=True produced no pseudo-observations:UserWarning")
+@pytest.mark.filterwarnings("ignore:pooled=True has no effect:UserWarning")
 def test_pooled_auto_sets_cluster(estimator_panel):
     result = dyn_balancing(
         data=estimator_panel,
@@ -368,7 +413,7 @@ def test_se_positive(estimator_panel):
     assert result.se > 0
 
 
-@pytest.mark.parametrize("bal_method", ["ipw", "aipw", "ipw_msm"])
+@pytest.mark.parametrize("bal_method", ["ipw", "aipw"])
 @pytest.mark.filterwarnings("ignore::sklearn.exceptions.ConvergenceWarning")
 def test_ipw_returns_result(estimator_panel, bal_method):
     result = dyn_balancing(
@@ -508,9 +553,11 @@ def test_history_att_equals_mu1_minus_mu2(history_result):
         assert row["att"] == pytest.approx(row["mu1"] - row["mu2"], abs=1e-10)
 
 
-def test_history_var_att_equals_var_sum(history_result):
-    for row in history_result.summary.iter_rows(named=True):
-        assert row["var_att"] == pytest.approx(row["var_mu1"] + row["var_mu2"], abs=1e-10)
+def test_history_var_att_adds_variances_when_first_treatments_differ(history_result):
+    rows = history_result.summary.filter(pl.col("period_length").is_in([1, 2]))
+    assert rows.height == 2
+    for row in rows.iter_rows(named=True):
+        assert row["var_att"] == pytest.approx(row["var_mu1"] + row["var_mu2"], rel=1e-12)
 
 
 @pytest.mark.filterwarnings("ignore:ds1 contains one element:UserWarning")
@@ -765,3 +812,655 @@ def test_impulse_response_without_histories_raises(estimator_panel):
             impulse_response=True,
             xformla="~ X1",
         )
+
+
+def test_pooled_counts_original_units(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ X1",
+        pooled=True,
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert result.estimation_params["n_units"] == 60
+    assert result.estimation_params["n_stacked_units"] == 120
+    assert "Stacked unit histories: 120" in str(result)
+
+
+def test_pooled_initial_period_before_first_window(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ X1",
+        pooled=True,
+        initial_period=1,
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert np.isfinite(result.att)
+    assert result.estimation_params["n_stacked_units"] == 120
+
+
+def test_unpooled_initial_period_is_ignored(estimator_panel):
+    kwargs = dict(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    with pytest.warns(UserWarning, match="initial_period only applies"):
+        result = dyn_balancing(initial_period=1, **kwargs)
+    assert result.att == dyn_balancing(**kwargs).att
+
+
+def test_outcome_missing_before_window_leaves_estimate_unchanged(estimator_panel):
+    kwargs = dict(
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    missing = (pl.col("id") < 5) & (pl.col("time") == 1)
+    nulled = estimator_panel.with_columns(pl.when(missing).then(None).otherwise(pl.col("y")).alias("y"))
+    base = dyn_balancing(data=estimator_panel, **kwargs)
+    result = dyn_balancing(data=nulled, **kwargs)
+    assert result.att == pytest.approx(base.att, abs=1e-12)
+    assert result.estimation_params["n_units"] == 60
+
+
+def test_negative_lags_raise(estimator_panel):
+    with pytest.raises(ValueError, match="lags must be a nonnegative integer"):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            xformla="~ X1",
+            lags=-1,
+        )
+
+
+def test_ipw_msm_raises(estimator_panel):
+    with pytest.raises(ValueError, match="balancing='ipw_msm' is not available"):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            xformla="~ X1",
+            balancing="ipw_msm",
+        )
+
+
+def test_demeaned_fe_raises(estimator_panel):
+    with pytest.raises(NotImplementedError, match="demeaned_fe=True applies only to continuous treatments"):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            xformla="~ X1",
+            demeaned_fe=True,
+        )
+
+
+def test_several_clustervars_raise(estimator_panel):
+    with pytest.raises(ValueError, match="only one-way clustering is supported"):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            xformla="~ X1",
+            clustervars=["cluster_var", "id"],
+        )
+
+
+def test_clustervars_string_matches_list(estimator_panel):
+    kwargs = dict(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert (
+        dyn_balancing(clustervars="cluster_var", **kwargs).se == dyn_balancing(clustervars=["cluster_var"], **kwargs).se
+    )
+
+
+@pytest.mark.parametrize("xformla", [None, "~1"])
+def test_no_covariates_raise(estimator_panel, xformla):
+    with pytest.raises(ValueError, match="needs at least one"):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            xformla=xformla,
+        )
+
+
+def test_estimation_params_store_alpha_and_robust_quantile(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        alpha=0.1,
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert result.estimation_params["alpha"] == 0.1
+    assert result.estimation_params["robust_quantile"] is False
+    assert "alp" not in result.estimation_params
+    assert "90% Conf. Interval" in str(result)
+
+
+def test_default_critical_value_is_gaussian(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert result.robust_quantile == result.gaussian_quantile
+    assert "Gaussian critical values" in str(result)
+
+
+def test_robust_quantile_prints_chi_squared_interval(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        robust_quantile=True,
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert result.robust_quantile == pytest.approx(np.sqrt(chi2.ppf(0.95, 6)))
+    assert f"{result.att - result.robust_quantile * result.se:.4f}" in str(result)
+    assert "Robust (chi-squared) critical values" in str(result)
+
+
+@pytest.mark.parametrize("robust_quantile", [False, True])
+def test_maketables_interval_matches_report_and_to_df(estimator_panel, estimator_spec, robust_quantile):
+    result = dyn_balancing(data=estimator_panel, **estimator_spec, robust_quantile=robust_quantile)
+    table = result.__maketables_coef_table__
+    ate = dynbalancingresult_to_polars(result).filter(pl.col("parameter") == "ATE")
+    assert table.loc["ATE", "ci95l"] == pytest.approx(ate["ci_lower_robust"].item())
+    assert table.loc["ATE", "ci95u"] == pytest.approx(ate["ci_upper_robust"].item())
+    assert f"{table.loc['ATE', 'ci95l']:.4f}" in str(result)
+    assert f"{table.loc['ATE', 'ci95u']:.4f}" in str(result)
+
+
+def test_imbalances_cover_every_period_and_covariate(estimator_panel):
+    panel = estimator_panel.with_columns((pl.col("id") % 3).alias("fe_group"))
+    result = dyn_balancing(
+        data=panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1 + X2",
+        fixed_effects=["fe_group"],
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    table = result.imbalances["ds2"]
+    assert set(result.imbalances) == {"ds1", "ds2"}
+    assert table.columns == ["period", "covariate", "imbalance"]
+    assert table.height == 15
+    assert table.filter(pl.col("period") == 1)["covariate"].to_list() == [
+        "X1",
+        "X2",
+        "fe_group_0",
+        "fe_group_1",
+        "fe_group_2",
+    ]
+
+
+def test_pooled_imbalances_name_time_dummies_after_time_column(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ X1",
+        fixed_effects=["time"],
+        pooled=True,
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    labels = result.imbalances["ds1"].filter(pl.col("period") == 1)["covariate"].to_list()
+    assert labels == ["X1", "time_1", "time_2", "time_3"]
+
+
+def test_imbalances_match_weights(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1 + X2",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    gammas = result.gammas["ds1"]
+    for t in range(3):
+        x = estimator_panel.filter(pl.col("time") == t + 1).sort("id").select("X1", "X2").to_numpy()
+        previous = np.full(60, 1 / 60) if t == 0 else gammas[:, t - 1]
+        expected = (gammas[:, t] - previous) @ x / x.std(axis=0, ddof=1)
+        stored = result.imbalances["ds1"].filter(pl.col("period") == t + 1)["imbalance"].to_numpy()
+        np.testing.assert_allclose(stored, expected, rtol=1e-12, atol=1e-15)
+
+
+def test_ipw_standard_errors_follow_clustervars(estimator_panel):
+    kwargs = dict(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        balancing="ipw",
+    )
+    plain = dyn_balancing(**kwargs)
+    clustered = dyn_balancing(clustervars=["cluster_var"], **kwargs)
+    assert clustered.att == plain.att
+    assert clustered.se != pytest.approx(plain.se)
+
+
+def test_var_att_subtracts_shared_first_period_covariance(estimator_panel, estimator_spec):
+    result = dyn_balancing(data=estimator_panel, **estimator_spec, regularization=False)
+    assert result.var_att == pytest.approx(0.0628732513, rel=1e-5)
+    assert result.var_mu1 + result.var_mu2 == pytest.approx(0.0629092114, rel=1e-5)
+    assert result.var_att < result.var_mu1 + result.var_mu2
+
+
+def test_unit_clusters_leave_var_att_unchanged(estimator_panel, estimator_spec):
+    plain = dyn_balancing(data=estimator_panel, **estimator_spec, regularization=False)
+    clustered = dyn_balancing(data=estimator_panel, **estimator_spec, regularization=False, clustervars="id")
+    assert clustered.var_att == pytest.approx(plain.var_att, rel=1e-12)
+
+
+def test_clustered_var_att_keeps_covariance_of_histories_within_clusters(estimator_panel, estimator_spec):
+    result = dyn_balancing(data=estimator_panel, **estimator_spec, clustervars="cluster_var")
+    assert result.var_att == pytest.approx(0.0900941373, rel=1e-5)
+    assert result.var_mu1 + result.var_mu2 == pytest.approx(0.0550860048, rel=1e-5)
+
+
+def test_ipw_var_att_adds_variances_of_histories_that_share_the_first_treatment(estimator_panel, estimator_spec):
+    result = dyn_balancing(data=estimator_panel, **estimator_spec, balancing="ipw")
+    assert result.var_att == pytest.approx(result.var_mu1 + result.var_mu2, rel=1e-12)
+
+
+def test_identical_histories_give_zero_ate_and_variance(estimator_panel, estimator_spec):
+    result = dyn_balancing(data=estimator_panel, **{**estimator_spec, "ds2": estimator_spec["ds1"]})
+    assert result.att == pytest.approx(0.0, abs=1e-12)
+    assert result.var_att == pytest.approx(0.0, abs=1e-15)
+
+
+def test_debias_is_reproducible_with_random_state(estimator_panel):
+    kwargs = dict(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        debias=True,
+        regularization=False,
+        ub=20.0,
+        grid_length=50,
+        adaptive_balancing=False,
+    )
+    first = dyn_balancing(random_state=7, **kwargs)
+    second = dyn_balancing(random_state=7, **kwargs)
+    other = dyn_balancing(random_state=8, **kwargs)
+    assert first.att == second.att
+    assert first.att != other.att
+
+
+def test_converter_reads_alpha_of_estimate(estimator_panel):
+    result = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        alpha=0.1,
+        robust_quantile=True,
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    row = dynbalancingresult_to_polars(result).filter(pl.col("parameter") == "mu(ds1)").row(0, named=True)
+    assert (row["ci_upper_robust"] - row["estimate"]) / row["se"] == pytest.approx(np.sqrt(chi2.ppf(0.9, 3)))
+
+
+def test_het_converter_gives_potential_outcomes_their_own_degrees_of_freedom(impulse_panel):
+    result = dyn_balancing(
+        data=impulse_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 0],
+        ds2=[0, 0],
+        final_periods=[2, 3],
+        xformla="~ X1",
+        alpha=0.1,
+        robust_quantile=True,
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    mu = dynbalancinghetresult_to_polars(result, parameter="mu2")
+    ate = dynbalancinghetresult_to_polars(result)
+    np.testing.assert_allclose(
+        ((mu["ci_upper_robust"] - mu["estimate"]) / mu["se"]).to_numpy(), np.sqrt(chi2.ppf(0.9, 2))
+    )
+    np.testing.assert_allclose(
+        ((ate["ci_upper_robust"] - ate["estimate"]) / ate["se"]).to_numpy(), np.sqrt(chi2.ppf(0.9, 4))
+    )
+
+
+def test_dyn_balancing_rejects_repeated_unit_periods(estimator_panel_duplicated):
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, time) pair (7, 3)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        dyn_balancing(
+            data=estimator_panel_duplicated,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            xformla="~ X1",
+            ub=20.0,
+            grid_length=50,
+            nfolds=3,
+            adaptive_balancing=False,
+        )
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_dyn_balancing_drops_a_period_that_is_missing_twice_in_one_unit(float_keyed_panel, estimator_spec, missing):
+    repeated = (pl.col("id") == 5.0) & pl.col("time").is_in([1.0, 2.0])
+    data = float_keyed_panel.with_columns(pl.when(repeated).then(missing).otherwise(pl.col("time")).alias("time"))
+    expected = dyn_balancing(data=float_keyed_panel.filter(pl.col("id") != 5.0), **estimator_spec)
+
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=data, **estimator_spec)
+
+    assert dropped_messages(record) == [
+        "Dropped 2 rows from original data due to missing values",
+        "Dropped 1 units that are not observed in every period of the treatment history.",
+    ]
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_dyn_balancing_drops_a_unit_that_is_missing_twice_in_one_period(float_keyed_panel, estimator_spec, missing):
+    repeated = pl.col("id").is_in([5.0, 6.0]) & (pl.col("time") == 3.0)
+    data = float_keyed_panel.with_columns(pl.when(repeated).then(missing).otherwise(pl.col("id")).alias("id"))
+    expected = dyn_balancing(data=float_keyed_panel.filter(~pl.col("id").is_in([5.0, 6.0])), **estimator_spec)
+
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=data, **estimator_spec)
+
+    assert dropped_messages(record) == [
+        "Dropped 2 rows from original data due to missing values",
+        "Dropped 2 units that are not observed in every period of the treatment history.",
+    ]
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 58
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_dyn_balancing_ignores_a_full_history_without_a_unit(float_keyed_panel, estimator_spec, missing):
+    orphan = float_keyed_panel.head(3).with_columns(
+        pl.lit(missing, dtype=pl.Float64).alias("id"), pl.lit(40.0).alias("y")
+    )
+    expected = dyn_balancing(data=float_keyed_panel, **estimator_spec)
+
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=pl.concat([float_keyed_panel, orphan]), **estimator_spec)
+
+    assert dropped_messages(record) == ["Dropped 3 rows from original data due to missing values"]
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 60
+
+
+def test_dyn_balancing_drops_a_row_missing_the_period_when_pooling(estimator_panel, estimator_spec):
+    spec = estimator_spec | {"ds1": [1, 1], "ds2": [0, 0], "pooled": True}
+    row = (pl.col("id") == 5) & (pl.col("time") == 2)
+    data = estimator_panel.with_columns(pl.when(row).then(None).otherwise(pl.col("time")).alias("time"))
+
+    with pytest.warns(UserWarning) as expected_record:
+        expected = dyn_balancing(data=estimator_panel.filter(~row), **spec)
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=data, **spec)
+
+    assert dropped_messages(record) == [
+        "Dropped 1 rows from original data due to missing values",
+        *dropped_messages(expected_record),
+    ]
+    assert result.att == expected.att
+    assert result.estimation_params["n_stacked_units"] == expected.estimation_params["n_stacked_units"]
+
+
+@pytest.mark.parametrize("period_dtype", [pl.UInt8, pl.UInt64, pl.Float32, pl.Float64])
+def test_pooled_estimate_does_not_depend_on_the_period_dtype(estimator_panel, estimator_spec, period_dtype):
+    spec = estimator_spec | {"ds1": [1, 1], "ds2": [0, 0], "pooled": True}
+    expected = dyn_balancing(data=estimator_panel, **spec)
+
+    result = dyn_balancing(data=estimator_panel.with_columns(pl.col("time").cast(period_dtype)), **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_stacked_units"] == expected.estimation_params["n_stacked_units"]
+
+
+@pytest.mark.parametrize("id_dtype", [pl.Int32, pl.UInt16, pl.Float32, pl.Float64])
+def test_pooled_estimate_does_not_depend_on_the_unit_id_dtype(estimator_panel, estimator_spec, id_dtype):
+    spec = estimator_spec | {"ds1": [1, 1], "ds2": [0, 0], "pooled": True}
+    expected = dyn_balancing(data=estimator_panel, **spec)
+
+    result = dyn_balancing(data=estimator_panel.with_columns(pl.col("id").cast(id_dtype)), **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_stacked_units"] == expected.estimation_params["n_stacked_units"]
+
+
+@pytest.mark.parametrize("infinite", [float("inf"), -float("inf")])
+def test_dyn_balancing_reads_an_infinite_final_outcome_like_nan(estimator_panel, estimator_spec, infinite):
+    row = (pl.col("id") == 5) & (pl.col("time") == 3)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(pl.col("y")).alias("y"))
+    with_infinity = estimator_panel.with_columns(pl.when(row).then(infinite).otherwise(pl.col("y")).alias("y"))
+
+    with pytest.warns(UserWarning) as expected_record:
+        expected = dyn_balancing(data=with_nan, **estimator_spec)
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=with_infinity, **estimator_spec)
+
+    assert dropped_messages(expected_record) == ["Dropped 1 units with a missing final-period outcome."]
+    assert dropped_messages(record) == dropped_messages(expected_record)
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("period", [1, 2, 3])
+@pytest.mark.parametrize("infinite", [float("inf"), -float("inf")])
+def test_dyn_balancing_reads_an_infinite_treatment_like_nan(estimator_panel, estimator_spec, infinite, period):
+    row = (pl.col("id") == 5) & (pl.col("time") == period)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(pl.col("D")).alias("D"))
+    with_infinity = estimator_panel.with_columns(pl.when(row).then(infinite).otherwise(pl.col("D")).alias("D"))
+
+    with pytest.warns(UserWarning) as expected_record:
+        expected = dyn_balancing(data=with_nan, **estimator_spec)
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=with_infinity, **estimator_spec)
+
+    assert dropped_messages(expected_record) == [
+        "Dropped 1 units that are not observed in every period of the treatment history."
+    ]
+    assert dropped_messages(record) == dropped_messages(expected_record)
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("period", [1, 2, 3])
+@pytest.mark.parametrize("infinite", [float("inf"), -float("inf")])
+def test_dyn_balancing_reads_an_infinite_covariate_like_nan(estimator_panel, estimator_spec, infinite, period, recwarn):
+    row = (pl.col("id") == 5) & (pl.col("time") == period)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(pl.col("X1")).alias("X1"))
+    with_infinity = estimator_panel.with_columns(pl.when(row).then(infinite).otherwise(pl.col("X1")).alias("X1"))
+
+    expected = dyn_balancing(data=with_nan, **estimator_spec)
+    result = dyn_balancing(data=with_infinity, **estimator_spec)
+
+    assert dropped_messages(recwarn) == []
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 60
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf")])
+def test_dyn_balancing_drops_a_unit_whose_final_cluster_is_missing(estimator_panel, estimator_spec, value):
+    row = (pl.col("id") == 5) & (pl.col("time") == 3)
+    cluster = pl.col("cluster_var").cast(pl.Float64)
+    data = estimator_panel.with_columns(pl.when(row).then(value).otherwise(cluster).alias("cluster_var"))
+    without_unit = estimator_panel.filter(pl.col("id") != 5).with_columns(cluster)
+    expected = dyn_balancing(data=without_unit, clustervars="cluster_var", **estimator_spec)
+
+    with pytest.warns(UserWarning, match="Dropped 1 rows from original data due to missing values"):
+        result = dyn_balancing(data=data, clustervars="cluster_var", **estimator_spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("value", [None, float("inf")])
+def test_dyn_balancing_reads_a_missing_fixed_effect_like_nan(estimator_panel, estimator_spec, value, recwarn):
+    row = (pl.col("id") == 5) & (pl.col("time") == 3)
+    level = (pl.col("id") % 4).cast(pl.Float64)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(level).alias("fe"))
+    with_value = estimator_panel.with_columns(pl.when(row).then(value).otherwise(level).alias("fe"))
+    spec = {**estimator_spec, "fixed_effects": ["fe"]}
+
+    expected = dyn_balancing(data=with_nan, **spec)
+    result = dyn_balancing(data=with_value, **spec)
+
+    assert dropped_messages(recwarn) == []
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 60

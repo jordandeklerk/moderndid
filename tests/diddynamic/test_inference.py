@@ -2,13 +2,16 @@
 
 import numpy as np
 import pytest
+from scipy.stats import chi2
 
+from moderndid.diddynamic.container import QuantileResult
 from moderndid.diddynamic.estimation.inference import (
-    QuantileResult,
+    compute_ate_variance,
     compute_quantiles,
     compute_variance,
     compute_variance_clustered,
 )
+from moderndid.diddynamic.estimation.weights_dcb import compute_dcb_estimator
 
 
 def test_nonnegative(multi_period_data):
@@ -137,7 +140,6 @@ def test_gaussian_at_005():
     result = compute_quantiles(0.05, 3, robust_quantile=True)
     assert isinstance(result, QuantileResult)
     assert np.isclose(result.gaussian_quantile_ate, 1.959964, atol=1e-4)
-    assert np.isclose(result.gaussian_quantile_mu, 1.959964, atol=1e-4)
 
 
 def test_gaussian_at_001():
@@ -148,29 +150,21 @@ def test_gaussian_at_001():
 def test_robust_geq_gaussian():
     result = compute_quantiles(0.05, 3, robust_quantile=True)
     assert result.robust_quantile_ate >= result.gaussian_quantile_ate
-    assert result.robust_quantile_mu >= result.gaussian_quantile_mu
-
-
-def test_robust_ate_gt_robust_mu():
-    result = compute_quantiles(0.05, 3, robust_quantile=True)
-    assert result.robust_quantile_ate > result.robust_quantile_mu
 
 
 @pytest.mark.parametrize("n_periods", [1, 2, 5, 10])
 def test_positive(n_periods):
     result = compute_quantiles(0.05, n_periods, robust_quantile=True)
     assert result.robust_quantile_ate > 0
-    assert result.robust_quantile_mu > 0
 
 
 def test_equals_gaussian():
     result = compute_quantiles(0.05, 3, robust_quantile=False)
     assert np.isclose(result.robust_quantile_ate, result.gaussian_quantile_ate)
-    assert np.isclose(result.robust_quantile_mu, result.gaussian_quantile_mu)
 
 
-@pytest.mark.parametrize("alp", [0.01, 0.05, 0.10])
-def test_tighter_alpha_gives_larger_quantile(alp):
+@pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
+def test_tighter_alpha_gives_larger_quantile(alpha):
     result_tight = compute_quantiles(0.01, 3, robust_quantile=True)
     result_loose = compute_quantiles(0.10, 3, robust_quantile=True)
     assert result_tight.robust_quantile_ate > result_loose.robust_quantile_ate
@@ -182,7 +176,70 @@ def test_robust_ate_increases_with_periods():
     assert q5.robust_quantile_ate > q2.robust_quantile_ate
 
 
-def test_robust_mu_increases_with_periods():
-    q2 = compute_quantiles(0.05, 2, robust_quantile=True)
-    q5 = compute_quantiles(0.05, 5, robust_quantile=True)
-    assert q5.robust_quantile_mu > q2.robust_quantile_mu
+def test_quantiles_hold_only_the_ate_critical_values():
+    result = compute_quantiles(0.05, 3, robust_quantile=True)
+    assert result._fields == ("robust_quantile_ate", "gaussian_quantile_ate")
+    assert result.robust_quantile_ate == pytest.approx(np.sqrt(chi2.ppf(0.95, 6)), rel=1e-12)
+
+
+def test_variance_skips_a_row_missing_from_either_period():
+    gammas = np.array([[0.5, 0.5], [0.5, 0.5]])
+    predictions = np.array([[1.0, 2.0], [1.0, 4.0]])
+    not_nas = [np.array([0, 1]), np.array([0])]
+    y_t = np.array([3.0, 9.0])
+    assert compute_variance(gammas, predictions, not_nas, y_t) == pytest.approx(0.5)
+
+
+def test_ate_variance_subtracts_shared_period_covariance(two_history_results):
+    first, second, y_t = two_history_results
+    var_first = compute_variance(first.gammas, first.predictions, first.not_nas, y_t)
+    var_second = compute_variance(second.gammas, second.predictions, second.not_nas, y_t)
+    assert (var_first, var_second) == pytest.approx((2.0, 1.5))
+    assert compute_ate_variance(first, second, y_t) == pytest.approx(2.5)
+
+
+def test_ate_variance_adds_variances_when_weights_never_overlap(disjoint_history_results):
+    first, second, y_t = disjoint_history_results
+    assert compute_ate_variance(first, second, y_t) == pytest.approx(3.5)
+
+
+def test_ate_variance_of_a_history_with_itself_is_zero(two_history_results):
+    first, _, y_t = two_history_results
+    assert compute_ate_variance(first, first, y_t) == 0.0
+
+
+def test_clustered_ate_variance_sums_differences_within_clusters(two_history_results):
+    first, second, y_t = two_history_results
+    clusters = np.array([0, 0, 1, 1])
+    var_first = compute_variance_clustered(first.gammas, first.predictions, first.not_nas, y_t, clusters)
+    var_second = compute_variance_clustered(second.gammas, second.predictions, second.not_nas, y_t, clusters)
+    assert (var_first, var_second) == pytest.approx((2.0, 1.0))
+    assert compute_ate_variance(first, second, y_t, clusters) == pytest.approx(1.0)
+
+
+def test_clustered_ate_variance_with_unit_clusters_matches_plain(two_history_results):
+    first, second, y_t = two_history_results
+    assert compute_ate_variance(first, second, y_t, np.arange(4)) == pytest.approx(2.5)
+
+
+def test_clustered_ate_variance_keeps_dependence_between_histories_that_never_share_units(disjoint_history_results):
+    first, second, y_t = disjoint_history_results
+    clusters = np.array([0, 1, 0, 1])
+    var_first = compute_variance_clustered(first.gammas, first.predictions, first.not_nas, y_t, clusters)
+    var_second = compute_variance_clustered(second.gammas, second.predictions, second.not_nas, y_t, clusters)
+    assert (var_first, var_second) == pytest.approx((2.0, 1.5))
+    assert compute_ate_variance(first, second, y_t, clusters) == pytest.approx(2.5)
+
+
+def test_lasso_plain_ate_variance_drops_shared_first_period_terms(estimation_panel):
+    outcome, treatment, covariates, _ = estimation_panel
+    kwargs = dict(
+        method="lasso_plain", regularization=False, adaptive_balancing=False, nfolds=3, ub=20.0, grid_length=50
+    )
+    first = compute_dcb_estimator(3, outcome, treatment, covariates, np.array([0.0, 1.0, 1.0]), **kwargs)
+    second = compute_dcb_estimator(3, outcome, treatment, covariates, np.array([0.0, 0.0, 0.0]), **kwargs)
+    later_periods = np.array([0.0, 1.0, 1.0])
+    trimmed = [r._replace(gammas=r.gammas * later_periods) for r in (first, second)]
+    expected = sum(compute_variance(r.gammas, r.predictions, r.not_nas, outcome) for r in trimmed)
+    np.testing.assert_array_equal(first.gammas[:, 0], second.gammas[:, 0])
+    assert compute_ate_variance(first, second, outcome) == pytest.approx(expected, rel=1e-10)

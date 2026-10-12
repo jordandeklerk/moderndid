@@ -56,7 +56,7 @@ def test_default_estimation_params():
 
 def test_maketables_coef_table_columns(sample_result):
     table = sample_result.__maketables_coef_table__
-    for col in ("b", "se", "t", "p"):
+    for col in ("b", "se", "t", "p", "ci95l", "ci95u"):
         assert col in table.columns
 
 
@@ -66,6 +66,46 @@ def test_maketables_coef_table_values(sample_result):
     assert table.loc["ATE", "se"] == pytest.approx(sample_result.se)
     assert table.loc["ATE", "p"] >= 0.0
     assert table.loc["ATE", "p"] <= 1.0
+
+
+def test_maketables_coef_table_interval_uses_robust_quantile(sample_result):
+    table = sample_result.__maketables_coef_table__
+    assert table.loc["ATE", "ci95l"] == pytest.approx(1.87268)
+    assert table.loc["ATE", "ci95u"] == pytest.approx(2.81732)
+
+
+def test_maketables_coef_table_gaussian_interval(sample_result):
+    params = {**sample_result.estimation_params, "robust_quantile": False}
+    result = sample_result._replace(robust_quantile=1.96, estimation_params=params)
+    table = result.__maketables_coef_table__
+    assert table.loc["ATE", "ci95l"] == pytest.approx(2.10392)
+    assert table.loc["ATE", "ci95u"] == pytest.approx(2.58608)
+
+
+@pytest.mark.parametrize(
+    ("robust_quantile", "critical_value", "expected", "printed"),
+    [(True, 3.84, 0.121334, "0.1213"), (False, 1.96, 0.006934, "0.0069")],
+)
+def test_maketables_p_value_matches_report(sample_result, robust_quantile, critical_value, expected, printed):
+    params = {**sample_result.estimation_params, "robust_quantile": robust_quantile}
+    result = sample_result._replace(att=0.3321, robust_quantile=critical_value, estimation_params=params)
+    table = result.__maketables_coef_table__
+    assert table.loc["ATE", "t"] == pytest.approx(2.7)
+    assert table.loc["ATE", "p"] == pytest.approx(expected, abs=1e-6)
+    assert printed in str(result)
+
+
+def test_maketables_p_value_infers_robust_setting_when_missing(sample_result):
+    params = {k: v for k, v in sample_result.estimation_params.items() if k != "robust_quantile"}
+    result = sample_result._replace(att=0.3321, estimation_params=params)
+    assert result.__maketables_coef_table__.loc["ATE", "p"] == pytest.approx(0.121334, abs=1e-6)
+
+
+def test_maketables_robust_p_value_is_nan_without_periods(sample_result):
+    params = {k: v for k, v in sample_result.estimation_params.items() if k != "n_periods"}
+    result = sample_result._replace(att=0.3321, estimation_params=params)
+    assert math.isnan(result.__maketables_coef_table__.loc["ATE", "p"])
+    assert "NaN" in str(result)
 
 
 def test_maketables_stat_n(sample_result):
