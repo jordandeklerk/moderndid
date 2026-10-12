@@ -6,11 +6,6 @@ import pytest
 from moderndid.didinter.numba import HAS_NUMBA, compute_cluster_sums
 
 
-@pytest.fixture
-def rng():
-    return np.random.default_rng(42)
-
-
 @pytest.mark.parametrize(
     "influence_func,cluster_ids,expected_n_clusters,expected_sums",
     [
@@ -44,6 +39,18 @@ def rng():
             2,
             np.array([0.0, 0.0]),
         ),
+        (
+            np.array([1.0, 2.0, 3.0, 4.0]),
+            np.array([-1, -1, 2, 2]),
+            2,
+            np.array([3.0, 7.0]),
+        ),
+        (
+            np.array([1.0, 2.0, 3.0, 4.0]),
+            np.array([2, 2, -1, -1]),
+            2,
+            np.array([7.0, 3.0]),
+        ),
     ],
 )
 def test_compute_cluster_sums_basic(influence_func, cluster_ids, expected_n_clusters, expected_sums):
@@ -68,10 +75,26 @@ def test_compute_cluster_sums_special_ids(cluster_ids_type):
         cluster_ids = np.array([10, 10, 20, 30])
         expected_n_clusters = 3
 
-    cluster_sums, _ = compute_cluster_sums(influence_func, cluster_ids)
+    cluster_sums, unique_clusters = compute_cluster_sums(influence_func, cluster_ids)
 
     assert len(cluster_sums) == expected_n_clusters
+    np.testing.assert_array_equal(unique_clusters, np.unique(cluster_ids))
     np.testing.assert_almost_equal(cluster_sums.sum(), influence_func.sum())
+
+
+@pytest.mark.parametrize(
+    "cluster_ids,expected_sums",
+    [
+        (np.array([0, 0, 10**12, 10**12]), np.array([3.0, 7.0])),
+        (np.array([2**63 + 5, 2**63 + 5, 1, 1], dtype=np.uint64), np.array([7.0, 3.0])),
+    ],
+    ids=["beyond_any_table", "beyond_int64"],
+)
+def test_compute_cluster_sums_maps_large_ids(cluster_ids, expected_sums):
+    cluster_sums, unique_clusters = compute_cluster_sums(np.array([1.0, 2.0, 3.0, 4.0]), cluster_ids)
+
+    np.testing.assert_array_equal(cluster_sums, expected_sums)
+    np.testing.assert_array_equal(unique_clusters, np.unique(cluster_ids))
 
 
 @pytest.mark.parametrize(

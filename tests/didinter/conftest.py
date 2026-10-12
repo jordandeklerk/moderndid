@@ -1,16 +1,19 @@
 """Shared fixtures for didinter tests."""
 
+import itertools
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy.linalg import fractional_matrix_power
 
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import load_favara_imbs
-from moderndid.didinter.container import EffectsResult
+from moderndid import did_multiplegt, load_favara_imbs
+from moderndid.core.preprocess.config import DIDInterConfig
+from moderndid.didinter.container import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
 
 
 @pytest.fixture(scope="module")
@@ -134,6 +137,82 @@ def panel_with_controls(simple_panel_data, rng):
     )
 
 
+@pytest.fixture(scope="module")
+def every_option_panel():
+    """Panel of 50 groups with two controls, a covariate fixed within groups, and clusters of five groups."""
+    rng = np.random.default_rng(42)
+    units = np.repeat(np.arange(50), 6)
+    periods = np.tile(np.arange(1, 7), 50)
+    treated = ((units < 20) & (periods >= 3)) | ((units >= 20) & (units < 30) & (periods >= 4))
+    return pl.DataFrame(
+        {
+            "id": units,
+            "time": periods,
+            "y": rng.standard_normal(300) + 2.0 * treated,
+            "d": treated.astype(float),
+            "x1": rng.standard_normal(300),
+            "x2": rng.standard_normal(300),
+            "het": np.repeat(rng.standard_normal(50), 6),
+            "cl": units // 5,
+        }
+    )
+
+
+@pytest.fixture(scope="module")
+def fit_every_option(every_option_panel):
+    """Function that fits did_multiplegt with every option on the panel after renaming some of its columns."""
+
+    def fit(renamed=None, **options):
+        names = {"id": "id", "x1": "x1", "het": "het", "cl": "cl", **(renamed or {})}
+        return did_multiplegt(
+            every_option_panel.rename(renamed or {}),
+            yname="y",
+            tname="time",
+            idname=names["id"],
+            dname="d",
+            xformla=f"~ {names['x1']} + x2",
+            cluster=names["cl"],
+            predict_het=([names["het"]], [-1]),
+            effects=2,
+            placebo=1,
+            same_switchers=True,
+            less_conservative_se=True,
+            **options,
+        )
+
+    return fit
+
+
+@pytest.fixture(scope="module")
+def every_option_result(fit_every_option):
+    """Every-option fit under the panel's own column names."""
+    return fit_every_option()
+
+
+@pytest.fixture(scope="module")
+def continuous_option_panel(every_option_panel):
+    """Every-option panel whose treatment starts at a continuous baseline and rises by a group's own step."""
+    rng = np.random.default_rng(7)
+    switched = every_option_panel["d"].to_numpy()
+    step = np.repeat(rng.uniform(0.5, 1.5, 50), 6) * switched
+    return every_option_panel.with_columns(
+        pl.Series("d", np.repeat(rng.uniform(0.0, 2.0, 50), 6) + step),
+        pl.Series("y", rng.standard_normal(300) + 1.5 * step),
+    )
+
+
+@pytest.fixture
+def weighted_clustered_panel(panel_with_controls):
+    """Panel with controls, a weight of 2 in w, and ten clusters of five groups in cl."""
+    return panel_with_controls.with_columns(pl.lit(2.0).alias("w"), (pl.col("id") % 10).cast(pl.Float64).alias("cl"))
+
+
+@pytest.fixture
+def zero_weight_cluster_panel(weighted_clustered_panel):
+    """Weighted clustered panel whose clusters 0 to 4 carry zero weight in every row."""
+    return weighted_clustered_panel.with_columns(pl.when(pl.col("cl") < 5).then(0.0).otherwise(pl.col("w")).alias("w"))
+
+
 @pytest.fixture
 def unbalanced_panel_data(rng):
     """Unbalanced panel data with randomly missing observations."""
@@ -167,8 +246,6 @@ def unbalanced_panel_data(rng):
 @pytest.fixture
 def basic_config():
     """Basic DIDInterConfig for testing."""
-    from moderndid.core.preprocess.config import DIDInterConfig
-
     return DIDInterConfig(
         yname="y",
         tname="time",
@@ -206,23 +283,32 @@ def switcher_data():
             "F_g": [3.0, 3.0, 3.0, 2.0, 2.0, 2.0],
             "S_g": [1, 1, 1, 1, 1, 1],
             "weight_gt": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            "dist_to_switch_1": [0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            ".dist_to_switch_1": [0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
         }
     )
 
 
 @pytest.fixture
-def effects_results_basic():
+def ate_variance_inputs(rng):
+    """Function that builds the influence functions of 100 groups and the cell counts for a number of horizons."""
+
+    def build(n_horizons):
+        counts = {f".count_{horizon}": rng.integers(0, 2, 30) for horizon in range(1, n_horizons + 1)}
+        return {"influence_func_unnorm": rng.standard_normal((100, n_horizons)), "df": pl.DataFrame(counts)}
+
+    return build
+
+
+@pytest.fixture
+def effects_results_basic(ate_variance_inputs):
     """Basic effects results dict for testing ATE computation."""
     return {
         "estimates": np.array([0.5, 0.6, 0.7]),
         "estimates_unnorm": np.array([0.5, 0.6, 0.7]),
-        "std_errors": np.array([0.1, 0.12, 0.15]),
         "n_switchers": np.array([100.0, 90.0, 80.0]),
         "n_switchers_weighted": np.array([100.0, 90.0, 80.0]),
-        "delta_d_arr": np.array([1.0, 2.0, 3.0]),
-        "n_observations": np.array([500.0, 450.0, 400.0]),
-        "vcov": np.diag([0.01, 0.0144, 0.0225]),
+        "ate_delta": np.array([1.0, 1.0, 1.0]),
+        **ate_variance_inputs(3),
     }
 
 
@@ -241,14 +327,14 @@ def het_sample():
     n = 60
     return pl.DataFrame(
         {
-            "_prod_het": rng.standard_normal(n),
+            ".prod_het": rng.standard_normal(n),
             "weight_gt": rng.uniform(0.5, 2.0, n),
             "x1": rng.standard_normal(n),
             "x2": rng.standard_normal(n),
             "F_g": np.repeat([3.0, 4.0, 5.0], n // 3),
             "d_sq": np.repeat([0.0, 1.0, 0.0], n // 3),
             "S_g": np.repeat([1.0, 1.0, -1.0], n // 3),
-            "cluster_id": np.repeat(np.arange(n // 5), 5),
+            ".cluster_het": np.repeat(np.arange(n // 5), 5),
         }
     )
 
@@ -281,4 +367,634 @@ def hc2bm_config():
         predict_het_hc2bm=True,
         cluster="cluster_id",
         gname="cluster_id",
+    )
+
+
+@pytest.fixture
+def hc2bm_weighted_config():
+    """Config namespace for HC2-BM clustered regression tests whose weights vary within clusters."""
+    return SimpleNamespace(
+        trends_nonparam=None,
+        predict_het_hc2bm=True,
+        cluster="cluster_id",
+        gname="cluster_id",
+        weightsname="weight_gt",
+    )
+
+
+@pytest.fixture
+def block_hc2_by_hand():
+    """Function that computes clustered HC2 standard errors from the general inverse square root of each block."""
+
+    def compute(X, y, weights, clusters):
+        bread = np.linalg.inv((X * weights[:, None]).T @ X)
+        residuals = weights * (y - X @ (bread @ X.T @ (weights * y)))
+        meat = np.zeros((X.shape[1], X.shape[1]))
+        for cluster in np.unique(clusters):
+            rows = clusters == cluster
+            block = np.eye(rows.sum()) - X[rows] @ bread @ X[rows].T @ np.diag(weights[rows])
+            score = X[rows].T @ (np.real(fractional_matrix_power(block, -0.5)) @ residuals[rows])
+            meat += np.outer(score, score)
+        return np.sqrt(np.diag(bread @ meat @ bread))
+
+    return compute
+
+
+@pytest.fixture
+def het_sample_block_hc2_ses(het_sample, block_hc2_by_hand):
+    """Weighted clustered HC2 standard errors of the heterogeneity sample's two covariates from block_hc2_by_hand."""
+    cohort = het_sample["F_g"].to_numpy()
+    X = np.column_stack([np.ones(60), het_sample.select("x1", "x2").to_numpy(), cohort == 4.0, cohort == 5.0])
+    ses = block_hc2_by_hand(
+        X,
+        het_sample[".prod_het"].to_numpy(),
+        het_sample["weight_gt"].to_numpy(),
+        het_sample[".cluster_het"].to_numpy(),
+    )
+    return ses[1:3]
+
+
+@pytest.fixture
+def variance_config():
+    """Config namespace for the cohort and DOF helper tests."""
+    return SimpleNamespace(tname="time", gname="id", trends_nonparam=None, less_conservative_se=False)
+
+
+@pytest.fixture
+def stepped_panel_data(rng):
+    """Clustered panel where some switchers raise their treatment again one period after switching."""
+    n_units, n_periods = 80, 7
+    ids = np.arange(n_units)
+    units = np.repeat(ids, n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+    first_switch = np.where(ids < 30, 3, np.where(ids < 50, 4, 99))
+    second_switch = np.where(ids % 3 == 0, first_switch + 1, 99)
+    treatment = (periods >= first_switch[units]).astype(float) + (periods >= second_switch[units]).astype(float)
+    y = rng.standard_normal(len(units)) + 1.5 * treatment
+    return pl.DataFrame({"id": units, "time": periods, "y": y, "d": treatment, "cluster": units // 8})
+
+
+@pytest.fixture
+def fake_bootstrap():
+    """Bootstrap result with known standard errors."""
+    return SimpleNamespace(effects_se=np.array([0.5, 0.6]), placebos_se=None, ate_se=0.25)
+
+
+@pytest.fixture
+def draw_recorder():
+    """Bootstrap estimate function that records each drawn panel."""
+    frames = []
+
+    def record(df, config):
+        frames.append(df)
+        return {"effects": np.full(config.effects, np.nan)}
+
+    record.frames = frames
+    return record
+
+
+@pytest.fixture
+def relabel_cluster_copies():
+    """Function that stacks one copy of each drawn cluster and gives every copy new group ids."""
+
+    def stack(data, draw, cluster, idname):
+        copies = [data.filter(pl.col(cluster) == c).with_columns(pl.col(idname) + 1000 * k) for k, c in enumerate(draw)]
+        return pl.concat(copies)
+
+    return stack
+
+
+@pytest.fixture
+def two_way_panel_data(rng):
+    """Panel whose groups with baseline treatment 1 raise or lower it at staggered dates."""
+    n_periods = 6
+    rows = []
+    unit = 0
+    for baseline, final, n_units, dates in [
+        (0, 0, 10, None),
+        (0, 1, 10, [4]),
+        (0, 1, 6, [2]),
+        (1, 1, 10, None),
+        (1, 2, 12, [3, 4]),
+        (1, 0, 12, [4, 5]),
+    ]:
+        for k in range(n_units):
+            switch = dates[k % len(dates)] if dates else n_periods + 1
+            effect = rng.normal()
+            for t in range(1, n_periods + 1):
+                dose = final if t >= switch else baseline
+                y = effect + 0.3 * t + 1.5 * (dose - baseline) + rng.normal()
+                rows.append((unit, t, float(dose), y, unit // 6))
+            unit += 1
+    return pl.DataFrame(rows, schema=["id", "time", "d", "y", "cluster"], orient="row")
+
+
+@pytest.fixture
+def all_switch_panel_data(rng):
+    """Staggered panel in which every group eventually raises its treatment from 0 or lowers it from 1."""
+    n_units, n_periods = 75, 6
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+    baseline = np.repeat([0.0, 0.0, 0.0, 1.0, 1.0], 15)[units]
+    switched = periods >= np.repeat([3, 4, 5, 3, 4], 15)[units]
+    treatment = np.where(switched, 1 - baseline, baseline)
+    y = rng.standard_normal(len(units)) + 0.2 * periods + 1.5 * treatment
+    return pl.DataFrame({"id": units, "time": periods, "y": y, "d": treatment})
+
+
+@pytest.fixture
+def first_effect_by_hand():
+    """Function that computes the first effect from switchers and their not-yet-switched controls."""
+
+    def compute(data, directions):
+        df = data.sort(["id", "time"]).with_columns(
+            (pl.col("y") - pl.col("y").shift(1).over("id")).alias("dy"),
+            pl.col("d").first().over("id").alias("d1"),
+        )
+        switch = df.filter(pl.col("d") != pl.col("d1")).group_by("id").agg(pl.col("time").min().alias("f"))
+        df = df.join(switch, on="id", how="left").with_columns(
+            pl.col("f").fill_null(df["time"].max() + 1),
+            pl.when(pl.col("d") > pl.col("d1")).then(1).otherwise(-1).alias("sign"),
+        )
+        gaps = []
+        for row in df.filter((pl.col("time") == pl.col("f")) & pl.col("sign").is_in(directions)).iter_rows(named=True):
+            controls = df.filter(
+                (pl.col("d1") == row["d1"]) & (pl.col("time") == row["time"]) & (pl.col("f") > row["time"])
+            )
+            if controls.height > 0:
+                gaps.append(row["sign"] * (row["dy"] - controls["dy"].mean()))
+        return float(np.mean(gaps))
+
+    return compute
+
+
+@pytest.fixture
+def cells_used_by_hand():
+    """Function that counts the group-period cells that an effect or a placebo uses, each cell once."""
+
+    def count(data, horizon, directions, placebo=False):
+        lagged = pl.col("y").shift(horizon).over("id")
+        change = pl.col("y").shift(2 * horizon).over("id") - lagged if placebo else pl.col("y") - lagged
+        df = data.sort(["id", "time"]).with_columns(change.alias("dy"), pl.col("d").first().over("id").alias("d1"))
+        switch = (
+            df.filter(pl.col("d") != pl.col("d1"))
+            .group_by("id")
+            .agg(pl.col("time").min().alias("f"), pl.col("d").sort_by("time").first().alias("d_f"))
+        )
+        df = df.join(switch, on="id", how="left").with_columns(pl.col("f").fill_null(df["time"].max() + 1))
+        sign = pl.when(pl.col("d_f") > pl.col("d1")).then(1).otherwise(-1)
+        observed = pl.col("dy").is_not_null()
+        controls = df.filter(observed & (pl.col("f") > pl.col("time")))
+        switchers = df.filter(
+            observed
+            & pl.col("d_f").is_not_null()
+            & (pl.col("time") == pl.col("f") - 1 + horizon)
+            & sign.is_in(directions)
+        ).join(controls.select("time", "d1").unique(), on=["time", "d1"], how="semi")
+        used_controls = controls.join(switchers.select("time", "d1").unique(), on=["time", "d1"], how="semi")
+        return pl.concat([switchers.select("id", "time"), used_controls.select("id", "time")]).unique().height
+
+    return count
+
+
+@pytest.fixture
+def reach_panel():
+    """Preprocessed panel whose switchers miss outcomes or controls at some horizons."""
+    inf = float("inf")
+    groups = {
+        1: (3.0, 0.0, []),
+        2: (3.0, 0.0, [4]),
+        3: (4.0, 0.0, []),
+        4: (4.0, 0.0, [1]),
+        5: (inf, 0.0, []),
+        6: (inf, 0.0, []),
+        7: (3.0, 1.0, []),
+        8: (5.0, 1.0, [4]),
+    }
+    last_period_with_controls = {0.0: 6.0, 1.0: 4.0}
+    rows = []
+    for unit, (switch, baseline, missing) in groups.items():
+        for t in range(1, 7):
+            y = None if t in missing else float(unit + t)
+            weight = 0.0 if y is None else 1.0
+            rows.append((unit, t, y, switch, last_period_with_controls[baseline], baseline, int(baseline) + 1, weight))
+    return pl.DataFrame(rows, schema=["id", "time", "y", "F_g", "T_g", "d_sq", "d_sq_int", "weight_gt"], orient="row")
+
+
+@pytest.fixture
+def dose_panel_data(rng):
+    """Panel whose switchers raise their treatment by 1 or 2 and whose larger raises miss their last outcome."""
+    rows = []
+    for unit, (switch, step) in enumerate([(None, 0)] * 6 + [(3, 1)] * 3 + [(3, 2)] * 3):
+        for t in range(1, 5):
+            dose = float(step) if switch is not None and t >= switch else 0.0
+            y = rng.normal() + 0.5 * t + dose
+            rows.append((unit, t, dose, None if step == 2 and t == 4 else y))
+    return pl.DataFrame(rows, schema=["id", "time", "d", "y"], orient="row")
+
+
+@pytest.fixture
+def trends_panel_data(rng):
+    """Panel with group trends and staggered switches whose missing outcomes change the switchers across horizons."""
+    rows = []
+    for unit in range(90):
+        switch = [3, 4, 5, None][unit % 4]
+        slope = rng.normal(scale=0.3)
+        for t in range(1, 8):
+            dose = float(switch is not None and t >= switch)
+            rows.append((unit, t, dose, rng.normal() + slope * t + 1.5 * dose))
+    df = pl.DataFrame(rows, schema=["id", "time", "d", "y"], orient="row")
+    missing = pl.Series(rng.random(df.height) < 0.08) & (df["time"] > 2)
+    return df.with_columns(pl.when(missing).then(None).otherwise(pl.col("y")).alias("y"))
+
+
+@pytest.fixture
+def first_differences():
+    """Function that first-differences the outcome within groups and drops the first period."""
+
+    def difference(data):
+        return (
+            data.sort(["id", "time"])
+            .with_columns((pl.col("y") - pl.col("y").shift(1).over("id")).alias("y"))
+            .filter(pl.col("time") > 1)
+        )
+
+    return difference
+
+
+@pytest.fixture
+def continuous_panel_data(rng):
+    """Panel with distinct continuous baselines whose switchers raise or lower their treatment by one unit."""
+    rows = []
+    for unit in range(120):
+        baseline = round(float(rng.uniform(0.5, 2.5)) * 64) / 64
+        switch = [3, 4, 5, None][unit % 4]
+        step = 1.0 if unit % 3 else -1.0
+        for t in range(1, 7):
+            dose = baseline + step * (switch is not None and t >= switch)
+            rows.append((unit, t, dose, rng.normal() + 0.3 * baseline * t + (dose - baseline)))
+    return pl.DataFrame(rows, schema=["id", "time", "d", "y"], orient="row")
+
+
+@pytest.fixture
+def baseline_trend_controls():
+    """Function that moves every baseline to 0 and adds period-by-baseline polynomial covariates."""
+
+    def build(data, degree):
+        baseline = pl.col("d").sort_by("time").first().over("id")
+        terms = [(t, k) for t in sorted(data["time"].unique().to_list())[1:] for k in range(1, degree + 1)]
+        df = data.with_columns(
+            (pl.col("d") - baseline).alias("d_change"),
+            *[((pl.col("time") >= t).cast(pl.Float64) * baseline**k).alias(f"trend_{t}_{k}") for t, k in terms],
+        )
+        return df, "~ " + " + ".join(f"trend_{t}_{k}" for t, k in terms)
+
+    return build
+
+
+@pytest.fixture
+def het_panel_data(rng):
+    """Panel with one switching cohort, never-switchers, group trends, a group covariate, and group weights."""
+    rows = []
+    for unit in range(80):
+        switch = 4 if unit < 50 else None
+        x = float(rng.normal())
+        weight = float(rng.uniform(0.5, 2.0))
+        slope = rng.normal(scale=0.2)
+        for t in range(1, 8):
+            dose = float(switch is not None and t >= switch)
+            rows.append((unit, t, dose, rng.normal(scale=0.5) + slope * t + (1.0 + 0.5 * x) * dose, x, weight))
+    return pl.DataFrame(rows, schema=["id", "time", "d", "y", "x", "w"], orient="row")
+
+
+@pytest.fixture
+def switcher_changes():
+    """Function that returns the covariate and the outcome change of each switcher in het_panel_data."""
+
+    def changes(data, end, start=3):
+        wide = data.filter(pl.col("id") < 50).pivot(on="time", index=["id", "x", "w"], values="y").sort("id")
+        return wide, wide[str(end)] - wide[str(start)]
+
+    return changes
+
+
+@pytest.fixture
+def trend_switchers_by_hand():
+    """Function that counts the switchers whose outcome is observed from two periods before the switch to a horizon."""
+
+    def count(data, horizon):
+        switches = data.filter(pl.col("d") == 1).group_by("id").agg(pl.col("time").min().alias("f"))
+        window = data.join(switches, on="id").filter(
+            (pl.col("time") >= pl.col("f") - 2) & (pl.col("time") <= pl.col("f") - 1 + horizon)
+        )
+        observed = window.group_by("id").agg(pl.col("y").is_not_null().sum().alias("n"), pl.col("f").first())
+        return observed.filter(pl.col("n") == horizon + 2).height
+
+    return count
+
+
+@pytest.fixture
+def baseline_shift_panels():
+    """Unbalanced panel with baseline treatment 0.1 and some bidirectional switchers, and the same panel at 0.125."""
+    rng = np.random.default_rng(3)
+    rows = []
+    for unit in range(1, 201):
+        switch = int(rng.integers(3, 8)) if rng.random() < 0.6 else None
+        back = switch is not None and unit % 6 == 0 and switch + 2 <= 8
+        effect = rng.normal()
+        for t in range(1, 9):
+            change = 0.0
+            if switch is not None and t >= switch:
+                change = -1.0 if back and t >= switch + 2 else 1.0
+            x = rng.normal() + 0.1 * t
+            y = effect + 0.1 * t + 0.6 * change + 0.5 * x + rng.normal()
+            rows.append((unit, t, change, y, x, (unit - 1) // 10 + 1))
+    df = pl.DataFrame(rows, schema=["g", "t", "change", "y", "x", "cl"], orient="row")
+    df = df.filter(~(pl.Series(rng.random(df.height) < 0.08) & (df["t"] > 1)))
+    return [df.with_columns((pl.col("change") + base).alias("d")).drop("change") for base in (0.1, 0.125)]
+
+
+@pytest.fixture
+def order_sensitive_panel():
+    """Panel whose groups change treatment more than once and sometimes to both sides of their baseline."""
+    paths = {
+        1: [0, 0, 1, 1, 0, 0],
+        2: [0, 0, 2, 1, 1, 1],
+        3: [1, 1, 0, 2, 2, 2],
+        4: [1, 1, 1, 2, 0, 0],
+        5: [0, 0, 0, 0, 0, 0],
+        6: [1, 1, 1, 1, 1, 1],
+        7: [2, 2, 3, 1, 1, 1],
+        8: [2, 2, 1, 1, 3, 3],
+    }
+    rows = [(unit, t, float(d), float(unit + t)) for unit, path in paths.items() for t, d in enumerate(path, start=1)]
+    return pl.DataFrame(rows, schema=["id", "time", "d", "y"], orient="row")
+
+
+@pytest.fixture
+def shuffling_joins(monkeypatch):
+    """Make DataFrame.join return its rows in a shuffled order unless the call sets maintain_order."""
+    join = pl.DataFrame.join
+    seeds = itertools.count()
+
+    def shuffled_join(self, *args, maintain_order=None, **kwargs):
+        joined = join(self, *args, maintain_order=maintain_order, **kwargs)
+        if maintain_order in (None, "none"):
+            return joined.sample(fraction=1.0, shuffle=True, seed=next(seeds))
+        return joined
+
+    monkeypatch.setattr(pl.DataFrame, "join", shuffled_join)
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def simple_panel_duplicated(request, simple_panel_data):
+    """Simple panel in which unit 5 has two rows in period 3."""
+    unit = pl.col("id") == 5
+    row = simple_panel_data.filter(unit & (pl.col("time") == 3))
+    if request.param == "repeated_row":
+        return pl.concat([simple_panel_data, row])
+    if request.param == "hidden_gap":
+        return pl.concat([simple_panel_data.filter(~(unit & (pl.col("time") == 4))), row])
+    return pl.concat([simple_panel_data, row.with_columns(pl.col("y") + 1)])
+
+
+@pytest.fixture
+def panel_with_a_missing_treatment(rng):
+    """Panel of 10 groups whose treatment stays 0 and is missing for group 0 in period 3."""
+    return pl.DataFrame(
+        {
+            "id": np.repeat(np.arange(10), 3),
+            "time": np.tile([1, 2, 3], 10),
+            "d": [None if (group, t) == (0, 3) else 0.0 for group in range(10) for t in (1, 2, 3)],
+            "y": rng.standard_normal(30),
+        }
+    )
+
+
+@pytest.fixture
+def control_test_data():
+    """Panel with two covariates and two baseline treatments where ten groups switch at period 3."""
+    rng = np.random.default_rng(42)
+    n_units = 30
+    n_periods = 4
+
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+
+    d_sq = np.zeros(len(units))
+    d_sq[units < 10] = 0.0
+    d_sq[(units >= 10) & (units < 20)] = 1.0
+    d_sq[units >= 20] = 1.0
+
+    f_g = np.full(len(units), float("inf"))
+    for unit in range(10, 20):
+        unit_mask = units == unit
+        f_g[unit_mask] = 3
+
+    x1 = rng.standard_normal(len(units))
+    x2 = rng.standard_normal(len(units))
+    y = rng.standard_normal(len(units)) + 0.5 * x1 + 0.3 * x2
+    diff_y_1 = np.zeros(len(units))
+
+    return pl.DataFrame(
+        {
+            "id": units,
+            "time": periods,
+            "y": y,
+            "d_sq": d_sq,
+            "d_sq_int": np.where(d_sq == 0.0, 1, 2),
+            "F_g": f_g,
+            "x1": x1,
+            "x2": x2,
+            "weight_gt": np.ones(len(units)),
+            ".diff_y_1": diff_y_1,
+        }
+    )
+
+
+@pytest.fixture
+def small_panel():
+    """Panel of 30 units where 10 switch at period 3 and 5 at period 4."""
+    n_units = 30
+    n_periods = 5
+
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+
+    treatment = np.zeros(len(units))
+    for unit in range(n_units):
+        unit_mask = units == unit
+        if unit < 10:
+            treatment[unit_mask & (periods >= 3)] = 1
+        elif unit < 15:
+            treatment[unit_mask & (periods >= 4)] = 1
+
+    y = np.random.default_rng(42).standard_normal(len(units)) + 2.0 * treatment
+
+    return pl.DataFrame(
+        {
+            "id": units,
+            "time": periods,
+            "y": y,
+            "d": treatment,
+        }
+    )
+
+
+@pytest.fixture
+def in_and_out_panel():
+    """Panel of 20 units where 5 switch in and out and 5 switch in at period 3."""
+    n_units = 20
+    n_periods = 6
+
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+
+    treatment = np.zeros(len(units))
+    for unit in range(n_units):
+        unit_mask = units == unit
+        if unit < 5:
+            treatment[unit_mask & (periods >= 3) & (periods <= 4)] = 1
+        elif unit < 10:
+            treatment[unit_mask & (periods >= 3)] = 1
+
+    y = np.random.default_rng(42).standard_normal(len(units))
+
+    return pl.DataFrame(
+        {
+            "id": units,
+            "time": periods,
+            "y": y,
+            "d": treatment,
+        }
+    )
+
+
+@pytest.fixture
+def effects_result():
+    """EffectsResult with three horizons."""
+    return EffectsResult(
+        horizons=np.array([1, 2, 3]),
+        estimates=np.array([0.5, 0.6, 0.7]),
+        std_errors=np.array([0.1, 0.12, 0.15]),
+        ci_lower=np.array([0.3, 0.36, 0.4]),
+        ci_upper=np.array([0.7, 0.84, 1.0]),
+        n_switchers=np.array([100, 90, 80]),
+        n_observations=np.array([500, 450, 400]),
+    )
+
+
+@pytest.fixture
+def placebos_result():
+    """PlacebosResult with two horizons."""
+    return PlacebosResult(
+        horizons=np.array([-1, -2]),
+        estimates=np.array([0.01, -0.02]),
+        std_errors=np.array([0.05, 0.06]),
+        ci_lower=np.array([-0.09, -0.14]),
+        ci_upper=np.array([0.11, 0.10]),
+        n_switchers=np.array([100, 95]),
+        n_observations=np.array([500, 480]),
+    )
+
+
+@pytest.fixture
+def single_horizon_effects():
+    """EffectsResult with one horizon."""
+    return EffectsResult(
+        horizons=np.array([1]),
+        estimates=np.array([0.5]),
+        std_errors=np.array([0.1]),
+        ci_lower=np.array([0.3]),
+        ci_upper=np.array([0.7]),
+        n_switchers=np.array([100]),
+        n_observations=np.array([500]),
+    )
+
+
+@pytest.fixture
+def minimal_result(minimal_effects):
+    """DIDInterResult with two effects and no placebos."""
+    return DIDInterResult(
+        effects=minimal_effects,
+        n_units=200,
+        n_switchers=100,
+        n_never_switchers=100,
+        alpha=0.05,
+        estimation_params={"effects": 2, "placebo": 0},
+    )
+
+
+@pytest.fixture
+def full_result():
+    """DIDInterResult with placebos and an ATE and both chi-squared tests."""
+    effects = EffectsResult(
+        horizons=np.array([1.0, 2.0, 3.0]),
+        estimates=np.array([0.5, 0.6, 0.55]),
+        std_errors=np.array([0.1, 0.12, 0.11]),
+        ci_lower=np.array([0.304, 0.365, 0.334]),
+        ci_upper=np.array([0.696, 0.835, 0.766]),
+        n_switchers=np.array([100.0, 90.0, 85.0]),
+        n_observations=np.array([500.0, 450.0, 420.0]),
+    )
+
+    placebos = PlacebosResult(
+        horizons=np.array([-1.0, -2.0]),
+        estimates=np.array([0.01, -0.02]),
+        std_errors=np.array([0.05, 0.06]),
+        ci_lower=np.array([-0.088, -0.138]),
+        ci_upper=np.array([0.108, 0.098]),
+        n_switchers=np.array([100.0, 95.0]),
+        n_observations=np.array([500.0, 480.0]),
+    )
+
+    ate = ATEResult(
+        estimate=0.55,
+        std_error=0.08,
+        ci_lower=0.393,
+        ci_upper=0.707,
+        n_observations=1370.0,
+        n_switchers=275.0,
+    )
+
+    return DIDInterResult(
+        effects=effects,
+        placebos=placebos,
+        ate=ate,
+        n_units=200,
+        n_switchers=100,
+        n_never_switchers=100,
+        alpha=0.05,
+        effects_equal_test={"chi2_stat": 1.5, "df": 2, "p_value": 0.47},
+        placebo_joint_test={"chi2_stat": 0.8, "df": 2, "p_value": 0.67},
+        estimation_params={
+            "effects": 3,
+            "placebo": 2,
+            "normalized": False,
+            "switchers": "",
+            "controls": None,
+            "cluster": None,
+            "trends_lin": False,
+            "trends_nonparam": None,
+            "only_never_switchers": False,
+            "same_switchers": False,
+            "same_switchers_pl": False,
+            "continuous": 0,
+            "weightsname": None,
+        },
+    )
+
+
+@pytest.fixture
+def panel_with_paths():
+    """Panel with two switchers and two never-switchers over four periods."""
+    return pl.DataFrame(
+        {
+            "id": [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4],
+            "time": [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 4.0, 5.0, 1.5, 2.5, 3.5, 4.5, 2.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0, 3.0],
+            "d": [0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            "F_g": [3, 3, 3, 3, 2, 2, 2, 2, 9999, 9999, 9999, 9999, 9999, 9999, 9999, 9999],
+            "d_sq": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        }
     )

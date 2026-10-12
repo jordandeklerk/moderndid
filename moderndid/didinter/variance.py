@@ -14,8 +14,8 @@ def build_treatment_paths(df, horizon, config):
     from period :math:`F_g` (first switch) through :math:`F_g - 1 + \ell`. Groups
     are assigned to cohorts based on their baseline treatment :math:`D_{g,1}`,
     switch timing :math:`F_g`, and subsequent treatment values. This enables
-    comparison of switchers only to non-switchers with the same baseline treatment,
-    which is required for the parallel trends assumption in [1]_.
+    comparison of switchers only to non-switchers with the same baseline treatment.
+    The parallel trends assumption requires that restriction.
 
     Parameters
     ----------
@@ -29,15 +29,8 @@ def build_treatment_paths(df, horizon, config):
     Returns
     -------
     pl.DataFrame
-        DataFrame with path_0, path_1, ..., path_h columns identifying treatment
+        DataFrame with .path_0, .path_1, ..., .path_h columns identifying treatment
         trajectories, and validity flags for cohorts with sufficient observations.
-
-    References
-    ----------
-
-    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
-           Differences Estimators of Intertemporal Treatment Effects.
-           *Review of Economics and Statistics*, 106(6), 1723-1736.
     """
     gname = config.gname
     tname = config.tname
@@ -48,36 +41,36 @@ def build_treatment_paths(df, horizon, config):
         pl.when(pl.col(tname) == pl.col("F_g") + h - 1)
         .then(pl.col(dname))
         .otherwise(pl.lit(None))
-        .alias("_treat_at_horizon")
+        .alias(".treat_at_horizon")
     )
 
-    df = df.with_columns(pl.col("_treat_at_horizon").mean().over(gname).alias(f"treat_h{h}"))
+    df = df.with_columns(pl.col(".treat_at_horizon").mean().over(gname).alias(f".treat_h{h}"))
 
     if h == 1:
-        df = df.with_columns(pl.col("d_sq").alias("treat_h0"))
-        df = df.with_columns(pl.struct(["treat_h0", "F_g"]).hash(seed=42).alias("path_0"))
+        df = df.with_columns(pl.col("d_sq").alias(".treat_h0"))
+        df = df.with_columns(pl.struct([".treat_h0", "F_g"]).hash(seed=42).alias(".path_0"))
 
-    if h > 1 and f"treat_h{h - 1}" in df.columns:
+    if h > 1 and f".treat_h{h - 1}" in df.columns:
         df = df.with_columns(
-            pl.when(pl.col(f"treat_h{h}").is_null())
-            .then(pl.col(f"treat_h{h - 1}"))
-            .otherwise(pl.col(f"treat_h{h}"))
-            .alias(f"treat_h{h}")
+            pl.when(pl.col(f".treat_h{h}").is_null())
+            .then(pl.col(f".treat_h{h - 1}"))
+            .otherwise(pl.col(f".treat_h{h}"))
+            .alias(f".treat_h{h}")
         )
 
-    prev_path = f"path_{h - 1}" if h > 1 else "path_0"
+    prev_path = f".path_{h - 1}" if h > 1 else ".path_0"
     if prev_path in df.columns:
-        df = df.with_columns(pl.struct([prev_path, f"treat_h{h}"]).hash(seed=42).alias(f"path_{h}"))
+        df = df.with_columns(pl.struct([prev_path, f".treat_h{h}"]).hash(seed=42).alias(f".path_{h}"))
 
-    if h == 1 and "path_0" in df.columns:
-        df = df.with_columns(pl.col(gname).n_unique().over("path_0").alias("n_groups_path_0"))
-        df = df.with_columns((pl.col("n_groups_path_0") > 1).cast(pl.Int64).alias("valid_cohort_0"))
+    if h == 1 and ".path_0" in df.columns:
+        df = df.with_columns(pl.col(gname).n_unique().over(".path_0").alias(".n_groups_path_0"))
+        df = df.with_columns((pl.col(".n_groups_path_0") > 1).cast(pl.Int64).alias(".valid_cohort_0"))
 
-    if f"path_{h}" in df.columns:
-        df = df.with_columns(pl.col(gname).n_unique().over(f"path_{h}").alias(f"n_groups_path_{h}"))
-        df = df.with_columns((pl.col(f"n_groups_path_{h}") > 1).cast(pl.Int64).alias(f"valid_cohort_{h}"))
+    if f".path_{h}" in df.columns:
+        df = df.with_columns(pl.col(gname).n_unique().over(f".path_{h}").alias(f".n_groups_path_{h}"))
+        df = df.with_columns((pl.col(f".n_groups_path_{h}") > 1).cast(pl.Int64).alias(f".valid_cohort_{h}"))
 
-    df = df.drop("_treat_at_horizon")
+    df = df.drop(".treat_at_horizon")
 
     return df
 
@@ -99,22 +92,23 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_switcher_{h} and cohort_mean_{h} columns.
+        DataFrame with .dof_switcher_{h} and .cohort_mean_{h} columns.
     """
     h = abs(horizon)
     trends = config.trends_nonparam or []
-    switcher_flag = f"is_switcher_{h}"
-    weighted_diff = f"weighted_diff_{h}"
-    dist_col = f"dist_to_switch_{h}"
+    switcher_flag = f".is_switcher_{h}"
+    weighted_diff = f".weighted_diff_{h}"
+    dist_col = f".dist_to_switch_{h}"
 
-    is_switcher = pl.col(switcher_flag) == 1
+    # A zero-weight switcher adds nothing to the cohort mean and does not count toward the cohort size.
+    is_switcher = (pl.col(switcher_flag) == 1) & (pl.col("weight_gt") != 0)
 
     base_group_vars = ["d_sq", "F_g", "d_fg", dist_col]
     group_vars = base_group_vars + list(trends)
     group_vars = [c for c in group_vars if c in df.columns]
 
-    weight_sum_col = f"weight_sum_{h}_switcher"
-    diff_sum_col = f"diff_sum_{h}_switcher"
+    weight_sum_col = f".weight_sum_{h}_switcher"
+    diff_sum_col = f".diff_sum_{h}_switcher"
 
     val_weight = pl.when(is_switcher).then(pl.col("weight_gt")).otherwise(None)
     val_diff = pl.when(is_switcher).then(pl.col(weighted_diff)).otherwise(None)
@@ -124,16 +118,16 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
         pl.when(is_switcher).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col),
     )
 
-    dof_col = f"dof_switcher_{h}"
+    dof_col = f".dof_switcher_{h}"
     if cluster_col is None:
         val_dof = pl.when(is_switcher).then(pl.col(switcher_flag)).otherwise(None)
         df = df.with_columns(pl.when(is_switcher).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
     else:
-        cluster_flag = f"_cluster_flag_{h}"
+        cluster_flag = f".cluster_flag_{h}"
         df = df.with_columns(pl.when(is_switcher).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
         df = df.with_columns(
             pl.when(pl.col(cluster_flag).is_not_null())
-            .then(pl.col(cluster_flag).n_unique().over(group_vars))
+            .then(pl.col(cluster_flag).drop_nulls().n_unique().over(group_vars))
             .otherwise(None)
             .alias(dof_col)
         )
@@ -142,9 +136,77 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     ws = pl.col(weight_sum_col).fill_null(1.0)
     ds = pl.col(diff_sum_col).fill_null(0.0)
 
-    df = df.with_columns((ds / ws).alias(f"cohort_mean_{h}"))
+    df = df.with_columns((ds / ws).alias(f".cohort_mean_{h}"))
 
     return df
+
+
+def compute_path_cohort_dof(df, horizon, config):
+    r"""Compute switcher cohort means over treatment paths.
+
+    With ``less_conservative_se``, a switcher's outcome change is demeaned among the switchers
+    that share its baseline treatment, its switch period, and its treatment in every period from
+    :math:`F_g` to :math:`F_g - 1 + \ell`. Matching the whole path rather than only the treatment
+    at :math:`F_g` gives finer cohorts and a less conservative variance estimator.
+
+    When a group is alone on its full path, its cohort falls back to the groups that share its
+    path up to :math:`F_g`. A group that is also alone there is demeaned among the groups with the
+    same baseline treatment and switch period. Cohort sizes count switchers even when standard
+    errors are clustered.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Data with the path columns from :func:`build_treatment_paths` and switcher flags.
+    horizon : int
+        Current horizon :math:`\ell`.
+    config : DIDInterConfig
+        Configuration object.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with .dof_switcher_{h} and .cohort_mean_{h} columns.
+    """
+    h = abs(horizon)
+    trends = list(config.trends_nonparam or [])
+    is_switcher = (pl.col(f".is_switcher_{h}") == 1) & (pl.col("weight_gt") != 0)
+    weight = pl.when(is_switcher).then(pl.col("weight_gt")).otherwise(None)
+    diff = pl.when(is_switcher).then(pl.col(f".weighted_diff_{h}")).otherwise(None)
+    size = is_switcher.cast(pl.Int64)
+
+    levels = {"0": ".path_0", "1": ".path_1", "h": f".path_{h}"}
+    for tag, path in levels.items():
+        keys = [path, *trends]
+        df = df.with_columns(
+            weight.sum().over(keys).alias(f".path_weight_{tag}"),
+            diff.sum().over(keys).alias(f".path_diff_{tag}"),
+            size.sum().over(keys).alias(f".path_size_{tag}"),
+        )
+
+    weight_sum_col = f".weight_sum_{h}_switcher"
+    diff_sum_col = f".diff_sum_{h}_switcher"
+    df = df.with_columns(
+        pl.when(is_switcher).then(_finest_path(".path_weight", h)).otherwise(None).alias(weight_sum_col),
+        pl.when(is_switcher).then(_finest_path(".path_diff", h)).otherwise(None).alias(diff_sum_col),
+        pl.when(is_switcher).then(_finest_path(".path_size", h)).otherwise(None).alias(f".dof_switcher_{h}"),
+    )
+    df = df.with_columns(
+        (pl.col(diff_sum_col).fill_null(0.0) / pl.col(weight_sum_col).fill_null(1.0)).alias(f".cohort_mean_{h}")
+    )
+
+    return df.drop([f".path_{part}_{tag}" for part in ("weight", "diff", "size") for tag in levels])
+
+
+def _finest_path(prefix, horizon):
+    """Pick the path cohort that demeans each switcher."""
+    return (
+        pl.when(pl.col(".valid_cohort_1") == 0)
+        .then(pl.col(f"{prefix}_0"))
+        .when(pl.col(f".valid_cohort_{horizon}") == 1)
+        .then(pl.col(f"{prefix}_h"))
+        .otherwise(pl.col(f"{prefix}_1"))
+    )
 
 
 def compute_control_dof(df, horizon, config, cluster_col=None):
@@ -153,7 +215,7 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
     Parameters
     ----------
     df : pl.DataFrame
-        Data with never_change column.
+        Data with the .never_change column and the baseline treatment rank ``d_sq_int``.
     horizon : int
         Current horizon.
     config : DIDInterConfig
@@ -164,25 +226,26 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_control_{h} and control_mean_{h} columns.
+        DataFrame with .dof_control_{h} and .control_mean_{h} columns.
     """
     h = abs(horizon)
     tname = config.tname
     trends = config.trends_nonparam or []
 
-    never_col = f"never_change_{h}"
-    weighted_diff = f"weighted_diff_{h}"
+    never_col = f".never_change_{h}"
+    weighted_diff = f".weighted_diff_{h}"
 
     if never_col not in df.columns:
         return df
 
-    is_control = pl.col(never_col) == 1.0
-    group_vars = [tname, "d_sq", *list(trends)]
+    # A placebo control whose current outcome is missing has zero weight and leaves the group size unchanged.
+    is_control = (pl.col(never_col) == 1.0) & (pl.col("weight_gt") != 0)
+    group_vars = [tname, "d_sq_int", *list(trends)]
 
-    weight_sum_col = f"control_weight_sum_{h}"
-    diff_sum_col = f"control_diff_sum_{h}"
-    dof_col = f"dof_control_{h}"
-    mean_col = f"control_mean_{h}"
+    weight_sum_col = f".control_weight_sum_{h}"
+    diff_sum_col = f".control_diff_sum_{h}"
+    dof_col = f".dof_control_{h}"
+    mean_col = f".control_mean_{h}"
 
     val_weight = pl.when(is_control).then(pl.col("weight_gt")).otherwise(None)
     val_diff = pl.when(is_control).then(pl.col(weighted_diff)).otherwise(None)
@@ -196,11 +259,11 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
         val_dof = pl.when(is_control).then(pl.lit(1)).otherwise(None)
         df = df.with_columns(pl.when(is_control).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
     else:
-        cluster_flag = f"_control_cluster_{h}"
+        cluster_flag = f".control_cluster_{h}"
         df = df.with_columns(pl.when(is_control).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
         df = df.with_columns(
             pl.when(pl.col(cluster_flag).is_not_null())
-            .then(pl.col(cluster_flag).n_unique().over(group_vars))
+            .then(pl.col(cluster_flag).drop_nulls().n_unique().over(group_vars))
             .otherwise(None)
             .alias(dof_col)
         )
@@ -222,7 +285,7 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
     Parameters
     ----------
     df : pl.DataFrame
-        Data with switcher and control flags.
+        Data with switcher and control flags and the baseline treatment rank ``d_sq_int``.
     horizon : int
         Current horizon.
     config : DIDInterConfig
@@ -233,27 +296,27 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_union_{h} and union_mean_{h} columns.
+        DataFrame with .dof_union_{h} and .union_mean_{h} columns.
     """
     h = abs(horizon)
     tname = config.tname
     trends = config.trends_nonparam or []
 
-    switcher_flag = f"is_switcher_{h}"
-    never_col = f"never_change_{h}"
-    weighted_diff = f"weighted_diff_{h}"
+    switcher_flag = f".is_switcher_{h}"
+    never_col = f".never_change_{h}"
+    weighted_diff = f".weighted_diff_{h}"
 
     if switcher_flag not in df.columns or never_col not in df.columns:
         return df
 
-    is_union = (pl.col(switcher_flag) == 1) | (pl.col(never_col) == 1.0)
-    group_vars = [tname, "d_sq", *list(trends)]
+    is_union = ((pl.col(switcher_flag) == 1) | (pl.col(never_col) == 1.0)) & (pl.col("weight_gt") != 0)
+    group_vars = [tname, "d_sq_int", *list(trends)]
 
-    union_flag = f"is_union_{h}"
-    weight_sum_col = f"union_weight_sum_{h}"
-    diff_sum_col = f"union_diff_sum_{h}"
-    dof_col = f"dof_union_{h}"
-    mean_col = f"union_mean_{h}"
+    union_flag = f".is_union_{h}"
+    weight_sum_col = f".union_weight_sum_{h}"
+    diff_sum_col = f".union_diff_sum_{h}"
+    dof_col = f".dof_union_{h}"
+    mean_col = f".union_mean_{h}"
 
     df = df.with_columns(is_union.cast(pl.Int64).alias(union_flag))
 
@@ -269,11 +332,11 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
         val_dof = pl.when(is_union).then(pl.col(union_flag)).otherwise(None)
         df = df.with_columns(pl.when(is_union).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
     else:
-        cluster_flag = f"_union_cluster_{h}"
+        cluster_flag = f".union_cluster_{h}"
         df = df.with_columns(pl.when(is_union).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
         df = df.with_columns(
             pl.when(pl.col(cluster_flag).is_not_null())
-            .then(pl.col(cluster_flag).n_unique().over(group_vars))
+            .then(pl.col(cluster_flag).drop_nulls().n_unique().over(group_vars))
             .otherwise(None)
             .alias(dof_col)
         )
@@ -304,18 +367,18 @@ def compute_e_hat(df, horizon, config):
     Returns
     -------
     pl.DataFrame
-        DataFrame with E_hat_{h} column.
+        DataFrame with .E_hat_{h} column.
     """
     h = abs(horizon)
     tname = config.tname
 
-    e_hat_col = f"E_hat_{h}"
-    dof_s_col = f"dof_switcher_{h}"
-    dof_ns_col = f"dof_control_{h}"
-    dof_union_col = f"dof_union_{h}"
-    mean_s_col = f"cohort_mean_{h}"
-    mean_ns_col = f"control_mean_{h}"
-    mean_union_col = f"union_mean_{h}"
+    e_hat_col = f".E_hat_{h}"
+    dof_s_col = f".dof_switcher_{h}"
+    dof_ns_col = f".dof_control_{h}"
+    dof_union_col = f".dof_union_{h}"
+    mean_s_col = f".cohort_mean_{h}"
+    mean_ns_col = f".control_mean_{h}"
+    mean_union_col = f".union_mean_{h}"
 
     time = pl.col(tname)
     fg = pl.col("F_g")
@@ -361,30 +424,26 @@ def compute_dof_scaling(df, horizon, config):
     Parameters
     ----------
     df : pl.DataFrame
-        Data with dof_switcher, dof_control, and dof_union columns.
+        Data with .dof_switcher, .dof_control, and .dof_union columns.
     horizon : int
         Current horizon.
     config : DIDInterConfig
-        Configuration object. Uses ``less_conservative_se`` to control whether
-        DOF adjustments are applied.
+        Configuration object.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_scale_{h} column.
+        DataFrame with .dof_scale_{h} column.
     """
     h = abs(horizon)
     tname = config.tname
 
-    dof_col = f"dof_scale_{h}"
-    dof_s_col = f"dof_switcher_{h}"
-    dof_ns_col = f"dof_control_{h}"
-    dof_union_col = f"dof_union_{h}"
+    dof_col = f".dof_scale_{h}"
+    dof_s_col = f".dof_switcher_{h}"
+    dof_ns_col = f".dof_control_{h}"
+    dof_union_col = f".dof_union_{h}"
 
     df = df.with_columns(pl.lit(1.0).alias(dof_col))
-
-    if getattr(config, "less_conservative_se", False):
-        return df
 
     time = pl.col(tname)
     fg = pl.col("F_g")
@@ -431,8 +490,9 @@ def compute_clustered_variance(influence_func, cluster_ids, n_groups):
         \sum_{c=1}^{C} \left(\sum_{g \in c} \psi_g\right)^2
 
     where :math:`\psi_g` is the influence function for group :math:`g`, :math:`G`
-    is the total number of groups, and :math:`C` is the number of clusters. When
-    not clustering, each group is its own cluster.
+    is the total number of groups, and :math:`C` is the number of clusters.
+    Without clustering, or when every group shares one cluster, each group is its
+    own cluster.
 
     Parameters
     ----------
@@ -447,13 +507,6 @@ def compute_clustered_variance(influence_func, cluster_ids, n_groups):
     -------
     float
         Clustered standard error.
-
-    References
-    ----------
-
-    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
-           Differences Estimators of Intertemporal Treatment Effects.
-           *Review of Economics and Statistics*, 106(6), 1723-1736.
     """
     cluster_sums, unique_clusters = compute_cluster_sums(influence_func, cluster_ids)
     n_clusters = len(unique_clusters)
@@ -464,6 +517,38 @@ def compute_clustered_variance(influence_func, cluster_ids, n_groups):
     std_error = np.sqrt(np.sum(cluster_sums**2)) / n_groups
 
     return std_error
+
+
+def compute_cluster_influence(influence, clusters=None):
+    r"""Sum group influence functions within clusters.
+
+    The variance of a linear combination of estimators and the covariance between two
+    estimators both come from these cluster sums. Groups whose cluster is missing are left out.
+    When every group shares one cluster, the groups stay separate, as in
+    :func:`compute_clustered_variance`.
+
+    Parameters
+    ----------
+    influence : ndarray
+        Influence functions :math:`\psi_g` with one row per group and one column per estimator.
+    clusters : pl.Series, optional
+        Cluster of each group in the row order of ``influence``.
+
+    Returns
+    -------
+    ndarray
+        One row of summed influence functions per cluster, or one row per group without clusters.
+    """
+    influence = np.asarray(influence, dtype=np.float64).reshape(len(influence), -1)
+    if clusters is None:
+        return influence
+
+    observed = clusters.is_not_null().to_numpy()
+    cluster_ids = clusters.filter(clusters.is_not_null()).to_numpy()
+    sums = [compute_cluster_sums(column, cluster_ids)[0] for column in influence[observed].T]
+    if len(sums[0]) <= 1:
+        return influence[observed]
+    return np.column_stack(sums)
 
 
 def compute_joint_test(estimates, vcov):
@@ -493,15 +578,12 @@ def compute_joint_test(estimates, vcov):
     Returns
     -------
     dict or None
-        Dictionary with chi2_stat, df, p_value, and warnings list,
-        or None if computation fails.
+        Test result, or None when ``vcov`` is None, every estimate is NaN, or the solver fails:
 
-    References
-    ----------
-
-    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
-           Differences Estimators of Intertemporal Treatment Effects.
-           *Review of Economics and Statistics*, 106(6), 1723-1736.
+        - **chi2_stat**: Wald statistic, NaN when the variance matrix is singular
+        - **df**: Number of non-NaN estimates tested
+        - **p_value**: P-value from the chi-squared distribution, NaN when the variance matrix is singular
+        - **warnings**: Messages about a singular or nearly singular variance matrix
     """
     if vcov is None:
         return None

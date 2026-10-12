@@ -120,7 +120,7 @@ class HeterogeneityResult(NamedTuple):
     Attributes
     ----------
     horizon : int
-        Effect horizon analyzed.
+        Horizon analyzed, negative for a placebo.
     covariates : list[str]
         Covariate names.
     estimates : np.ndarray
@@ -139,7 +139,7 @@ class HeterogeneityResult(NamedTuple):
         P-value from joint F-test that all covariate coefficients are zero.
     """
 
-    #: Effect horizon analyzed.
+    #: Horizon analyzed, negative for a placebo.
     horizon: int
     #: Covariate names.
     covariates: list[str]
@@ -157,6 +157,27 @@ class HeterogeneityResult(NamedTuple):
     n_obs: int
     #: P-value from joint F-test that all covariate coefficients are zero.
     f_pvalue: float
+
+
+class BootstrapResult(NamedTuple):
+    """Container for cluster bootstrap results.
+
+    Attributes
+    ----------
+    effects_se : ndarray
+        Standard errors for effect estimates.
+    placebos_se : ndarray or None
+        Standard errors for placebo estimates.
+    ate_se : float or None
+        Standard error for ATE estimate.
+    """
+
+    #: Standard errors for effect estimates.
+    effects_se: np.ndarray
+    #: Standard errors for placebo estimates.
+    placebos_se: np.ndarray | None
+    #: Standard error for ATE estimate.
+    ate_se: float | None
 
 
 class DIDInterResult(NamedTuple):
@@ -179,8 +200,8 @@ class DIDInterResult(NamedTuple):
         Number of switchers in the sample.
     n_never_switchers : int
         Number of never-switchers in the sample.
-    ci_level : float
-        Confidence level used for intervals (e.g., 95.0).
+    alpha : float
+        Significance level of the intervals, such as 0.05 for 95 percent intervals.
     effects_equal_test : dict, optional
         Test for equality of effects across horizons.
     placebo_joint_test : dict, optional
@@ -209,8 +230,8 @@ class DIDInterResult(NamedTuple):
     n_switchers: int = 0
     #: Number of never-switchers in the sample.
     n_never_switchers: int = 0
-    #: Confidence level used for intervals.
-    ci_level: float = 95.0
+    #: Significance level of the intervals.
+    alpha: float = 0.05
     #: Test for equality of effects across horizons.
     effects_equal_test: dict | None = None
     #: Joint test that all placebo effects are zero.
@@ -290,8 +311,7 @@ class DIDInterResult(NamedTuple):
         if key == "n_never_switchers":
             return int(self.n_never_switchers) if self.n_never_switchers > 0 else None
         if key == "se_type":
-            cluster = self.estimation_params.get("cluster")
-            return "Clustered" if cluster else se_type_label(False)
+            return se_type_label(bool(self.estimation_params.get("boot", False)), self.estimation_params.get("cluster"))
         if key == "placebo_joint_pvalue":
             if self.placebo_joint_test is None:
                 return None
@@ -315,11 +335,9 @@ class DIDInterResult(NamedTuple):
     @property
     def __maketables_vcov_info__(self) -> dict[str, str | None]:
         """Return variance-covariance metadata."""
-        cluster = self.estimation_params.get("cluster")
         return vcov_info_from_bootstrap(
-            is_bootstrap=False,
-            cluster=cluster,
-            clustered_label="clustered",
+            is_bootstrap=bool(self.estimation_params.get("boot", False)),
+            cluster=self.estimation_params.get("cluster"),
         )
 
     @property

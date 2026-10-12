@@ -1,4 +1,4 @@
-"""Dynamic ATT estimation (de Chaisemartin & D'Haultfoeuille)."""
+"""Difference-in-differences with intertemporal treatment effects."""
 
 from . import format as _format
 from .container import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
