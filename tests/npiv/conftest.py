@@ -122,3 +122,37 @@ def selection_result():
         "j_x_segments_set": np.array([2, 3, 4, 5]),
         "k_w_segments_set": np.array([3, 4, 5, 6]),
     }
+
+
+@pytest.fixture
+def wiggly_regression_data():
+    rng = np.random.default_rng(42)
+    x = rng.uniform(size=(300, 1))
+    y = np.sin(15 * np.pi * x[:, 0]) * np.cos(x[:, 0]) + 0.01 * rng.normal(size=300)
+    return y, x
+
+
+@pytest.fixture
+def four_valued_instrument_data():
+    rng = np.random.default_rng(7)
+    w = rng.integers(0, 4, 1000) / 3
+    x = w + 0.3 * rng.normal(size=1000)
+    y = np.sin(2 * x) + 0.3 * rng.normal(size=1000)
+    return y, x, w
+
+
+@pytest.fixture
+def five_point_selection():
+    grid = np.array([1, 2, 4, 8, 16])
+
+    def make(j_seg, theta_star=1.3):
+        return {
+            "j_x_seg": j_seg,
+            "k_w_seg": 4 * j_seg,
+            "j_tilde": j_seg + 3,
+            "theta_star": theta_star,
+            "j_x_segments_set": grid,
+            "k_w_segments_set": 4 * grid,
+        }
+
+    return make

@@ -206,3 +206,15 @@ def test_consistency_between_components(simple_data):
     assert result["j_tilde"] <= result["j_hat_n"]
     assert result["j_x_seg"] in result["j_x_segments_set"]
     assert result["k_w_seg"] in result["k_w_segments_set"]
+
+
+def test_regression_selection_ignores_instrument_arguments(regression_data):
+    y, x, w = regression_data
+
+    passed = npiv_choose_j(y=y, x=x, w=w, biters=30, seed=2)
+    aligned = npiv_choose_j(y=y, x=x, w=w, k_w_degree=3, k_w_smooth=0, biters=30, seed=2)
+
+    assert passed["theta_star"] == pytest.approx(aligned["theta_star"], rel=1e-12)
+    assert passed["j_tilde"] == aligned["j_tilde"]
+    assert passed["k_w_seg"] == passed["j_x_seg"]
+    np.testing.assert_array_equal(passed["k_w_segments_set"], passed["j_x_segments_set"])

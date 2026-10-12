@@ -1,28 +1,12 @@
 """Multivariate spline construction for nonparametric estimation."""
 
 import warnings
-from itertools import combinations, product
-from typing import NamedTuple
 
 import numpy as np
 
 from ..cupy.backend import get_backend, to_numpy
+from .container import MultivariateBasis
 from .gsl_bspline import gsl_bs, predict_gsl_bs
-
-
-class MultivariateBasis(NamedTuple):
-    """Container for multivariate spline basis construction results."""
-
-    #: Spline basis matrix.
-    basis: np.ndarray
-    #: Dimension of the basis without tensor product.
-    dim_no_tensor: int
-    #: Matrix of degrees for each variable.
-    degree_matrix: np.ndarray
-    #: Number of segments for each variable.
-    n_segments: np.ndarray
-    #: Type of basis construction used.
-    basis_type: str
 
 
 def prodspline(
@@ -41,18 +25,29 @@ def prodspline(
 ):
     r"""Create multivariate spline basis with B-spline components.
 
-    Constructs additive, tensor product, or generalized linear product (GLP)
+    Constructs additive, tensor product, or generalized polynomial (glp)
     basis functions for multivariate continuous and discrete predictors.
+
+    The additive basis stacks the univariate B-spline bases and the tensor
+    basis multiplies them in every combination. The glp basis treats the
+    column index within each univariate basis like a polynomial degree and
+    keeps the main effects and only the interactions of low combined order.
+    It therefore grows more slowly than the tensor product. It needs
+    univariate bases with enough columns and raises an error when they are
+    too small. Cubic or higher-degree splines always have enough columns.
+
+    With ``deriv`` above zero, the basis holds the derivatives of the basis
+    functions with respect to the variable ``deriv_index``. Columns that do
+    not depend on that variable are zero. The whole basis is zero when that
+    variable enters with degree 0.
 
     Parameters
     ----------
     x : ndarray
         Continuous predictor matrix of shape (n, p).
     K : ndarray
-        Matrix of shape (p, 2) containing spline specifications:
-
-        - Column 0: degree for each continuous variable
-        - Column 1: number of segments - 1 for each variable
+        Matrix of shape (p, 2). Column 0 holds the spline degree of each
+        continuous variable and column 1 holds its number of segments minus one.
     z : ndarray, optional
         Discrete predictor matrix of shape (n, q).
     indicator : ndarray, optional
@@ -62,15 +57,10 @@ def prodspline(
     zeval : ndarray, optional
         Evaluation points for discrete variables. If None, uses z.
     knots : {"quantiles", "uniform"}, default="quantiles"
-        Method for knot placement:
-        - "quantiles": Knots at data quantiles
-        - "uniform": Uniformly spaced knots
+        Knot placement, either at the quantiles of the data or uniformly
+        spaced over its range.
     basis : {"additive", "tensor", "glp"}, default="additive"
-        Type of basis construction:
-
-        - "additive": Sum of univariate bases
-        - "tensor": Full tensor product of all bases
-        - "glp": Generalized linear product (hierarchical interactions)
+        Multivariate basis construction.
     x_min : ndarray, optional
         Minimum values for each continuous variable.
     x_max : ndarray, optional
@@ -90,12 +80,6 @@ def prodspline(
         - **degree_matrix**: Copy of K matrix
         - **n_segments**: Number of segments for each variable
         - **basis_type**: Type of basis used
-
-    References
-    ----------
-
-    .. [1] Wood, S. N. (2017). Generalized Additive Models: An Introduction
-        with R. Chapman and Hall/CRC.
     """
     xp = get_backend()
 
@@ -209,30 +193,17 @@ def prodspline(
                 P = tensor_prod_model_matrix(tp)
             elif basis == "glp":
                 P = glp_model_matrix(tp)
-                if deriv != 0:
-                    p_deriv_list = [np.zeros((1, b.shape[1])) for b in tp]
 
-                    # Find the index in `tp` that corresponds to the derivative variable.
-                    # `deriv_index` is 1-based for `x`. `tp` only contains bases for
-                    # variables with `K[i,0] > 0` or `indicator[i] == 1`. Derivatives are
-                    # only for continuous variables, so we only care about `K`.
-                    tp_idx = -1
-                    spline_count = 0
-                    if deriv_index > 0:
-                        for i in range(deriv_index - 1):
-                            if K[i, 0] > 0:
-                                spline_count += 1
-                        if K[deriv_index - 1, 0] > 0:
-                            tp_idx = spline_count
-
-                    if tp_idx != -1 and tp_idx < len(p_deriv_list):
-                        p_deriv_list[tp_idx] = np.full((1, tp[tp_idx].shape[1]), np.nan)
-
-                        mask_basis = glp_model_matrix(p_deriv_list)
-
-                        mask = np.isnan(mask_basis.flatten())
-
-                        P[:, ~mask] = 0
+            if deriv != 0 and K[deriv_index - 1, 0] > 0 and basis != "tensor":
+                # Since tp holds one block per continuous variable with a positive degree, tp_idx is the
+                # derivative variable's block. Additive and glp columns without it have zero derivative.
+                tp_idx = int(np.sum(K[: deriv_index - 1, 0] > 0))
+                widths = [b.shape[1] for b in tp]
+                if basis == "glp":
+                    keep = _glp_index_sets(widths)[:, tp_idx] != 0
+                else:
+                    keep = np.repeat(np.arange(len(tp)) == tp_idx, widths)
+                P[:, ~keep] = 0
         else:
             P = tp[0] if tp else np.ones((xeval.shape[0], 1))
             dim_P_no_tensor = P.shape[1]
@@ -240,6 +211,10 @@ def prodspline(
     else:
         dim_P_no_tensor = 0
         P = xp.ones((xeval.shape[0], 1))
+
+    if deriv != 0 and K[deriv_index - 1, 0] == 0:
+        # A variable that enters with degree 0 leaves the basis unchanged and has a zero derivative.
+        P = xp.zeros_like(P)
 
     return MultivariateBasis(
         basis=P,
@@ -268,12 +243,6 @@ def tensor_prod_model_matrix(bases):
     ndarray
         Tensor product model matrix of shape (n, prod(dims)) where n is the
         number of observations and dims are the dimensions of input matrices.
-
-    References
-    ----------
-
-    .. [1] Wood, S. N. (2006). Low-rank scale-invariant tensor product smooths
-        for generalized additive mixed models. Biometrics, 62(4), 1025-1036.
     """
     xp = get_backend()
     if not bases:
@@ -309,13 +278,19 @@ def tensor_prod_model_matrix(bases):
 
 
 def glp_model_matrix(bases):
-    r"""Construct generalized linear product (GLP) model matrix.
+    r"""Construct a generalized polynomial (glp) model matrix.
 
-    Produces model matrices for generalized polynomial smooths from marginal
-    basis model matrices. The GLP creates a hierarchical polynomial structure
-    where terms of different orders can be included, providing a more
-    parsimonious alternative to full tensor products while retaining good
-    approximation capabilities.
+    Each column of the glp matrix multiplies one column from some of the
+    marginal bases. The column index within a marginal basis plays the role
+    of a polynomial degree. Keeping all main effects and only the
+    interactions of low combined order makes the matrix more parsimonious
+    and better conditioned than the tensor product while it keeps good
+    approximation properties.
+
+    The construction needs marginal bases with enough columns. With two
+    bases each needs at least two columns. With more bases, small ones such
+    as two bases of two columns make the construction repeat or drop
+    columns. The function raises an error in those cases.
 
     Parameters
     ----------
@@ -326,13 +301,7 @@ def glp_model_matrix(bases):
     Returns
     -------
     ndarray
-        GLP model matrix with hierarchical polynomial structure.
-
-    References
-    ----------
-
-    .. [1] Hall, P., & Racine, J. S. (2015). Infinite order cross-validated
-        local polynomial regression. Journal of Econometrics, 185(2), 510-525.
+        glp model matrix with one column per kept product of marginal columns.
     """
     xp = get_backend()
     if not bases:
@@ -355,56 +324,93 @@ def glp_model_matrix(bases):
     if n_obs == 0:
         return xp.empty((0, 0))
 
-    num_bases = len(bases)
-    result_matrices = []
-
-    for basis in bases:
-        result_matrices.append(basis)
-
-    for i, j in combinations(range(num_bases), 2):
-        interaction = _compute_basis_interaction([bases[i], bases[j]])
-        result_matrices.append(interaction)
-
-    for order in range(3, num_bases + 1):
-        for indices in combinations(range(num_bases), order):
-            selected_bases = [bases[idx] for idx in indices]
-            interaction = _compute_basis_interaction(selected_bases)
-            result_matrices.append(interaction)
-
-    if result_matrices:
-        return xp.hstack(result_matrices)
-    return xp.ones((n_obs, 1))
-
-
-def _compute_basis_interaction(bases):
-    """Compute interaction terms between basis functions.
-
-    Parameters
-    ----------
-    bases : list of ndarray
-        List of basis matrices to interact.
-
-    Returns
-    -------
-    ndarray
-        Matrix of interaction terms.
-    """
-    xp = get_backend()
     if len(bases) == 1:
         return bases[0]
 
-    n_obs = bases[0].shape[0]
-
-    dims = [basis.shape[1] for basis in bases]
-    total_interactions = int(np.prod(dims))
-
-    result = xp.empty((n_obs, total_interactions))
-
-    for col_idx, indices in enumerate(product(*[range(dim) for dim in dims])):
-        interaction_col = xp.ones(n_obs)
-        for basis_idx, func_idx in enumerate(indices):
-            interaction_col *= bases[basis_idx][:, func_idx]
-
-        result[:, col_idx] = interaction_col
+    sets = _glp_index_sets([basis.shape[1] for basis in bases])
+    result = xp.ones((n_obs, sets.shape[0]))
+    for k, basis in enumerate(bases):
+        used = sets[:, k] > 0
+        result[:, used] = result[:, used] * basis[:, sets[used, k] - 1]
 
     return result
+
+
+def _glp_index_sets(dims):
+    """Column index sets of the glp basis for marginal bases with ``dims`` columns.
+
+    Row r holds, for each marginal basis, the 1-based column that enters column r of the
+    glp matrix, or 0 when that basis is left out of the product.
+    """
+    dims = np.asarray(dims, dtype=int)
+    if np.any(dims < 1):
+        raise ValueError("Each marginal basis of a glp basis needs at least one column.")
+
+    order = np.argsort(-dims, kind="stable")
+    dimen = dims[order]
+    d1 = int(dimen[0])
+    # nd1[s - 1] counts the index sets with index sum s that can still enter interactions.
+    nd1 = np.ones(d1, dtype=int)
+    nd1[d1 - 1] = 0
+    sets = np.arange(1, d1 + 1).reshape(-1, 1)
+    d2p = 0
+    for d2 in dimen[1:]:
+        sets, nd1 = _glp_add_dimension(d1, int(d2), d2p, nd1, sets)
+        d2p = int(d2)
+    for i in range(1, len(dims)):
+        row = np.zeros(sets.shape[1], dtype=int)
+        row[i - 1] = dimen[i - 1]
+        sets = np.vstack([sets, row])
+
+    sets = sets[:, np.argsort(order, kind="stable")]
+    sets = sets[np.lexsort(tuple(sets[:, j] for j in range(sets.shape[1])))]
+
+    rows = {tuple(r) for r in sets.tolist()}
+    mains = {
+        tuple(j if i == q else 0 for i in range(len(dims))) for q in range(len(dims)) for j in range(1, dims[q] + 1)
+    }
+    if len(rows) != sets.shape[0] or not mains <= rows or np.any(sets > dims):
+        raise ValueError(
+            f"basis='glp' cannot be built from marginal bases with {dims.tolist()} columns because the "
+            "construction repeats or drops columns at these sizes. Use basis='tensor' or 'additive', "
+            "or raise the spline degree or the number of segments."
+        )
+    return sets
+
+
+def _glp_add_dimension(d1, d2, d2p, nd1, d1sets):
+    """Extend the glp index sets by one marginal basis with ``d2`` columns."""
+    if d2 == 1:
+        return np.column_stack([d1sets, np.zeros(d1sets.shape[0], dtype=int)]), nd1
+
+    n_main = min(d1sets.shape[0], d2)
+    d2sets = np.column_stack([np.zeros((n_main, d1sets.shape[1]), dtype=int), np.resize(np.arange(1, d2 + 1), n_main)])
+
+    # Since the previous basis's top column enters only as a main effect added at the end, it is left out here.
+    candidates = d1sets[d1sets[:, -1] != d2p] if d1sets.shape[1] > 1 and d2p > 0 else d1sets
+    if candidates.shape[1] > 1 and candidates.shape[0] == 1:
+        raise ValueError("basis='glp' cannot be built from marginal bases of these sizes.")
+    for total in range(1, d1 - d2 + 1):
+        d2sets = np.vstack([d2sets, _glp_expand(candidates, total, d2, nd1[total - 1])])
+    for i in range(1, d2 + 1):
+        if nd1[d1 - i] > 0:
+            d2sets = np.vstack([d2sets, _glp_expand(candidates, d1 - i + 1, i, nd1[d1 - i])])
+
+    nd2 = nd1.copy()
+    for j in range(1, d1):
+        nd2[j - 1] = sum(nd1[i - 1] if i > 0 else 1 for i in range(j, max(0, j - d2 + 1) - 1, -1))
+    nd2[d1 - 1] = nd1[d1 - 1] + sum(nd1[i - 1] for i in range(d1 - d2 + 1, d1))
+    return d2sets, nd2
+
+
+def _glp_expand(candidates, total, times, n_repeat):
+    """Pair the sets that sum to ``total`` with the new basis's columns 0 to ``times - 1``."""
+    block = candidates[candidates.sum(axis=1) == total]
+    if candidates.shape[1] > 1 and block.shape[0] == 1:
+        # A lone matching set is recycled across the columns so the index sets follow the standard glp construction.
+        block = np.tile(block[0].reshape(-1, 1), (1, candidates.shape[1]))
+    if block.shape[0] == 0:
+        raise ValueError("basis='glp' cannot be built from marginal bases of these sizes.")
+    stacked = block[np.tile(np.arange(block.shape[0]), times)]
+    new_col = np.resize(np.repeat(np.arange(times), n_repeat), stacked.shape[0])
+    return np.column_stack([stacked, new_col])
