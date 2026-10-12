@@ -1,16 +1,10 @@
 """Add plotting methods to result objects."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from plotnine import ggplot
-
-    from moderndid.did.container import AGGTEResult, MPResult
+from moderndid.did.container import AGGTEResult, MPResult
+from moderndid.did.plots.core import plot_event_study, plot_gt
 
 
-def _mp_plot(self: MPResult, **kwargs: Any) -> ggplot:
+def _mp_plot(self, **kwargs):
     """Plot method for MPResult objects.
 
     Parameters
@@ -23,12 +17,10 @@ def _mp_plot(self: MPResult, **kwargs: Any) -> ggplot:
     ggplot
         A plotnine ggplot object.
     """
-    from moderndid.did.plots.core import plot_gt
-
     return plot_gt(self, **kwargs)
 
 
-def _aggte_plot(self: AGGTEResult, **kwargs: Any) -> ggplot:
+def _aggte_plot(self, **kwargs):
     """Plot method for AGGTEResult objects.
 
     Parameters
@@ -41,14 +33,10 @@ def _aggte_plot(self: AGGTEResult, **kwargs: Any) -> ggplot:
     ggplot
         A plotnine ggplot object.
     """
-    from moderndid.did.plots.core import plot_event_study
-
     return plot_event_study(self, **kwargs)
 
 
-def add_plot_methods() -> None:
+def add_plot_methods():
     """Add plot methods to result objects."""
-    from moderndid.did.container import AGGTEResult, MPResult
-
     MPResult.plot = _mp_plot
     AGGTEResult.plot = _aggte_plot

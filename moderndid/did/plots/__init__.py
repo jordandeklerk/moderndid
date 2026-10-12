@@ -6,7 +6,6 @@ from moderndid.did.plots.core import (
 )
 from moderndid.did.plots.methods import add_plot_methods
 
-# Add plotting methods to result objects
 add_plot_methods()
 
 __all__ = [

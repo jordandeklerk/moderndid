@@ -1,11 +1,17 @@
 """Tests for the multiplier bootstrap function."""
 
+import inspect
+import itertools
+from importlib import import_module
+
 import numpy as np
+import polars as pl
 import pytest
 
-pytestmark = pytest.mark.slow
+from moderndid.did import aggte, att_gt, mboot
+from moderndid.did.mboot import _mboot
 
-from moderndid.did import mboot
+pytestmark = pytest.mark.slow
 
 
 def test_basic_functionality():
@@ -71,13 +77,14 @@ def test_reproducibility():
     assert result1["crit_val"] == result2["crit_val"]
 
 
-def test_invalid_inputs():
-    with pytest.raises(ValueError, match="cluster must have length"):
-        mboot(np.random.normal(0, 1, 100), n_units=100, cluster=np.arange(50))
+@pytest.mark.parametrize("n_units", [100, 50])
+def test_invalid_inputs(n_units):
+    with pytest.raises(ValueError, match="cluster has 50 entries but inf_func has 100 rows"):
+        mboot(np.random.normal(0, 1, 100), n_units=n_units, cluster=np.arange(50))
 
 
 @pytest.mark.parametrize(
-    "alp,expected_range",
+    "alpha,expected_range",
     [
         (0.01, (2.0, 4.0)),
         (0.05, (1.5, 3.0)),
@@ -85,10 +92,10 @@ def test_invalid_inputs():
         (0.20, (1.0, 2.2)),
     ],
 )
-def test_significance_levels(alp, expected_range):
+def test_significance_levels(alpha, expected_range):
     n = 200
     inf_func = np.random.normal(0, 1, n)
-    result = mboot(inf_func, n_units=n, biters=999, alp=alp, random_state=42)
+    result = mboot(inf_func, n_units=n, biters=999, alpha=alpha, random_state=42)
 
     assert isinstance(result["crit_val"], float | np.floating)
     assert expected_range[0] < result["crit_val"] < expected_range[1]
@@ -98,8 +105,8 @@ def test_significance_level_ordering():
     n = 200
     inf_func = np.random.normal(0, 1, n)
 
-    result_01 = mboot(inf_func, n_units=n, biters=999, alp=0.01, random_state=42)
-    result_10 = mboot(inf_func, n_units=n, biters=999, alp=0.10, random_state=42)
+    result_01 = mboot(inf_func, n_units=n, biters=999, alpha=0.01, random_state=42)
+    result_10 = mboot(inf_func, n_units=n, biters=999, alpha=0.10, random_state=42)
 
     assert result_01["crit_val"] > result_10["crit_val"]
 
@@ -204,23 +211,85 @@ def test_clustering_patterns(cluster_pattern):
     assert not np.isnan(result["se"][0])
 
 
-def test_mammen_weights_properties():
-    n = 10000
-    rng = np.random.default_rng(42)
+def test_clustered_bootstrap_over_every_sign_pattern_weights_cluster_sums(monkeypatch, draws_from_weights):
+    signs = np.array(list(itertools.product([-1.0, 1.0], repeat=3)))
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
 
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    pkappa = 0.5 * (1 + sqrt5) / sqrt5
+    result = mboot(np.ones(6), n_units=6, biters=8, cluster=np.array([0, 1, 1, 2, 2, 2]))
 
-    v = rng.binomial(1, pkappa, size=n)
-    v = np.where(v == 1, k1, k2)
+    np.testing.assert_allclose(result["bres"][:, 0], signs @ [1.0, 2.0, 3.0] / np.sqrt(3), rtol=1e-12)
+    np.testing.assert_allclose(result["V"], [[16 / 3]], rtol=1e-12)
+    np.testing.assert_allclose(result["se"], [1 / 1.3489795], rtol=1e-12)
 
-    assert np.abs(np.mean(v)) < 0.1
-    assert np.abs(np.var(v) - 1.0) < 0.1
 
-    skewness = np.mean((v - np.mean(v)) ** 3) / np.std(v) ** 3
-    assert np.abs(skewness) < 1.5
+def test_clustered_bootstrap_with_equal_cluster_sizes_keeps_the_results_of_cluster_means():
+    inf_func = np.random.default_rng(3).standard_normal((120, 2))
+    cluster = np.repeat(np.arange(20), 6)
+
+    result = mboot(inf_func, n_units=120, biters=199, cluster=cluster, random_state=5)
+    expected = mboot(inf_func.reshape(20, 6, 2).mean(axis=1), n_units=20, biters=199, random_state=5)
+
+    np.testing.assert_allclose(result["se"], expected["se"], rtol=1e-10)
+    assert result["crit_val"] == pytest.approx(expected["crit_val"], rel=1e-10)
+
+
+def test_clustered_bootstrap_with_one_row_per_cluster_is_the_unclustered_bootstrap():
+    inf_func = np.random.default_rng(3).standard_normal((150, 3))
+
+    clustered = mboot(inf_func, n_units=150, biters=199, cluster=np.arange(150), random_state=5)
+    unclustered = mboot(inf_func, n_units=150, biters=199, random_state=5)
+
+    np.testing.assert_array_equal(clustered["bres"], unclustered["bres"])
+    np.testing.assert_allclose(clustered["se"], unclustered["se"], rtol=1e-12)
+    assert clustered["crit_val"] == unclustered["crit_val"]
+
+
+def test_clustered_standard_errors_scale_with_a_small_influence_function():
+    inf_func = np.random.default_rng(3).standard_normal((500, 2))
+    cluster = np.arange(500) % 29
+
+    base = mboot(inf_func, n_units=500, biters=999, cluster=cluster, random_state=7)
+    small = mboot(1e-5 * inf_func, n_units=500, biters=999, cluster=cluster, random_state=7)
+
+    assert np.all(np.isfinite(small["se"]))
+    np.testing.assert_allclose(small["se"], 1e-5 * base["se"], rtol=1e-9)
+    assert small["crit_val"] == pytest.approx(base["crit_val"], rel=1e-9)
+
+
+@pytest.mark.parametrize("panel", [True, False], ids=["panel", "repeated_cross_sections"])
+def test_att_gt_and_aggte_state_clustered_standard_errors_sum_within_states(
+    monkeypatch, draws_from_weights, mpdta_data, panel
+):
+    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+    weights = np.where(np.random.default_rng(11).random((199, 29)) < 0.5, 1.0, -1.0)
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(weights))
+
+    fit = att_gt(
+        data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        panel=panel,
+        est_method="reg",
+        base_period="universal",
+        boot=True,
+        biters=199,
+        cband=False,
+        clustervars=["state"],
+    )
+    group = aggte(fit, type="group")
+
+    _, codes = np.unique(fit.estimation_params["cluster"], return_inverse=True)
+    influence = np.column_stack([np.asarray(fit.influence_func), np.ravel(group.influence_func_overall)])
+    sums = np.column_stack([np.bincount(codes, weights=column, minlength=29) for column in influence.T])
+    q75, q25 = np.percentile(weights @ sums / len(codes), [75, 25], axis=0, method="inverted_cdf")
+    expected = (q75 - q25) / 1.3489795
+    kept = ~np.isnan(fit.se_gt)
+
+    assert kept.sum() == 12
+    np.testing.assert_allclose(fit.se_gt[kept], expected[:-1][kept], rtol=1e-10)
+    np.testing.assert_allclose(group.overall_se, expected[-1], rtol=1e-10)
 
 
 @pytest.mark.parametrize(
@@ -389,3 +458,280 @@ def test_quantile_uses_inverted_cdf():
 
     expected_se = se_step / np.sqrt(n)
     np.testing.assert_allclose(result["se"][ndg_dim], expected_se, rtol=1e-10)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_zero_scale_column_drops_the_draws_that_move_it(monkeypatch, zero_scale_draws):
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: zero_scale_draws
+    )
+
+    result = mboot(np.zeros((1, 2)), n_units=1, biters=21)
+
+    np.testing.assert_allclose(result["crit_val"], 5 / (10 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(result["se"], [10 / 1.3489795, 0.0], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_critical_value_is_nan_when_every_draw_moves_a_zero_scale_column(monkeypatch):
+    draws = np.column_stack([np.arange(-10.0, 11.0), np.ones(21)])
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    result = mboot(np.zeros((1, 2)), n_units=1, biters=21)
+
+    assert np.isnan(result["crit_val"])
+    np.testing.assert_allclose(result["se"], [10 / 1.3489795, 0.0], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_zero_scale_column_critical_value_from_bootstrap_draws(
+    monkeypatch, draws_from_weights, offsetting_spike_weights, inf_func_with_zero_scale_column
+):
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"),
+        "_run_multiplier_bootstrap",
+        draws_from_weights(offsetting_spike_weights(200, 0, 1)),
+    )
+
+    result = mboot(inf_func_with_zero_scale_column, n_units=200, biters=999)
+
+    bres = result["bres"]
+    scale = (
+        np.percentile(bres, 75, axis=0, method="inverted_cdf") - np.percentile(bres, 25, axis=0, method="inverted_cdf")
+    ) / 1.3489795
+    at_zero = bres[:, 1] == 0
+    largest = np.max(np.abs(bres[at_zero][:, [0, 2]]) / scale[[0, 2]], axis=1)
+
+    assert scale[1] == 0
+    assert 0.5 < at_zero.mean() < 0.7
+    np.testing.assert_allclose(result["crit_val"], np.percentile(largest, 95, method="inverted_cdf"), rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_critical_value_without_zero_scale_columns_is_quantile_of_largest_standardized_draw():
+    inf_func = np.random.default_rng(3).standard_normal((150, 4))
+
+    result = mboot(inf_func, n_units=150, biters=499, random_state=5)
+
+    bres = result["bres"]
+    scale = (
+        np.percentile(bres, 75, axis=0, method="inverted_cdf") - np.percentile(bres, 25, axis=0, method="inverted_cdf")
+    ) / 1.3489795
+    expected = np.percentile(np.max(np.abs(bres / scale), axis=1), 95, method="inverted_cdf")
+
+    assert result["crit_val"] == expected
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_skip_small_scales_ignores_a_zero_scale_column_in_every_draw(monkeypatch, zero_scale_draws):
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: zero_scale_draws
+    )
+
+    result = _mboot(np.zeros((1, 2)), n_units=1, biters=21, skip_small_scales=True)
+
+    np.testing.assert_allclose(result["crit_val"], 10 / (10 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(result["se"], [10 / 1.3489795, 0.0], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_small_scale_column_is_standardized_unless_skipped(monkeypatch, zero_scale_draws):
+    first = zero_scale_draws[:, 0]
+    draws = np.column_stack([first, np.where(np.abs(first) == 10, 1.0, 1e-9 * first)])
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    standardized = mboot(np.zeros((1, 2)), n_units=1, biters=21)
+    skipped = _mboot(np.zeros((1, 2)), n_units=1, biters=21, skip_small_scales=True)
+
+    np.testing.assert_allclose(standardized["crit_val"], 1 / (1e-8 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(skipped["crit_val"], 10 / (10 / 1.3489795), rtol=1e-12)
+    np.testing.assert_array_equal(standardized["se"], skipped["se"])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_skip_small_scales_critical_value_is_nan_when_every_column_is_skipped(monkeypatch, zero_scale_draws):
+    first = zero_scale_draws[:, 0]
+    column = np.where(np.abs(first) == 10, 1.0, 1e-9 * first)
+    draws = np.column_stack([column, 2 * column])
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    result = _mboot(np.zeros((1, 2)), n_units=1, biters=21, skip_small_scales=True)
+
+    assert np.all(result["se"] > 0)
+    assert np.isnan(result["crit_val"])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_skip_small_scales_with_bootstrap_draws(
+    monkeypatch, draws_from_weights, offsetting_spike_weights, inf_func_with_zero_scale_column
+):
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"),
+        "_run_multiplier_bootstrap",
+        draws_from_weights(offsetting_spike_weights(200, 0, 1)),
+    )
+
+    result = _mboot(inf_func_with_zero_scale_column, n_units=200, biters=999, skip_small_scales=True)
+
+    bres = result["bres"]
+    scale = (
+        np.percentile(bres, 75, axis=0, method="inverted_cdf") - np.percentile(bres, 25, axis=0, method="inverted_cdf")
+    ) / 1.3489795
+    largest = np.max(np.abs(bres[:, [0, 2]]) / scale[[0, 2]], axis=1)
+
+    assert scale[1] == 0
+    np.testing.assert_allclose(result["crit_val"], np.percentile(largest, 95, method="inverted_cdf"), rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_skip_small_scales_does_not_change_a_critical_value_without_small_scales():
+    inf_func = np.random.default_rng(3).standard_normal((150, 4))
+
+    default = mboot(inf_func, n_units=150, biters=499, random_state=5)
+    skipped = _mboot(inf_func, n_units=150, biters=499, random_state=5, skip_small_scales=True)
+
+    assert skipped["crit_val"] == default["crit_val"]
+
+
+def test_mboot_keeps_its_public_signature():
+    assert list(inspect.signature(mboot).parameters) == [
+        "inf_func",
+        "n_units",
+        "biters",
+        "alpha",
+        "cluster",
+        "random_state",
+    ]
+
+
+def test_mboot_passes_every_argument_to_the_bootstrap_without_skipping_small_scales():
+    inf_func = np.random.default_rng(3).standard_normal((150, 4))
+    cluster = np.arange(150) % 30
+
+    result = mboot(inf_func, 150, 199, 0.1, cluster, 5)
+    expected = _mboot(
+        inf_func, n_units=150, biters=199, alpha=0.1, cluster=cluster, random_state=5, skip_small_scales=False
+    )
+
+    assert result.keys() == expected.keys()
+    for key in expected:
+        np.testing.assert_array_equal(result[key], expected[key])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_keep_infinite_draws_ignores_a_column_that_every_draw_leaves_at_zero(monkeypatch, zero_scale_draws):
+    draws = np.column_stack([zero_scale_draws[:, 0], np.zeros(21)])
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    result = _mboot(np.zeros((1, 2)), n_units=1, biters=21, keep_infinite_draws=True)
+
+    np.testing.assert_allclose(result["crit_val"], 10 / (10 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(result["se"], [10 / 1.3489795, 0.0], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize("alpha, expected", [(0.05, np.inf), (0.5, 5 / (10 / 1.3489795))])
+def test_keep_infinite_draws_gives_an_infinite_critical_value_when_enough_draws_move_a_column(
+    monkeypatch, zero_scale_draws, alpha, expected
+):
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: zero_scale_draws
+    )
+
+    result = _mboot(np.zeros((1, 2)), n_units=1, biters=21, alpha=alpha, keep_infinite_draws=True)
+
+    np.testing.assert_allclose(result["crit_val"], expected, rtol=1e-12)
+    np.testing.assert_allclose(result["se"], [10 / 1.3489795, 0.0], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_keep_infinite_draws_counts_the_draws_that_move_a_column_in_the_quantile(monkeypatch):
+    first = np.arange(1.0, 51.0)
+    draws = np.column_stack([first, np.where(first <= 2, 1.0, 0.0)])
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    kept = _mboot(np.zeros((1, 2)), n_units=1, biters=50, keep_infinite_draws=True)
+    dropped = mboot(np.zeros((1, 2)), n_units=1, biters=50)
+
+    np.testing.assert_allclose(kept["crit_val"], 50 / (25 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(dropped["crit_val"], 48 / (25 / 1.3489795), rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_keep_infinite_draws_standardizes_a_column_with_a_negligible_scale(monkeypatch, zero_scale_draws):
+    first = zero_scale_draws[:, 0]
+    draws = np.column_stack([first, 1e-9 * np.where(np.abs(first) == 10, 3 * first, first)])
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    kept = _mboot(np.zeros((1, 2)), n_units=1, biters=21, keep_infinite_draws=True)
+    screened = mboot(np.zeros((1, 2)), n_units=1, biters=21)
+
+    np.testing.assert_allclose(kept["crit_val"], 3 * 1.3489795, rtol=1e-12)
+    np.testing.assert_allclose(kept["se"], [10 / 1.3489795, 1e-8 / 1.3489795], rtol=1e-12)
+    np.testing.assert_allclose(screened["crit_val"], 1.3489795, rtol=1e-12)
+    assert np.isnan(screened["se"][1])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_keep_infinite_draws_ignores_a_column_of_missing_draws(monkeypatch, zero_scale_draws):
+    draws = np.column_stack([zero_scale_draws[:, 0], np.full(21, np.nan)])
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    result = _mboot(np.zeros((1, 2)), n_units=1, biters=21, keep_infinite_draws=True)
+
+    np.testing.assert_allclose(result["crit_val"], 10 / (10 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(result["se"], [10 / 1.3489795, np.nan], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_keep_infinite_draws_critical_value_is_negative_infinity_without_a_deviation_to_compare(monkeypatch):
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: np.zeros((21, 2))
+    )
+
+    result = _mboot(np.zeros((1, 2)), n_units=1, biters=21, keep_infinite_draws=True)
+
+    assert result["crit_val"] == -np.inf
+    np.testing.assert_array_equal(result["se"], [0.0, 0.0])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_keep_infinite_draws_matches_the_default_rule_without_small_scales(monkeypatch):
+    draws = np.random.default_rng(3).standard_normal((499, 4))
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+    cluster = np.arange(150) % 30
+
+    default = _mboot(np.zeros((150, 4)), n_units=150, biters=499, alpha=0.1, cluster=cluster)
+    kept = _mboot(np.zeros((150, 4)), n_units=150, biters=499, alpha=0.1, cluster=cluster, keep_infinite_draws=True)
+
+    assert kept.keys() == default.keys()
+    for key in default:
+        np.testing.assert_array_equal(kept[key], default[key])
+
+
+def test_keep_infinite_draws_and_skip_small_scales_exclude_each_other():
+    with pytest.raises(ValueError, match="skip_small_scales"):
+        _mboot(np.zeros((5, 2)), n_units=5, biters=9, skip_small_scales=True, keep_infinite_draws=True)
+
+
+def test_mboot_rejects_the_removed_alp_argument():
+    inf_func = np.random.default_rng(0).standard_normal((50, 2))
+
+    with pytest.raises(TypeError, match="unexpected keyword argument 'alp'"):
+        mboot(inf_func, n_units=50, biters=99, alp=0.1)

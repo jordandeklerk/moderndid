@@ -8,8 +8,17 @@ from moderndid.core.preprocess import DIDData, preprocess_did
 from .aggte import aggte
 from .att_gt import att_gt
 from .compute_aggte import compute_aggte
-from .compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt
-from .container import AGGTEResult, MPPretestResult, MPResult, mp, mp_pretest, summary_mp_pretest
+from .compute_att_gt import compute_att_gt
+from .container import (
+    AGGTEResult,
+    ATTgtResult,
+    ComputeATTgtResult,
+    MPPretestResult,
+    MPResult,
+    mp,
+    mp_pretest,
+    summary_mp_pretest,
+)
 from .format import format_aggte_result, format_mp_pretest_result, format_mp_result
 from .mboot import mboot
 
@@ -25,7 +34,10 @@ def __getattr__(name: str) -> Any:
 
             return plot_event_study if name == "plot_event_study" else plot_gt
         except ImportError as e:
-            raise ImportError(f"'{name}' requires extra dependencies: uv pip install 'moderndid[plots]'") from e
+            raise ImportError(
+                f"'{name}' requires extra dependencies. Install them with "
+                "uv add 'moderndid[plots]' or pip install 'moderndid[plots]'"
+            ) from e
     raise AttributeError(f"module 'moderndid.did' has no attribute '{name}'")
 
 

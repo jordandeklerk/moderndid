@@ -3,6 +3,7 @@
 from typing import Literal, NamedTuple
 
 import numpy as np
+import scipy.sparse as sp
 from scipy import stats
 
 from moderndid.core.maketables import (
@@ -13,7 +14,7 @@ from moderndid.core.maketables import (
     make_group_time_names,
     se_type_label,
 )
-from moderndid.core.result import extract_n_obs, extract_vcov_info
+from moderndid.core.result import extract_clustervar, extract_n_obs, extract_vcov_info
 
 
 class AGGTEResult(NamedTuple):
@@ -31,11 +32,8 @@ class AGGTEResult(NamedTuple):
     aggregation_type : {'simple', 'dynamic', 'group', 'calendar'}
         Type of aggregation performed.
     event_times : np.ndarray, optional
-        Event/group/time values depending on aggregation type:
-
-        - For dynamic effects: length of exposure
-        - For group effects: treatment group indicators
-        - For calendar effects: time periods
+        Event times for the dynamic aggregation, treatment groups for the group
+        aggregation, and periods for the calendar aggregation.
     att_by_event : ndarray, optional
         ATT estimates specific to each event time value.
     se_by_event : ndarray, optional
@@ -43,11 +41,10 @@ class AGGTEResult(NamedTuple):
     critical_values : ndarray, optional
         Critical values for uniform confidence bands.
     influence_func : ndarray, optional
-        Influence function of the aggregated parameters.
-
-        - For overall ATT: 1D array of length n_units
-        - For dynamic/group/calendar: 2D array of shape (n_units, n_events) containing
-          influence functions for each event-specific ATT
+        Influence function of the aggregated parameters. The simple
+        aggregation stores the overall effect's function as a vector of length
+        n_units. The other aggregations store one column for each event time,
+        group, or period in a matrix of shape (n_units, n_events).
     influence_func_overall : ndarray, optional
         Influence function for the overall ATT (1D array of length n_units).
         This is stored separately for compatibility with both aggregation types.
@@ -58,14 +55,9 @@ class AGGTEResult(NamedTuple):
     balanced_event_threshold : int, optional
         Balanced event time threshold.
     estimation_params : dict
-        Dictionary containing DID estimation parameters including:
-
-        - alpha: significance level
-        - bootstrap: whether bootstrap was used
-        - uniform_bands: whether uniform confidence bands were computed
-        - control_group: 'nevertreated' or 'notyettreated'
-        - anticipation_periods: number of anticipation periods
-        - estimation_method: estimation method used
+        Estimation settings, such as ``alpha``, ``bootstrap``,
+        ``uniform_bands``, ``control_group``, ``anticipation_periods``, and
+        ``estimation_method``.
     call_info : dict
         Information about the function call that created this object.
     """
@@ -141,7 +133,9 @@ class AGGTEResult(NamedTuple):
         if key == "aggregation":
             return self.aggregation_type
         if key == "se_type":
-            return se_type_label(bool(self.estimation_params.get("bootstrap", False)))
+            return se_type_label(
+                bool(self.estimation_params.get("bootstrap", False)), extract_clustervar(self.estimation_params)
+            )
         if key == "control_group":
             return control_group_label(self.estimation_params.get("control_group"))
         if key == "estimation_method":
@@ -202,18 +196,22 @@ class MPResult(NamedTuple):
     att_gt : ndarray
         The group-time average treatment effects for each group-time combination.
     vcov_analytical : ndarray
-        Analytical estimator for the asymptotic variance-covariance matrix.
+        Analytical estimator for the asymptotic variance-covariance matrix. With
+        a cluster variable besides the unit identifier it sums the influence
+        function within clusters.
     se_gt : ndarray
         Standard errors for group-time ATTs. If bootstrap used, provides bootstrap-based SE.
     critical_value : float
-        Critical value - simultaneous if obtaining simultaneous confidence bands,
-        otherwise based on pointwise normal approximation.
+        Critical value of the confidence intervals. It is simultaneous with a
+        uniform confidence band and pointwise from the normal distribution
+        otherwise.
     influence_func : ndarray
         The influence function for estimating group-time average treatment effects.
     n_units : int, optional
         The number of unique cross-sectional units.
     wald_stat : float, optional
-        The Wald statistic for pre-testing the common trends assumption.
+        The Wald statistic for pre-testing the common trends assumption. A fit
+        with a cluster variable besides the unit identifier has none.
     wald_pvalue : float, optional
         The p-value of the Wald statistic for pre-testing common trends.
     aggregate_effects : object, optional
@@ -221,16 +219,13 @@ class MPResult(NamedTuple):
     alpha : float
         The significance level (default 0.05).
     estimation_params : dict
-        Dictionary containing DID estimation parameters including:
-
-        - call_info: original function call information
-        - control_group: 'nevertreated' or 'notyettreated'
-        - anticipation_periods: number of anticipation periods
-        - estimation_method: estimation method used
-        - bootstrap: whether bootstrap was used
-        - uniform_bands: whether simultaneous confidence bands were computed
-        - G: unit-level group assignments
-        - weights_ind: unit-level sampling weights
+        Estimation settings, such as ``control_group``,
+        ``anticipation_periods``, ``estimation_method``, ``bootstrap``,
+        ``uniform_bands``, and ``base_period``.
+    G : ndarray, optional
+        Group of each unit.
+    weights_ind : ndarray, optional
+        Sampling weight of each unit.
     """
 
     #: Which group (defined by period first treated) each group-time ATT is for.
@@ -278,7 +273,9 @@ class MPResult(NamedTuple):
         if key == "wald_pvalue":
             return self.wald_pvalue
         if key == "se_type":
-            return se_type_label(bool(self.estimation_params.get("bootstrap", False)))
+            return se_type_label(
+                bool(self.estimation_params.get("bootstrap", False)), extract_clustervar(self.estimation_params)
+            )
         if key == "control_group":
             return control_group_label(self.estimation_params.get("control_group"))
         return None
@@ -361,6 +358,50 @@ class MPPretestResult(NamedTuple):
     x_formula: str | None = None
 
 
+class ATTgtResult(NamedTuple):
+    """Container for a single group-time ATT estimate.
+
+    Attributes
+    ----------
+    att : float
+        The estimated ATT for this group-time cell.
+    group : float
+        The treatment group identifier (first treatment period).
+    year : float
+        The time period for this estimate.
+    post : int
+        Indicator for whether this is a post-treatment period (1) or
+        pre-treatment period (0).
+    """
+
+    #: Estimated ATT for this group-time cell.
+    att: float
+    #: Treatment group identifier (first treatment period).
+    group: float
+    #: Time period for this estimate.
+    year: float
+    #: Indicator for post-treatment (1) or pre-treatment (0).
+    post: int
+
+
+class ComputeATTgtResult(NamedTuple):
+    """Container for compute_att_gt results.
+
+    Attributes
+    ----------
+    attgt_list : list[ATTgtResult]
+        List of group-time ATT results, one per (group, time) cell.
+    influence_functions : scipy.sparse.csr_matrix
+        Sparse matrix of influence functions with shape
+        (n_units, n_group_time_cells).
+    """
+
+    #: List of group-time ATT results, one per (group, time) cell.
+    attgt_list: list[ATTgtResult]
+    #: Sparse matrix of influence functions.
+    influence_functions: sp.csr_matrix
+
+
 def aggte(
     overall_att,
     overall_se,
@@ -396,10 +437,10 @@ def aggte(
     critical_values : ndarray, optional
         Critical values for confidence bands.
     influence_func : ndarray, optional
-        Influence function of aggregated parameters.
-
-        - For dynamic/group/calendar: 2D array of shape (n_units, n_events)
-        - For simple: 1D array of length n_units
+        Influence function of the aggregated parameters. The simple
+        aggregation passes the overall effect's function as a vector of length
+        n_units. The other aggregations pass one column for each event time,
+        group, or period in a matrix of shape (n_units, n_events).
     influence_func_overall : ndarray, optional
         Influence function for the overall ATT (1D array).
     min_event_time : int, optional
@@ -416,7 +457,22 @@ def aggte(
     Returns
     -------
     AGGTEResult
-        NamedTuple containing aggregated treatment effect parameters.
+        NamedTuple containing:
+
+        - **overall_att**: Overall average treatment effect on the treated
+        - **overall_se**: Standard error of the overall effect
+        - **aggregation_type**: The aggregation performed
+        - **event_times**: Event times, groups, or periods of the disaggregated effects
+        - **att_by_event**: Effect at each event time, group, or period
+        - **se_by_event**: Standard error of each disaggregated effect
+        - **critical_values**: Critical value of the confidence band for each disaggregated effect
+        - **influence_func**: Influence functions of the disaggregated effects, or of the overall effect for 'simple'
+        - **influence_func_overall**: Influence function of the overall effect
+        - **min_event_time**: Lower end of an event study's window, or None
+        - **max_event_time**: Upper end of an event study's window, or None
+        - **balanced_event_threshold**: Event time that balanced an event study, or None
+        - **estimation_params**: Dictionary of the estimation settings, empty when none are given
+        - **call_info**: Dictionary describing the call, empty when none is given
     """
     if aggregation_type not in ["simple", "dynamic", "group", "calendar"]:
         raise ValueError(
@@ -510,7 +566,23 @@ def mp(
     Returns
     -------
     MPResult
-        NamedTuple containing multi-period results.
+        NamedTuple containing:
+
+        - **groups**: Group of each group-time effect as an array
+        - **times**: Time period of each group-time effect as an array
+        - **att_gt**: Group-time average treatment effects as an array
+        - **vcov_analytical**: Analytical variance-covariance matrix
+        - **se_gt**: Standard error of each group-time effect as an array
+        - **critical_value**: Critical value of the confidence intervals
+        - **influence_func**: Influence functions of the group-time effects
+        - **n_units**: Number of cross-sectional units, or None
+        - **wald_stat**: Wald statistic of the pre-test, or None
+        - **wald_pvalue**: P-value of the Wald pre-test, or None
+        - **aggregate_effects**: Aggregate treatment effects object, or None
+        - **alpha**: Significance level
+        - **estimation_params**: Dictionary of the estimation settings, empty when none are given
+        - **G**: Group of each unit, or None
+        - **weights_ind**: Sampling weight of each unit, or None
     """
     groups = np.asarray(groups)
     times = np.asarray(times)
@@ -587,7 +659,18 @@ def mp_pretest(
     Returns
     -------
     MPPretestResult
-        NamedTuple containing pre-test results.
+        NamedTuple containing:
+
+        - **cvm_stat**: Cramer von Mises test statistic
+        - **cvm_boots**: Bootstrapped Cramer von Mises statistics as an array, or None
+        - **cvm_critval**: Cramer von Mises critical value
+        - **cvm_pval**: P-value of the Cramer von Mises test
+        - **ks_stat**: Kolmogorov-Smirnov test statistic
+        - **ks_boots**: Bootstrapped Kolmogorov-Smirnov statistics as an array, or None
+        - **ks_critval**: Kolmogorov-Smirnov critical value
+        - **ks_pval**: P-value of the Kolmogorov-Smirnov test
+        - **cluster_vars**: Variables the test clustered on, or None
+        - **x_formula**: Formula of the covariates in the test, or None
     """
     if cvm_boots is not None:
         cvm_boots = np.asarray(cvm_boots)
@@ -609,7 +692,7 @@ def mp_pretest(
 
 
 def summary_mp(result):
-    """Print summary of a multi-period result.
+    """Return the formatted summary of an ``MPResult``.
 
     Parameters
     ----------
@@ -625,7 +708,7 @@ def summary_mp(result):
 
 
 def summary_mp_pretest(result):
-    """Print summary of a pre-test result.
+    """Return the formatted summary of an ``MPPretestResult``.
 
     Parameters
     ----------

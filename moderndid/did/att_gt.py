@@ -5,21 +5,25 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+import polars as pl
 import scipy.linalg as la
 import scipy.stats
 
+from moderndid.core.format import warn_few_clusters
 from moderndid.core.preprocess import (
+    WEIGHTS_COLUMN,
     BasePeriod,
     ControlGroup,
     DIDConfig,
     EstimationMethod,
     PreprocessDataBuilder,
 )
-from moderndid.cupy.backend import to_numpy
+from moderndid.core.preprocess.validators import check_columns
+from moderndid.cupy.backend import to_numpy, use_backend
 
-from .compute_att_gt import compute_att_gt
+from .compute_att_gt import _is_unbalanced_panel, compute_att_gt
 from .container import mp
-from .mboot import mboot
+from .mboot import _cluster_sums, _mboot
 
 
 def att_gt(
@@ -30,7 +34,7 @@ def att_gt(
     gname=None,
     xformla=None,
     weightsname=None,
-    alp=0.05,
+    alpha=0.05,
     cband=True,
     boot=False,
     biters=1000,
@@ -43,8 +47,6 @@ def att_gt(
     base_period="varying",
     random_state=None,
     n_jobs=1,
-    n_partitions=None,
-    max_cohorts=None,
     backend=None,
 ):
     r"""Compute group-time average treatment effects.
@@ -92,6 +94,35 @@ def att_gt(
     change in outcomes, and :math:`m_{g,t}(X)` is the expected outcome change
     for the comparison group.
 
+    Sampling weights may change over time within a unit of a balanced panel.
+    Each 2x2 comparison then uses the weights from the earlier of its two
+    periods. A warning names this rule. :func:`~moderndid.aggte` weights each
+    unit by its weight in the first period.
+
+    A group-time comparison can fail to estimate, such as when its fitted
+    propensity score reaches 0.999 or its estimator returns no estimate. A
+    warning then names the cell. Under the varying base the cell drops out of
+    the result. Under the universal base it stays in the result as NaN.
+
+    A cluster variable besides ``idname`` in ``clustervars`` makes the
+    inference cluster-robust. The analytic covariance of the estimates then
+    sums the influence function within each cluster before the outer
+    product. The standard errors without the bootstrap use that covariance.
+    The multiplier bootstrap draws one multiplier for each cluster.
+
+    Since a Wald test on a cluster-robust covariance rejects too often at
+    realistic cluster counts, a fit with such clusters reports no pre-test
+    of parallel trends. The bootstrap's uniform bands over the
+    pre-treatment cells take its place.
+
+    Since cluster-robust inference from very few clusters can give confidence
+    bands that are too narrow, a warning names each treated cohort whose
+    units fall in fewer than 5 clusters. It also appears when all units fall
+    in fewer than 30 clusters.
+
+    See the :ref:`staggered DiD example <example_staggered_did>` for a full analysis of
+    the minimum wage data with ``att_gt``.
+
     Parameters
     ----------
     data : DataFrame
@@ -115,20 +146,19 @@ def att_gt(
     weightsname : str, optional
         The name of the column containing the sampling weights. If not set, all
         observations have same weight.
-    alp : float, default=0.05
+    alpha : float, default=0.05
         The significance level.
     cband : bool, default=True
         Whether or not to compute a uniform confidence band that covers all of the
-        group-time average treatment effects with fixed probability 1-alp.
+        group-time average treatment effects with fixed probability 1 - alpha.
     boot : bool, default=False
-        Whether or not to compute standard errors using the multiplier bootstrap.
-        If standard errors are clustered, then one must set boot=True.
+        Whether to compute standard errors with the multiplier bootstrap
+        instead of analytically.
     biters : int, default=1000
         The number of bootstrap iterations to use. Only applicable if boot=True.
     clustervars : list[str], optional
-        A list of variables names to cluster on. At most, there can be two variables
-        (otherwise will throw an error) and one of these must be the same as idname
-        which allows for clustering at the individual level.
+        Variables to cluster the standard errors on. Besides idname, the list
+        may hold one variable that stays fixed within each unit of a panel.
     est_method : {"dr", "ipw", "reg"} or callable, default="dr"
         The method to compute group-time average treatment effects. The default is
         "dr" which uses the doubly robust approach. Other built-in methods include
@@ -137,11 +167,11 @@ def att_gt(
         time average treatment effects.
     panel : bool, default=True
         Whether or not the data is a panel dataset. The panel dataset should be
-        provided in long format.
+        provided in long format. With panel=False every row is its own observation,
+        even when idname is given.
     allow_unbalanced_panel : bool, default=False
-        Whether or not function should "balance" the panel with respect to time and
-        id. The default values if False which means that att_gt will drop all units
-        where data is not observed in all periods.
+        Whether to keep units observed in only some periods. If False, att_gt drops
+        every unit missing from any period. It applies only when panel=True.
     control_group : {"nevertreated", "notyettreated"}, default="nevertreated"
         Which units to use the control group. The default is "nevertreated" which
         sets the control group to be the group of units that never participate in
@@ -159,18 +189,11 @@ def att_gt(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
-    n_partitions : int or None, default=None
-        Number of Dask partitions per cell. Only used when ``data`` is a Dask
-        DataFrame; ignored for non-Dask inputs.
-    max_cohorts : int or None, default=None
-        Maximum number of treatment cohorts to process in parallel. Only used
-        when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
     backend : {"numpy", "cupy"} or None, default=None
         Array backend to use for this call only. When set, the backend is
         activated for the duration of this call and reverted automatically
         when the call returns. ``None`` (the default) uses whatever backend
-        is currently active (see :func:`~moderndid.set_backend`). Ignored
-        when ``data`` is a Dask DataFrame.
+        is currently active (see :func:`~moderndid.set_backend`).
 
     Returns
     -------
@@ -181,48 +204,17 @@ def att_gt(
         - **times**: Array indicating which time period each ATT is for
         - **att_gt**: Array of group-time average treatment effects
         - **se_gt**: Standard errors for each ATT(g,t)
-        - **vcov_analytical**: Analytical variance-covariance matrix
+        - **vcov_analytical**: Analytical variance-covariance matrix, cluster-robust when the fit clusters
         - **critical_value**: Critical value for confidence intervals (simultaneous if bootstrap with cband=True)
         - **influence_func**: Influence function matrix for each ATT(g,t)
         - **n_units**: Number of unique cross-sectional units
-        - **wald_stat**: Wald statistic for pre-testing parallel trends
-        - **wald_pvalue**: P-value for the parallel trends pre-test
+        - **wald_stat**: Wald statistic for pre-testing parallel trends, or None for a fit with clusters
+        - **wald_pvalue**: P-value for the parallel trends pre-test, or None for a fit with clusters
         - **alpha**: Significance level used
-        - **estimation_params**: Dictionary with estimation details (control_group, anticipation_periods, etc.)
+        - **estimation_params**: Dictionary of the estimation settings, such as control_group and
+          anticipation_periods
         - **G**: Unit-level group assignments
         - **weights_ind**: Unit-level sampling weights (if provided)
-
-    Examples
-    --------
-    The dataset below contains 500 observations of county-level teen employment rates from 2003-2007.
-    Some states are first treated in 2004, some in 2006, and some in 2007. The variable ``first.treat``
-    indicates the first period in which a state is treated:
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, load_mpdta
-           ...:
-           ...: df = load_mpdta()
-           ...: print(df.head())
-
-    We can compute group-time average treatment effects for a staggered adoption design
-    where different units adopt treatment at different time periods. The output is an object of type
-    ``MPResult`` which is a container for the results:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: print(result)
 
     See Also
     --------
@@ -236,8 +228,6 @@ def att_gt(
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
     if backend is not None:
-        from moderndid.cupy.backend import use_backend
-
         with use_backend(backend):
             return att_gt(
                 data=data,
@@ -247,7 +237,7 @@ def att_gt(
                 gname=gname,
                 xformla=xformla,
                 weightsname=weightsname,
-                alp=alp,
+                alpha=alpha,
                 cband=cband,
                 boot=boot,
                 biters=biters,
@@ -260,86 +250,22 @@ def att_gt(
                 base_period=base_period,
                 random_state=random_state,
                 n_jobs=n_jobs,
-                n_partitions=n_partitions,
-                max_cohorts=max_cohorts,
                 backend=None,
             )
-
-    from moderndid.dask._utils import is_dask_collection
-
-    if is_dask_collection(data):
-        from moderndid.dask._did import dask_att_gt
-
-        return dask_att_gt(
-            data,
-            yname,
-            tname,
-            idname,
-            gname,
-            xformla=xformla,
-            control_group=control_group,
-            base_period=base_period,
-            anticipation=anticipation,
-            est_method=est_method,
-            panel=panel,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cband=cband,
-            alp=alp,
-            clustervars=clustervars,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            trim_level=0.995,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            backend=backend,
-        )
-
-    from moderndid.spark._utils import is_spark_dataframe
-
-    if is_spark_dataframe(data):
-        from moderndid.spark._did import spark_att_gt
-
-        return spark_att_gt(
-            data,
-            yname,
-            tname,
-            idname,
-            gname,
-            xformla=xformla,
-            control_group=control_group,
-            base_period=base_period,
-            anticipation=anticipation,
-            est_method=est_method,
-            panel=panel,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cband=cband,
-            alp=alp,
-            clustervars=clustervars,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            trim_level=0.995,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            backend=backend,
-        )
 
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
     if panel and idname is None:
         raise ValueError("idname must be provided when panel=True.")
 
-    if isinstance(control_group, str) and control_group not in ("nevertreated", "notyettreated"):
-        raise ValueError(f"control_group='{control_group}' is not valid. Must be 'nevertreated' or 'notyettreated'.")
-    if isinstance(est_method, str) and est_method not in ("dr", "ipw", "reg"):
-        raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'ipw', or 'reg'.")
-    if isinstance(base_period, str) and base_period not in ("varying", "universal"):
-        raise ValueError(f"base_period='{base_period}' is not valid. Must be 'varying' or 'universal'.")
-    if not 0 < alp < 1:
-        raise ValueError(f"alp={alp} is not valid. Must be between 0 and 1 (exclusive).")
+    if control_group not in ("nevertreated", "notyettreated"):
+        raise ValueError(f"control_group={control_group!r} is not valid. Must be 'nevertreated' or 'notyettreated'.")
+    if not callable(est_method) and est_method not in ("dr", "ipw", "reg"):
+        raise ValueError(f"est_method={est_method!r} is not valid. Must be 'dr', 'ipw', or 'reg'.")
+    if base_period not in ("varying", "universal"):
+        raise ValueError(f"base_period={base_period!r} is not valid. Must be 'varying' or 'universal'.")
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
     if not isinstance(biters, int) or biters < 1:
         raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
     if not isinstance(anticipation, int | float) or anticipation < 0:
@@ -348,6 +274,16 @@ def att_gt(
         raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        gname=gname,
+        xformla=xformla,
+        weightsname=weightsname,
+        clustervars=clustervars,
+    )
 
     if anticipation > 0:
         warnings.warn(
@@ -371,7 +307,7 @@ def att_gt(
         control_group=control_group_enum,
         anticipation=anticipation,
         weightsname=weightsname,
-        alp=alp,
+        alpha=alpha,
         boot=boot,
         cband=cband,
         biters=biters,
@@ -397,49 +333,43 @@ def att_gt(
         influence_functions_dense = to_numpy(np.array(influence_functions))
 
     n_units = dp.config.id_count
-    variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
-    standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
-    standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
     if clustervars is not None and idname in clustervars:
         clustervars = [v for v in clustervars if v != idname]
 
-    if (clustervars is not None and len(clustervars) > 0) and not boot:
-        warnings.warn(
-            "Clustering the standard errors requires using the bootstrap, "
-            "resulting standard errors are NOT accounting for clustering",
-            UserWarning,
-        )
+    # Since clustering on idname alone is unit-level inference, the fit records a cluster vector only for another
+    # variable. The standard errors, the Wald pre-test, aggte, and honest_did cluster on that vector.
+    cluster = dp.time_invariant_data[clustervars[0]].to_numpy() if clustervars else None
+
+    if cluster is not None:
+        unit_cohorts = dp.time_invariant_data[gname].to_numpy()
+        warn_few_clusters(cluster, {g: cluster[unit_cohorts == g] for g in np.unique(groups)})
+
+    # Since clusters of one unit each are the units themselves, they leave the covariance at the unit level.
+    clustered = cluster is not None and len(np.unique(cluster)) < len(cluster)
+    if clustered:
+        # Since units in one cluster share shocks, their influence functions are summed before the outer product.
+        cluster_sums = _cluster_sums(influence_functions_dense, cluster)
+        variance_matrix = cluster_sums.T @ cluster_sums / n_units
+    else:
+        variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
+
+    standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
+    standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
     zero_na_sd_indices = np.unique(np.where(np.isnan(standard_errors))[0])
 
     if boot:
-        cluster = None
-        if clustervars is not None and len(clustervars) > 0:
-            if len(clustervars) > 2:
-                raise ValueError("Can cluster on at most 2 variables.")
-
-            if not hasattr(dp, "time_invariant_data"):
-                raise RuntimeError(
-                    "Clustering requires 'time_invariant_data' in the pre-processed data, but it was not found."
-                )
-            cluster_data = dp.time_invariant_data
-
-            if len(clustervars) == 1:
-                cluster = cluster_data[clustervars[0]].to_numpy()
-            else:
-                combined = cluster_data[clustervars[0]].cast(str) + "_" + cluster_data[clustervars[1]].cast(str)
-                unique_vals = combined.unique()
-                val_to_code = {v: i for i, v in enumerate(unique_vals.to_list())}
-                cluster = np.array([val_to_code[v] for v in combined.to_list()])
-
-        bootstrap_results = mboot(
+        # Since a cell with a negligible bootstrap scale would swamp the band, the group-time critical value leaves
+        # such cells out and keeps every draw.
+        bootstrap_results = _mboot(
             inf_func=influence_functions_dense,
             n_units=n_units,
             biters=biters,
-            alp=alp,
+            alpha=alpha,
             cluster=cluster,
             random_state=random_state,
+            skip_small_scales=True,
         )
 
         if len(zero_na_sd_indices) > 0:
@@ -451,16 +381,9 @@ def att_gt(
 
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-    # Wald pre-test
-    extra_clustervars = [v for v in (clustervars or []) if v not in (idname, "")]
-    if len(extra_clustervars) > 0:
-        warnings.warn(
-            f"The Wald pre-test is not reported when clustering beyond the unit level "
-            f"(clustervars = {extra_clustervars!r}) because the analytical variance matrix "
-            f"does not account for between-cluster correlation. Use the bootstrap confidence "
-            f"intervals to assess pre-trends.",
-            UserWarning,
-        )
+    # Since a Wald test on a cluster-robust covariance rejects a true null too often at realistic cluster counts,
+    # a clustered fit reports no pre-test. Its report points to the bootstrap's uniform bands instead.
+    if clustered:
         wald_statistic = None
         wald_pvalue = None
     else:
@@ -475,19 +398,17 @@ def att_gt(
         if len(pre_treatment_indices) == 0:
             msg = (
                 "No pre-treatment periods available for the Wald pre-test of parallel trends. "
-                "This can happen when all groups are first treated early in the panel "
-                "(e.g., in the second time period) so that no pre-treatment ATT(g,t) estimates exist."
+                "This can happen when all groups are first treated early in the panel, "
+                "such as in the second time period, so that no pre-treatment ATT(g,t) estimates exist."
             )
             if anticipation > 0:
-                msg += (
-                    f" Note: anticipation={anticipation} further reduces the number of available pre-treatment periods."
-                )
+                msg += f" With anticipation={anticipation}, fewer pre-treatment periods remain."
             warnings.warn(msg, UserWarning)
             wald_statistic = None
             wald_pvalue = None
         elif np.any(np.isnan(pre_treatment_variance)):
             warnings.warn(
-                "Not returning pre-test Wald statistic due to NA pre-treatment values",
+                "Not returning pre-test Wald statistic due to NaN pre-treatment values",
                 UserWarning,
             )
             wald_statistic = None
@@ -517,7 +438,7 @@ def att_gt(
                 wald_statistic = None
                 wald_pvalue = None
 
-    critical_value = scipy.stats.norm.ppf(1 - alp / 2)
+    critical_value = scipy.stats.norm.ppf(1 - alpha / 2)
 
     if boot and cband:
         critical_value = bootstrap_results["crit_val"]
@@ -531,6 +452,7 @@ def att_gt(
 
     estimation_params = {
         "yname": yname,
+        "idname": idname,
         "control_group": control_group,
         "anticipation_periods": anticipation,
         "estimation_method": est_method if isinstance(est_method, str) else "custom",
@@ -539,7 +461,7 @@ def att_gt(
         "base_period": base_period,
         "panel": panel,
         "clustervars": clustervars,
-        "cluster": dp.cluster,
+        "cluster": cluster,
         "biters": biters,
         "random_state": random_state,
         "n_units": n_units,
@@ -552,8 +474,17 @@ def att_gt(
     if hasattr(dp, "time_invariant_data"):
         if gname in dp.time_invariant_data.columns:
             group_assignments = dp.time_invariant_data[gname]
-        if weightsname is not None and weightsname in dp.time_invariant_data.columns:
-            sampling_weights = dp.time_invariant_data[weightsname]
+        # Preprocessing keeps the normalized weights in one internal column whatever the user's column is called.
+        if weightsname is not None:
+            sampling_weights = dp.time_invariant_data[WEIGHTS_COLUMN]
+            if _is_unbalanced_panel(dp):
+                # Since a unit of an unbalanced panel can carry a different weight in each of its rows, aggte
+                # weighs the unit by the mean of those weights.
+                unit_ids = dp.time_invariant_data[dp.config.idname]
+                unit_means = dp.data.group_by(dp.config.idname).agg(pl.col(WEIGHTS_COLUMN).mean())
+                sampling_weights = unit_ids.replace_strict(
+                    unit_means[dp.config.idname], unit_means[WEIGHTS_COLUMN]
+                ).alias(WEIGHTS_COLUMN)
 
     return mp(
         groups=groups,
@@ -566,7 +497,7 @@ def att_gt(
         n_units=n_units,
         wald_stat=wald_statistic,
         wald_pvalue=wald_pvalue,
-        alpha=alp,
+        alpha=alpha,
         estimation_params=estimation_params,
         G=group_assignments,
         weights_ind=sampling_weights,

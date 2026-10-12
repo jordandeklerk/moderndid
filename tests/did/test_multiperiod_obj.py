@@ -141,6 +141,74 @@ def test_mp_formatting():
     assert "P-value for pre-test of parallel trends assumption:  0.2300" in formatted
 
 
+@pytest.mark.parametrize(
+    ("estimation_params", "line"),
+    [
+        ({"bootstrap": False}, " Analytical standard errors"),
+        ({"bootstrap": True}, " Bootstrap standard errors"),
+        (
+            {"bootstrap": True, "clustervars": ["state"], "cluster": np.repeat(np.arange(50), 2)},
+            " Bootstrap standard errors clustered by state",
+        ),
+        (
+            {"bootstrap": False, "clustervars": ["state"], "cluster": np.repeat(np.arange(50), 2)},
+            " Analytical standard errors clustered by state",
+        ),
+        ({"bootstrap": True, "clustervars": ["copy"], "cluster": np.arange(100)}, " Bootstrap standard errors"),
+    ],
+)
+def test_mp_formatting_names_the_clusters_of_the_standard_errors(estimation_params, line):
+    result = mp(
+        groups=np.array([2000, 2000, 2001]),
+        times=np.array([2001, 2002, 2002]),
+        att_gt=np.array([1.5, -0.3, 2.1]),
+        vcov_analytical=np.eye(3),
+        se_gt=np.array([0.5, 0.4, 0.6]),
+        critical_value=1.96,
+        influence_func=np.zeros((100, 3)),
+        estimation_params=estimation_params,
+    )
+
+    lines = format_mp_result(result).splitlines()
+
+    assert line in lines
+    assert lines[lines.index(line) - 1] == " Significance level: 0.05"
+
+
+@pytest.mark.parametrize(
+    ("estimation_params", "wald_pvalue", "explained"),
+    [
+        ({"bootstrap": True, "clustervars": ["state"], "cluster": np.repeat(np.arange(50), 2)}, None, True),
+        ({"bootstrap": False, "clustervars": ["state"], "cluster": np.repeat(np.arange(50), 2)}, None, True),
+        ({"bootstrap": False}, None, False),
+        ({"bootstrap": True, "clustervars": ["copy"], "cluster": np.arange(100)}, 0.23, False),
+    ],
+    ids=["bootstrap_clusters", "analytic_clusters", "no_pre_test", "unit_level_clusters"],
+)
+def test_mp_formatting_explains_the_missing_pre_test_of_a_clustered_fit(estimation_params, wald_pvalue, explained):
+    result = mp(
+        groups=np.array([2000, 2000, 2001]),
+        times=np.array([2001, 2002, 2002]),
+        att_gt=np.array([1.5, -0.3, 2.1]),
+        vcov_analytical=np.eye(3),
+        se_gt=np.array([0.5, 0.4, 0.6]),
+        critical_value=1.96,
+        influence_func=np.zeros((100, 3)),
+        wald_pvalue=wald_pvalue,
+        estimation_params=estimation_params,
+    )
+    explanation = [
+        " Since a Wald test on a cluster-robust covariance rejects too often at",
+        " realistic cluster counts, no pre-test of parallel trends is reported.",
+        " Use the bootstrap's uniform bands over the pre-treatment cells instead.",
+    ]
+
+    lines = format_mp_result(result).splitlines()
+
+    assert all(line in lines for line in explanation) == explained
+    assert any("P-value for pre-test" in line for line in lines) == (wald_pvalue is not None)
+
+
 def test_mp_display_methods():
     groups = np.array([2000])
     times = np.array([2001])
