@@ -12,14 +12,15 @@ from moderndid.core.maketables import (
     make_effect_names,
     make_group_time_names,
     se_type_label,
+    vcov_info_from_bootstrap,
 )
-from moderndid.core.result import extract_n_obs, extract_vcov_info
+from moderndid.core.result import extract_n_obs
 
 
 class DIDMLResult(NamedTuple):
     """Container for group-time ML ATT and CATT results.
 
-    Holds doubly-robust ML estimates of group-time average treatment effects on
+    Holds doubly robust ML estimates of group-time average treatment effects on
     the treated together with individual-level conditional treatment effects
     (CATTs), influence functions, and minimax weights for each group-time cell.
     Implements the ``maketables`` plug-in interface for publication-quality
@@ -34,18 +35,25 @@ class DIDMLResult(NamedTuple):
     att_gt : ndarray
         Group-time average treatment effects on the treated (TAU_hat).
     se_gt : ndarray
-        Standard errors for the group-time ATTs.
+        Standard errors for the group-time ATTs. They come from the unit
+        bootstrap when ``estimation_params["bootstrap"]`` is True and from
+        the influence functions otherwise.
     critical_value : float
-        Critical value for confidence intervals (pointwise normal or simultaneous).
+        Critical value for confidence intervals. It is simultaneous across
+        the group-time cells for a bootstrap fit with uniform bands and the
+        pointwise normal quantile otherwise.
     influence_func : ndarray
-        Influence-function matrix of shape (n_units, n_cells) used for variance
-        estimation and downstream aggregation.
+        Influence-function matrix of shape (n_units, n_cells). Each column
+        holds the units' centered contributions to one cell's ATT. The sum
+        of squares of a column divided by ``n_units**2`` estimates that
+        ATT's variance.
     cates : scipy.sparse.csr_matrix
         Sparse matrix of shape (n_units, n_cells) holding individual CATT
         estimates for the units participating in each group-time cell.
     scores : scipy.sparse.csr_matrix
-        Sparse matrix of shape (n_units, n_cells) holding doubly-robust score
-        contributions per unit per cell.
+        Sparse matrix of shape (n_units, n_cells) holding each unit's doubly
+        robust score in each cell, the CATT prediction plus the AMLE-weighted
+        residual averaged over the unit's pre-period and post-period rows.
     gammas : scipy.sparse.csr_matrix
         Sparse matrix of shape (n_units, n_cells) holding the cell-specific
         augmented minimax linear weights from
@@ -53,14 +61,14 @@ class DIDMLResult(NamedTuple):
     unit_ids : ndarray
         Unit identifier for each row of the sparse CATT/score/gamma matrices.
     unit_periods : ndarray
-        Placeholder period index for the sparse-matrix rows. The rows are
-        per-unit aggregates within each cell, so the period index is not
-        populated and holds zeros.
+        Placeholder period index for the sparse-matrix rows. Since the rows
+        are per-unit aggregates within each cell, the period index holds
+        zeros.
     drdid_benchmark : ndarray, optional
-        Doubly-robust ATT benchmark estimates for each cell, used for
-        comparison when ``compute_drdid_benchmark`` is enabled.
+        Doubly robust ATT benchmark estimates for each cell when
+        ``compute_drdid_benchmark`` is enabled.
     drdid_benchmark_se : ndarray, optional
-        Standard errors for the doubly-robust benchmark estimates.
+        Standard errors for the doubly robust benchmark estimates.
     n_units : int, optional
         Number of unique cross-sectional units.
     wald_stat : float, optional
@@ -68,7 +76,9 @@ class DIDMLResult(NamedTuple):
     wald_pvalue : float, optional
         P-value of the pre-trends Wald statistic.
     aggregate_effects : object, optional
-        Aggregate treatment effects object populated by ``aggte_didml``.
+        Placeholder for aggregate treatment effects that ``didml`` leaves as
+        None. ``aggte_didml`` returns the aggregate effects in a separate
+        result.
     alpha : float
         Significance level (default 0.05).
     estimation_params : dict
@@ -77,8 +87,18 @@ class DIDMLResult(NamedTuple):
         ``bootstrap``, ``uniform_bands``, ``base_period``, ``panel``,
         ``clustervars``, ``cluster``, ``biters``, ``random_state``, ``n_units``,
         ``n_obs``, ``alpha``, plus ML-specific entries ``nu_model``,
-        ``sigma_model``, ``delta_model``, ``k_folds``, ``tune_penalty``,
-        ``t_func``, ``use_gamma``, and ``zeta``.
+        ``sigma_model``, ``delta_model``, ``k_folds``, ``t_func``,
+        ``use_gamma``, ``zeta``, and ``cohort_counts``.
+    G : ndarray, optional
+        Cohort of each unit, in the row order of ``influence_func``.
+    weights_ind : ndarray, optional
+        Sampling weight of each unit, in the same order.
+    att_gt_draws : ndarray, optional
+        Bootstrap draws of the group-time ATTs with shape
+        ``(biters, n_cells)``. A draw that failed to estimate a cell holds NaN.
+    cohort_share_draws : ndarray, optional
+        Bootstrap draws of the weighted cohort shares with shape
+        ``(biters, n_cohorts)``. The columns follow ``np.unique(groups)``.
     """
 
     #: Treatment cohort for each group-time cell.
@@ -95,7 +115,7 @@ class DIDMLResult(NamedTuple):
     influence_func: np.ndarray
     #: Sparse matrix of individual CATT estimates per cell.
     cates: sp.csr_matrix
-    #: Sparse matrix of doubly-robust score contributions per cell.
+    #: Sparse matrix of doubly robust score contributions per cell.
     scores: sp.csr_matrix
     #: Sparse matrix of minimax weights per cell.
     gammas: sp.csr_matrix
@@ -119,6 +139,14 @@ class DIDMLResult(NamedTuple):
     alpha: float = 0.05
     #: Estimation parameters dictionary.
     estimation_params: dict = {}
+    #: Cohort of each unit.
+    G: np.ndarray | None = None
+    #: Sampling weight of each unit.
+    weights_ind: np.ndarray | None = None
+    #: Bootstrap draws of the group-time ATTs, one row per draw.
+    att_gt_draws: np.ndarray | None = None
+    #: Bootstrap draws of the weighted cohort shares, one row per draw.
+    cohort_share_draws: np.ndarray | None = None
 
     @property
     def __maketables_coef_table__(self):
@@ -159,8 +187,8 @@ class DIDMLResult(NamedTuple):
 
     @property
     def __maketables_vcov_info__(self) -> dict[str, str | None]:
-        """Return variance-covariance metadata."""
-        return extract_vcov_info(self.estimation_params)
+        """Return variance-covariance metadata that names no cluster because the standard errors ignore clusters."""
+        return vcov_info_from_bootstrap(is_bootstrap=bool(self.estimation_params.get("bootstrap", False)))
 
     @property
     def __maketables_stat_labels__(self) -> dict[str, str]:
@@ -188,7 +216,7 @@ class DIDMLAggResult(NamedTuple):
 
     Mirrors the shape of ``AGGTEResult`` so that downstream tooling (plotting,
     maketables) can dispatch on the same field structure. See
-    :ref:`publication_tables`. Adds an optional doubly-robust event-time
+    :ref:`publication_tables`. Adds an optional doubly robust event-time
     benchmark column.
 
     Attributes
@@ -208,14 +236,13 @@ class DIDMLAggResult(NamedTuple):
     critical_values : ndarray, optional
         Pointwise normal critical values for confidence intervals.
     influence_func : ndarray, optional
-        Influence functions of the aggregated parameters.
-
-        - For overall ATT: 1D array of length n_units.
-        - For dynamic/group/calendar: 2D array of shape (n_units, n_events).
+        Influence functions of the aggregated parameters. A simple aggregation
+        stores a vector of length ``n_units``. The other aggregations store an
+        array of shape ``(n_units, n_events)``.
     influence_func_overall : ndarray, optional
         Influence function for the overall ATT (1D, length n_units).
     drdid_benchmark_by_event : ndarray, optional
-        Doubly-robust benchmark ATTs at each event time.
+        Doubly robust benchmark ATTs at each event time.
     min_event_time : int, optional
         Minimum event time for dynamic effects.
     max_event_time : int, optional
@@ -246,7 +273,7 @@ class DIDMLAggResult(NamedTuple):
     influence_func: np.ndarray | None = None
     #: Influence function for the overall ATT.
     influence_func_overall: np.ndarray | None = None
-    #: Doubly-robust benchmark ATTs at each event time.
+    #: Doubly robust benchmark ATTs at each event time.
     drdid_benchmark_by_event: np.ndarray | None = None
     #: Minimum event time.
     min_event_time: int | None = None
@@ -324,8 +351,8 @@ class DIDMLAggResult(NamedTuple):
 
     @property
     def __maketables_vcov_info__(self) -> dict[str, str | None]:
-        """Return variance-covariance metadata."""
-        return extract_vcov_info(self.estimation_params)
+        """Return variance-covariance metadata that names no cluster because the standard errors ignore clusters."""
+        return vcov_info_from_bootstrap(is_bootstrap=bool(self.estimation_params.get("bootstrap", False)))
 
     @property
     def __maketables_stat_labels__(self) -> dict[str, str]:
@@ -354,9 +381,9 @@ class DIDMLAggResult(NamedTuple):
 class BLPResult(NamedTuple):
     """Container for Best Linear Predictor (BLP) heterogeneity results.
 
-    Stores per-event-time linear projections of dynamic CATEs onto observed
-    covariates, used to characterize which features predict heterogeneous
-    treatment effects.
+    Stores per-event-time linear projections of dynamic CATTs onto observed
+    covariates. They show which covariates predict heterogeneous treatment
+    effects.
 
     Attributes
     ----------
@@ -387,7 +414,7 @@ class BLPResult(NamedTuple):
 class CLANResult(NamedTuple):
     """Container for Classification Analysis (CLAN) heterogeneity results.
 
-    Stores covariate means in the top and bottom CATE quantile groups along with
+    Stores covariate means in the top and bottom CATT quantile groups along with
     test statistics for whether high-effect and low-effect groups differ in
     their observed characteristics.
 
@@ -396,16 +423,16 @@ class CLANResult(NamedTuple):
     affected : list[str]
         Covariate names tested for heterogeneity.
     threshold : float
-        Quantile threshold used to define top/bottom groups (e.g. 0.2 for top
-        and bottom quintile).
+        Quantile threshold that defines the top and bottom groups, such as 0.2
+        for the top and bottom quintiles.
     high_means : ndarray
-        Mean of each affected covariate within the top-CATE group.
+        Mean of each affected covariate within the top-CATT group.
     low_means : ndarray
-        Mean of each affected covariate within the bottom-CATE group.
+        Mean of each affected covariate within the bottom-CATT group.
     diffs : ndarray
         Estimated mean differences (high minus low) per covariate.
     pvalues : ndarray
-        P-values for the high-vs-low mean differences.
+        P-values for the high-minus-low mean differences.
     test_type : {'glh', 't'}
         Test variant. ``'glh'`` runs a per-covariate general linear
         hypothesis test of the high-minus-low group-mean contrast from a
@@ -417,20 +444,20 @@ class CLANResult(NamedTuple):
     affected: list[str]
     #: Quantile threshold defining top and bottom groups.
     threshold: float
-    #: Mean of each affected covariate in the top-CATE group.
+    #: Mean of each affected covariate in the top-CATT group.
     high_means: np.ndarray
-    #: Mean of each affected covariate in the bottom-CATE group.
+    #: Mean of each affected covariate in the bottom-CATT group.
     low_means: np.ndarray
     #: High-minus-low mean differences per covariate.
     diffs: np.ndarray
-    #: P-values for the high-vs-low mean differences.
+    #: P-values for the high-minus-low mean differences.
     pvalues: np.ndarray
     #: Test variant.
     test_type: Literal["glh", "t"]
 
 
 class DIDMLCellResult(NamedTuple):
-    r"""Per-cell ML doubly-robust DiD result for a single :math:`(g, t)` pair."""
+    r"""Per-cell ML doubly robust DiD result for a single :math:`(g, t)` pair."""
 
     #: Treatment cohort identifier (period first treated).
     group: float
@@ -444,22 +471,24 @@ class DIDMLCellResult(NamedTuple):
     post_idx: int
     #: Cell-level ATT(g, t) estimate from the LNW score.
     att: float
-    #: Standard error for ``att`` (NaN when ``gamma`` is unused).
+    #: Row-level standard error from ``lnw_did`` for independent stacked rows.
     se: float
     #: Cross-fitted CATT predictions, one per cell row (None for skipped cells).
     tau_hat: np.ndarray | None
-    #: Doubly-robust score contributions, one per cell row.
+    #: Doubly robust score contributions, one per cell row.
     score: np.ndarray | None
     #: AMLE weights, one per cell row.
     gamma: np.ndarray | None
     #: Per-unit membership indicator (1 treated, 0 control, NaN excluded).
     cohort_idx: np.ndarray
-    #: Doubly-robust benchmark ATT (None when ``compute_drdid_benchmark=False``).
+    #: Doubly robust benchmark ATT (None when ``compute_drdid_benchmark=False``).
     drdid_att: float | None
     #: Standard error for the benchmark ATT.
     drdid_se: float | None
     #: Per-unit benchmark influence function (None when disabled).
     drdid_inf_func: np.ndarray | None
+    #: Per-unit influence function of ``att`` over all units (zeros for a reference cell).
+    inf_func: np.ndarray | None = None
 
 
 class ComputeDIDMLResult(NamedTuple):
@@ -475,6 +504,17 @@ class ComputeDIDMLResult(NamedTuple):
     gammas: sp.csr_matrix
     #: Sparse (n_units, n_cells) matrix of benchmark influence functions.
     drdid_inf_funcs: sp.csr_matrix
+    #: Dense (n_units, n_cells) matrix of the cells' influence functions.
+    influence_funcs: np.ndarray
+
+
+class DIDMLBootstrapResult(NamedTuple):
+    r"""Container for the unit-bootstrap draws from :func:`bootstrap_didml`."""
+
+    #: (biters, n_cells) draws of the group-time ATTs, NaN where a refit failed.
+    att_draws: np.ndarray
+    #: (biters, n_cohorts) draws of the weighted cohort shares.
+    share_draws: np.ndarray
 
 
 def didml_result(
@@ -497,6 +537,10 @@ def didml_result(
     aggregate_effects=None,
     alpha=0.05,
     estimation_params=None,
+    G=None,
+    weights_ind=None,
+    att_gt_draws=None,
+    cohort_share_draws=None,
 ):
     """Construct a ``DIDMLResult``.
 
@@ -517,7 +561,7 @@ def didml_result(
     cates : scipy.sparse matrix
         Sparse matrix of individual CATT estimates per cell.
     scores : scipy.sparse matrix
-        Sparse matrix of doubly-robust scores per cell.
+        Sparse matrix of doubly robust scores per cell.
     gammas : scipy.sparse matrix
         Sparse matrix of minimax weights per cell.
     unit_ids : array_like
@@ -525,7 +569,7 @@ def didml_result(
     unit_periods : array_like
         Placeholder period index for the sparse-matrix rows (not populated).
     drdid_benchmark : array_like, optional
-        Doubly-robust ATT benchmark estimates per cell.
+        Doubly robust ATT benchmark estimates per cell.
     drdid_benchmark_se : array_like, optional
         Standard errors for the DRDID benchmark estimates.
     n_units : int, optional
@@ -540,6 +584,15 @@ def didml_result(
         Significance level.
     estimation_params : dict, optional
         Estimation metadata dictionary.
+    G : array_like, optional
+        Cohort of each unit, one entry per row of ``influence_func``.
+    weights_ind : array_like, optional
+        Sampling weight of each unit, one entry per row of ``influence_func``.
+    att_gt_draws : array_like, optional
+        Bootstrap draws of the group-time ATTs with one column per cell.
+    cohort_share_draws : array_like, optional
+        Bootstrap draws of the weighted cohort shares with one column per
+        cohort in ``np.unique(groups)``.
 
     Returns
     -------
@@ -581,6 +634,21 @@ def didml_result(
         if len(drdid_benchmark_se) != n_gt:
             raise ValueError("drdid_benchmark_se must have the same length as att_gt.")
 
+    for vector, name in ((G, "G"), (weights_ind, "weights_ind")):
+        if vector is not None and len(vector) != cates.shape[0]:
+            raise ValueError(f"{name} must have one entry per row of cates, got {len(vector)}.")
+    if att_gt_draws is not None:
+        att_gt_draws = np.asarray(att_gt_draws, dtype=float)
+        if att_gt_draws.ndim != 2 or att_gt_draws.shape[1] != n_gt:
+            raise ValueError(f"att_gt_draws must have shape (biters, {n_gt}), got {att_gt_draws.shape}.")
+    if cohort_share_draws is not None:
+        cohort_share_draws = np.asarray(cohort_share_draws, dtype=float)
+        n_cohorts = len(np.unique(groups))
+        if cohort_share_draws.ndim != 2 or cohort_share_draws.shape[1] != n_cohorts:
+            raise ValueError(
+                f"cohort_share_draws must have shape (biters, {n_cohorts}), got {cohort_share_draws.shape}."
+            )
+
     if estimation_params is None:
         estimation_params = {}
 
@@ -604,6 +672,10 @@ def didml_result(
         aggregate_effects=aggregate_effects,
         alpha=alpha,
         estimation_params=estimation_params,
+        G=None if G is None else np.asarray(G, dtype=float),
+        weights_ind=None if weights_ind is None else np.asarray(weights_ind, dtype=float),
+        att_gt_draws=att_gt_draws,
+        cohort_share_draws=cohort_share_draws,
     )
 
 
@@ -765,15 +837,15 @@ def clan_result(
     affected : list[str]
         Covariate names tested.
     threshold : float
-        Quantile threshold defining top and bottom CATE groups (in (0, 0.5]).
+        Quantile threshold in (0, 0.5] that defines the top and bottom CATT groups.
     high_means : array_like
-        Means of each covariate in the top-CATE group.
+        Means of each covariate in the top-CATT group.
     low_means : array_like
-        Means of each covariate in the bottom-CATE group.
+        Means of each covariate in the bottom-CATT group.
     diffs : array_like
         High-minus-low mean differences per covariate.
     pvalues : array_like
-        P-values for the high-vs-low mean differences.
+        P-values for the high-minus-low mean differences.
     test_type : {'glh', 't'}, default='glh'
         Test variant.
 
@@ -810,7 +882,7 @@ def clan_result(
 
 
 def summary_didml(result):
-    """Print summary of a DIDMLResult.
+    """Return the formatted summary of a ``DIDMLResult``.
 
     Parameters
     ----------
@@ -826,7 +898,7 @@ def summary_didml(result):
 
 
 def summary_didml_agg(result):
-    """Print summary of a DIDMLAggResult.
+    """Return the formatted summary of a ``DIDMLAggResult``.
 
     Parameters
     ----------
