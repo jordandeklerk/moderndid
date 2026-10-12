@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from scipy import stats
 
 from moderndid.didhonest.conditional import (
     _create_pre_period_second_diff_constraints,
@@ -60,6 +61,44 @@ def test_norminvp_generalized_one_sided_truncation():
     assert result <= upper
 
 
+def test_norminvp_generalized_upper_tail():
+    for lower in [5.0, 8.0, 9.0, 12.0, 30.0]:
+        result = _norminvp_generalized(0.95, lower=lower, upper=np.inf)
+        expected = stats.truncnorm.ppf(0.95, lower, np.inf)
+        assert lower < result < lower + 1
+        assert np.isclose(result, expected, rtol=1e-10)
+
+    assert np.isclose(_norminvp_generalized(0.95, lower=8.0, upper=np.inf), 8.36096063, atol=1e-8)
+    assert np.isclose(_norminvp_generalized(0.95, lower=9.0, upper=np.inf), 9.32322299, atol=1e-8)
+
+
+def test_norminvp_generalized_lower_tail_and_scale():
+    result = _norminvp_generalized(0.95, lower=-np.inf, upper=-40.0)
+    assert np.isclose(result, stats.truncnorm.ppf(0.95, -np.inf, -40.0), rtol=1e-10)
+
+    result = _norminvp_generalized(0.995, lower=10.0, upper=10.5, mu=2.0, sd=0.5)
+    expected = 2.0 + 0.5 * stats.truncnorm.ppf(0.995, 16.0, 17.0)
+    assert np.isclose(result, expected, rtol=1e-10)
+
+
+def test_norminvp_generalized_empty_interval():
+    assert _norminvp_generalized(0.5, lower=2.0, upper=2.0) == 2.0
+    assert _norminvp_generalized(0.5, lower=3.0, upper=1.0) == 3.0
+
+
+def test_test_in_identified_set_max_adds_bound_back():
+    A, d = _create_pre_period_second_diff_constraints(2)
+    sigma = np.eye(2)
+    m_value = np.sqrt(5)
+    quantile = 1 + stats.truncnorm.ppf(0.95, -1, np.inf)
+
+    y_above = np.array([np.sqrt(5) * (quantile + 0.05), 0.0])
+    assert in_identified_set_max_func(m_value, y_above, sigma, A, 0.05, d)
+
+    y_below = np.array([np.sqrt(5) * (quantile - 0.05), 0.0])
+    assert not in_identified_set_max_func(m_value, y_below, sigma, A, 0.05, d)
+
+
 def test_create_pre_period_second_diff_constraints():
     num_pre_periods = 3
     A, d = _create_pre_period_second_diff_constraints(num_pre_periods)
@@ -68,10 +107,10 @@ def test_create_pre_period_second_diff_constraints():
     assert len(d) == 4
     assert np.all(d == 1)
 
-    assert np.array_equal(A[0, :], [0, 0, 0])
-    assert np.array_equal(A[1, :], [1, -2, 1])
-    assert np.array_equal(A[2, :], [0, 0, 0])
-    assert np.array_equal(A[3, :], [-1, 2, -1])
+    assert np.array_equal(A[0, :], [1, -2, 1])
+    assert np.array_equal(A[1, :], [0, 1, -2])
+    assert np.array_equal(A[2, :], [-1, 2, -1])
+    assert np.array_equal(A[3, :], [0, -1, 2])
 
     num_pre_periods = 4
     A, d = _create_pre_period_second_diff_constraints(num_pre_periods)
@@ -81,15 +120,21 @@ def test_create_pre_period_second_diff_constraints():
     assert np.all(d == 1)
 
     assert np.array_equal(A[0, :], [1, -2, 1, 0])
-    assert np.array_equal(A[1, :], [0, 0, 0, 0])
-    assert np.array_equal(A[2, :], [0, 1, -2, 1])
-    assert np.array_equal(A[3, :], [-1, 2, -1, 0])
-    assert np.array_equal(A[4, :], [0, 0, 0, 0])
-    assert np.array_equal(A[5, :], [0, -1, 2, -1])
+    assert np.array_equal(A[1, :], [0, 1, -2, 1])
+    assert np.array_equal(A[2, :], [0, 0, 1, -2])
+    assert np.array_equal(A[3:, :], -A[:3, :])
+    assert not np.any(np.all(A == 0, axis=1))
+
+
+def test_create_pre_period_second_diff_constraints_two_periods():
+    A, d = _create_pre_period_second_diff_constraints(2)
+
+    assert np.array_equal(A, [[1, -2], [-1, 2]])
+    assert np.array_equal(d, [1, 1])
 
 
 def test_create_pre_period_second_diff_constraints_invalid():
-    with pytest.raises(ValueError, match="Can't estimate M"):
+    with pytest.raises(ValueError, match="Cannot estimate M"):
         _create_pre_period_second_diff_constraints(1)
 
 
@@ -109,7 +154,7 @@ def test_test_in_identified_set_max_simple():
 
     m_value = 0.1
     reject = in_identified_set_max_func(m_value, y, sigma, A, alpha, d)
-    assert not reject
+    assert reject
 
     y_violation = np.array([0.0, 0.0, 1.0])
     sigma_small = np.eye(3) * 0.0001
@@ -194,15 +239,11 @@ def test_constraint_matrix_mathematical_correctness():
 
     A, _ = _create_pre_period_second_diff_constraints(num_pre_periods)
 
-    second_diff = beta[2] - 2 * beta[1] + beta[0]
+    second_diffs = np.diff(np.append(beta, 0.0), n=2)
 
     assert A.shape == (6, 4)
-    assert np.isclose(A[0, :] @ beta, second_diff)
-
-    for i in range(3):
-        result = A[i, :] @ beta
-        assert np.isclose(np.abs(result), 0.5) or np.isclose(np.abs(result), 0.0)
-
+    assert np.allclose(A[:3, :] @ beta, second_diffs)
+    assert np.allclose(A[:3, :] @ beta, [0.5, 0.5, -7.5])
     assert np.allclose(A[3:, :], -A[:3, :])
 
 

@@ -8,7 +8,6 @@ import polars as pl
 from scipy import stats
 
 from .bounds import compute_delta_sd_upperbound_m
-from .delta.rm.rm import compute_identified_set_rm
 from .fixed_length_ci import compute_flci
 from .utils import basis_vector, validate_conformable, validate_symmetric_psd
 from .wrappers import DeltaMethodSelector
@@ -24,10 +23,10 @@ class SensitivityResult(NamedTuple):
     ub : float
         Upper bound of the robust confidence interval.
     method : str
-        Confidence interval method used (e.g. 'FLCI', 'Conditional',
-        'C-F', 'C-LF').
+        Confidence interval method used, such as 'FLCI', 'Conditional',
+        'C-F', or 'C-LF'.
     delta : str
-        Type of restriction set used (e.g. 'DeltaSD', 'DeltaRM').
+        Type of restriction set used, such as 'DeltaSD' or 'DeltaRM'.
     m : float
         Value of the smoothness or relative magnitude bound parameter.
     """
@@ -85,19 +84,24 @@ def create_sensitivity_results_sm(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
+    seed=0,
 ):
     r"""Perform sensitivity analysis using smoothness restrictions.
 
     Implements methods for robust inference in difference-in-differences and event study
     designs using smoothness restrictions :math:`\Delta^{SD}(M)` on the underlying trend,
-    following [1]_. This function computes confidence intervals across a range of smoothness
-    bounds :math:`M`, facilitating sensitivity analysis that shows what causal conclusions
-    can be drawn under various assumptions about possible trend nonlinearities.
+    following [1]_. It computes one confidence interval for each smoothness bound :math:`M`.
+    Together they show which causal conclusions hold as the trend is allowed to bend further.
 
     The FLCI method has finite-sample near-optimal expected length for :math:`\Delta^{SD}`
-    and is recommended when no additional shape restrictions are imposed.
-    The conditional and hybrid methods (C-F, C-LF) provide uniform size control and are
-    recommended when monotonicity or sign restrictions are added.
+    and is the default when no additional shape restrictions are imposed. Since the FLCI
+    ignores sign and shape restrictions, the default switches to the conditional FLCI hybrid
+    (C-F) when ``bias_direction`` or ``monotonicity_direction`` is given. The conditional and
+    hybrid methods invert a test over a grid of candidate values. Their bounds are points of
+    that grid.
+
+    See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
+    function applied to event study estimates from outside moderndid.
 
     Parameters
     ----------
@@ -111,15 +115,11 @@ def create_sensitivity_results_sm(
         Number of pre-treatment periods.
     num_post_periods : int
         Number of post-treatment periods.
-    method : str, optional
-        Confidence interval method. Options are:
-
-        - "FLCI": Fixed-length confidence intervals
-        - "Conditional": Conditional confidence intervals
-        - "C-F": Conditional FLCI hybrid
-        - "C-LF": Conditional least-favorable hybrid
-
-        Default is "FLCI" if no restrictions, "C-F" otherwise.
+    method : {'FLCI', 'Conditional', 'C-F', 'C-LF'}, optional
+        Confidence interval method. 'FLCI' is the fixed-length confidence interval,
+        'Conditional' the conditional test, 'C-F' the conditional FLCI hybrid, and 'C-LF'
+        the conditional least favorable hybrid. If None, uses 'FLCI' without sign or shape
+        restrictions and 'C-F' with them.
     m_vec : ndarray, optional
         Vector of M values for sensitivity analysis. If None, constructs
         default sequence from 0 to data-driven upper bound.
@@ -138,11 +138,19 @@ def create_sensitivity_results_sm(
         Lower bound for grid search. If None, uses data-driven bound.
     grid_ub : float, optional
         Upper bound for grid search. If None, uses data-driven bound.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with columns: lb, ub, method, Delta, M.
+        One row per value of :math:`M` with columns:
+
+        - **lb**: Lower bound of the robust confidence interval
+        - **ub**: Upper bound of the robust confidence interval
+        - **method**: Confidence interval method
+        - **delta**: Restriction set, such as 'DeltaSD' or 'DeltaSDPB'
+        - **m**: Smoothness bound :math:`M`
 
     See Also
     --------
@@ -153,72 +161,11 @@ def create_sensitivity_results_sm(
     -----
     Cannot specify both monotonicity_direction and bias_direction.
 
-    Examples
-    --------
-    To use this function directly, we need to compute an event study and extract the
-    estimates and covariance matrix. If you're using moderndid's built-in estimators,
-    you can use the `honest_did` function to process the event study and extract the
-    estimates and covariance matrix for you.
-
-    If you're using an external estimator, you will need to extract the influence functions and
-    construct the covariance matrix. Then, you can use the `create_sensitivity_results_sm` function
-    to run the sensitivity analysis.
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...: from moderndid.didhonest import create_sensitivity_results_sm
-           ...
-           ...: df = load_mpdta()
-           ...: gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: es_result = aggte(gt_result, type="dynamic")
-
-    Suppose this is an external estimator. We can extract the influence functions and
-    construct the covariance matrix, removing the reference period.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: influence_func = es_result.influence_func
-           ...: event_times = es_result.event_times
-           ...: ref_idx = np.where(event_times == -1)[0][0]
-           ...: att_no_ref = np.delete(es_result.att_by_event, ref_idx)
-           ...: influence_no_ref = np.delete(influence_func, ref_idx, axis=1)
-           ...: n = influence_no_ref.shape[0]
-           ...: vcov = influence_no_ref.T @ influence_no_ref / (n * n)
-           ...: num_pre = int(np.sum(np.delete(event_times, ref_idx) < -1))
-           ...: num_post = len(att_no_ref) - num_pre
-
-    Finally, we run the smoothness-based sensitivity analysis with different
-    values of :math:`M` bounding how much the trend can change between periods.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: results = create_sensitivity_results_sm(
-           ...:     betahat=att_no_ref,
-           ...:     sigma=vcov,
-           ...:     num_pre_periods=num_pre,
-           ...:     num_post_periods=num_post,
-           ...:     m_vec=[0.0, 0.01, 0.02]
-           ...: )
-           ...: results
-
     References
     ----------
 
-    .. [1] Rambachan, A., & Roth, J. (2023). A More Credible Approach to
-        Parallel Trends. Review of Economic Studies.
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -299,6 +246,7 @@ def create_sensitivity_results_sm(
                 "grid_points": grid_points,
                 "grid_lb": grid_lb,
                 "grid_ub": grid_ub,
+                "seed": seed,
             }
 
             if monotonicity_direction is not None:
@@ -338,17 +286,22 @@ def create_sensitivity_results_rm(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
+    seed=0,
 ):
     r"""Perform sensitivity analysis using relative magnitude bounds.
 
     Implements methods for robust inference using the relative magnitudes restriction
-    :math:`\Delta^{RM}(\bar{M})`, following [1]_. This restriction bounds post-treatment
-    violations of parallel trends by :math:`\bar{M}` times the maximum pre-treatment
-    violation, formalizing the intuition that confounding factors in the post-treatment
-    period should be similar in magnitude to those observed pre-treatment. When
-    :math:`\bar{M} = 1`, the worst-case post-treatment violation is bounded by the
-    maximum pre-treatment violation. This function computes confidence intervals across
-    a range of :math:`\bar{M}` values, facilitating sensitivity analysis.
+    :math:`\Delta^{RM}(\bar{M})`, following [1]_. The restriction bounds each change in the
+    violation of parallel trends from the step into the first post-treatment period onward by
+    :math:`\bar{M}` times the largest such change up to the reference period. It formalizes the
+    idea that the confounding factors after treatment are similar in size to those before it.
+    When :math:`\bar{M} = 1`, no change after treatment can exceed the largest one before it.
+
+    The function computes one confidence interval for each value of :math:`\bar{M}`. Both
+    methods invert a test over a grid of candidate values. Their bounds are points of that grid.
+
+    See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
+    function applied to event study estimates from outside moderndid.
 
     Parameters
     ----------
@@ -360,14 +313,14 @@ def create_sensitivity_results_rm(
         Number of pre-treatment periods.
     num_post_periods : int
         Number of post-treatment periods.
-    bound : str, default="deviation from parallel trends"
-        Type of bound:
-
-        - "Deviation from parallel trends": :math:`\Delta^{RM}` and variants
-        - "Deviation from linear trend": :math:`\Delta^{SDRM}` and variants
-
-    method : str, default="C-LF"
-        Confidence interval method: "Conditional" or "C-LF".
+    bound : {'deviation from parallel trends', 'deviation from linear trend'}, default='deviation from parallel trends'
+        Type of bound. 'deviation from parallel trends' selects :math:`\Delta^{RM}` and its
+        variants and needs at least one pre-treatment period. 'deviation from linear trend'
+        selects :math:`\Delta^{SDRM}` and its variants. Since the latest pre-treatment second
+        difference uses the two coefficients before the reference period, it needs at least two
+        pre-treatment periods.
+    method : {'C-LF', 'Conditional'}, default='C-LF'
+        Confidence interval method.
     m_bar_vec : ndarray, optional
         Vector of :math:`\bar{M}` values. Default is 10 values from 0 to 2.
     l_vec : ndarray, optional
@@ -381,91 +334,36 @@ def create_sensitivity_results_rm(
     grid_points : int, default=1000
         Number of grid points for conditional methods.
     grid_lb : float, optional
-        Lower bound for grid search.
+        Lower bound for grid search. If None, each value of :math:`\bar{M}` gets its own grid. Under
+        'deviation from parallel trends' it centers on :math:`l'\hat{\beta}_{post}`. Under 'deviation
+        from linear trend' it centers on the extension of the last pre-treatment slope. Either way it
+        reaches past the identified set at :math:`\hat{\beta}` by a margin for sampling error.
     grid_ub : float, optional
-        Upper bound for grid search.
+        Upper bound for grid search. If None, it is set the same way as ``grid_lb``.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with columns: lb, ub, method, Delta, Mbar.
+        One row per value of :math:`\bar{M}` with columns:
+
+        - **lb**: Lower bound of the robust confidence interval
+        - **ub**: Upper bound of the robust confidence interval
+        - **method**: Confidence interval method
+        - **delta**: Restriction set, such as 'DeltaRM' or 'DeltaRMPB'
+        - **Mbar**: Relative magnitude bound :math:`\bar{M}`
 
     See Also
     --------
     create_sensitivity_results_sm
     construct_original_cs
 
-    Notes
-    -----
-    Deviation from linear trend requires at least 3 pre-treatment periods.
-
-    Examples
-    --------
-    To use this function directly, we need to compute an event study and extract the
-    estimates and covariance matrix. If you're using moderndid's built-in estimators,
-    you can use the `honest_did` function to process the event study and extract the
-    estimates and covariance matrix for you.
-
-    If you're using an external estimator, you will need to extract the influence functions
-    and construct the covariance matrix. Then, you can use the `create_sensitivity_results_rm`
-    function to run the sensitivity analysis.
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...: from moderndid.didhonest import create_sensitivity_results_rm
-           ...
-           ...: df = load_mpdta()
-           ...: gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: es_result = aggte(gt_result, type="dynamic")
-
-    Suppose this is an external estimator. We can extract the influence functions and
-    construct the covariance matrix, removing the reference period.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: influence_func = es_result.influence_func
-           ...: event_times = es_result.event_times
-           ...: ref_idx = np.where(event_times == -1)[0][0]
-           ...: att_no_ref = np.delete(es_result.att_by_event, ref_idx)
-           ...: influence_no_ref = np.delete(influence_func, ref_idx, axis=1)
-           ...: n = influence_no_ref.shape[0]
-           ...: vcov = influence_no_ref.T @ influence_no_ref / (n * n)
-           ...: num_pre = int(np.sum(np.delete(event_times, ref_idx) < -1))
-           ...: num_post = len(att_no_ref) - num_pre
-
-    Finally, we run the sensitivity analysis with different values of :math:`\bar{M}`
-    bounding how large post-treatment violations can be relative to pre-treatment
-    violations.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: results = create_sensitivity_results_rm(
-           ...:     betahat=att_no_ref,
-           ...:     sigma=vcov,
-           ...:     num_pre_periods=num_pre,
-           ...:     num_post_periods=num_post,
-           ...:     m_bar_vec=[0.0, 0.5, 1.0]
-           ...: )
-           ...: results
-
     References
     ----------
 
-    .. [1] Rambachan, A., & Roth, J. (2023). A More Credible Approach to
-        Parallel Trends. Review of Economic Studies.
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -491,9 +389,11 @@ def create_sensitivity_results_rm(
 
     results = []
 
-    if bound == "deviation from linear trend" and num_pre_periods < 3:
+    if bound == "deviation from linear trend" and num_pre_periods < 2:
         raise ValueError(
-            "Not enough pre-periods for 'deviation from linear trend' (Delta^SDRM requires at least 3 pre-periods)"
+            "bound='deviation from linear trend' needs at least two pre-treatment periods to form a "
+            f"pre-treatment second difference. Got num_pre_periods={num_pre_periods}. With one pre-treatment "
+            "period, pass bound='deviation from parallel trends'."
         )
 
     compute_fn, delta_type = DeltaMethodSelector.get_relative_magnitude_method(
@@ -503,24 +403,6 @@ def create_sensitivity_results_rm(
     )
 
     for m_bar in m_bar_vec:
-        # If grid bounds are not user-specified, calculate them based on the identified set for this Mbar
-        if grid_lb is None or grid_ub is None:
-            id_set = compute_identified_set_rm(
-                m_bar=m_bar,
-                true_beta=betahat,
-                l_vec=l_vec,
-                num_pre_periods=num_pre_periods,
-                num_post_periods=num_post_periods,
-            )
-            post_indices = slice(num_pre_periods, num_pre_periods + num_post_periods)
-            sd_theta = np.sqrt(l_vec.flatten() @ sigma[post_indices, post_indices] @ l_vec.flatten())
-
-            current_grid_lb = id_set.id_lb - 20 * sd_theta
-            current_grid_ub = id_set.id_ub + 20 * sd_theta
-        else:
-            current_grid_lb = grid_lb
-            current_grid_ub = grid_ub
-
         delta_kwargs = {
             "betahat": betahat,
             "sigma": sigma,
@@ -531,8 +413,9 @@ def create_sensitivity_results_rm(
             "m_bar": m_bar,
             "hybrid_flag": hybrid_flag,
             "grid_points": grid_points,
-            "grid_lb": current_grid_lb,
-            "grid_ub": current_grid_ub,
+            "grid_lb": grid_lb,
+            "grid_ub": grid_ub,
+            "seed": seed,
         }
 
         if monotonicity_direction is not None:
@@ -567,11 +450,14 @@ def construct_original_cs(
     r"""Construct original (non-robust) confidence set.
 
     Constructs a standard confidence interval for the parameter of interest
-    assuming the parallel trends assumption holds exactly, i.e.,
+    assuming the parallel trends assumption holds exactly, so that
     :math:`\delta_{post} = 0`. This provides a baseline for comparison with
     robust confidence intervals from sensitivity analysis. The original
     confidence set uses only the post-treatment coefficients and their
     covariance to construct a standard normal-based interval.
+
+    See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
+    function applied to event study estimates from outside moderndid.
 
     Parameters
     ----------
@@ -592,64 +478,18 @@ def construct_original_cs(
     Returns
     -------
     OriginalCSResult
-        NamedTuple with lb, ub, method="Original", delta=None.
+        NamedTuple containing:
+
+        - **lb**: Lower bound of the confidence interval
+        - **ub**: Upper bound of the confidence interval
+        - **method**: The string "Original"
+        - **delta**: None, since no restriction is imposed
 
     See Also
     --------
     create_sensitivity_results_sm
     create_sensitivity_results_rm
 
-    Examples
-    --------
-    To use this function directly, we need to compute an event study and extract the
-    estimates and covariance matrix.
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...: from moderndid.didhonest import construct_original_cs
-           ...
-           ...: df = load_mpdta()
-           ...: gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: es_result = aggte(gt_result, type="dynamic")
-
-    Now we can extract the estimates and covariance matrix.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: influence_func = es_result.influence_func
-           ...: event_times = es_result.event_times
-           ...: ref_idx = np.where(event_times == -1)[0][0]
-           ...: att_no_ref = np.delete(es_result.att_by_event, ref_idx)
-           ...: influence_no_ref = np.delete(influence_func, ref_idx, axis=1)
-           ...: n = influence_no_ref.shape[0]
-           ...: vcov = influence_no_ref.T @ influence_no_ref / (n * n)
-           ...: num_pre = int(np.sum(np.delete(event_times, ref_idx) < -1))
-           ...: num_post = len(att_no_ref) - num_pre
-
-    Finally, we can construct the original confidence interval for the first post-treatment effect.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: original_ci = construct_original_cs(
-           ...:     betahat=att_no_ref,
-           ...:     sigma=vcov,
-           ...:     num_pre_periods=num_pre,
-           ...:     num_post_periods=num_post
-           ...: )
-           ...: original_ci
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)

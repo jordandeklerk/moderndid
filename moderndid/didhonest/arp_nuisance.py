@@ -1,4 +1,4 @@
-"""Andrews-Roth-Pakes (ARP) confidence intervals with nuisance parameters."""
+"""ARP confidence intervals with nuisance parameters."""
 
 import warnings
 from functools import partial
@@ -53,15 +53,16 @@ def compute_arp_nuisance_ci(
     grid_ub=None,
     grid_points=1000,
     rows_for_arp=None,
+    seed=0,
 ):
-    r"""Compute Andrews-Roth-Pakes (ARP) confidence interval with nuisance parameters.
+    r"""Compute the ARP confidence interval with nuisance parameters.
 
     Computes confidence interval for :math:`\theta = l'\tau_{post}` subject to the constraint
     that :math:`\delta \in \Delta`, where :math:`\Delta = \{\delta : A\delta \leq d\}`.
-    This implements the conditional inference approach from Andrews, Roth & Pakes (2023)
-    that provides uniformly valid inference over the identified set.
+    This implements the conditional inference approach that provides uniformly valid
+    inference over the identified set.
 
-    The method tests the composite null hypothesis from equation (12) in [2]_
+    The method tests the composite null hypothesis
 
     .. math::
         H_0: \exists \tau_{post} \in \mathbb{R}^{\bar{T}} \text{ s.t. } l'\tau_{post} = \bar{\theta}
@@ -70,7 +71,6 @@ def compute_arp_nuisance_ci(
 
     where :math:`Y_n = A\hat{\beta}_n - d` and :math:`L_{post} = [0, I]'`. After a change of
     basis using matrix :math:`\Gamma` with :math:`l'` as its first row, this becomes
-    equation (13) in [2]_
 
     .. math::
         H_0: \exists \tilde{\tau} \in \mathbb{R}^{\bar{T}-1} \text{ s.t. }
@@ -113,6 +113,8 @@ def compute_arp_nuisance_ci(
     rows_for_arp : ndarray, optional
         Subset of moments to use for ARP test. Useful when some moments are
         uninformative about post-treatment effects.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -129,18 +131,10 @@ def compute_arp_nuisance_ci(
     set's geometry.
 
     The test controls size uniformly without requiring the linear independence constraint
-    qualification (LICQ). However, when LICQ holds (i.e., gradients of binding constraints
-    are linearly independent), Proposition 3.3 shows the conditional test achieves optimal
-    local asymptotic power converging to the power envelope for tests controlling size in
-    the finite-sample normal model.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    qualification (LICQ). However, when LICQ holds, meaning that the gradients of the binding
+    constraints are linearly independent, the conditional test achieves optimal local
+    asymptotic power converging to the power envelope for tests controlling size in the
+    finite-sample normal model.
     """
     if hybrid_list is None:
         hybrid_list = {}
@@ -160,8 +154,9 @@ def compute_arp_nuisance_ci(
     # Transform constraint matrix A using Gamma^(-1) to work in theta-space
     # Extract columns corresponding to post-treatment periods and transform
     a_gamma_inv = a_matrix[:, num_pre_periods : num_pre_periods + num_post_periods] @ np.linalg.inv(gamma)
-    # First column corresponds to theta, remaining columns to nuisance parameters
-    a_gamma_inv_one = a_gamma_inv[:, 0]
+    # First column corresponds to theta, remaining columns to nuisance parameters. Since the compiled dot product
+    # in the FLCI hybrid warns and slows down on a strided column, the theta column gets a contiguous copy.
+    a_gamma_inv_one = np.ascontiguousarray(a_gamma_inv[:, 0])
     a_gamma_inv_minus_one = a_gamma_inv[:, 1:]
 
     y = a_matrix @ betahat - d_vec
@@ -174,6 +169,7 @@ def compute_arp_nuisance_ci(
             sigma_y,
             hybrid_list["hybrid_kappa"],
             rows_for_arp=rows_for_arp,
+            seed=seed,
         )
 
     y_t_matrix = prepare_theta_grid_y_values(y, a_gamma_inv_one, theta_grid)
@@ -192,24 +188,22 @@ def compute_arp_nuisance_ci(
         rows_for_arp=rows_for_arp,
     )
 
-    lb_idx, ub_idx = _binary_search_ci_bounds(test_fn, grid_points)
-
-    accept_grid = np.zeros(grid_points)
-    if lb_idx is not None:
-        accept_grid[lb_idx : ub_idx + 1] = 1.0
+    # Since the accepted set need not be an interval, every grid point is tested.
+    accept_grid = np.array([float(test_fn(i)) for i in range(grid_points)])
+    accepted = np.flatnonzero(accept_grid)
 
     results_grid = np.column_stack([theta_grid, accept_grid])
 
-    if lb_idx is not None:
-        ci_lb = theta_grid[lb_idx]
-        ci_ub = theta_grid[ub_idx]
+    if accepted.size > 0:
+        ci_lb = theta_grid[accepted[0]]
+        ci_ub = theta_grid[accepted[-1]]
     else:
         ci_lb = np.nan
         ci_ub = np.nan
 
     grid_spacing = np.diff(theta_grid)
     grid_lengths = 0.5 * np.concatenate([[grid_spacing[0]], grid_spacing[:-1] + grid_spacing[1:], [grid_spacing[-1]]])
-    length = np.sum(accept_grid * grid_lengths) if lb_idx is not None else np.nan
+    length = np.sum(accept_grid * grid_lengths) if accepted.size > 0 else np.nan
 
     if accept_grid[0] == 1 or accept_grid[-1] == 1:
         warnings.warn("CI is open at one of the endpoints; CI bounds may not be accurate.", UserWarning)
@@ -231,14 +225,14 @@ def lp_conditional_test(
     hybrid_list=None,
     rows_for_arp=None,
 ):
-    r"""Perform Andrews-Roth-Pakes (ARP) test of moment inequality with nuisance parameters.
+    r"""Perform the ARP test of moment inequalities with nuisance parameters.
 
     Tests the null hypothesis :math:`H_0: \exists \tilde{\tau} \in \mathbb{R}^{\bar{T}-1} \text{ s.t. }
     \mathbb{E}[\tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau}] \leq 0`, where
     :math:`\tilde{Y}_n(\bar{\theta}) = Y_n - \tilde{A}_{(\cdot,1)}\bar{\theta}` has been adjusted
     for the hypothesized value of :math:`\theta`. This is the core testing problem in the ARP framework.
 
-    The test statistic from equation (14) in [2]_ is
+    The test statistic is
 
     .. math::
         \hat{\eta} = \min_{\eta, \tilde{\tau}} \eta \text{ s.t. }
@@ -299,10 +293,10 @@ def lp_conditional_test(
     dict
         Dictionary containing:
 
-        - reject: bool, whether test rejects the null
-        - eta: float, test statistic value :math:`\eta^*`
-        - delta: ndarray, optimal nuisance parameters :math:`\xi^*`
-        - lambda: ndarray, Lagrange multipliers :math:`\lambda^*` at optimum
+        - **reject**: Whether the test rejects the null
+        - **eta**: Test statistic :math:`\eta^*`
+        - **delta**: Optimal nuisance parameters :math:`\xi^*`
+        - **lambda**: Lagrange multipliers :math:`\lambda^*` at the optimum
 
     Notes
     -----
@@ -312,21 +306,13 @@ def lp_conditional_test(
     :math:`\gamma_*'\tilde{X} = 0`, and there exists :math:`\tilde{\tau}` such that
     :math:`\tilde{\mu}(\bar{\theta}) - \tilde{X}\tilde{\tau} \leq 0`.
 
-    For the hybrid test, if the first-stage LF test with size :math:`\kappa` rejects
-    (i.e., :math:`\hat{\eta} > c_{LF,\kappa}`), the test rejects. Otherwise, it applies
+    For the hybrid test, if the first-stage LF test with size :math:`\kappa` rejects,
+    that is, if :math:`\hat{\eta} > c_{LF,\kappa}`, the test rejects. Otherwise, it applies
     a modified conditional test with size :math:`(\alpha-\kappa)/(1-\kappa)` that
     conditions on :math:`\hat{\eta} \leq c_{LF,\kappa}`, using :math:`v_H^{up} = \min\{v^{up}, c_{LF,\kappa}\}`.
 
     Under LICQ, the LF-hybrid test's local asymptotic power is at least as good as the
-    power of the optimal size-:math:`(\alpha-\kappa)/(1-\kappa)` test (Corollary 3.1).
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    power of the optimal size-:math:`(\alpha-\kappa)/(1-\kappa)` test.
     """
     if hybrid_list is None:
         hybrid_list = {}
@@ -427,10 +413,7 @@ def lp_conditional_test(
     # The dual approach handles cases where the primal problem is ill-conditioned
     # by working with the Lagrangian dual formulation
     if not full_rank_flag or degenerate_flag:
-        # Work with Lagrange multipliers directly
-        lp_dual_soln = _lp_dual_wrapper(y_t_arp, x_t_arp, lin_soln["eta_star"], lin_soln["lambda"], sigma_arp)
-
-        sigma_b_dual2 = float(lp_dual_soln["gamma_tilde"].T @ sigma_arp @ lp_dual_soln["gamma_tilde"])
+        sigma_b_dual2 = float(lin_soln["lambda"].T @ sigma_arp @ lin_soln["lambda"])
 
         if abs(sigma_b_dual2) < np.finfo(float).eps:
             reject = lin_soln["eta_star"] > 0
@@ -443,6 +426,19 @@ def lp_conditional_test(
 
         if sigma_b_dual2 < 0:
             raise ValueError("Negative variance in dual approach")
+
+        # Since the critical value max(0, c) is never negative, a statistic at or below zero is accepted.
+        # Skipping its truncation bounds saves their linear programs at every such grid point.
+        if lin_soln["eta_star"] <= 0:
+            return {
+                "reject": False,
+                "eta": lin_soln["eta_star"],
+                "delta": lin_soln["delta_star"],
+                "lambda": lin_soln["lambda"],
+            }
+
+        # Work with Lagrange multipliers directly
+        lp_dual_soln = _lp_dual_wrapper(y_t_arp, x_t_arp, lin_soln["eta_star"], lin_soln["lambda"], sigma_arp)
 
         sigma_b_dual = np.sqrt(sigma_b_dual2)
         maxstat = lp_dual_soln["eta"] / sigma_b_dual
@@ -459,8 +455,11 @@ def lp_conditional_test(
 
             v_flci = _compute_flci_vlo_vup(hybrid_list["vbar"], hybrid_list["dbar"], s_vec, sigma_gamma)
 
-            zlo_dual = max(lp_dual_soln["vlo"], v_flci["vlo"]) / sigma_b_dual
-            zup_dual = min(lp_dual_soln["vup"], v_flci["vup"]) / sigma_b_dual
+            # Since the first stage accepted, the statistic lies within the bounds the interval implies. Widening them
+            # to include it undoes rounding at the interval's ends.
+            eta = lp_dual_soln["eta"]
+            zlo_dual = max(lp_dual_soln["vlo"], min(v_flci["vlo"], eta)) / sigma_b_dual
+            zup_dual = min(lp_dual_soln["vup"], max(v_flci["vup"], eta)) / sigma_b_dual
         else:
             zlo_dual = lp_dual_soln["vlo"] / sigma_b_dual
             zup_dual = lp_dual_soln["vup"] / sigma_b_dual
@@ -519,12 +518,13 @@ def lp_conditional_test(
         denominator = rho.flatten()
         v_b_y = float((v_b.T @ y_t_arp).item())
 
-        # Each constraint gives either an upper or lower bound depending on sign of rho
-        maximand_or_minimand = numerator / denominator + v_b_y
-
-        vlo = np.max(maximand_or_minimand[denominator > 0]) if np.any(denominator > 0) else -np.inf
-
-        vup = np.min(maximand_or_minimand[denominator < 0]) if np.any(denominator < 0) else np.inf
+        # Rounding leaves a tiny rho of either sign on a constraint that does not move with the statistic, such as
+        # the twin of a duplicated binding row. Below 1e-10 of the terms forming it, rho counts as zero.
+        rho_scale = (np.abs(gamma_b) @ np.abs(sigma_arp) @ np.abs(v_b)).flatten() / sigma2_b
+        lower = denominator > 1e-10 * rho_scale
+        upper = denominator < -1e-10 * rho_scale
+        vlo = np.max(numerator[lower] / denominator[lower]) + v_b_y if np.any(lower) else -np.inf
+        vup = np.min(numerator[upper] / denominator[upper]) + v_b_y if np.any(upper) else np.inf
 
         if hybrid_flag == "LF":
             zlo = vlo / sigma_b
@@ -538,8 +538,11 @@ def lp_conditional_test(
 
             v_flci = _compute_flci_vlo_vup(hybrid_list["vbar"], hybrid_list["dbar"], s_vec, sigma_gamma)
 
-            zlo = max(vlo, v_flci["vlo"]) / sigma_b
-            zup = min(vup, v_flci["vup"]) / sigma_b
+            # Since the first stage accepted, the statistic lies within the bounds the interval implies. Widening them
+            # to include it undoes rounding at the interval's ends.
+            eta = lin_soln["eta_star"]
+            zlo = max(vlo, min(v_flci["vlo"], eta)) / sigma_b
+            zup = min(vup, max(v_flci["vup"], eta)) / sigma_b
         else:
             zlo = vlo / sigma_b
             zup = vup / sigma_b
@@ -603,8 +606,8 @@ def compute_vlo_vup_dual(
     dict
         Dictionary with:
 
-        - vlo: float, lower bound of conditional support
-        - vup: float, upper bound of conditional support
+        - **vlo**: Lower bound of the conditional support
+        - **vup**: Upper bound of the conditional support
 
     Notes
     -----
@@ -612,14 +615,6 @@ def compute_vlo_vup_dual(
     :math:`W'\lambda = e_1` and :math:`\lambda'\mathbf{1} = 1`, where :math:`e_1` is the
     first standard basis vector. The value :math:`v` where this maximum equals :math:`v`
     itself determines the boundary of the support.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     tol_c = 1e-6
     tol_equality = 1e-6
@@ -659,9 +654,9 @@ def compute_vlo_vup_dual(
                 break
 
         # Bisection method: guaranteed to converge but slower
-        # Use when shortcut method hasn't found the boundary
+        # A shortcut that lands on a solution has found the boundary itself. Only a stalled shortcut bisects.
         low, high = eta, mid
-        diff = tol_c + 1
+        diff = 0.0 if is_solution else tol_c + 1
 
         while diff > tol_c and iters < max_iters:
             iters += 1
@@ -700,7 +695,7 @@ def compute_vlo_vup_dual(
 
         # Bisection method now that shortcut method failed
         low, high = mid, eta
-        diff = tol_c + 1
+        diff = 0.0 if is_solution else tol_c + 1
 
         while diff > tol_c and iters < max_iters:
             iters += 1
@@ -770,14 +765,6 @@ def compute_least_favorable_cv(
     multivariate normal and :math:`\eta^* = \max_i Z_i/\sigma_i` where :math:`Z_i`
     are the standardized moments. With nuisance parameters, each simulation
     requires solving the linear program to account for optimization over :math:`\xi`.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     rng = np.random.default_rng(seed)
 
@@ -828,7 +815,7 @@ def compute_least_favorable_cv(
 def _test_delta_lp(y_t, x_t, sigma):
     r"""Solve linear program for delta test.
 
-    Solves the primal optimization problem from equation (14) in [2]_
+    Solves the primal optimization problem
 
     .. math::
 
@@ -840,7 +827,7 @@ def _test_delta_lp(y_t, x_t, sigma):
     The solution characterizes whether the null hypothesis can be rejected and identifies
     which moments bind at the optimum.
 
-    By duality (equation (15) in [2]_), this equals
+    By duality, this equals
 
     .. math::
 
@@ -866,10 +853,10 @@ def _test_delta_lp(y_t, x_t, sigma):
     dict
         Dictionary containing:
 
-        - eta_star: float, optimal value :math:`\eta^*`
-        - delta_star: ndarray, optimal nuisance parameters :math:`\xi^*`
-        - lambda: ndarray, Lagrange multipliers :math:`\lambda^*` (dual solution)
-        - success: bool, whether optimization succeeded
+        - **eta_star**: Optimal value :math:`\eta^*`
+        - **delta_star**: Optimal nuisance parameters :math:`\xi^*`
+        - **lambda**: Lagrange multipliers :math:`\lambda^*` from the dual solution
+        - **success**: Whether the optimization succeeded
 
     Notes
     -----
@@ -877,14 +864,6 @@ def _test_delta_lp(y_t, x_t, sigma):
     each moment by its standard deviation, ensuring scale invariance. The optimal
     :math:`\eta^*` can be interpreted as the maximum standardized violation of the
     moment inequalities under the least favorable choice of :math:`\xi`.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if x_t.ndim == 1:
         x_t = x_t.reshape(-1, 1)
@@ -967,10 +946,10 @@ def _lp_dual_wrapper(
     dict
         Dictionary containing:
 
-        - vlo: float, lower bound of support
-        - vup: float, upper bound of support
-        - eta: float, optimal value (passed through)
-        - gamma_tilde: ndarray, normalized multipliers (passed through)
+        - **vlo**: Lower bound of the support
+        - **vup**: Upper bound of the support
+        - **eta**: Optimal value, passed through
+        - **gamma_tilde**: Normalized multipliers, passed through
 
     Notes
     -----
@@ -989,10 +968,8 @@ def _lp_dual_wrapper(
     # This is the component of y_t orthogonal to gamma_tilde under the metric sigma
     gamma_sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
 
-    # This handles the degenerate case where gamma_sigma_gamma is zero or negative
-    # This can occur when constraints are linear combinations of each other
-    # (e.g., row i and row j are negatives with equal Lagrange multipliers)
-    # Return special values that the caller can detect and handle
+    # Rows that combine linearly, such as a row and its negative with equal multipliers, can leave this at zero.
+    # The infinite bounds below let the caller detect that case.
     if gamma_sigma_gamma <= np.finfo(float).eps:
         return {
             "vlo": -np.inf,
@@ -1053,15 +1030,11 @@ def _solve_max_program(
     b_eq = np.zeros(A_eq.shape[0])
     b_eq[0] = 1.0
 
-    n_vars = len(f)
-    bounds = [(0, None) for _ in range(n_vars)]
-
-    result = opt.linprog(
+    # The lower per-call overhead of milp matters over the thousands of these programs a grid scan solves.
+    result = opt.milp(
         c=-f,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs",
+        constraints=opt.LinearConstraint(A_eq, b_eq, b_eq),
+        bounds=opt.Bounds(0, np.inf),
     )
 
     result.objective_value = -result.fun if result.success else np.nan
@@ -1135,8 +1108,8 @@ def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):
     dict
         Dictionary with:
 
-        - vlo: float, lower truncation bound
-        - vup: float, upper truncation bound
+        - **vlo**: Lower truncation bound
+        - **vup**: Upper truncation bound
 
     Notes
     -----
@@ -1187,11 +1160,6 @@ def _construct_gamma(l_vec):
         Shape is :math:`(T_{post}, T_{post})` where :math:`T_{post}` is the
         number of post-treatment periods.
 
-    Raises
-    ------
-    ValueError
-        If construction fails to produce an invertible matrix.
-
     Notes
     -----
     This transformation enables the ARP test to separate the parameter of interest
@@ -1215,69 +1183,6 @@ def _construct_gamma(l_vec):
         raise ValueError("Failed to construct invertible Gamma matrix")
 
     return gamma
-
-
-def _binary_search_ci_bounds(test_fn, n_points):
-    """Find CI boundaries using binary search assuming contiguous acceptance.
-
-    Parameters
-    ----------
-    test_fn : callable
-        Function that takes an index i and returns True if accepted.
-    n_points : int
-        Number of grid points.
-
-    Returns
-    -------
-    tuple
-        (lb_idx, ub_idx) or (None, None) if no accepted points.
-    """
-    mid = n_points // 2
-    seed_idx = None
-
-    if test_fn(mid):
-        seed_idx = mid
-    else:
-        for offset in range(1, n_points):
-            left = mid - offset
-            right = mid + offset
-            if left >= 0 and test_fn(left):
-                seed_idx = left
-                break
-            if right < n_points and test_fn(right):
-                seed_idx = right
-                break
-            if left < 0 and right >= n_points:
-                break
-
-    if seed_idx is None:
-        return None, None
-
-    if seed_idx == 0 or not test_fn(0):
-        lo, hi = 0, seed_idx
-        while lo < hi:
-            m = (lo + hi) // 2
-            if test_fn(m):
-                hi = m
-            else:
-                lo = m + 1
-        lb_idx = lo
-    else:
-        lb_idx = 0
-
-    if seed_idx == n_points - 1 or not test_fn(n_points - 1):
-        lo, hi = seed_idx, n_points - 1
-        while lo < hi:
-            m = (lo + hi + 1) // 2
-            if test_fn(m):
-                lo = m
-            else:
-                hi = m - 1
-        ub_idx = lo
-    else:
-        ub_idx = n_points - 1
-
-    return lb_idx, ub_idx
 
 
 def _round_eps(x, eps=None):

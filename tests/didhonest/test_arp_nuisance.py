@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from moderndid.didhonest import arp_nuisance
 from moderndid.didhonest.arp_nuisance import (
     ARPNuisanceCIResult,
     _check_if_solution,
@@ -17,6 +18,8 @@ from moderndid.didhonest.arp_nuisance import (
     compute_vlo_vup_dual,
     lp_conditional_test,
 )
+from moderndid.didhonest.delta.rm.rmb import _create_relative_magnitudes_bias_constraint_matrix
+from moderndid.didhonest.numba import find_rows_with_post_period_values
 
 
 @pytest.fixture
@@ -662,3 +665,78 @@ def test_numerical_precision_handling(fast_config):
 
     result = _test_delta_lp(y_t, x_t, sigma)
     assert "success" in result
+
+
+def test_compute_arp_nuisance_ci_tests_every_grid_point(rm_cases):
+    a_matrix = _create_relative_magnitudes_bias_constraint_matrix(
+        num_pre_periods=3, num_post_periods=2, m_bar=0.5, s=-2, max_positive=False, bias_direction="positive"
+    )
+
+    result = compute_arp_nuisance_ci(
+        betahat=rm_cases["A"],
+        sigma=rm_cases["sigma"],
+        l_vec=np.array([1.0, 0.0]),
+        a_matrix=a_matrix,
+        d_vec=np.zeros(a_matrix.shape[0]),
+        num_pre_periods=3,
+        num_post_periods=2,
+        hybrid_flag="ARP",
+        grid_lb=0.045,
+        grid_ub=0.07,
+        grid_points=6,
+        rows_for_arp=find_rows_with_post_period_values(a_matrix, [3, 4]),
+    )
+
+    assert result.accept_grid[:, 1].tolist() == [1, 1, 1, 0, 0, 1]
+    assert result.ci_lb == pytest.approx(0.045)
+    assert result.ci_ub == pytest.approx(0.07)
+
+
+def test_compute_arp_nuisance_ci_seed_reaches_least_favorable_cv(rm_cases):
+    a_matrix = _create_relative_magnitudes_bias_constraint_matrix(
+        num_pre_periods=3, num_post_periods=2, m_bar=0.5, s=-2, max_positive=False, bias_direction="positive"
+    )
+    lf_cvs = []
+    for seed in [7, 7, 8]:
+        hybrid_list = {"hybrid_kappa": 0.005}
+        compute_arp_nuisance_ci(
+            betahat=rm_cases["A"],
+            sigma=rm_cases["sigma"],
+            l_vec=np.array([1.0, 0.0]),
+            a_matrix=a_matrix,
+            d_vec=np.zeros(a_matrix.shape[0]),
+            num_pre_periods=3,
+            num_post_periods=2,
+            hybrid_flag="LF",
+            hybrid_list=hybrid_list,
+            grid_lb=0.0,
+            grid_ub=0.1,
+            grid_points=3,
+            seed=seed,
+        )
+        lf_cvs.append(hybrid_list["lf_cv"])
+
+    assert lf_cvs[0] == lf_cvs[1]
+    assert lf_cvs[0] != lf_cvs[2]
+
+
+def test_compute_vlo_vup_dual_stops_at_shortcut_boundary():
+    sigma = np.array([[1.0, 0.9], [0.9, 1.0]])
+    gamma_tilde = np.array([1.0, 0.0])
+    s_t = np.array([1.0, 0.5]) - sigma @ gamma_tilde
+
+    result = compute_vlo_vup_dual(1.0, s_t, gamma_tilde, sigma, np.ones((2, 1)))
+
+    assert result["vlo"] == pytest.approx(-4.0, abs=1e-12)
+    assert result["vup"] == np.inf
+
+
+def test_lp_conditional_test_accepts_nonpositive_statistic_without_dual_bounds(monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("dual truncation bounds computed for a statistic at or below zero")
+
+    monkeypatch.setattr(arp_nuisance, "_lp_dual_wrapper", fail)
+    result = lp_conditional_test(y_t=-np.ones(4), x_t=np.zeros((4, 1)), sigma=np.eye(4), alpha=0.05)
+
+    assert not result["reject"]
+    assert result["eta"] == pytest.approx(-1.0)

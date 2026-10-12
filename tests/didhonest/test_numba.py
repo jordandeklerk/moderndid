@@ -250,7 +250,7 @@ def test_second_difference_matrix_performance(matrix_construction_sizes, request
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
-    bounds.create_second_difference_matrix(num_pre, num_post)  # Warm-up
+    bounds.create_second_difference_matrix(num_pre, num_post)
     time_numba = time_function(bounds.create_second_difference_matrix, num_pre, num_post)
     time_original = time_function(_create_second_difference_matrix_py, num_pre, num_post)
     if num_pre > 10:
@@ -265,7 +265,7 @@ def test_monotonicity_matrix_performance(matrix_construction_sizes, request, fas
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
-    numba._create_monotonicity_matrix_impl(num_pre, num_post)  # Warm-up
+    numba._create_monotonicity_matrix_impl(num_pre, num_post)
     time_numba = time_function(numba._create_monotonicity_matrix_impl, num_pre, num_post)
     time_original = time_function(_create_monotonicity_matrix_py, num_pre, num_post)
     if num_pre > 10:

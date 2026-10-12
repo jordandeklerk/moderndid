@@ -4,6 +4,7 @@ import re
 import warnings
 
 import numpy as np
+import scipy.optimize as opt
 
 
 def basis_vector(index=1, size=1):
@@ -32,22 +33,13 @@ def basis_vector(index=1, size=1):
 def validate_symmetric_psd(sigma):
     """Check if a matrix is symmetric and positive semi-definite.
 
-    Issues warnings if the matrix is not exactly symmetric or not
-    numerically positive semi-definite.
+    Issues a UserWarning if the matrix is not exactly symmetric or not numerically
+    positive semi-definite. It never raises.
 
     Parameters
     ----------
     sigma : ndarray
         Matrix to validate.
-
-    Warnings
-    --------
-    UserWarning
-        If the matrix is not symmetric or not positive semi-definite.
-
-    Notes
-    -----
-    This function only issues warnings and does not raise exceptions.
     """
     sigma = np.asarray(sigma)
 
@@ -83,11 +75,6 @@ def validate_conformable(betahat, sigma, num_pre_periods, num_post_periods, l_ve
         Number of post-treatment periods.
     l_vec : array-like
         Weight vector for post-treatment periods.
-
-    Raises
-    ------
-    ValueError
-        If any dimensions are incompatible.
     """
     betahat = np.asarray(betahat)
     sigma = np.asarray(sigma)
@@ -114,6 +101,254 @@ def validate_conformable(betahat, sigma, num_pre_periods, num_post_periods, l_ve
 
     if len(l_vec) != num_post_periods:
         raise ValueError(f"l_vec (length {len(l_vec)}) and post periods ({num_post_periods}) were non-conformable")
+
+
+def relative_magnitudes_grid_bounds(betahat, sigma, num_pre_periods, num_post_periods, l_vec, m_bar):
+    r"""Compute default grid bounds for a confidence set under relative magnitudes.
+
+    The grid centers on :math:`l'\hat{\beta}_{post}`. Under :math:`\Delta^{RM}(\bar{M})` each first
+    difference of :math:`\delta` after the reference period is at most :math:`\bar{M}` times the largest
+    pre-treatment one. The identified set at :math:`\hat{\beta}` therefore lies within
+    :math:`\bar{M} \sum_t t |l_t| \max_s |\hat{\beta}_{s+1} - \hat{\beta}_s|` of the center. The differences
+    run over the pre-treatment coefficients and the reference period.
+
+    A margin for sampling error extends both ends. It is the larger of 20 standard deviations of
+    :math:`l'\hat{\beta}_{post}` and six standard deviations of the noisiest pre-treatment first difference
+    times :math:`\bar{M} \sum_t t |l_t|`. The second term takes over at long horizons. The
+    uncertainty about the largest pre-treatment change is multiplied the most there.
+
+    Parameters
+    ----------
+    betahat : ndarray
+        Estimated event study coefficients.
+    sigma : ndarray
+        Covariance matrix of betahat.
+    num_pre_periods : int
+        Number of pre-treatment periods. Must be at least 1.
+    num_post_periods : int
+        Number of post-treatment periods.
+    l_vec : ndarray
+        Weights that define the parameter of interest :math:`\theta = l'\tau_{post}`.
+    m_bar : float
+        Relative magnitude parameter :math:`\bar{M}`.
+
+    Returns
+    -------
+    tuple
+        - **grid_lb**: Lower end of the grid
+        - **grid_ub**: Upper end of the grid
+    """
+    betahat = np.asarray(betahat, dtype=float).flatten()
+    sigma = np.asarray(sigma, dtype=float)
+    l_vec = np.asarray(l_vec, dtype=float).flatten()
+    post = slice(num_pre_periods, num_pre_periods + num_post_periods)
+
+    # Each row takes one first difference over the pre-treatment coefficients and the reference period's zero.
+    differences = np.diff(np.eye(num_pre_periods + 1)[:, :num_pre_periods], axis=0)
+    pre_sigma = sigma[:num_pre_periods, :num_pre_periods]
+    largest = np.max(np.abs(differences @ betahat[:num_pre_periods]))
+    largest_sd = np.max(np.sqrt(np.diag(differences @ pre_sigma @ differences.T)))
+
+    sd_theta = np.sqrt(l_vec @ sigma[post, post] @ l_vec)
+    reach = m_bar * (np.arange(1, num_post_periods + 1) @ np.abs(l_vec))
+    half_width = reach * largest + max(20 * sd_theta, 6 * reach * largest_sd)
+    center = l_vec @ betahat[post]
+
+    return center - half_width, center + half_width
+
+
+def linear_trend_grid_bounds(betahat, sigma, num_pre_periods, num_post_periods, l_vec, bound, relative=False):
+    r"""Compute default grid bounds for a confidence set under a bound on second differences.
+
+    The grid centers on the extension of the last pre-treatment slope,
+    :math:`l'\hat{\beta}_{post} + \hat{\beta}_{-1} \sum_t t \, l_t`. If every second difference of
+    :math:`\delta` from the reference period on is at most :math:`B` in absolute value, :math:`\delta_t`
+    departs from that line by at most :math:`B \, t(t+1)/2`. The identified set at :math:`\hat{\beta}`
+    therefore lies within :math:`B \sum_t |l_t| \, t(t+1)/2` of the center. Under :math:`\Delta^{SD}(M)`
+    the bound :math:`B` is :math:`M`. Under :math:`\Delta^{SDRM}(\bar{M})` it is :math:`\bar{M}` times the
+    largest pre-treatment second difference in absolute value.
+
+    A margin for sampling error extends both ends. It is 20 standard deviations of the center or of
+    :math:`l'\hat{\beta}_{post}`, whichever is larger. Under :math:`\Delta^{SDRM}(\bar{M})` the margin is
+    at least six standard deviations of the noisiest pre-treatment second difference times
+    :math:`\bar{M} \sum_t |l_t| \, t(t+1)/2`. That term takes over at long horizons. The uncertainty
+    about the largest pre-treatment second difference is multiplied the most there.
+
+    Parameters
+    ----------
+    betahat : ndarray
+        Estimated event study coefficients.
+    sigma : ndarray
+        Covariance matrix of betahat.
+    num_pre_periods : int
+        Number of pre-treatment periods. Must be at least 2 when ``relative`` is True.
+    num_post_periods : int
+        Number of post-treatment periods.
+    l_vec : ndarray
+        Weights that define the parameter of interest :math:`\theta = l'\tau_{post}`.
+    bound : float
+        Smoothness bound :math:`M`, or the relative magnitude parameter :math:`\bar{M}` when
+        ``relative`` is True.
+    relative : bool, default=False
+        Whether ``bound`` scales the largest pre-treatment second difference, as in
+        :math:`\Delta^{SDRM}(\bar{M})`.
+
+    Returns
+    -------
+    tuple
+        - **grid_lb**: Lower end of the grid
+        - **grid_ub**: Upper end of the grid
+    """
+    betahat = np.asarray(betahat, dtype=float).flatten()
+    sigma = np.asarray(sigma, dtype=float)
+    l_vec = np.asarray(l_vec, dtype=float).flatten()
+    post = slice(num_pre_periods, num_pre_periods + num_post_periods)
+    periods = np.arange(1, num_post_periods + 1)
+
+    center_weights = np.zeros(num_pre_periods + num_post_periods)
+    center_weights[num_pre_periods - 1] = periods @ l_vec
+    center_weights[post] = l_vec
+    center = center_weights @ betahat
+    sd_center = np.sqrt(center_weights @ sigma @ center_weights)
+    sd_theta = np.sqrt(l_vec @ sigma[post, post] @ l_vec)
+
+    reach = np.abs(l_vec) @ (periods * (periods + 1) / 2)
+    margin = 20 * max(sd_center, sd_theta)
+
+    if relative:
+        # Each row takes one second difference over the pre-treatment coefficients and the reference period's zero.
+        second_differences = np.diff(np.eye(num_pre_periods + 1)[:, :num_pre_periods], n=2, axis=0)
+        pre_sigma = sigma[:num_pre_periods, :num_pre_periods]
+        largest = np.max(np.abs(second_differences @ betahat[:num_pre_periods]))
+        largest_sd = np.max(np.sqrt(np.diag(second_differences @ pre_sigma @ second_differences.T)))
+        half_width = bound * reach * largest + max(margin, 6 * bound * reach * largest_sd)
+    else:
+        half_width = bound * reach + margin
+
+    return center - half_width, center + half_width
+
+
+def identified_set_bounds(true_beta, l_vec, a_matrix, d_vec, num_pre_periods, num_post_periods):
+    r"""Compute the identified set for one polyhedral restriction on the differential trends.
+
+    The bounds are :math:`l'\beta_{post}` minus the largest and the smallest value of
+    :math:`l'\delta_{post}` over the :math:`\delta` with :math:`A\delta \le d` and
+    :math:`\delta_{pre} = \beta_{pre}`. When no :math:`\delta` meets both conditions, the restriction
+    contradicts the pre-treatment coefficients. The identified set is then empty and both bounds are NaN.
+
+    Parameters
+    ----------
+    true_beta : ndarray
+        Coefficient vector :math:`\beta = (\beta_{pre}', \beta_{post}')'`.
+    l_vec : ndarray
+        Weights that define the parameter of interest :math:`\theta = l'\tau_{post}`.
+    a_matrix : ndarray
+        Constraint matrix :math:`A` over the pre- and post-treatment periods.
+    d_vec : ndarray
+        Constraint bounds :math:`d`.
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+
+    Returns
+    -------
+    tuple
+        - **id_lb**: Lower bound of the identified set, or NaN when the set is empty
+        - **id_ub**: Upper bound of the identified set, or NaN when the set is empty
+    """
+    true_beta = np.asarray(true_beta, dtype=float).flatten()
+    l_vec = np.asarray(l_vec, dtype=float).flatten()
+    objective = np.concatenate([np.zeros(num_pre_periods), l_vec])
+    a_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
+    b_eq = true_beta[:num_pre_periods]
+    d_vec = np.asarray(d_vec, dtype=float).flatten()
+
+    # Since the solver's feasibility tolerances are absolute, a program whose coefficients are all small is solved at
+    # unit scale. Shrinking a larger program would instead push a small d toward the tolerances.
+    scale = min(1.0, max(np.max(np.abs(b_eq), initial=0.0), np.max(np.abs(d_vec), initial=0.0)))
+    scale = scale if scale > 0 else 1.0
+    largest = _solve_trend_program(-objective, a_matrix, d_vec / scale, a_eq, b_eq / scale)
+    smallest = _solve_trend_program(objective, a_matrix, d_vec / scale, a_eq, b_eq / scale)
+
+    if largest.status == 2 or smallest.status == 2:
+        return np.nan, np.nan
+
+    l_beta_post = l_vec @ true_beta[num_pre_periods:]
+    id_lb = -np.inf if largest.status == 3 else l_beta_post + scale * largest.fun
+    id_ub = np.inf if smallest.status == 3 else l_beta_post - scale * smallest.fun
+
+    return id_lb, id_ub
+
+
+def union_of_identified_sets(bounds):
+    """Combine the identified sets of the polyhedra that make up a restriction.
+
+    The result runs from the smallest lower bound to the largest upper bound. Empty sets, whose
+    bounds are NaN, drop out. When every set is empty, so is the union.
+
+    Parameters
+    ----------
+    bounds : list of tuple
+        Lower and upper bound of each polyhedron's identified set.
+
+    Returns
+    -------
+    tuple
+        - **id_lb**: Lower bound of the union, or NaN when every set is empty
+        - **id_ub**: Upper bound of the union, or NaN when every set is empty
+    """
+    nonempty = [(lb, ub) for lb, ub in bounds if not np.isnan(lb)]
+    if not nonempty:
+        return np.nan, np.nan
+
+    return min(lb for lb, _ in nonempty), max(ub for _, ub in nonempty)
+
+
+def _solve_trend_program(objective, a_ub, b_ub, a_eq, b_eq):
+    """Solve one linear program over the differential trends with every variable free.
+
+    Parameters
+    ----------
+    objective : ndarray
+        Coefficients of the objective to minimize.
+    a_ub : ndarray
+        Inequality constraint matrix.
+    b_ub : ndarray
+        Inequality constraint bounds.
+    a_eq : ndarray
+        Equality constraint matrix.
+    b_eq : ndarray
+        Equality constraint values.
+
+    Returns
+    -------
+    OptimizeResult
+        Solver result with status 0 (solved), 2 (infeasible), or 3 (unbounded).
+    """
+    bounds = [(None, None)] * len(objective)
+    result = opt.linprog(c=objective, A_ub=a_ub, b_ub=b_ub, A_eq=a_eq, b_eq=b_eq, bounds=bounds, method="highs")
+
+    if result.status == 4:
+        # Presolve can stop at "unbounded or infeasible". Solving without it tells the two apart.
+        result = opt.linprog(
+            c=objective,
+            A_ub=a_ub,
+            b_ub=b_ub,
+            A_eq=a_eq,
+            b_eq=b_eq,
+            bounds=bounds,
+            method="highs",
+            options={"presolve": False},
+        )
+
+    if result.status not in (0, 2, 3):
+        raise RuntimeError(
+            f"The linear program for the identified set stopped without a solution ({result.message}). "
+            "Check that true_beta holds finite values on a reasonable scale."
+        )
+
+    return result
 
 
 def bin_factor(bin_spec, values, name=""):

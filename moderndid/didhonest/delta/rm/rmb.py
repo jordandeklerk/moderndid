@@ -3,13 +3,18 @@
 from typing import NamedTuple
 
 import numpy as np
-import scipy.optimize as opt
 
+from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
-from ...delta.rm.rm import _create_relative_magnitudes_constraint_matrix
+from ...delta.rm.rm import _check_relative_magnitudes_pre_periods, _create_relative_magnitudes_constraint_matrix
 from ...numba import find_rows_with_post_period_values
-from ...utils import basis_vector
+from ...utils import (
+    basis_vector,
+    identified_set_bounds,
+    relative_magnitudes_grid_bounds,
+    union_of_identified_sets,
+)
 
 
 class DeltaRMBResult(NamedTuple):
@@ -45,7 +50,7 @@ def compute_conditional_cs_rmb(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{RM}(\bar{M})` with bias sign restrictions.
 
@@ -53,8 +58,7 @@ def compute_conditional_cs_rmb(
     lies in the intersection of the relative magnitudes set :math:`\Delta^{RM}(\bar{M})`
     and a bias sign restriction set :math:`\Delta^{B}`.
 
-    The combined restriction is defined as the intersection of the sets from
-    Sections 2.4.1 and 2.4.4 of [2]_
+    The combined restriction is the intersection of the two sets
 
     .. math::
 
@@ -66,7 +70,7 @@ def compute_conditional_cs_rmb(
 
     Since :math:`\Delta^{RMB}(\bar{M})` is a finite union of polyhedra, a valid
     confidence set is constructed by taking the union of confidence sets for each
-    component polyhedron, following Lemma 2.2 of [2]_.
+    component polyhedron.
 
     Parameters
     ----------
@@ -75,7 +79,7 @@ def compute_conditional_cs_rmb(
     sigma : ndarray
         Covariance matrix of betahat.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods. Must be at least 1.
     num_post_periods : int
         Number of post-treatment periods.
     l_vec : ndarray, optional
@@ -97,11 +101,13 @@ def compute_conditional_cs_rmb(
     grid_points : int, default=1000
         Number of grid points for confidence interval search.
     grid_lb : float, optional
-        Lower bound for grid search.
+        Lower bound for grid search. If None, the grid centers on :math:`l'\hat{\beta}_{post}` and
+        reaches past the identified set under :math:`\Delta^{RM}(\bar{M})` at :math:`\hat{\beta}` by a
+        margin for sampling error.
     grid_ub : float, optional
-        Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+        Upper bound for grid search. If None, it is set the same way as ``grid_lb``.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -111,22 +117,12 @@ def compute_conditional_cs_rmb(
 
     Notes
     -----
-    The confidence set is constructed using the moment inequality approach from [1]_,
-    as described in Section 3 of [2]_. The intersection of :math:`\Delta^{RM}(\bar{M})`
-    and :math:`\Delta^{B}` forms a finite union of polyhedra (Section 2.4.5 of [2]_),
-    allowing the application of Lemma 2.2 for constructing a valid confidence set.
+    The confidence set is constructed using the moment inequality approach. Since the
+    intersection of :math:`\Delta^{RM}(\bar{M})` and :math:`\Delta^{B}` forms a finite union
+    of polyhedra, the union of the confidence sets for the polyhedra is a valid confidence set.
     The sign restriction on the bias often sharpens the identified set.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    if num_pre_periods < 2:
-        raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
+    _check_relative_magnitudes_pre_periods(num_pre_periods)
 
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -134,26 +130,11 @@ def compute_conditional_cs_rmb(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
-        sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
-
-        sigma_post = sigma[sel, sel]
-        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
-
-        if num_pre_periods > 1:
-            pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
-            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
-        else:
-            maxpre = np.abs(betahat[0])
-
-        gridoff = betahat[sel] @ l_vec
-
-        post_period_indices = np.arange(1, num_post_periods + 1)
-        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
-
-        if grid_ub is None:
-            grid_ub = gridoff + gridhalf
-        if grid_lb is None:
-            grid_lb = gridoff - gridhalf
+        default_lb, default_ub = relative_magnitudes_grid_bounds(
+            betahat, sigma, num_pre_periods, num_post_periods, l_vec, m_bar
+        )
+        grid_lb = default_lb if grid_lb is None else grid_lb
+        grid_ub = default_ub if grid_ub is None else grid_ub
 
     min_s = -(num_pre_periods - 1)
     s_values = list(range(min_s, 1))
@@ -226,16 +207,14 @@ def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_pos
     Computes the identified set for :math:`l'\tau_{post}` under the restriction
     :math:`\delta \in \Delta^{RM}(\bar{M}) \cap \Delta^B`.
 
-    The identified set is the union of identified sets for each component polyhedron,
-    as stated in (7) of [2]_
+    The identified set is the union of identified sets for each component polyhedron
 
     .. math::
 
         \mathcal{S}(\beta, \Delta^{RMB}(\bar{M})) = \bigcup_{s<0, \text{sign} \in \{+,-\}}
         \mathcal{S}(\beta, \Delta^{RM}_{s, \text{sign}}(\bar{M}) \cap \Delta^B).
 
-    For each component, the bounds are determined by solving the linear programs
-    from Lemma 2.1 of [2]_.
+    For each component, the bounds are determined by solving linear programs.
 
     Parameters
     ----------
@@ -256,17 +235,8 @@ def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_pos
     -------
     DeltaRMBResult
         Lower and upper bounds of the identified set.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    if num_pre_periods < 2:
-        raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
+    _check_relative_magnitudes_pre_periods(num_pre_periods)
 
     min_s = -(num_pre_periods - 1)
     s_values = list(range(min_s, 1))
@@ -274,34 +244,21 @@ def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_pos
     all_bounds = []
 
     for s in s_values:
-        # Compute for (+) restriction
-        bounds_plus = _compute_identified_set_rmb_fixed_s(
-            s=s,
-            m_bar=m_bar,
-            max_positive=True,
-            true_beta=true_beta,
-            l_vec=l_vec,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
-            bias_direction=bias_direction,
-        )
-        all_bounds.append(bounds_plus)
+        for max_positive in (True, False):
+            all_bounds.append(
+                _compute_identified_set_rmb_fixed_s(
+                    s=s,
+                    m_bar=m_bar,
+                    max_positive=max_positive,
+                    true_beta=true_beta,
+                    l_vec=l_vec,
+                    num_pre_periods=num_pre_periods,
+                    num_post_periods=num_post_periods,
+                    bias_direction=bias_direction,
+                )
+            )
 
-        # Compute for (-) restriction
-        bounds_minus = _compute_identified_set_rmb_fixed_s(
-            s=s,
-            m_bar=m_bar,
-            max_positive=False,
-            true_beta=true_beta,
-            l_vec=l_vec,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
-            bias_direction=bias_direction,
-        )
-        all_bounds.append(bounds_minus)
-
-    id_lb = min(b.id_lb for b in all_bounds)
-    id_ub = max(b.id_ub for b in all_bounds)
+    id_lb, id_ub = union_of_identified_sets(all_bounds)
 
     return DeltaRMBResult(id_lb=id_lb, id_ub=id_ub)
 
@@ -328,9 +285,8 @@ def _create_relative_magnitudes_bias_constraint_matrix(
         \Delta^{RMB}_{s,sign}(\bar{M}) = \Delta^{RM}_{s,sign}(\bar{M}) \cap \Delta^{B}
 
     where :math:`\Delta^{RM}_{s,sign}(\bar{M})` is a component of the relative
-    magnitudes restriction and :math:`\Delta^B` is the bias sign restriction from
-    Section 2.4.4 of [2]_. Both are polyhedra, so their intersection is also a
-    polyhedron.
+    magnitudes restriction and :math:`\Delta^B` is the bias sign restriction. Since both
+    are polyhedra, their intersection is also a polyhedron.
 
     Parameters
     ----------
@@ -341,7 +297,7 @@ def _create_relative_magnitudes_bias_constraint_matrix(
     m_bar : float, default=1
         Relative magnitude parameter :math:`\bar{M}`.
     s : int, default=0
-        Reference period for relative magnitudes restriction.
+        Period whose first difference :math:`\delta_s - \delta_{s-1}` bounds the others.
     max_positive : bool, default=True
         If True, uses (+) restriction; if False, uses (-) restriction.
     drop_zero_period : bool, default=True
@@ -353,14 +309,6 @@ def _create_relative_magnitudes_bias_constraint_matrix(
     -------
     ndarray
         Constraint matrix A for the combined restriction.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     A_rm = _create_relative_magnitudes_constraint_matrix(
         num_pre_periods=num_pre_periods,
@@ -392,13 +340,13 @@ def _compute_identified_set_rmb_fixed_s(
 ):
     r"""Compute identified set for a component of :math:`\Delta^{RMB}(\bar{M})` at fixed s.
 
-    Helper function that solves the linear programs from Lemma 2.1 of [2]_ for a
-    specific polyhedron :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M}) \cap \Delta^B`.
+    Helper function that solves the linear programs for a specific polyhedron
+    :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M}) \cap \Delta^B`.
 
     Parameters
     ----------
     s : int
-        Reference period for relative magnitudes restriction.
+        Period whose first difference :math:`\delta_s - \delta_{s-1}` bounds the others.
     m_bar : float
         Relative magnitude parameter :math:`\bar{M}`.
     max_positive : bool
@@ -417,19 +365,9 @@ def _compute_identified_set_rmb_fixed_s(
     Returns
     -------
     DeltaRMBResult
-        Lower and upper bounds of the identified set for the component polyhedron.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+        Lower and upper bounds of the identified set for the component polyhedron. Both are NaN
+        when the pre-treatment coefficients rule the polyhedron out.
     """
-    # Objective: min/max l'*delta_post
-    f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec])
-
     A_rmb = _create_relative_magnitudes_bias_constraint_matrix(
         num_pre_periods=num_pre_periods,
         num_post_periods=num_post_periods,
@@ -440,47 +378,7 @@ def _compute_identified_set_rmb_fixed_s(
     )
     d_rmb = _create_relative_magnitudes_bias_constraint_vector(A_rmb)
 
-    pre_period_equality = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
-
-    A_ineq = A_rmb
-    b_ineq = d_rmb
-    A_eq = pre_period_equality
-    b_eq = true_beta[:num_pre_periods]
-
-    # Bounds: all variables unconstrained
-    bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
-
-    if b_ineq.ndim != 1:
-        b_ineq = b_ineq.flatten()
-    if b_eq.ndim != 1:
-        b_eq = b_eq.flatten()
-
-    result_max = opt.linprog(
-        c=-f_delta,
-        A_ub=A_ineq,
-        b_ub=b_ineq,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs",
-    )
-
-    result_min = opt.linprog(
-        c=f_delta,
-        A_ub=A_ineq,
-        b_ub=b_ineq,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs",
-    )
-
-    if not result_max.success or not result_min.success:
-        observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
-        return DeltaRMBResult(id_lb=observed_val, id_ub=observed_val)
-
-    id_ub = l_vec.flatten() @ true_beta[num_pre_periods:] - result_min.fun
-    id_lb = l_vec.flatten() @ true_beta[num_pre_periods:] + result_max.fun
+    id_lb, id_ub = identified_set_bounds(true_beta, l_vec, A_rmb, d_rmb, num_pre_periods, num_post_periods)
 
     return DeltaRMBResult(id_lb=id_lb, id_ub=id_ub)
 
@@ -502,7 +400,7 @@ def _compute_conditional_cs_rmb_fixed_s(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional CS for a component of :math:`\Delta^{RMB}(\bar{M})` at fixed :math:`s`.
 
@@ -512,7 +410,7 @@ def _compute_conditional_cs_rmb_fixed_s(
     Parameters
     ----------
     s : int
-        Reference period for relative magnitudes restriction.
+        Period whose first difference :math:`\delta_s - \delta_{s-1}` bounds the others.
     max_positive : bool
         If True, uses (+) restriction; if False, uses (-) restriction.
     m_bar : float
@@ -539,25 +437,17 @@ def _compute_conditional_cs_rmb_fixed_s(
         If True, use only post-period moments for ARP test.
     grid_points : int, default=1000
         Number of grid points for confidence interval search.
-    grid_lb : float, optional
+    grid_lb : float
         Lower bound for grid search.
-    grid_ub : float, optional
+    grid_ub : float
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     dict
         Dictionary with 'grid' and 'accept' arrays.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if hybrid_kappa is None:
         hybrid_kappa = alpha / 10
@@ -577,38 +467,18 @@ def _compute_conditional_cs_rmb_fixed_s(
     )
     d_rmb = _create_relative_magnitudes_bias_constraint_vector(A_rmb)
 
+    rows_for_arp = None
     if post_period_moments_only and num_post_periods > 1:
         post_period_indices = list(range(num_pre_periods, num_pre_periods + num_post_periods))
         rows_for_arp = find_rows_with_post_period_values(A_rmb, post_period_indices)
-    else:
-        rows_for_arp = None
-        if num_post_periods == 1:
-            post_period_rows = np.where(A_rmb[:, -1] != 0)[0]
-            if len(post_period_rows) > 0:
-                A_rmb = A_rmb[post_period_rows, :]
-                d_rmb = d_rmb[post_period_rows]
+    elif post_period_moments_only:
+        # With one post-period, rows that leave out its coefficient say nothing about theta.
+        post_period_rows = np.flatnonzero(A_rmb[:, -1] != 0)
+        A_rmb = A_rmb[post_period_rows]
+        d_rmb = d_rmb[post_period_rows]
 
     if grid_lb is None or grid_ub is None:
-        sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
-
-        sigma_post = sigma[sel, sel]
-        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
-
-        if num_pre_periods > 1:
-            pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
-            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
-        else:
-            maxpre = np.abs(betahat[0])
-
-        gridoff = betahat[sel] @ l_vec
-
-        post_period_indices = np.arange(1, num_post_periods + 1)
-        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
-
-        if grid_ub is None:
-            grid_ub = gridoff + gridhalf
-        if grid_lb is None:
-            grid_lb = gridoff - gridhalf
+        raise ValueError("grid_lb and grid_ub must be provided.")
 
     if num_post_periods == 1:
         if hybrid_flag == "LF":
@@ -620,24 +490,22 @@ def _compute_conditional_cs_rmb_fixed_s(
             )
             hybrid_list["lf_cv"] = lf_cv
 
-        # Use no-nuisance CI function
-        result = compute_arp_nuisance_ci(
-            betahat=betahat,
+        result = compute_arp_ci(
+            beta_hat=betahat,
             sigma=sigma,
-            l_vec=l_vec,
-            a_matrix=A_rmb,
-            d_vec=d_rmb,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
+            A=A_rmb,
+            d=d_rmb,
+            n_pre_periods=num_pre_periods,
+            n_post_periods=num_post_periods,
             alpha=alpha,
             hybrid_flag=hybrid_flag,
-            hybrid_list=hybrid_list,
+            hybrid_kappa=hybrid_kappa,
+            lf_cv=hybrid_list.get("lf_cv"),
             grid_lb=grid_lb,
             grid_ub=grid_ub,
             grid_points=grid_points,
-            rows_for_arp=None,
         )
-        return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
+        return {"grid": result.theta_grid, "accept": result.accept_grid.astype(float)}
 
     # Multiple post-periods case
     result = compute_arp_nuisance_ci(
@@ -655,6 +523,7 @@ def _compute_conditional_cs_rmb_fixed_s(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}

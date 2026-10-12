@@ -201,7 +201,11 @@ def test_create_sdrm_constraint_vector():
 
 
 def test_insufficient_pre_periods():
-    with pytest.raises(ValueError, match="Not enough pre-periods"):
+    with pytest.raises(ValueError, match="need at least two pre-treatment periods"):
+        compute_identified_set_sdrm(
+            m_bar=1.0, true_beta=np.array([0.1, 0.2]), l_vec=np.array([1.0]), num_pre_periods=1, num_post_periods=1
+        )
+    with pytest.raises(ValueError, match="need at least two pre-treatment periods"):
         compute_conditional_cs_sdrm(
             betahat=np.array([0.1, 0.2]),
             sigma=np.eye(2),
@@ -298,7 +302,7 @@ def test_large_m_bar(basic_setup):
 
 
 @pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
-def test_different_alpha_levels(basic_setup, alpha, fast_config):
+def test_different_alpha_levels(basic_setup, alpha):
     result = compute_conditional_cs_sdrm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -306,11 +310,13 @@ def test_different_alpha_levels(basic_setup, alpha, fast_config):
         num_post_periods=basic_setup["num_post_periods"],
         m_bar=1.0,
         alpha=alpha,
-        grid_points=fast_config["grid_points_small"],
+        grid_points=40,
     )
 
     assert isinstance(result, dict)
     assert np.sum(result["accept"]) > 0
+    assert result["accept"][0] == 0
+    assert result["accept"][-1] == 0
 
 
 @pytest.mark.parametrize("m_bar", [0.5, 1.0, 2.0])
@@ -369,3 +375,110 @@ def test_constraint_matrix_properties():
     )
 
     assert A_drop.shape[1] == num_pre_periods + num_post_periods
+
+
+def test_conditional_cs_sdrm_default_grid_reaches_past_a_noisy_long_horizon_set(noisy_long_horizon_event_study):
+    l_vec = np.zeros(8)
+    l_vec[-1] = 1.0
+
+    result = compute_conditional_cs_sdrm(
+        betahat=noisy_long_horizon_event_study["betahat"],
+        sigma=noisy_long_horizon_event_study["sigma"],
+        num_pre_periods=3,
+        num_post_periods=8,
+        l_vec=l_vec,
+        m_bar=2.0,
+        hybrid_flag="LF",
+        grid_points=30,
+    )
+
+    accept = np.asarray(result["accept"]).astype(bool)
+    grid = np.asarray(result["grid"])
+    assert not accept[0]
+    assert not accept[-1]
+    assert (grid[accept].min(), grid[accept].max()) == pytest.approx((-10.9360204, 11.1328204), abs=1e-6)
+
+
+@pytest.mark.parametrize("target,m_bar", [(0, 0.0), (3, 0.0), (3, 2.0)])
+def test_conditional_cs_sdrm_default_grid_covers_the_set_on_a_linear_pre_trend(linear_trend_event_study, target, m_bar):
+    l_vec = np.zeros(4)
+    l_vec[target] = 1.0
+    kwargs = {
+        "betahat": linear_trend_event_study["betahat"],
+        "sigma": linear_trend_event_study["sigma"],
+        "num_pre_periods": 3,
+        "num_post_periods": 4,
+        "l_vec": l_vec,
+        "m_bar": m_bar,
+    }
+
+    default = compute_conditional_cs_sdrm(**kwargs, grid_points=51)
+    fine = compute_conditional_cs_sdrm(**kwargs, grid_points=161, grid_lb=-0.4, grid_ub=0.4)
+
+    accept = np.asarray(default["accept"]).astype(bool)
+    fine_accepted = np.asarray(fine["grid"])[np.asarray(fine["accept"]).astype(bool)]
+    tolerance = (default["grid"][1] - default["grid"][0]) + 0.005
+    assert not accept[0]
+    assert not accept[-1]
+    assert default["grid"][accept].min() == pytest.approx(fine_accepted.min(), abs=tolerance)
+    assert default["grid"][accept].max() == pytest.approx(fine_accepted.max(), abs=tolerance)
+
+
+@pytest.mark.parametrize("m_bar", [0.0, 0.1, 0.5, 1.0, 2.0])
+def test_identified_set_sdrm_two_pre_periods_matches_closed_form(two_pre_period_event_study, m_bar):
+    betahat = two_pre_period_event_study["betahat"]
+    bound = 0.09 * m_bar
+
+    first = compute_identified_set_sdrm(m_bar, betahat, np.array([1.0, 0.0]), 2, 2)
+    second = compute_identified_set_sdrm(m_bar, betahat, np.array([0.0, 1.0]), 2, 2)
+    both = compute_identified_set_sdrm(m_bar, betahat, np.array([1.0, 1.0]), 2, 2)
+
+    assert (first.id_lb, first.id_ub) == pytest.approx((0.28 - bound, 0.28 + bound), abs=1e-8)
+    assert (second.id_lb, second.id_ub) == pytest.approx((0.36 - 3 * bound, 0.36 + 3 * bound), abs=1e-8)
+    assert (both.id_lb, both.id_ub) == pytest.approx((0.64 - 4 * bound, 0.64 + 4 * bound), abs=1e-8)
+
+
+def test_conditional_cs_sdrm_two_pre_periods(two_pre_period_event_study):
+    result = compute_conditional_cs_sdrm(
+        betahat=two_pre_period_event_study["betahat"],
+        sigma=two_pre_period_event_study["sigma"],
+        num_pre_periods=2,
+        num_post_periods=2,
+        l_vec=np.array([1.0, 0.0]),
+        m_bar=0.5,
+        hybrid_flag="ARP",
+        grid_points=101,
+        grid_lb=-1.0,
+        grid_ub=1.5,
+    )
+
+    assert np.asarray(result["accept"]).astype(int).tolist() == [0] * 32 + [1] * 37 + [0] * 32
+
+
+@pytest.mark.parametrize(
+    "hybrid_flag,post_only_range,all_rows_range",
+    [("ARP", (-0.09, 0.65), (-0.2025, 0.685)), ("LF", (-0.0975, 0.6575), (-0.21, 0.695))],
+)
+def test_conditional_cs_sdrm_one_post_period_uses_only_post_period_rows(
+    two_pre_period_event_study, hybrid_flag, post_only_range, all_rows_range
+):
+    kwargs = {
+        "betahat": two_pre_period_event_study["betahat"][:3],
+        "sigma": two_pre_period_event_study["sigma"][:3, :3],
+        "num_pre_periods": 2,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 0.0,
+        "hybrid_flag": hybrid_flag,
+        "grid_points": 1001,
+        "grid_lb": -1.0,
+        "grid_ub": 1.5,
+    }
+
+    post_only = compute_conditional_cs_sdrm(**kwargs)
+    all_rows = compute_conditional_cs_sdrm(**kwargs, post_period_moments_only=False)
+
+    post_only_grid = post_only["grid"][np.asarray(post_only["accept"]).astype(bool)]
+    all_rows_grid = all_rows["grid"][np.asarray(all_rows["accept"]).astype(bool)]
+    assert (post_only_grid.min(), post_only_grid.max()) == pytest.approx(post_only_range, abs=1e-9)
+    assert (all_rows_grid.min(), all_rows_grid.max()) == pytest.approx(all_rows_range, abs=1e-9)

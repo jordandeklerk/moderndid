@@ -2,6 +2,8 @@
 
 from typing import NamedTuple, Protocol
 
+import numpy as np
+
 
 class DeltaResult(NamedTuple):
     """Container for delta method computation results.
@@ -32,9 +34,9 @@ class ConditionalCSResult(NamedTuple):
     """
 
     #: Grid of parameter values tested.
-    grid: any
+    grid: np.ndarray
     #: Boolean array indicating acceptance at each grid point.
-    accept: any
+    accept: np.ndarray
 
 
 class DeltaMethodProtocol(Protocol):

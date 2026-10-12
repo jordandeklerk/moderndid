@@ -1,6 +1,6 @@
 # Honest Difference-in-Differences
 
-This module provides sensitivity analysis for difference-in-differences designs, allowing researchers to assess how violations of the parallel trends assumption affect their conclusions. Rather than assuming exactly parallel trends, this framework constructs robust confidence intervals that remain valid under plausible violations.
+This module provides sensitivity analysis for difference-in-differences designs. It shows how violations of the parallel trends assumption affect a study's conclusions. Rather than assuming exactly parallel trends, it constructs confidence intervals that remain valid when the violations stay within limits you choose.
 
 The computational methods here are inspired by the corresponding R package [HonestDiD](https://github.com/asheshrambachan/HonestDiD) by Rambachan and Roth.
 
@@ -17,6 +17,7 @@ result = did.att_gt(
     tname="year",
     idname="countyreal",
     gname="first.treat",
+    base_period="universal",
 )
 event_study = did.aggte(result, type="dynamic")
 
@@ -40,4 +41,4 @@ did.plot_sensitivity(sensitivity)
 
 ## References
 
-Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends. *American Economic Review*, 113(9), 2555-2591.
+Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends. *Review of Economic Studies*, 90(5), 2555-2591.

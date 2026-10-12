@@ -32,61 +32,61 @@ def basic_setup():
     }
 
 
-def test_compute_identified_set_sdrmm_basic(basic_setup):
+@pytest.mark.parametrize("m_bar,expected", [(0.0, (0.14, 0.14)), (1.0, (0.13, 0.15)), (2.0, (0.12, 0.15))])
+def test_compute_identified_set_sdrmm_basic(monotone_event_study, m_bar, expected):
     result = compute_identified_set_sdrmm(
-        m_bar=1.0,
-        true_beta=basic_setup["betahat"],
+        m_bar=m_bar,
+        true_beta=monotone_event_study["betahat"],
         l_vec=np.array([1, 0, 0]),
-        num_pre_periods=basic_setup["num_pre_periods"],
-        num_post_periods=basic_setup["num_post_periods"],
+        num_pre_periods=4,
+        num_post_periods=3,
         monotonicity_direction="increasing",
     )
 
     assert isinstance(result, DeltaSDRMMResult)
-    assert result.id_lb <= result.id_ub
-    assert not np.isnan(result.id_lb)
-    assert not np.isnan(result.id_ub)
+    assert (result.id_lb, result.id_ub) == pytest.approx(expected, abs=1e-8)
 
 
-def test_compute_identified_set_sdrmm_decreasing(basic_setup):
+def test_compute_identified_set_sdrmm_decreasing(monotone_event_study):
+    result = compute_identified_set_sdrmm(
+        m_bar=1.0,
+        true_beta=monotone_event_study["betahat"],
+        l_vec=np.array([1, 0, 0]),
+        num_pre_periods=4,
+        num_post_periods=3,
+        monotonicity_direction="decreasing",
+    )
+
+    assert np.isnan(result.id_lb)
+    assert np.isnan(result.id_ub)
+
+
+@pytest.mark.parametrize("monotonicity_direction", ["increasing", "decreasing"])
+def test_compute_identified_set_sdrmm_empty_when_pre_periods_are_not_monotone(basic_setup, monotonicity_direction):
     result = compute_identified_set_sdrmm(
         m_bar=1.0,
         true_beta=basic_setup["betahat"],
         l_vec=np.array([1, 0, 0]),
         num_pre_periods=basic_setup["num_pre_periods"],
         num_post_periods=basic_setup["num_post_periods"],
-        monotonicity_direction="decreasing",
+        monotonicity_direction=monotonicity_direction,
     )
 
-    assert isinstance(result, DeltaSDRMMResult)
-    assert result.id_lb <= result.id_ub
+    assert np.isnan(result.id_lb)
+    assert np.isnan(result.id_ub)
 
 
-def test_compute_identified_set_sdrmm_zero_mbar(basic_setup):
-    result = compute_identified_set_sdrmm(
-        m_bar=0.0,
-        true_beta=basic_setup["betahat"],
-        l_vec=np.array([1, 0, 0]),
-        num_pre_periods=basic_setup["num_pre_periods"],
-        num_post_periods=basic_setup["num_post_periods"],
-    )
-
-    assert isinstance(result, DeltaSDRMMResult)
-    assert result.id_lb <= result.id_ub
-
-
-def test_compute_identified_set_sdrmm_different_l_vec(basic_setup):
+def test_compute_identified_set_sdrmm_different_l_vec(monotone_event_study):
     l_vec = np.array([0.5, 0.3, 0.2])
     result = compute_identified_set_sdrmm(
         m_bar=1.5,
-        true_beta=basic_setup["betahat"],
+        true_beta=monotone_event_study["betahat"],
         l_vec=l_vec,
-        num_pre_periods=basic_setup["num_pre_periods"],
-        num_post_periods=basic_setup["num_post_periods"],
+        num_pre_periods=4,
+        num_post_periods=3,
     )
 
-    observed = l_vec @ basic_setup["betahat"][basic_setup["num_pre_periods"] :]
-    assert result.id_lb <= observed <= result.id_ub
+    assert (result.id_lb, result.id_ub) == pytest.approx((0.067, 0.123), abs=1e-8)
 
 
 def test_compute_conditional_cs_sdrmm_single_post_period(fast_config):
@@ -220,7 +220,11 @@ def test_create_sdrmm_constraint_vector():
 
 
 def test_insufficient_pre_periods():
-    with pytest.raises(ValueError, match="Not enough pre-periods"):
+    with pytest.raises(ValueError, match="need at least two pre-treatment periods"):
+        compute_identified_set_sdrmm(
+            m_bar=1.0, true_beta=np.array([0.1, 0.2]), l_vec=np.array([1.0]), num_pre_periods=1, num_post_periods=1
+        )
+    with pytest.raises(ValueError, match="need at least two pre-treatment periods"):
         compute_conditional_cs_sdrmm(
             betahat=np.array([0.1, 0.2]),
             sigma=np.eye(2),
@@ -315,21 +319,21 @@ def test_custom_grid_bounds(basic_setup, fast_config):
     assert result["grid"][-1] <= 0.5
 
 
-def test_large_m_bar(basic_setup):
+def test_large_m_bar(monotone_event_study):
     result = compute_identified_set_sdrmm(
         m_bar=10.0,
-        true_beta=basic_setup["betahat"],
+        true_beta=monotone_event_study["betahat"],
         l_vec=np.array([1, 0, 0]),
-        num_pre_periods=basic_setup["num_pre_periods"],
-        num_post_periods=basic_setup["num_post_periods"],
+        num_pre_periods=4,
+        num_post_periods=3,
     )
 
     assert isinstance(result, DeltaSDRMMResult)
-    assert result.id_ub - result.id_lb >= 0
+    assert (result.id_lb, result.id_ub) == pytest.approx((0.04, 0.15), abs=1e-8)
 
 
 @pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
-def test_different_alpha_levels(basic_setup, alpha, fast_config):
+def test_different_alpha_levels(basic_setup, alpha):
     result = compute_conditional_cs_sdrmm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -337,11 +341,13 @@ def test_different_alpha_levels(basic_setup, alpha, fast_config):
         num_post_periods=basic_setup["num_post_periods"],
         m_bar=1.0,
         alpha=alpha,
-        grid_points=fast_config["grid_points_small"],
+        grid_points=40,
     )
 
     assert isinstance(result, dict)
     assert np.sum(result["accept"]) > 0
+    assert result["accept"][0] == 0
+    assert result["accept"][-1] == 0
 
 
 @pytest.mark.parametrize("m_bar", [0.5, 1.0, 2.0])
@@ -400,3 +406,56 @@ def test_constraint_matrix_properties():
     )
 
     assert A_drop.shape[1] == num_pre_periods + num_post_periods
+
+
+def test_conditional_cs_sdrmm_default_grid_covers_the_set_on_a_linear_pre_trend(linear_trend_event_study):
+    kwargs = {
+        "betahat": linear_trend_event_study["betahat"],
+        "sigma": linear_trend_event_study["sigma"],
+        "num_pre_periods": 3,
+        "num_post_periods": 4,
+        "l_vec": np.array([0.0, 0.0, 0.0, 1.0]),
+        "m_bar": 0.5,
+        "monotonicity_direction": "increasing",
+    }
+
+    default = compute_conditional_cs_sdrmm(**kwargs, grid_points=51)
+    fine = compute_conditional_cs_sdrmm(**kwargs, grid_points=161, grid_lb=-0.4, grid_ub=0.4)
+
+    accept = np.asarray(default["accept"]).astype(bool)
+    fine_accepted = np.asarray(fine["grid"])[np.asarray(fine["accept"]).astype(bool)]
+    tolerance = (default["grid"][1] - default["grid"][0]) + 0.005
+    assert not accept[0]
+    assert not accept[-1]
+    assert default["grid"][accept].min() == pytest.approx(fine_accepted.min(), abs=tolerance)
+    assert default["grid"][accept].max() == pytest.approx(fine_accepted.max(), abs=tolerance)
+
+
+@pytest.mark.parametrize(
+    "hybrid_flag,post_only_range,all_rows_range",
+    [("ARP", (-0.1975, 0.355), (-0.285, 0.3875)), ("LF", (-0.205, 0.36), (-0.2925, 0.3925))],
+)
+def test_conditional_cs_sdrmm_one_post_period_uses_only_post_period_rows(
+    monotone_event_study, hybrid_flag, post_only_range, all_rows_range
+):
+    kwargs = {
+        "betahat": monotone_event_study["betahat"][:5],
+        "sigma": monotone_event_study["sigma"][:5, :5],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 0.0,
+        "monotonicity_direction": "increasing",
+        "hybrid_flag": hybrid_flag,
+        "grid_points": 1001,
+        "grid_lb": -1.0,
+        "grid_ub": 1.5,
+    }
+
+    post_only = compute_conditional_cs_sdrmm(**kwargs)
+    all_rows = compute_conditional_cs_sdrmm(**kwargs, post_period_moments_only=False)
+
+    post_only_grid = post_only["grid"][np.asarray(post_only["accept"]).astype(bool)]
+    all_rows_grid = all_rows["grid"][np.asarray(all_rows["accept"]).astype(bool)]
+    assert (post_only_grid.min(), post_only_grid.max()) == pytest.approx(post_only_range, abs=1e-9)
+    assert (all_rows_grid.min(), all_rows_grid.max()) == pytest.approx(all_rows_range, abs=1e-9)

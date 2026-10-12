@@ -64,7 +64,7 @@ def test_create_sd_constraint_vector():
 
 def test_compute_identified_set_sd_basic(simple_data):
     result = compute_identified_set_sd(
-        m_bar=0.1,
+        m_bar=0.3,
         true_beta=simple_data["betahat"],
         l_vec=simple_data["l_vec"],
         num_pre_periods=simple_data["num_pre_periods"],
@@ -72,26 +72,38 @@ def test_compute_identified_set_sd_basic(simple_data):
     )
 
     assert isinstance(result, DeltaSDResult)
-    assert hasattr(result, "id_lb")
-    assert hasattr(result, "id_ub")
-    assert result.id_lb <= result.id_ub
+    assert (result.id_lb, result.id_ub) == pytest.approx((-0.13, 0.47), abs=1e-8)
 
 
-def test_compute_identified_set_sd_zero_m_bar(simple_data):
+def test_compute_identified_set_sd_zero_m_bar():
     result = compute_identified_set_sd(
         m_bar=0,
+        true_beta=np.array([0.06, 0.04, 0.02, 0.15, 0.2]),
+        l_vec=np.array([1, 0]),
+        num_pre_periods=3,
+        num_post_periods=2,
+    )
+
+    assert (result.id_lb, result.id_ub) == pytest.approx((0.17, 0.17), abs=1e-8)
+
+
+@pytest.mark.parametrize("m_bar", [0.0, 0.1])
+def test_compute_identified_set_sd_empty_when_pre_period_curvature_exceeds_m(simple_data, m_bar):
+    result = compute_identified_set_sd(
+        m_bar=m_bar,
         true_beta=simple_data["betahat"],
         l_vec=simple_data["l_vec"],
         num_pre_periods=simple_data["num_pre_periods"],
         num_post_periods=simple_data["num_post_periods"],
     )
 
-    assert np.isclose(result.id_lb, result.id_ub, rtol=1e-6)
+    assert np.isnan(result.id_lb)
+    assert np.isnan(result.id_ub)
 
 
 def test_compute_identified_set_sd_large_m_bar(simple_data):
     result_small = compute_identified_set_sd(
-        m_bar=0.1,
+        m_bar=0.3,
         true_beta=simple_data["betahat"],
         l_vec=simple_data["l_vec"],
         num_pre_periods=simple_data["num_pre_periods"],
@@ -106,7 +118,8 @@ def test_compute_identified_set_sd_large_m_bar(simple_data):
         num_post_periods=simple_data["num_post_periods"],
     )
 
-    assert result_large.id_ub - result_large.id_lb > result_small.id_ub - result_small.id_lb
+    assert result_small.id_ub - result_small.id_lb == pytest.approx(0.6, abs=1e-8)
+    assert (result_large.id_lb, result_large.id_ub) == pytest.approx((-0.83, 1.17), abs=1e-8)
 
 
 def test_compute_conditional_cs_sd_basic(simple_data, fast_config):
@@ -195,8 +208,7 @@ def test_compute_conditional_cs_sd_post_period_moments_only(simple_data, fast_co
 
 
 def test_identified_set_monotonicity():
-    np.random.seed(42)
-    true_beta = np.array([0.1, 0.05, 0.02, 0.15, 0.2])
+    true_beta = np.array([0.06, 0.04, 0.02, 0.15, 0.2])
     l_vec = np.array([1, 0])
 
     m_values = [0, 0.1, 0.5, 1.0]
@@ -212,8 +224,7 @@ def test_identified_set_monotonicity():
         )
         widths.append(result.id_ub - result.id_lb)
 
-    for i in range(1, len(widths)):
-        assert widths[i] >= widths[i - 1]
+    assert widths == pytest.approx([0.0, 0.2, 1.0, 2.0], abs=1e-8)
 
 
 def test_edge_case_all_zero_beta():
@@ -230,3 +241,71 @@ def test_edge_case_all_zero_beta():
 
     assert isinstance(result, DeltaSDResult)
     assert result.id_lb <= 0 <= result.id_ub
+
+
+@pytest.mark.parametrize(
+    "m_bar,expected",
+    [
+        (0.0, [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]),
+        (0.01, [0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0]),
+    ],
+)
+def test_conditional_cs_sd_single_post_period_conditional(one_post_event_study, m_bar, expected):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    result = compute_conditional_cs_sd(**kwargs, m_bar=m_bar, hybrid_flag="ARP")
+
+    assert result["accept"].astype(int).tolist() == expected
+
+
+def test_conditional_cs_sd_single_post_period_hybrids(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    flci = compute_conditional_cs_sd(**kwargs, m_bar=0.01, hybrid_flag="FLCI")
+    lf_first = compute_conditional_cs_sd(**kwargs, m_bar=0.01, hybrid_flag="LF")
+    lf_second = compute_conditional_cs_sd(**kwargs, m_bar=0.01, hybrid_flag="LF")
+
+    assert flci["accept"][np.argmin(np.abs(flci["grid"] - 0.045))] == 1
+    assert np.array_equal(lf_first["accept"], lf_second["accept"])
+
+
+@pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
+def test_conditional_cs_sd_default_grid_covers_an_effect_far_from_zero(hybrid_flag):
+    kwargs = {
+        "betahat": np.array([0.01, -0.01, 0.0, 0.50, 0.55]),
+        "sigma": (np.full((5, 5), 0.3) + 0.7 * np.eye(5)) * 0.01**2,
+        "num_pre_periods": 3,
+        "num_post_periods": 2,
+        "l_vec": np.array([1.0, 0.0]),
+        "m_bar": 0.005,
+        "hybrid_flag": hybrid_flag,
+    }
+
+    default = compute_conditional_cs_sd(**kwargs, grid_points=101)
+    fine = compute_conditional_cs_sd(**kwargs, grid_points=401, grid_lb=0.4, grid_ub=0.6)
+
+    accept = np.asarray(default["accept"]).astype(bool)
+    fine_accepted = np.asarray(fine["grid"])[np.asarray(fine["accept"]).astype(bool)]
+    tolerance = (default["grid"][1] - default["grid"][0]) + 0.0005
+    assert not accept[0]
+    assert not accept[-1]
+    assert default["grid"][accept].min() == pytest.approx(fine_accepted.min(), abs=tolerance)
+    assert default["grid"][accept].max() == pytest.approx(fine_accepted.max(), abs=tolerance)

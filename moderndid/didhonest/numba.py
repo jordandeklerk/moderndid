@@ -448,7 +448,8 @@ if HAS_NUMBA:
 def lee_coefficient(eta, sigma):
     """Compute coefficient for constructing confidence intervals."""
     eta = np.asarray(eta, dtype=np.float64).flatten()
-    sigma = np.asarray(sigma, dtype=np.float64)
+    # A sliced covariance would make numba compile its slower strided dot product and warn.
+    sigma = np.ascontiguousarray(sigma, dtype=np.float64)
     return _lee_coefficient_impl(eta, sigma)
 
 
@@ -464,8 +465,10 @@ def selection_matrix(selection, size, select="columns"):
 def compute_bounds(eta, sigma, A, b, z):
     """Compute lower and upper bounds for confidence intervals."""
     eta = np.asarray(eta, dtype=np.float64).flatten()
-    sigma = np.asarray(sigma, dtype=np.float64)
-    A = np.asarray(A, dtype=np.float64)
+    # A sliced covariance, such as the pre-period block the M lower bound passes, would make numba compile its slower
+    # strided dot product and warn.
+    sigma = np.ascontiguousarray(sigma, dtype=np.float64)
+    A = np.ascontiguousarray(A, dtype=np.float64)
     b = np.asarray(b, dtype=np.float64).flatten()
     z = np.asarray(z, dtype=np.float64).flatten()
     return _compute_bounds_impl(eta, sigma, A, b, z)

@@ -1,11 +1,11 @@
-"""Sensitivity analysis for difference-in-differences using the approach of Rambachan and Roth (2022)."""
+"""Sensitivity analysis for difference-in-differences using the approach of Rambachan and Roth (2023)."""
 
 try:
     import cvxpy
 except ImportError as e:
     raise ImportError(
         "The 'didhonest' module requires additional dependencies. "
-        "Install them with: uv pip install 'moderndid[didhonest]'"
+        "Install them with uv add 'moderndid[didhonest]' or pip install 'moderndid[didhonest]'"
     ) from e
 
 from .arp_no_nuisance import (
