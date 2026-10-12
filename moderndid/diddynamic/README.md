@@ -2,7 +2,7 @@
 
 This module implements dynamic covariate balancing estimation for panel data with time-varying treatments following the approach of [Viviano and Bradic (2026)](https://doi.org/10.1093/biomet/asag016).
 
-The methods in this module are inspired by the R package [DynBalancing](https://github.com/daviviano/DynBalancing).
+The methods in this module are inspired by the R package [DynBalancing](https://github.com/dviviano/DynBalancing).
 
 ## Quick Start
 

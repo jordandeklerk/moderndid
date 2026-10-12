@@ -1,54 +1,24 @@
 """Variance estimation and inference for dynamic covariate balancing."""
 
-from __future__ import annotations
-
 import math
-from typing import NamedTuple
 
 import numpy as np
 from scipy.stats import chi2, norm
 
-
-class QuantileResult(NamedTuple):
-    """Critical values for confidence interval construction.
-
-    Attributes
-    ----------
-    robust_quantile_ate : float
-        Chi-squared-based critical value for ATE inference.
-    gaussian_quantile_ate : float
-        Gaussian critical value for ATE inference.
-    robust_quantile_mu : float
-        Chi-squared-based critical value for potential outcome inference.
-    gaussian_quantile_mu : float
-        Gaussian critical value for potential outcome inference.
-    """
-
-    robust_quantile_ate: float
-    gaussian_quantile_ate: float
-    robust_quantile_mu: float
-    gaussian_quantile_mu: float
+from moderndid.diddynamic.container import QuantileResult
 
 
-def compute_variance(
-    gammas: np.ndarray,
-    predictions: np.ndarray,
-    not_nas: list[np.ndarray],
-    y_t: np.ndarray,
-) -> float:
-    r"""Compute the variance of a single potential outcome estimator :math:`\hat{\mu}(d_{1:T})`.
+def compute_variance(gammas, predictions, not_nas, y_t):
+    r"""Compute the variance of a single potential outcome estimator.
 
-    Uses the influence-function representation from Lemma 4.2 of [1]_ to decompose
-    the asymptotic variance into a final-period residual term and sequential
-    prediction-difference terms
+    Lemma 4.2 of [1]_ writes the error of :math:`\hat{\mu}(d_{1:T})` as a
+    weighted sum of residual terms, one per unit and period, plus a
+    remainder that vanishes in large samples. The variance adds up the
+    squared weighted terms and conditions on the first-period covariates.
+    Products of terms from different periods have mean zero and stay out.
 
-    .. math::
-
-        \widehat{\mathrm{Var}} = \sum_{i} \hat{\gamma}_{i,T}^2 \, \hat{\varepsilon}_{i,T}^2
-        + \sum_{t=2}^{T} \sum_{i} \hat{\gamma}_{i,t-1}^2
-        \bigl(\hat{m}_t(X_i) - \hat{m}_{t-1}(X_i)\bigr)^2,
-
-    where :math:`\hat{\varepsilon}_{i,T} = Y_{i,T} - \hat{m}_T(X_i)`.
+    A change in the outcome projection enters for the rows that are valid
+    in both of its periods.
 
     Parameters
     ----------
@@ -66,6 +36,27 @@ def compute_variance(
     float
         Estimated variance of the potential outcome estimator.
 
+    Notes
+    -----
+    The residual term of unit :math:`i` in period :math:`t` is the change in
+    its outcome projection before the final period and its outcome residual
+    in the final period.
+
+    .. math::
+
+        r_{i,t} =
+        \begin{cases}
+        \hat{m}_{t+1}(X_i) - \hat{m}_t(X_i), & t < T, \\
+        Y_{i,T} - \hat{m}_T(X_i), & t = T.
+        \end{cases}
+
+    With the weights :math:`\hat{\gamma}_{i,t}`, the variance is
+
+    .. math::
+
+        \widehat{\mathrm{Var}}\bigl(\hat{\mu}(d_{1:T})\bigr)
+        = \sum_{t=1}^{T} \sum_{i} \hat{\gamma}_{i,t}^2 \, r_{i,t}^2.
+
     References
     ----------
 
@@ -73,47 +64,16 @@ def compute_variance(
        estimating treatment effects over time with potential local projections."
        *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
     """
-    n_periods = predictions.shape[1]
-    last = n_periods - 1
-
-    valid_last = not_nas[last]
-    epsilon = y_t[valid_last] - predictions[valid_last, last]
-    var_final = float((gammas[valid_last, last] ** 2) @ (epsilon**2))
-
-    if n_periods == 1:
-        return var_final
-
-    var_sequential = 0.0
-    for t in range(1, n_periods):
-        valid_curr = not_nas[t]
-        valid_prev = not_nas[t - 1]
-        valid_both = np.intersect1d(valid_curr, valid_prev)
-        diff = predictions[valid_both, t] - predictions[valid_both, t - 1]
-        var_sequential += float((gammas[valid_both, t - 1] ** 2) @ (diff**2))
-
-    return var_sequential + var_final
+    return float(np.sum(_weighted_residuals(gammas, predictions, not_nas, y_t) ** 2))
 
 
-def compute_variance_clustered(
-    gammas: np.ndarray,
-    predictions: np.ndarray,
-    not_nas: list[np.ndarray],
-    y_t: np.ndarray,
-    cluster_indices: np.ndarray,
-) -> float:
-    r"""Compute cluster-robust variance of a single potential outcome estimator.
+def compute_variance_clustered(gammas, predictions, not_nas, y_t, cluster_indices):
+    r"""Compute the cluster-robust variance of a single potential outcome estimator.
 
-    Aggregates the weighted residuals within clusters before squaring, so
-    that within-cluster dependence is accounted for. For each cluster
-    :math:`c` and period :math:`t`, the contribution is
-
-    .. math::
-
-        \left(\sum_{i \in c} \hat{\gamma}_{i,t} \, r_{i,t}\right)^2,
-
-    where :math:`r_{i,T} = Y_{i,T} - \hat{m}_T(X_i)` at the final period
-    and :math:`r_{i,t} = \hat{m}_t(X_i) - \hat{m}_{t-1}(X_i)` for
-    sequential terms.
+    The weighted residual terms of :func:`compute_variance` are summed within
+    each cluster and period before squaring. Dependence between the units of
+    one cluster therefore enters the variance. Products of terms from
+    different periods stay out, as in :func:`compute_variance`.
 
     Parameters
     ----------
@@ -126,85 +86,132 @@ def compute_variance_clustered(
     y_t : ndarray, shape (n,)
         Outcome vector at the final period.
     cluster_indices : ndarray, shape (n,)
-        Integer cluster assignment for each unit.
+        Cluster assignment for each unit.
 
     Returns
     -------
     float
         Cluster-robust variance estimate.
 
-    References
-    ----------
+    Notes
+    -----
+    With the residual terms :math:`r_{i,t}` of :func:`compute_variance`, the
+    variance is
 
-    .. [1] Viviano, D. and Bradic, J. (2026). "Dynamic covariate balancing:
-       estimating treatment effects over time with potential local projections."
-       *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
+    .. math::
+
+        \widehat{\mathrm{Var}}\bigl(\hat{\mu}(d_{1:T})\bigr)
+        = \sum_{t=1}^{T} \sum_{c} \Bigl(\sum_{i \in c} \hat{\gamma}_{i,t} \, r_{i,t}\Bigr)^2.
     """
-    n_periods = predictions.shape[1]
-    last = n_periods - 1
-    clusters = np.unique(cluster_indices)
-
-    valid_last = not_nas[last]
-    epsilon = y_t[valid_last] - predictions[valid_last, last]
-    g_last = gammas[valid_last, last]
-    cl_last = cluster_indices[valid_last]
-
-    var_final = 0.0
-    for c in clusters:
-        mask = cl_last == c
-        var_final += (g_last[mask] @ epsilon[mask]) ** 2
-
-    if n_periods == 1:
-        return float(var_final)
-
-    var_sequential = 0.0
-    for t in range(1, n_periods):
-        valid_curr = not_nas[t]
-        valid_prev = not_nas[t - 1]
-        valid_both = np.intersect1d(valid_curr, valid_prev)
-        diff = predictions[valid_both, t] - predictions[valid_both, t - 1]
-        g_prev = gammas[valid_both, t - 1]
-        cl_both = cluster_indices[valid_both]
-
-        for c in clusters:
-            mask = cl_both == c
-            var_sequential += (g_prev[mask] @ diff[mask]) ** 2
-
-    return float(var_sequential + var_final)
+    return _clustered_sum_of_squares(_weighted_residuals(gammas, predictions, not_nas, y_t), cluster_indices)
 
 
-def compute_quantiles(alp: float, n_periods: int, robust_quantile: bool) -> QuantileResult:
-    r"""Compute critical values for confidence interval construction.
+def compute_ate_variance(first, second, y_t, cluster_indices=None):
+    r"""Compute the variance of the difference between two potential outcome estimators.
 
-    Returns both Gaussian and chi-squared-based critical values for
-    constructing confidence intervals around the ATE and individual
-    potential outcomes.
+    The error of each estimator is a weighted sum of the residual terms of
+    :func:`compute_variance`. The weighted terms of the second history are
+    subtracted from those of the first for every unit and period before
+    squaring. The covariance between the two estimators therefore enters the
+    variance.
 
-    The robust quantile uses
-    :math:`\sqrt{\chi^2_{1-\alpha}(df)}` with :math:`df = 2T` for the ATE
-    and :math:`df = T` for each potential outcome, providing valid
-    coverage under the sequential estimation structure of [1]_.
+    A unit carries weight in a history only while its observed treatments
+    follow that history. From the first period in which the two histories
+    differ, no unit carries weight in both. Without ``cluster_indices``, the
+    covariance therefore comes from the earlier periods alone. It vanishes
+    when the histories differ in their first period. The variance is then
+    the sum of the two potential outcome variances.
+
+    With ``cluster_indices``, the differences are summed within each cluster
+    and period before squaring, as in :func:`compute_variance_clustered`. The
+    covariance then also includes the dependence between units of one
+    cluster that follow different histories.
 
     Parameters
     ----------
-    alp : float
-        Significance level (e.g. 0.05 for 95% intervals).
+    first : DCBResult or IPWResult
+        Estimate under the first treatment history.
+    second : DCBResult or IPWResult
+        Estimate under the second treatment history.
+    y_t : ndarray, shape (n,)
+        Outcome vector at the final period.
+    cluster_indices : ndarray, shape (n,), optional
+        Cluster assignment for each unit.
+
+    Returns
+    -------
+    float
+        Estimated variance of the difference between the two potential
+        outcome estimators.
+
+    Notes
+    -----
+    Write :math:`\hat{\gamma}_{i,t}(d)` and :math:`r_{i,t}(d)` for the weight
+    and the residual term of :func:`compute_variance` under history
+    :math:`d`. The variance is
+
+    .. math::
+
+        \widehat{\mathrm{Var}}\bigl(\hat{\mu}(d) - \hat{\mu}(d')\bigr)
+        = \sum_{t=1}^{T} \sum_{i}
+        \bigl(\hat{\gamma}_{i,t}(d) \, r_{i,t}(d) - \hat{\gamma}_{i,t}(d') \, r_{i,t}(d')\bigr)^2.
+
+    Expanding the square gives the two potential outcome variances minus
+    twice the covariance
+
+    .. math::
+
+        \sum_{t=1}^{T} \sum_{i} \hat{\gamma}_{i,t}(d) \, \hat{\gamma}_{i,t}(d') \, r_{i,t}(d) \, r_{i,t}(d').
+
+    The weight :math:`\hat{\gamma}_{i,t}(d)` is zero unless the observed
+    treatments of unit :math:`i` match :math:`d` through period :math:`t`.
+    Each summand of the covariance is therefore zero from the first period in
+    which :math:`d` and :math:`d'` differ.
+
+    With ``cluster_indices``, the squares and the covariance run over the
+    within-cluster totals of each period. A cluster can hold units of both
+    histories. Both totals can then be nonzero in any period.
+
+    Since the terms of each period have mean zero given the histories up to
+    that period, products of terms from different periods have mean zero
+    too. They stay out of the variance within each history and across the
+    two.
+    """
+    first_terms = _weighted_residuals(first.gammas, first.predictions, first.not_nas, y_t)
+    second_terms = _weighted_residuals(second.gammas, second.predictions, second.not_nas, y_t)
+    difference = first_terms - second_terms
+    if cluster_indices is None:
+        return float(np.sum(difference**2))
+    return _clustered_sum_of_squares(difference, cluster_indices)
+
+
+def compute_quantiles(alpha, n_periods, robust_quantile):
+    r"""Compute the critical values of the ATE confidence interval.
+
+    The Gaussian critical value is the :math:`1 - \alpha/2` quantile of the
+    standard normal distribution. The robust critical value is
+    :math:`\sqrt{\chi^2_{1-\alpha}(2T)}`, the square root of a chi-squared
+    quantile with :math:`2T` degrees of freedom. Since it exceeds the
+    Gaussian critical value, its intervals are conservative. The inference
+    theorem of [1]_ supports the Gaussian critical value.
+
+    Parameters
+    ----------
+    alpha : float
+        Significance level, such as 0.05 for 95 percent intervals.
     n_periods : int
-        Number of time periods :math:`T`, determines the chi-squared
-        degrees of freedom.
+        Number of time periods :math:`T`.
     robust_quantile : bool
-        If True, use chi-squared critical values. If False, set robust
-        equal to Gaussian.
+        If True, compute the chi-squared critical value. If False, set the
+        robust critical value to the Gaussian one.
 
     Returns
     -------
     QuantileResult
-        Critical values for confidence interval construction.
+        Critical values of the ATE confidence interval.
 
-        - **robust_quantile_ate**: Chi-squared-based critical value for ATE inference
-        - **gaussian_quantile_ate**: Gaussian critical value for ATE inference
-        - **robust_quantile_mu**: Chi-squared-based critical value for potential outcome inference
-        - **gaussian_quantile_mu**: Gaussian critical value for potential outcome inference
+        - **robust_quantile_ate**: Chi-squared critical value, or the Gaussian one when ``robust_quantile=False``
+        - **gaussian_quantile_ate**: Gaussian critical value
 
     References
     ----------
@@ -213,18 +220,27 @@ def compute_quantiles(alp: float, n_periods: int, robust_quantile: bool) -> Quan
        estimating treatment effects over time with potential local projections."
        *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
     """
-    gaussian = norm.ppf(1.0 - alp / 2.0)
+    gaussian = norm.ppf(1.0 - alpha / 2.0)
+    robust = math.sqrt(chi2.ppf(1.0 - alpha, 2 * n_periods)) if robust_quantile else gaussian
+    return QuantileResult(robust_quantile_ate=float(robust), gaussian_quantile_ate=float(gaussian))
 
-    if robust_quantile:
-        robust_ate = math.sqrt(chi2.ppf(1.0 - alp, 2 * n_periods))
-        robust_mu = math.sqrt(chi2.ppf(1.0 - alp, n_periods))
-    else:
-        robust_ate = gaussian
-        robust_mu = gaussian
 
-    return QuantileResult(
-        robust_quantile_ate=float(robust_ate),
-        gaussian_quantile_ate=float(gaussian),
-        robust_quantile_mu=float(robust_mu),
-        gaussian_quantile_mu=float(gaussian),
-    )
+def _weighted_residuals(gammas, predictions, not_nas, y_t):
+    """Return the weighted residual term of every unit and period with zeros for rows that do not enter."""
+    n_rows, n_periods = predictions.shape
+    last = n_periods - 1
+    terms = np.zeros((n_rows, n_periods))
+    for t in range(last):
+        rows = np.intersect1d(not_nas[t], not_nas[t + 1])
+        terms[rows, t] = gammas[rows, t] * (predictions[rows, t + 1] - predictions[rows, t])
+    rows = not_nas[last]
+    terms[rows, last] = gammas[rows, last] * (y_t[rows] - predictions[rows, last])
+    return terms
+
+
+def _clustered_sum_of_squares(terms, cluster_indices):
+    """Sum the terms within each cluster and period and return the sum of the squared totals."""
+    _, codes = np.unique(cluster_indices, return_inverse=True)
+    totals = np.zeros((codes.max() + 1, terms.shape[1]))
+    np.add.at(totals, codes, terms)
+    return float(np.sum(totals**2))

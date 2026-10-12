@@ -7,7 +7,7 @@ import polars as pl
 import pytest
 
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
-from moderndid.diddynamic.container import DynBalancingResult
+from moderndid.diddynamic.container import DCBResult, DynBalancingResult
 from moderndid.diddynamic.dyn_balancing import dyn_balancing
 
 
@@ -15,6 +15,11 @@ def build_dyn_balancing(data, **config_kwargs):
     """Run the full builder pipeline for DynBalancing."""
     config = DynBalancingConfig(**config_kwargs)
     return PreprocessDataBuilder().with_data(data).with_config(config).validate().transform().build()
+
+
+def dropped_messages(record):
+    """List the recorded warnings that report dropped rows or units."""
+    return [str(warning.message) for warning in record if str(warning.message).startswith("Dropped")]
 
 
 @pytest.fixture
@@ -87,6 +92,41 @@ def estimation_panel(rng):
 
 
 @pytest.fixture
+def lagged_effect_panel(rng):
+    """Two-period arrays with independent treatments and a weak effect of the first one."""
+    n_units = 200
+    treatment = rng.integers(0, 2, size=(n_units, 2)).astype(float)
+    covariates = {t: rng.standard_normal((n_units, 3)) for t in range(2)}
+    outcome = 0.1 * treatment[:, 0] + 0.5 * treatment[:, 1] + covariates[1][:, 0] + rng.standard_normal(n_units)
+    ds = np.array([1.0, 1.0])
+    return outcome, treatment, covariates, ds
+
+
+@pytest.fixture
+def responsive_panel():
+    """Return two-period arrays with responsive covariates and persistent treatment plus the true potential outcomes."""
+    rng = np.random.default_rng(2026)
+    n_units = 4000
+    theta = np.array([0.4, -0.4])
+    x1 = rng.standard_normal((n_units, 2))
+    d1 = (rng.random(n_units) < 1 / (1 + np.exp(-x1 @ theta))).astype(float)
+    x2 = 0.6 * x1 + 0.8 * d1[:, None] + 0.8 * rng.standard_normal((n_units, 2))
+    d2 = (rng.random(n_units) < 1 / (1 + np.exp(-(x2 @ theta + 2.0 * (2.0 * d1 - 1.0))))).astype(float)
+    outcome = 1.0 + x2 @ np.array([1.0, -0.5]) + 0.5 * d1 + d2 + rng.standard_normal(n_units)
+    return outcome, np.column_stack([d1, d2]), {0: x1, 1: x2}, 2.9, 1.0
+
+
+@pytest.fixture
+def exact_linear_panel(rng):
+    """Two-period arrays with fixed covariates and an outcome that is exactly linear in them and the treatments."""
+    n_units = 200
+    x = rng.standard_normal((n_units, 2))
+    treatment = rng.integers(0, 2, size=(n_units, 2)).astype(float)
+    outcome = 1.0 + x @ np.array([1.0, -0.5]) + 0.5 * treatment[:, 0] + treatment[:, 1]
+    return outcome, treatment, {0: x, 1: x.copy()}, np.array([1.0, 1.0])
+
+
+@pytest.fixture
 def simple_qp_data(rng):
     """Small balanced data for direct QP testing."""
     n = 20
@@ -140,7 +180,14 @@ def sample_result():
         gaussian_quantile=1.96,
         gammas={"ds1": np.ones(10) / 10, "ds2": np.ones(10) / 10},
         coefficients={"ds1": np.array([0.1, 0.2]), "ds2": np.array([0.3, 0.4])},
-        imbalances={"ds1": 0.01, "ds2": 0.02},
+        imbalances={
+            "ds1": pl.DataFrame(
+                {"period": [1, 1, 2, 2], "covariate": ["X1", "X2", "X1", "X2"], "imbalance": [0.01, -0.02, 0.0, 0.005]}
+            ),
+            "ds2": pl.DataFrame(
+                {"period": [1, 1, 2, 2], "covariate": ["X1", "X2", "X1", "X2"], "imbalance": [0.02, 0.0, -0.01, 0.0]}
+            ),
+        },
         estimation_params={
             "n_obs": 500,
             "n_units": 250,
@@ -149,6 +196,7 @@ def sample_result():
             "method": "lasso_plain",
             "ds1": [1, 1],
             "ds2": [0, 0],
+            "n_periods": 2,
             "alpha": 0.05,
             "robust_quantile": True,
         },
@@ -183,6 +231,37 @@ def multi_period_data(rng):
 
 
 @pytest.fixture
+def two_history_results():
+    """Two-period estimates and the final outcome for two histories that share their first-period units."""
+    not_nas = [np.arange(4)] * 2
+    first = DCBResult(
+        mu_hat=0.0,
+        gammas=np.array([[0.5, 1.0], [0.5, 0.0], [0.0, 0.0], [0.0, 0.0]]),
+        predictions=np.array([[1.0, 3.0], [2.0, 2.0], [0.0, 0.0], [0.0, 0.0]]),
+        not_nas=not_nas,
+        coef_t=[],
+        bias=np.nan,
+    )
+    second = DCBResult(
+        mu_hat=0.0,
+        gammas=np.array([[0.5, 0.0], [0.5, 1.0], [0.0, 0.0], [0.0, 0.0]]),
+        predictions=np.array([[0.0, 1.0], [1.0, 0.0], [0.0, 0.0], [0.0, 0.0]]),
+        not_nas=not_nas,
+        coef_t=[],
+        bias=np.nan,
+    )
+    return first, second, np.array([4.0, 1.0, 4.0, 1.0])
+
+
+@pytest.fixture
+def disjoint_history_results(two_history_results):
+    """The two-history estimates with the second history's weights moved to units the first never weights."""
+    first, second, y_t = two_history_results
+    gammas, predictions = np.roll(second.gammas, 2, axis=0), np.roll(second.predictions, 2, axis=0)
+    return first, second._replace(gammas=gammas, predictions=predictions), y_t
+
+
+@pytest.fixture
 def history_result(estimator_panel):
     """History result with lag lengths 1, 2, 3 for estimation tests."""
     with warnings.catch_warnings():
@@ -206,21 +285,22 @@ def history_result(estimator_panel):
 
 @pytest.fixture
 def impulse_panel():
-    """Panel with diverse treatment patterns including [1,0] over last 2 periods."""
+    """Panel of 80 units in four groups of 20 that differ in their treatment pattern.
+
+    Units 0 to 19 are never treated. Units 20 to 39 are treated only in
+    period 2. Units 40 to 59 are treated only in period 1. Units 60 to 79
+    are treated from period 2 on.
+    """
     rng = np.random.default_rng(77)
     n_units = 80
     n_periods = 3
     ids = np.repeat(np.arange(n_units), n_periods)
     times = np.tile(np.arange(1, n_periods + 1), n_units)
     treatment = np.zeros(n_units * n_periods)
-    # Units 0-19: pattern [0, 0, 0] (never treated)
-    # Units 20-39: pattern [0, 1, 0] (impulse at period 2)
     for i in range(20, 40):
         treatment[i * n_periods + 1] = 1.0
-    # Units 40-59: pattern [1, 0, 0] (impulse at period 1)
     for i in range(40, 60):
         treatment[i * n_periods] = 1.0
-    # Units 60-79: pattern [0, 1, 1] (treated from period 2)
     for i in range(60, 80):
         treatment[i * n_periods + 1 : (i + 1) * n_periods] = 1.0
     y = rng.standard_normal(n_units * n_periods) + 1.5 * treatment
@@ -271,3 +351,39 @@ def het_result(estimator_panel):
             nfolds=3,
             adaptive_balancing=False,
         )
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def estimator_panel_duplicated(request, estimator_panel):
+    """Estimator panel in which unit 7 has two rows in period 3."""
+    unit = pl.col("id") == 7
+    row = estimator_panel.filter(unit & (pl.col("time") == 3))
+    if request.param == "repeated_row":
+        return pl.concat([estimator_panel, row])
+    if request.param == "hidden_gap":
+        return pl.concat([estimator_panel.filter(~(unit & (pl.col("time") == 2))), row])
+    return pl.concat([estimator_panel, row.with_columns(pl.col("y") + 1)])
+
+
+@pytest.fixture
+def estimator_spec():
+    """Keyword arguments of a small dyn_balancing call on the estimator panel."""
+    return dict(
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+
+
+@pytest.fixture
+def float_keyed_panel(estimator_panel):
+    """Estimator panel whose unit and period columns are floats, so that they can hold NaN and infinity."""
+    return estimator_panel.with_columns(pl.col("id", "time").cast(pl.Float64))
