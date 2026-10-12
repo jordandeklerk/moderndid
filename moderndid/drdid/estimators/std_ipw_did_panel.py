@@ -12,6 +12,8 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_std_ipw_panel
+from ..utils import _scaled_columns, _scaled_inverse, _scaled_pseudo_inverse, _singular_pscore_message
+from .wols import _check_panel_groups
 
 
 class StdIPWDIDPanelResult(NamedTuple):
@@ -34,7 +36,7 @@ def std_ipw_did_panel(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
@@ -67,7 +69,7 @@ def std_ipw_did_panel(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -103,8 +105,9 @@ def std_ipw_did_panel(
     y1, y0, d, covariates, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(
         xp, y1, y0, d, covariates, i_weights
     )
+    _check_panel_groups(d, covariates, i_weights, regressions=())
 
-    ps_fit, W, ps_results = _compute_propensity_score(xp, d, covariates, i_weights)
+    ps_fit, W = _compute_propensity_score(xp, d, covariates, i_weights)
 
     trim_ps = ps_fit < 1.01  # This effectively creates all True for treated units
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
@@ -133,7 +136,7 @@ def std_ipw_did_panel(
 
     ipw_att = att_treat - att_cont
 
-    influence_quantities = _get_influence_quantities(xp, d, covariates, ps_fit, i_weights, W, ps_results, n_units)
+    influence_quantities = _get_influence_quantities(xp, d, covariates, ps_fit, i_weights, W, n_units)
 
     att_inf_func = _compute_influence_function(
         xp,
@@ -160,18 +163,18 @@ def std_ipw_did_panel(
 
         ipw_boot = None
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
 
         if boot_type == "multiplier":
-            ipw_boot = mboot_did(att_inf_func, nboot)
+            ipw_boot = mboot_did(att_inf_func, biters)
             se_att = stats.iqr(ipw_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs(ipw_boot / se_att), 0.95)
             uci = ipw_att + cv * se_att
             lci = ipw_att - cv * se_att
         else:  # "weighted"
             ipw_boot = wboot_std_ipw_panel(
-                delta_y=delta_y, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
+                delta_y=delta_y, d=d, x=covariates, i_weights=i_weights, biters=biters, trim_level=trim_level
             )
             se_att = stats.iqr(ipw_boot - ipw_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs((ipw_boot - ipw_att) / se_att), 0.95)
@@ -188,7 +191,7 @@ def std_ipw_did_panel(
         "normalized": True,
         "boot": boot,
         "boot_type": boot_type_str,
-        "nboot": nboot,
+        "biters": biters,
         "type": "ipw",
         "trim_level": trim_level,
     }
@@ -234,12 +237,12 @@ def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
-    ps_results = None
+    scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
-                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(scaled, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
             )
             if xp.any(xp.isnan(beta)):
@@ -251,7 +254,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
     else:
         try:
-            ps_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+            ps_model = sm.GLM(d, scaled, family=sm.families.Binomial(), freq_weights=i_weights)
 
             ps_results = ps_model.fit()
 
@@ -264,14 +267,14 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
                     "Multicollinearity (or lack of variation) of covariates is a likely reason."
                 )
 
-            ps_fit = ps_results.predict(covariates)
+            ps_fit = ps_results.predict(scaled)
         except np.linalg.LinAlgError as e:
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
     ps_fit = xp.clip(xp.asarray(ps_fit), 1e-6, 1 - 1e-6)
     W = ps_fit * (1 - ps_fit) * i_weights
 
-    return ps_fit, W, ps_results
+    return ps_fit, W
 
 
 def _compute_weights(d, ps_fit, i_weights, trim_ps):
@@ -285,16 +288,16 @@ def _compute_weights(d, ps_fit, i_weights, trim_ps):
     }
 
 
-def _get_influence_quantities(xp, d, covariates, ps_fit, i_weights, W, ps_results, n_units):
+def _get_influence_quantities(xp, d, covariates, ps_fit, i_weights, W, n_units):
     """Compute quantities needed for influence function."""
     # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
 
+    weighted_cov_matrix = covariates.T @ (W[:, xp.newaxis] * covariates)
     try:
-        weighted_cov_matrix = covariates.T @ (W[:, xp.newaxis] * covariates)
-        hessian_ps = xp.linalg.inv(weighted_cov_matrix) * n_units
-    except np.linalg.LinAlgError:
-        hessian_ps = ps_results.cov_params() * n_units
+        hessian_ps = _scaled_inverse(weighted_cov_matrix, _singular_pscore_message()) * n_units
+    except ValueError:
+        hessian_ps = _scaled_pseudo_inverse(weighted_cov_matrix) * n_units
 
     asy_lin_rep_ps = score_ps @ hessian_ps
 

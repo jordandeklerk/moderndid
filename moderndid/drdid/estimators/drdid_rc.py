@@ -1,4 +1,4 @@
-"""Locally efficient doubly robust DiD estimator for repeated cross-sections data."""
+"""Locally efficient doubly robust DiD estimator for repeated cross-section data."""
 
 import warnings
 from typing import NamedTuple
@@ -12,7 +12,8 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc2
-from .wols import ols_rc
+from ..utils import _divide_by_complement, _scaled_columns, _scaled_inverse, _singular_pscore_message
+from .wols import _cell_name, _check_rc_cells, _singular_cell_message, ols_rc
 
 
 class DRDIDRCResult(NamedTuple):
@@ -35,16 +36,16 @@ def drdid_rc(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
     r"""Compute the locally efficient doubly robust DiD estimator for the ATT with repeated cross-section data.
 
     Implements the locally efficient doubly robust difference-in-differences (DiD)
-    estimator for the Average Treatment Effect on the Treated (ATT) defined in [1]_.
-    This is the estimator based on the efficient influence function, which is derived
-    in Section 2.3 of [1]_. The estimator is given by
+    estimator for the average treatment effect on the treated (ATT) with repeated
+    cross-sectional data in equation (3.4) of [1]_. It builds on the efficient influence
+    function derived in Section 2.3 of [1]_. The estimator is given by
 
     .. math::
         \tau_{2}^{dr,rc} = \tau_{1}^{dr,rc} +
@@ -59,10 +60,12 @@ def drdid_rc(
         \tau_{1}^{dr,rc} = \mathbb{E}\left[\left(w_{1}^{rc}(D,T) - w_{0}^{rc}(D,T,X;\pi)\right)
         \left(Y - \mu_{0,Y}^{rc}(T,X)\right)\right].
 
-    This estimator uses a logistic propensity score model and linear regression models for the outcome.
+    This estimator uses a logistic propensity score model and linear regression models for the
+    outcome of the treated and comparison groups in each period.
 
-    The propensity score parameters are estimated using maximum likelihood, and the outcome
-    regression coefficients are estimated using ordinary least squares.
+    The propensity score parameters are estimated by maximum likelihood. The outcome regression
+    coefficients are estimated by ordinary least squares. :func:`drdid` computes this estimator
+    for repeated cross-sections with ``est_method="trad"``.
 
     Parameters
     ----------
@@ -82,7 +85,7 @@ def drdid_rc(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -110,6 +113,7 @@ def drdid_rc(
     """
     xp = get_backend()
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
+    _check_rc_cells(post, d, covariates, i_weights, regressions=("comparison", "treated"))
 
     ps_fit = _compute_propensity_score(xp, d, covariates, i_weights)
     trim_ps = xp.ones(n_units, dtype=bool)
@@ -171,17 +175,17 @@ def drdid_rc(
         lci = dr_att - 1.96 * se_dr_att
 
     if boot is True:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
         if boot_type == "multiplier":
-            dr_boot = mboot_did(att_inf_func, nboot)
+            dr_boot = mboot_did(att_inf_func, biters)
             se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
             uci = dr_att + cv * se_dr_att
             lci = dr_att - cv * se_dr_att
         else:  # "weighted"
             dr_boot = wboot_drdid_rc2(
-                y=y, post=post, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
+                y=y, post=post, d=d, x=covariates, i_weights=i_weights, biters=biters, trim_level=trim_level
             )
             se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs((dr_boot - dr_att) / se_dr_att), 0.95)
@@ -196,12 +200,12 @@ def drdid_rc(
 
     args = {
         "panel": False,
-        "estMethod": "trad",
+        "estMethod": "trad2",
         "boot": boot,
-        "boot.type": boot_type,
-        "nboot": nboot,
+        "boot_type": boot_type,
+        "biters": biters,
         "type": "dr",
-        "trim.level": trim_level,
+        "trim_level": trim_level,
     }
 
     return DRDIDRCResult(
@@ -247,11 +251,12 @@ def _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights):
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
+    scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
-                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(scaled, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
             )
             ps_fit = to_numpy(ps_fit)
@@ -264,7 +269,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
     else:
         try:
-            pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+            pscore_model = sm.GLM(d, scaled, family=sm.families.Binomial(), freq_weights=i_weights)
             pscore_results = pscore_model.fit()
             if not pscore_results.converged:
                 warnings.warn("Propensity score estimation did not converge.", UserWarning)
@@ -273,7 +278,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
                     "Propensity score model coefficients have NA components. \n "
                     "Multicollinearity (or lack of variation) of covariates is a likely reason."
                 )
-            ps_fit = pscore_results.predict(covariates)
+            ps_fit = pscore_results.predict(scaled)
         except np.linalg.LinAlgError as e:
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
@@ -286,9 +291,8 @@ def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
-        w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+    w_cont_pre = _divide_by_complement(trim_ps * i_weights * ps_fit * (1 - d) * (1 - post), ps_fit)
+    w_cont_post = _divide_by_complement(trim_ps * i_weights * ps_fit * (1 - d) * post, ps_fit)
 
     w_cont_pre = np.nan_to_num(w_cont_pre)
     w_cont_post = np.nan_to_num(w_cont_post)
@@ -384,10 +388,7 @@ def _get_influence_quantities(
     weighted_resid_x_pre = (weights_ols_pre * (y - out_y_cont_pre))[:, xp.newaxis] * covariates
     gram_pre = (weighted_x_pre.T @ covariates) / n_units
 
-    if xp.linalg.cond(gram_pre) > 1 / xp.finfo(float).eps:
-        raise np.linalg.LinAlgError("Singular matrix in pre-period control group OLS.")
-
-    gram_inv_pre = xp.linalg.inv(gram_pre)
+    gram_inv_pre = _scaled_inverse(gram_pre, _singular_cell_message(_cell_name(True, False), False))
     asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
 
     # Asymptotic linear representation of OLS parameters in post-period, control group
@@ -396,10 +397,7 @@ def _get_influence_quantities(
     weighted_resid_x_post = (weights_ols_post * (y - out_y_cont_post))[:, xp.newaxis] * covariates
     gram_post = (weighted_x_post.T @ covariates) / n_units
 
-    if xp.linalg.cond(gram_post) > 1 / xp.finfo(float).eps:
-        raise np.linalg.LinAlgError("Singular matrix in post-period control group OLS.")
-
-    gram_inv_post = xp.linalg.inv(gram_post)
+    gram_inv_post = _scaled_inverse(gram_post, _singular_cell_message(_cell_name(False, False), False))
     asy_lin_rep_ols_post = weighted_resid_x_post @ gram_inv_post
 
     # Asymptotic linear representation of OLS parameters in pre-period, treated
@@ -408,10 +406,7 @@ def _get_influence_quantities(
     weighted_resid_x_pre_treat = (weights_ols_pre_treat * (y - out_y_treat_pre))[:, xp.newaxis] * covariates
     gram_pre_treat = (weighted_x_pre_treat.T @ covariates) / n_units
 
-    if xp.linalg.cond(gram_pre_treat) > 1 / xp.finfo(float).eps:
-        raise np.linalg.LinAlgError("Singular matrix in pre-period treated group OLS.")
-
-    gram_inv_pre_treat = xp.linalg.inv(gram_pre_treat)
+    gram_inv_pre_treat = _scaled_inverse(gram_pre_treat, _singular_cell_message(_cell_name(True, True), True))
     asy_lin_rep_ols_pre_treat = weighted_resid_x_pre_treat @ gram_inv_pre_treat
 
     # Asymptotic linear representation of OLS parameters in post-period, treated
@@ -420,16 +415,14 @@ def _get_influence_quantities(
     weighted_resid_x_post_treat = (weights_ols_post_treat * (y - out_y_treat_post))[:, xp.newaxis] * covariates
     gram_post_treat = (weighted_x_post_treat.T @ covariates) / n_units
 
-    if xp.linalg.cond(gram_post_treat) > 1 / xp.finfo(float).eps:
-        raise np.linalg.LinAlgError("Singular matrix in post-period treated group OLS.")
-
-    gram_inv_post_treat = xp.linalg.inv(gram_post_treat)
+    gram_inv_post_treat = _scaled_inverse(gram_post_treat, _singular_cell_message(_cell_name(False, True), True))
     asy_lin_rep_ols_post_treat = weighted_resid_x_post_treat @ gram_inv_post_treat
 
     # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
     ps_weights = ps_fit * (1 - ps_fit) * i_weights
-    ps_hessian_inv = xp.linalg.inv(covariates.T @ (ps_weights[:, xp.newaxis] * covariates)) * n_units
+    ps_hessian = covariates.T @ (ps_weights[:, xp.newaxis] * covariates)
+    ps_hessian_inv = _scaled_inverse(ps_hessian, _singular_pscore_message()) * n_units
     asy_lin_rep_ps = score_ps @ ps_hessian_inv
 
     return {

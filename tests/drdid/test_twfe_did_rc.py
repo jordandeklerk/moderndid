@@ -1,11 +1,13 @@
 """Tests for Two-Way Fixed Effects DiD estimator with repeated cross-sections."""
 
+import re
+
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid import twfe_did_rc
+
+pytestmark = pytest.mark.slow
 
 
 def dgp_rc_for_test(n=2000, seed=42):
@@ -49,7 +51,7 @@ def test_no_covariates():
 
 def test_bootstrap_weighted():
     y, post, d, covariates = dgp_rc_for_test(n=500)
-    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="weighted", nboot=99)
+    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="weighted", biters=99)
 
     assert result.boots is not None
     assert len(result.boots) == 99
@@ -58,7 +60,7 @@ def test_bootstrap_weighted():
 
 def test_bootstrap_multiplier():
     y, post, d, covariates = dgp_rc_for_test(n=500)
-    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="multiplier", nboot=99)
+    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="multiplier", biters=99)
 
     assert result.boots is not None
     assert len(result.boots) == 99
@@ -97,11 +99,15 @@ def test_singular_matrix_error():
     n = 100
     y = rng.normal(0, 1, n)
     post = np.concatenate([np.zeros(n // 2), np.ones(n // 2)])
-    d = np.zeros(n)
+    d = np.tile([0, 1], n // 2)
     x1 = rng.normal(0, 1, n)
     covariates = np.column_stack([x1, x1 * 2])
+    message = (
+        "Failed to fit TWFE regression model. The regression design matrix is singular. Consider removing "
+        "covariates that are constant or collinear."
+    )
 
-    with pytest.raises(ValueError, match="regression design matrix is singular"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         twfe_did_rc(y, post, d, covariates)
 
 
@@ -117,12 +123,12 @@ def test_1d_covariates():
 
 def test_args_output():
     y, post, d, covariates = dgp_rc_for_test(n=100)
-    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="weighted", nboot=10)
+    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="weighted", biters=10)
 
     assert result.args["panel"] is False
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 10
+    assert result.args["biters"] == 10
     assert result.args["type"] == "twfe"
 
 

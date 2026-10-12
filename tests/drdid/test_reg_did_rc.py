@@ -1,11 +1,13 @@
 """Tests for outcome regression DiD estimator with repeated cross-sections."""
 
+import re
+
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid.drdid import reg_did_rc
+
+pytestmark = pytest.mark.slow
 
 
 def test_reg_did_rc_basic():
@@ -79,7 +81,7 @@ def test_reg_did_rc_bootstrap_weighted():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = reg_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
+    result = reg_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -94,7 +96,7 @@ def test_reg_did_rc_bootstrap_multiplier():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = reg_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
+    result = reg_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -120,12 +122,19 @@ def test_reg_did_rc_edge_cases():
 
     d_all_treated = np.ones(n, dtype=int)
     post = rng.binomial(1, 0.5, n)
-    with pytest.raises(ValueError, match="No control units in pre-treatment period"):
+    message = (
+        "No units found in the comparison group in the pre-period. Pass data with comparison units in both periods."
+    )
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         reg_did_rc(y=y, post=post, d=d_all_treated, covariates=x)
 
     d_all_control = np.zeros(n, dtype=int)
-    result = reg_did_rc(y=y, post=post, d=d_all_control, covariates=x)
-    assert np.isnan(result.att)
+    message = (
+        "No units found in the treated group in the pre-period. Pass a treatment indicator that equals 1 for "
+        "treated units in both periods."
+    )
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        reg_did_rc(y=y, post=post, d=d_all_control, covariates=x)
 
 
 def test_reg_did_rc_no_pre_control():
@@ -136,8 +145,11 @@ def test_reg_did_rc_no_pre_control():
     d[50:] = 1
     post = np.ones(n, dtype=int)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
+    message = (
+        "No units found in the comparison group in the pre-period. Pass data with comparison units in both periods."
+    )
 
-    with pytest.raises(ValueError, match="No control units in pre-treatment period"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         reg_did_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -149,8 +161,11 @@ def test_reg_did_rc_no_post_control():
     d[50:] = 1
     post = np.zeros(n, dtype=int)
     y = x @ [1, 0.5] + rng.standard_normal(n)
+    message = (
+        "No units found in the comparison group in the post-period. Pass data with comparison units in both periods."
+    )
 
-    with pytest.raises(ValueError, match="No control units in post-treatment period"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         reg_did_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -163,8 +178,12 @@ def test_reg_did_rc_insufficient_control_pre():
     post = np.zeros(n, dtype=int)
     post[5:] = 1
     y = rng.standard_normal(n)
+    message = (
+        "The comparison group in the pre-period has fewer observations (2) than regression coefficients (4). "
+        "Pass fewer covariates."
+    )
 
-    with pytest.raises(ValueError, match="Insufficient control units in pre-treatment period for regression"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         reg_did_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -177,8 +196,12 @@ def test_reg_did_rc_insufficient_control_post():
     post = np.zeros(n, dtype=int)
     post[4:] = 1
     y = rng.standard_normal(n)
+    message = (
+        "The comparison group in the post-period has fewer observations (2) than regression coefficients (4). "
+        "Pass fewer covariates."
+    )
 
-    with pytest.raises(ValueError, match="Insufficient control units in post-treatment period for regression"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         reg_did_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -190,12 +213,12 @@ def test_reg_did_rc_args_output():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = reg_did_rc(y=y, post=post, d=d, covariates=x, boot=True, nboot=10)
+    result = reg_did_rc(y=y, post=post, d=d, covariates=x, boot=True, biters=10)
 
     assert result.args["panel"] is False
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 10
+    assert result.args["biters"] == 10
     assert result.args["type"] == "or"
 
 

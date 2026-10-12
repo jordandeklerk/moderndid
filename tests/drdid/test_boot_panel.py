@@ -1,9 +1,15 @@
 """Tests for panel data bootstrap inference functions."""
 
+import re
+
 import numpy as np
 import pytest
 
 from moderndid import (
+    drdid_imp_panel,
+    drdid_panel,
+    ipw_did_panel,
+    std_ipw_did_panel,
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
     wboot_ipw_panel,
@@ -23,9 +29,7 @@ def test_wboot_drdid_imp_panel_basic():
     delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42
-    )
+    boot_estimates = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -49,7 +53,7 @@ def test_wboot_drdid_imp_panel_invalid_inputs():
         wboot_drdid_imp_panel(delta_y[:-1], d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_drdid_imp_panel(delta_y, d, x, weights, n_bootstrap=0)
+        wboot_drdid_imp_panel(delta_y, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_drdid_imp_panel(delta_y, d, x, weights, trim_level=1.5)
@@ -66,7 +70,7 @@ def test_wboot_drdid_imp_panel_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_drdid_imp_panel(
-            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) >= 5
@@ -80,13 +84,9 @@ def test_wboot_drdid_imp_panel_reproducibility():
     delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
-    )
+    boot_estimates1 = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
-    boot_estimates2 = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
-    )
+    boot_estimates2 = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -101,9 +101,7 @@ def test_wboot_drdid_imp_panel_with_weights():
 
     weights = rng.exponential(1, n)
 
-    boot_estimates = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42
-    )
+    boot_estimates = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -121,9 +119,7 @@ def test_wboot_drdid_imp_panel_compare_variance():
     delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42
-    )
+    boot_estimates = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
 
     valid_estimates = boot_estimates[~np.isnan(boot_estimates)]
 
@@ -143,7 +139,7 @@ def test_wboot_std_ipw_panel_basic():
     delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -167,7 +163,7 @@ def test_wboot_std_ipw_panel_invalid_inputs():
         wboot_std_ipw_panel(delta_y[:-1], d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_std_ipw_panel(delta_y, d, x, weights, n_bootstrap=0)
+        wboot_std_ipw_panel(delta_y, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_std_ipw_panel(delta_y, d, x, weights, trim_level=1.5)
@@ -184,7 +180,7 @@ def test_wboot_std_ipw_panel_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_std_ipw_panel(
-            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) >= 5
@@ -198,13 +194,9 @@ def test_wboot_std_ipw_panel_reproducibility():
     delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_std_ipw_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
-    )
+    boot_estimates1 = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
-    boot_estimates2 = wboot_std_ipw_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
-    )
+    boot_estimates2 = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -218,7 +210,7 @@ def test_wboot_std_ipw_panel_with_weights():
 
     weights = rng.exponential(1, n)
 
-    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -235,9 +227,9 @@ def test_wboot_std_ipw_panel_compare_with_ipw():
     delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_std_ipw = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
+    boot_std_ipw = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
 
-    boot_ipw = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
+    boot_ipw = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
 
     valid_std_ipw = ~np.isnan(boot_std_ipw)
     valid_ipw = ~np.isnan(boot_ipw)
@@ -262,7 +254,7 @@ def test_wboot_dr_tr_panel_basic():
     delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -286,7 +278,7 @@ def test_wboot_dr_tr_panel_invalid_inputs():
         wboot_dr_tr_panel(delta_y[:-1], d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_dr_tr_panel(delta_y, d, x, weights, n_bootstrap=0)
+        wboot_dr_tr_panel(delta_y, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_dr_tr_panel(delta_y, d, x, weights, trim_level=1.5)
@@ -303,7 +295,7 @@ def test_wboot_dr_tr_panel_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_dr_tr_panel(
-            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) >= 5
@@ -317,9 +309,9 @@ def test_wboot_dr_tr_panel_reproducibility():
     delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates1 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
-    boot_estimates2 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates2 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -334,7 +326,7 @@ def test_wboot_dr_tr_panel_with_weights():
 
     weights = rng.exponential(1, n)
 
-    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -352,11 +344,9 @@ def test_wboot_dr_tr_panel_compare_with_improved():
     delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_traditional = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
+    boot_traditional = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
 
-    boot_improved = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42
-    )
+    boot_improved = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
 
     valid_traditional = boot_traditional[~np.isnan(boot_traditional)]
     valid_improved = boot_improved[~np.isnan(boot_improved)]
@@ -380,7 +370,7 @@ def test_wboot_ipw_panel_basic():
     delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -404,7 +394,7 @@ def test_wboot_ipw_panel_invalid_inputs():
         wboot_ipw_panel(delta_y[:-1], d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_ipw_panel(delta_y, d, x, weights, n_bootstrap=0)
+        wboot_ipw_panel(delta_y, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_ipw_panel(delta_y, d, x, weights, trim_level=1.5)
@@ -421,7 +411,7 @@ def test_wboot_ipw_panel_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_ipw_panel(
-            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) >= 5
@@ -435,9 +425,9 @@ def test_wboot_ipw_panel_reproducibility():
     delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates1 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
-    boot_estimates2 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates2 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -451,7 +441,7 @@ def test_wboot_ipw_panel_with_weights():
 
     weights = rng.exponential(1, n)
 
-    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -469,9 +459,9 @@ def test_wboot_ipw_panel_compare_with_dr():
     delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_ipw = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
+    boot_ipw = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
 
-    boot_dr = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
+    boot_dr = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
 
     valid_ipw = boot_ipw[~np.isnan(boot_ipw)]
     valid_dr = boot_dr[~np.isnan(boot_dr)]
@@ -500,7 +490,7 @@ def test_wboot_reg_panel_basic():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=20,
+        biters=20,
         random_state=42,
     )
 
@@ -526,46 +516,48 @@ def test_wboot_reg_panel_invalid_inputs():
         wboot_reg_panel(delta_y[:-1], d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_reg_panel(delta_y, d, x, weights, n_bootstrap=0)
+        wboot_reg_panel(delta_y, d, x, weights, biters=0)
 
 
-@pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
-def test_wboot_reg_panel_edge_cases():
+def test_wboot_reg_panel_warns_once_without_comparison_units():
     rng = np.random.default_rng(42)
     n = 100
     x = np.column_stack([np.ones(n), rng.standard_normal(n)])
-    delta_y = rng.standard_normal(n)
-    weights = np.ones(n)
+    message = (
+        "All 10 bootstrap draws are NaN. No units found in the comparison group. Pass data in which some units "
+        "have a treatment indicator of 0."
+    )
 
-    d_all_treated = np.ones(n)
-
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record:
         boot_estimates = wboot_reg_panel(
-            delta_y=delta_y,
-            d=d_all_treated,
-            x=x,
-            i_weights=weights,
-            n_bootstrap=10,
+            delta_y=rng.standard_normal(n), d=np.ones(n), x=x, i_weights=np.ones(n), biters=10, random_state=42
+        )
+
+    assert len(record) == 1
+    assert np.all(np.isnan(boot_estimates))
+
+
+def test_wboot_reg_panel_warns_once_when_comparison_units_are_fewer_than_coefficients():
+    rng = np.random.default_rng(43)
+    d = np.array([1, 1, 1, 1, 1, 1, 1, 0, 0, 0])
+    message = (
+        "All 10 bootstrap draws are NaN. The comparison group has fewer units (3) than regression coefficients "
+        "(15). Pass fewer covariates."
+    )
+
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record:
+        boot_estimates = wboot_reg_panel(
+            delta_y=rng.standard_normal(10),
+            d=d,
+            x=rng.standard_normal((10, 15)),
+            i_weights=np.ones(10),
+            biters=10,
             random_state=42,
         )
 
-    assert np.sum(np.isnan(boot_estimates)) >= 5
-
-    rng2 = np.random.default_rng(43)
-    x_many_cols = rng2.standard_normal((10, 15))
-    d_few_control = np.array([1, 1, 1, 1, 1, 1, 1, 0, 0, 0])
-    delta_y_small = rng2.standard_normal(10)
-    weights_small = np.ones(10)
-
-    with pytest.warns(UserWarning, match="Insufficient control units"):
-        boot_estimates = wboot_reg_panel(
-            delta_y=delta_y_small,
-            d=d_few_control,
-            x=x_many_cols,
-            i_weights=weights_small,
-            n_bootstrap=10,
-            random_state=42,
-        )
+    assert len(record) == 1
+    assert record[0].filename == __file__
+    assert np.all(np.isnan(boot_estimates))
 
 
 def test_wboot_reg_panel_reproducibility():
@@ -581,7 +573,7 @@ def test_wboot_reg_panel_reproducibility():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=10,
+        biters=10,
         random_state=123,
     )
     boot_estimates2 = wboot_reg_panel(
@@ -589,7 +581,7 @@ def test_wboot_reg_panel_reproducibility():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=10,
+        biters=10,
         random_state=123,
     )
 
@@ -610,7 +602,7 @@ def test_wboot_reg_panel_with_weights():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=20,
+        biters=20,
         random_state=42,
     )
 
@@ -620,7 +612,7 @@ def test_wboot_reg_panel_with_weights():
 
 
 @pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
-def test_wboot_reg_panel_no_treated_units():
+def test_wboot_reg_panel_warns_once_without_treated_units():
     rng = np.random.default_rng(42)
     n = 100
     x = np.column_stack([np.ones(n), rng.standard_normal(n)])
@@ -628,16 +620,22 @@ def test_wboot_reg_panel_no_treated_units():
     delta_y = x @ [1, 0.5] + rng.standard_normal(n)
     weights = np.ones(n)
 
-    with pytest.warns(UserWarning, match="No effectively treated units"):
+    message = (
+        "All 10 bootstrap draws are NaN. No units found in the treated group. Pass data in which some units have a "
+        "treatment indicator of 1."
+    )
+
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record:
         boot_estimates = wboot_reg_panel(
             delta_y=delta_y,
             d=d,
             x=x,
             i_weights=weights,
-            n_bootstrap=10,
+            biters=10,
             random_state=42,
         )
 
+    assert len(record) == 1
     assert np.all(np.isnan(boot_estimates))
 
 
@@ -657,7 +655,7 @@ def test_wboot_reg_panel_compare_with_dr():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=200,
+        biters=200,
         random_state=42,
     )
     boot_dr = wboot_drdid_imp_panel(
@@ -665,7 +663,7 @@ def test_wboot_reg_panel_compare_with_dr():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=200,
+        biters=200,
         random_state=42,
     )
 
@@ -693,7 +691,7 @@ def test_wboot_twfe_panel_basic():
     x[:, 1] = rng.standard_normal(n_obs)
     i_weights = np.ones(n_obs)
 
-    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=20, random_state=42)
+    result = wboot_twfe_panel(y, d, post, x, i_weights, biters=20, random_state=42)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (20,)
@@ -711,7 +709,7 @@ def test_wboot_twfe_panel_no_intercept():
     x = rng.standard_normal((n_obs, 2))
     i_weights = np.ones(n_obs)
 
-    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
+    result = wboot_twfe_panel(y, d, post, x, i_weights, biters=10, random_state=42)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (10,)
@@ -728,7 +726,7 @@ def test_wboot_twfe_panel_weighted():
     x = np.ones((n_obs, 1))
     i_weights = rng.uniform(0.5, 2, n_obs)
 
-    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=30, random_state=42)
+    result = wboot_twfe_panel(y, d, post, x, i_weights, biters=30, random_state=42)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (30,)
@@ -779,7 +777,43 @@ def test_wboot_twfe_panel_reproducibility():
     x[:, 1] = rng.standard_normal(n_obs)
     i_weights = np.ones(n_obs)
 
-    result1 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
-    result2 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
+    result1 = wboot_twfe_panel(y, d, post, x, i_weights, biters=10, random_state=42)
+    result2 = wboot_twfe_panel(y, d, post, x, i_weights, biters=10, random_state=42)
 
     np.testing.assert_array_equal(result1, result2)
+
+
+@pytest.mark.parametrize(
+    ("estimator", "bootstrap"),
+    [
+        (drdid_panel, wboot_dr_tr_panel),
+        (drdid_imp_panel, wboot_drdid_imp_panel),
+        (ipw_did_panel, wboot_ipw_panel),
+        (std_ipw_did_panel, wboot_std_ipw_panel),
+    ],
+    ids=["dr_trad", "dr_imp", "ipw", "std_ipw"],
+)
+def test_panel_bootstraps_reproduce_their_estimators_at_unit_weights(
+    unit_bootstrap_weights, trimmed_two_period_data, estimator, bootstrap
+):
+    data = trimmed_two_period_data
+    expected = estimator(data["y1"], data["y0"], data["d"], data["x"], trim_level=0.9).att
+
+    draws = bootstrap(
+        delta_y=data["y1"] - data["y0"],
+        d=data["d"],
+        x=data["x"],
+        i_weights=np.ones(len(data["d"])),
+        biters=2,
+        trim_level=0.9,
+    )
+
+    np.testing.assert_allclose(draws, expected, rtol=1e-8)
+
+
+def test_wboot_drdid_imp_panel_rejects_the_removed_n_bootstrap_argument():
+    rng = np.random.default_rng(42)
+    x = np.column_stack([np.ones(50), rng.standard_normal(50)])
+
+    with pytest.raises(TypeError, match="unexpected keyword argument 'n_bootstrap'"):
+        wboot_drdid_imp_panel(rng.standard_normal(50), rng.binomial(1, 0.5, 50), x, np.ones(50), n_bootstrap=20)

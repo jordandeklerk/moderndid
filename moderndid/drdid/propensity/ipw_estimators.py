@@ -4,13 +4,15 @@ import warnings
 
 import numpy as np
 
+from ..utils import _divide_by_complement
+
 
 def ipw_rc(y, post, d, ps, i_weights, trim_ps=None):
     r"""Compute the inverse propensity weighted (IPW) estimator for repeated cross-sections.
 
     This function implements the inverse propensity weighted (IPW) estimator from
-    [1]_ for repeated cross-sections. The weights are not normalized to sum to 1, e.g., the estimator is
-    of the Horwitz-Thompson type.
+    [1]_ for repeated cross-sections. The weights are not normalized to sum to one. The estimator
+    is of the Horvitz-Thompson type.
 
     The IPW estimator for the ATT in repeated cross-sections is given by
 
@@ -78,7 +80,10 @@ def ipw_rc(y, post, d, ps, i_weights, trim_ps=None):
     if trim_ps is None:
         trim_ps = np.ones_like(d, dtype=bool)
 
-    lambda_val = np.mean(i_weights * trim_ps * post)
+    # As in ipw_did_rc, the period share uses every observation. Since bootstrap weights do not
+    # average to one, the share divides by their total.
+    total_weight = np.sum(i_weights)
+    lambda_val = np.sum(i_weights * post) / total_weight if total_weight > 0 else 0.0
 
     if lambda_val in (0, 1):
         warnings.warn(f"Lambda is {lambda_val}, cannot compute IPW estimator.", UserWarning)
@@ -93,8 +98,7 @@ def ipw_rc(y, post, d, ps, i_weights, trim_ps=None):
         )
         return np.nan
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ipw_term = d - ps * (1 - d) / denominator_ps
+    ipw_term = d - _divide_by_complement(ps * (1 - d), ps)
 
     time_adj = (post - lambda_val) / (lambda_val * (1 - lambda_val))
     numerator = np.mean(i_weights * trim_ps * ipw_term * time_adj * y)

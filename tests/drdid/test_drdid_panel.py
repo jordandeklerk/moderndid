@@ -1,5 +1,7 @@
 """Tests for the locally efficient doubly robust DiD estimator for panel data."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -74,10 +76,10 @@ def test_drdid_panel_bootstrap(boot_type):
     y0 = rng.standard_normal(n_units)
     y1 = y0 + 2 * d + rng.standard_normal(n_units)
 
-    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type=boot_type, biters=20)
 
     assert result.boots is not None
-    assert len(result.boots) == result.args["nboot"]
+    assert len(result.boots) == result.args["biters"]
     assert result.se > 0
     assert result.lci < result.uci
 
@@ -90,8 +92,9 @@ def test_drdid_panel_no_treated():
     x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
     y0 = rng.standard_normal(n_units)
     y1 = y0 + rng.standard_normal(n_units)
+    message = "No units found in the treated group. Pass data in which some units have a treatment indicator of 1."
 
-    with pytest.raises(ValueError, match="No effectively treated units"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
 
 
@@ -103,8 +106,9 @@ def test_drdid_panel_all_treated():
     x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
     y0 = rng.standard_normal(n_units)
     y1 = y0 + 2 + rng.standard_normal(n_units)
+    message = "No units found in the comparison group. Pass data in which some units have a treatment indicator of 0."
 
-    with pytest.raises(ValueError, match="No control units"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
 
 
@@ -179,3 +183,12 @@ def test_drdid_panel_dgp():
     assert 0.8 < result.att < 1.2
     assert result.se > 0
     assert result.args["estMethod"] == "trad"
+
+
+def test_drdid_panel_rejects_the_removed_nboot_argument():
+    rng = np.random.default_rng(42)
+    d = rng.binomial(1, 0.5, 50)
+    y0 = rng.standard_normal(50)
+
+    with pytest.raises(TypeError, match="unexpected keyword argument 'nboot'"):
+        drdid_panel(y1=y0 + d, y0=y0, d=d, covariates=None, boot=True, nboot=20)

@@ -5,6 +5,7 @@ from typing import NamedTuple
 
 import numpy as np
 import statsmodels.api as sm
+from statsmodels.tools.sm_exceptions import MissingDataError
 
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_wls
@@ -13,6 +14,7 @@ from ..utils import (
     _check_coefficients_validity,
     _check_extreme_weights,
     _check_wls_condition_number,
+    _column_scales,
     _validate_wols_arrays,
 )
 
@@ -48,6 +50,10 @@ def ols_panel(delta_y, d, x, i_weights):
     where :math:`\Delta Y` is the outcome difference (post - pre) and :math:`X` are the
     covariates including intercept.
 
+    When the comparison group has fewer units with positive weight than coefficients, or a
+    covariate is constant or collinear with others among those units, the coefficients are
+    not identified. The function then raises a ValueError.
+
     Parameters
     ----------
     delta_y : ndarray
@@ -76,11 +82,8 @@ def ols_panel(delta_y, d, x, i_weights):
     xp = get_backend()
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, "ols_panel")
 
-    control_filter = d == 0
+    control_filter = _check_panel_group(d, x, i_weights, treat=False, regressed=True)
     n_control = int(xp.sum(control_filter))
-
-    if n_control == 0:
-        raise ValueError("No control units found (all d == 1). Cannot perform regression.")
 
     if n_control < 5:
         warnings.warn(f"Only {n_control} control units available. Results may be unreliable.", UserWarning)
@@ -90,6 +93,9 @@ def ols_panel(delta_y, d, x, i_weights):
     control_y = delta_y[control_filter]
 
     _check_extreme_weights(control_weights)
+
+    if _has_collinear_columns(control_x, control_weights):
+        raise ValueError(_singular_comparison_message())
 
     try:
         coefficients, sm_results = _fit_wls(control_y, control_x, control_weights)
@@ -127,6 +133,10 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     propensity score parameters, :math:`\Delta Y` is the outcome difference (post - pre), and
     :math:`X` are the covariates including intercept.
 
+    When the comparison group has fewer units with positive weight than coefficients, or a
+    covariate is constant or collinear with others among those units, the coefficients are
+    not identified. The function then raises a ValueError.
+
     Parameters
     ----------
     delta_y : ndarray
@@ -158,11 +168,8 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     xp = get_backend()
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "ps": ps, "i_weights": i_weights}, x, "wols_panel")
 
-    control_filter = d == 0
+    control_filter = _check_panel_group(d, x, i_weights, treat=False, regressed=True)
     n_control = int(xp.sum(control_filter))
-
-    if n_control == 0:
-        raise ValueError("No control units found (all d == 1). Cannot perform regression.")
 
     if n_control < 5:
         warnings.warn(f"Only {n_control} control units available. Results may be unreliable.", UserWarning)
@@ -179,6 +186,9 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     control_y = delta_y[control_filter]
 
     _check_extreme_weights(control_weights)
+
+    if _has_collinear_columns(control_x, control_weights):
+        raise ValueError(_singular_comparison_message())
 
     try:
         coefficients, sm_results = _fit_wls(control_y, control_x, control_weights)
@@ -220,6 +230,11 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
     where :math:`t` indicates the period (pre/post).
 
+    When the selected group has fewer observations with positive weight than coefficients in
+    the selected period, or a covariate is constant or collinear with others among them, the
+    coefficients are not identified. The function then raises a ValueError that names the
+    group and period. A fit that fails for another reason raises the same way.
+
     Parameters
     ----------
     y : ndarray
@@ -254,10 +269,9 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
     Notes
     -----
-    In the context of bootstrapping (when called from `boot_drdid_rc`), the ``i_weights``
-    argument is typically the bootstrap-perturbed sampling weights. The propensity scores,
-    ``ps``, are used for internal validation checks within this function but do not
-    contribute to the OLS weighting itself.
+    The propensity score odds weight the comparison-group fits only. The treated-group
+    fits use ``i_weights`` alone. Inside a weighted bootstrap, ``i_weights`` holds the
+    bootstrap-perturbed sampling weights.
 
     See Also
     --------
@@ -268,30 +282,9 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     if pre is None:
         raise ValueError("pre parameter must be specified (True for pre-treatment, False for post-treatment).")
 
-    if pre and treat:
-        subs = (d == 1) & (post == 0)
-    elif not pre and treat:
-        subs = (d == 1) & (post == 1)
-    elif pre and not treat:
-        subs = (d == 0) & (post == 0)
-    else:
-        subs = (d == 0) & (post == 1)
-
-    n_subs = np.sum(subs)
-    n_features = x.shape[1]
-
-    if n_subs == 0:
-        raise ValueError(f"No units found for pre={pre}, treat={treat}. Cannot perform regression.")
-
-    if n_subs < n_features:
-        warnings.warn(
-            f"Number of observations in subset ({n_subs}) is less than the number of features ({n_features}). "
-            "Cannot estimate regression coefficients. Returning NaNs.",
-            UserWarning,
-        )
-        nan_coeffs = np.full(n_features, np.nan)
-        nan_fitted_values = np.full(y.shape[0], np.nan)
-        return WOLSResult(out_reg=nan_fitted_values, coefficients=nan_coeffs)
+    subs = _check_cell(post, d, x, i_weights, pre, treat, regressed=True)
+    n_subs = int(subs.sum())
+    cell = _cell_name(pre, treat)
 
     if n_subs < 3:
         warnings.warn(f"Only {n_subs} units available for regression. Results may be unreliable.", UserWarning)
@@ -312,8 +305,8 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
     _check_extreme_weights(sub_weights)
 
-    coefficients = np.full(n_features, np.nan)
-    fitted_values = np.full(y.shape[0], np.nan)
+    if _has_collinear_columns(sub_x, sub_weights):
+        raise ValueError(_singular_cell_message(cell, treat))
 
     try:
         coefficients, sm_results = _fit_wls(sub_y, sub_x, sub_weights)
@@ -322,12 +315,13 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
             _check_wls_condition_number(sm_results, threshold_error=1e15, threshold_warn=1e10)
         _check_coefficients_validity(coefficients)
 
-        fitted_values = x @ coefficients
+    except (np.linalg.LinAlgError, MissingDataError, ValueError, RuntimeError) as e:
+        raise ValueError(
+            f"The regression of the {cell} could not be solved. Pass finite outcomes and covariates for that "
+            "group and period."
+        ) from e
 
-    except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
-        warnings.warn(f"Failed to fit weighted least squares model: {e}. Returning NaNs.", UserWarning)
-
-    return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
+    return WOLSResult(out_reg=x @ coefficients, coefficients=coefficients)
 
 
 def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
@@ -347,6 +341,11 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
     where :math:`g \in \{0, 1\}` indicates the treatment group, :math:`t` indicates the
     period (pre/post), :math:`Y` is the outcome, and :math:`X` are the covariates
     including intercept.
+
+    When the selected group has fewer observations with positive weight than coefficients in
+    the selected period, or a covariate is constant or collinear with others among them, the
+    coefficients are not identified. The function then raises a ValueError that names the
+    group and period. A fit that fails for another reason raises the same way.
 
     Parameters
     ----------
@@ -387,30 +386,9 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
     if pre is None:
         raise ValueError("pre parameter must be specified (True for pre-treatment, False for post-treatment).")
 
-    if pre and treat:
-        subs = (d == 1) & (post == 0)
-    elif not pre and treat:
-        subs = (d == 1) & (post == 1)
-    elif pre and not treat:
-        subs = (d == 0) & (post == 0)
-    else:
-        subs = (d == 0) & (post == 1)
-
-    n_subs = np.sum(subs)
-    n_features = x.shape[1]
-
-    if n_subs == 0:
-        raise ValueError(f"No units found for pre={pre}, treat={treat}. Cannot perform regression.")
-
-    if n_subs < n_features:
-        warnings.warn(
-            f"Number of observations in subset ({n_subs}) is less than the number of features ({n_features}). "
-            "Cannot estimate regression coefficients. Returning NaNs.",
-            UserWarning,
-        )
-        nan_coeffs = np.full(n_features, np.nan)
-        nan_fitted_values = np.full(y.shape[0], np.nan)
-        return WOLSResult(out_reg=nan_fitted_values, coefficients=nan_coeffs)
+    subs = _check_cell(post, d, x, i_weights, pre, treat, regressed=True)
+    n_subs = int(subs.sum())
+    cell = _cell_name(pre, treat)
 
     if n_subs < 3:
         warnings.warn(f"Only {n_subs} units available for regression. Results may be unreliable.", UserWarning)
@@ -421,8 +399,8 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
 
     _check_extreme_weights(sub_weights)
 
-    coefficients = np.full(n_features, np.nan)
-    fitted_values = np.full(y.shape[0], np.nan)
+    if _has_collinear_columns(sub_x, sub_weights):
+        raise ValueError(_singular_cell_message(cell, treat))
 
     try:
         coefficients, sm_results = _fit_wls(sub_y, sub_x, sub_weights)
@@ -431,27 +409,137 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
             _check_wls_condition_number(sm_results, threshold_error=1e15, threshold_warn=1e10)
         _check_coefficients_validity(coefficients)
 
-        fitted_values = x @ coefficients
+    except (np.linalg.LinAlgError, MissingDataError, ValueError, RuntimeError) as e:
+        raise ValueError(
+            f"The regression of the {cell} could not be solved. Pass finite outcomes and covariates for that "
+            "group and period."
+        ) from e
 
-    except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
-        warnings.warn(f"Failed to fit weighted least squares model: {e}. Returning NaNs.", UserWarning)
-
-    return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
+    return WOLSResult(out_reg=x @ coefficients, coefficients=coefficients)
 
 
 def _fit_wls(y, X, weights):
-    """Dispatch WLS to GPU or statsmodels depending on active backend.
-
-    Returns
-    -------
-    coefficients : ndarray (numpy)
-    sm_results : statsmodels RegressionResults or None
-        None when the GPU path is used (no condition-number object available).
-    """
+    """Fit weighted least squares on columns rescaled by powers of two so that the solve ignores covariate scale."""
     xp = get_backend()
     if xp is not np:
-        beta, _ = cupy_wls(xp.asarray(y), xp.asarray(X), xp.asarray(weights))
-        return to_numpy(beta), None
-    model = sm.WLS(y, X, weights=weights)
-    results = model.fit()
-    return results.params, results
+        design = xp.asarray(X)
+        scale = _column_scales(design)
+        beta, _ = cupy_wls(xp.asarray(y), design / scale, xp.asarray(weights))
+        return to_numpy(beta / scale), None
+    scale = _column_scales(X)
+    results = sm.WLS(y, X / scale, weights=weights).fit()
+    return results.params / scale, results
+
+
+def _has_collinear_columns(x, weights):
+    """Tell whether the weighted covariates of a regression lack full column rank at any scale."""
+    xp = get_backend()
+    weighted_x = xp.asarray(x) * xp.sqrt(xp.asarray(weights))[:, None]
+    # Since a covariate that is not finite has no rank to check, the fit that follows reports it.
+    if not bool(xp.all(xp.isfinite(weighted_x))):
+        return False
+    norms = xp.linalg.norm(weighted_x, axis=0)
+    if not bool(xp.all(norms > 0)):
+        return True
+    # Since the rank tolerance scales with the largest singular value, unit-norm columns keep a covariate
+    # measured on a large scale from passing for collinear.
+    return int(xp.linalg.matrix_rank(weighted_x / norms)) < weighted_x.shape[1]
+
+
+def _check_rc_cells(post, d, x, weights, regressions):
+    """Raise a ValueError when a group in a period of repeated cross-sections is too small for the estimator."""
+    for treat in (False, True):
+        for pre in (True, False):
+            _check_cell(post, d, x, weights, pre, treat, ("treated" if treat else "comparison") in regressions)
+
+
+def _check_cell(post, d, x, weights, pre, treat, regressed):
+    """Return the rows of one group in one period of repeated cross-sections once they are usable."""
+    rows = (d == (1 if treat else 0)) & (post == (0 if pre else 1))
+    cell = _cell_name(pre, treat)
+    if not bool(rows.any()):
+        raise ValueError(_empty_cell_message(cell, treat))
+    _check_observations(rows, x, weights, cell, "observations", regressed, treat)
+    return rows
+
+
+def _check_panel_groups(d, x, weights, regressions):
+    """Raise a ValueError when a group of a panel is too small for the estimator."""
+    for treat in (False, True):
+        _check_panel_group(d, x, weights, treat, ("treated" if treat else "comparison") in regressions)
+
+
+def _check_panel_group(d, x, weights, treat, regressed):
+    """Return the units of one group of a panel once they are usable."""
+    rows = d == (1 if treat else 0)
+    group = "treated group" if treat else "comparison group"
+    if not bool(rows.any()):
+        raise ValueError(
+            f"No units found in the {group}. Pass data in which some units have a treatment indicator of "
+            f"{1 if treat else 0}."
+        )
+    _check_observations(rows, x, weights, group, "units", regressed, treat=False)
+    return rows
+
+
+def _check_observations(rows, x, weights, group, noun, regressed, treat):
+    """Raise a ValueError when a group has too few rows with positive weight for its estimator."""
+    n_positive = int((rows & (weights > 0)).sum())
+    if n_positive == 0:
+        raise ValueError(
+            f"The {group} has no {noun} with positive weight. Pass positive weights for some of its {noun}."
+        )
+    if not regressed:
+        return
+    # Since the regression helpers reject covariates that are not 2D with their own error, such an array
+    # counts as one column here.
+    n_coefficients = x.shape[1] if x.ndim == 2 else 1
+    if n_positive >= n_coefficients:
+        return
+    # Since a row with zero weight drops out of the fit, the count names only rows with positive weight.
+    counted = noun if n_positive == int(rows.sum()) else f"{noun} with positive weight"
+    raise ValueError(
+        f"The {group} has fewer {counted} ({n_positive}) than regression coefficients ({n_coefficients}). "
+        f"Pass fewer covariates.{_treated_alternatives(treat)}"
+    )
+
+
+def _cell_name(pre, treat):
+    """Name the group and period of a repeated cross-section regression."""
+    group = "treated group" if treat else "comparison group"
+    period = "pre-period" if pre else "post-period"
+    return f"{group} in the {period}"
+
+
+def _empty_cell_message(cell, treat):
+    """Build the error for a group with no rows in one period of repeated cross-sections."""
+    if treat:
+        return (
+            f"No units found in the {cell}. Pass a treatment indicator that equals 1 for treated units in both periods."
+        )
+    return f"No units found in the {cell}. Pass data with comparison units in both periods."
+
+
+def _singular_cell_message(cell, treat):
+    """Build the error for a repeated cross-section regression whose covariates are collinear."""
+    return (
+        f"The regression design matrix of the {cell} is singular. Consider removing covariates that are "
+        f"constant or collinear within that group and period.{_treated_alternatives(treat)}"
+    )
+
+
+def _singular_comparison_message():
+    """Build the error for a panel regression whose comparison units have collinear covariates."""
+    return (
+        "The regression design matrix of the comparison group is singular. Consider removing covariates that "
+        "are constant or collinear among the comparison units."
+    )
+
+
+def _treated_alternatives(treat):
+    """Name the estimators that fit no treated-group regression for a message about a treated group."""
+    if not treat:
+        return ""
+    return (
+        " The estimators drdid_imp_rc and drdid_trad_rc fit no regression for the treated group and accept this design."
+    )

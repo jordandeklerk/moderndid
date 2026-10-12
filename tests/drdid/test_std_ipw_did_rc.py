@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid.drdid import std_ipw_did_rc
+
+pytestmark = pytest.mark.slow
 
 
 def test_std_ipw_did_rc_basic():
@@ -79,7 +79,7 @@ def test_std_ipw_did_rc_bootstrap_weighted():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
+    result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -94,7 +94,7 @@ def test_std_ipw_did_rc_bootstrap_multiplier():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
+    result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -189,13 +189,13 @@ def test_std_ipw_did_rc_args_output():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, nboot=10, trim_level=0.99)
+    result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, biters=10, trim_level=0.99)
 
     assert result.args["panel"] is False
-    assert result.args["normalized"] is True  # Key difference from non-standardized
+    assert result.args["normalized"] is True
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 10
+    assert result.args["biters"] == 10
     assert result.args["type"] == "ipw"
     assert result.args["trim_level"] == 0.99
 
@@ -241,7 +241,5 @@ def test_std_ipw_did_rc_comparison_with_non_std():
 
     result_std = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
 
-    # Standardized and non-standardized should give different results
-    # but both should be reasonable estimates of the treatment effect (around 2)
     assert 0 < result_std.att < 4
     assert result_std.se > 0

@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 
-from moderndid.cupy.backend import HAS_CUPY, get_backend
+from moderndid.cupy.backend import HAS_CUPY, _array_module, get_backend
 
 __all__ = [
     "_check_coefficients_validity",
@@ -16,7 +16,7 @@ __all__ = [
 ]
 
 
-def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=False):
+def _validate_inputs(arrays_dict, x, biters, trim_level, check_intercept=False):
     """Validate inputs for bootstrap functions."""
     for name, arr in arrays_dict.items():
         if not _is_array(arr):
@@ -42,8 +42,8 @@ def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=Fa
     if x.shape[0] != n_units:
         raise ValueError("All arrays must have the same number of observations.")
 
-    if not isinstance(n_bootstrap, int) or n_bootstrap <= 0:
-        raise ValueError("n_bootstrap must be a positive integer.")
+    if not isinstance(biters, int) or biters <= 0:
+        raise ValueError("biters must be a positive integer.")
 
     if not 0 < trim_level < 1:
         raise ValueError("trim_level must be between 0 and 1.")
@@ -151,3 +151,71 @@ def _is_array(arr):
 
         return isinstance(arr, cp.ndarray)
     return False
+
+
+def _divide_by_complement(numerator, ps):
+    """Divide by one minus the propensity score without a warning at a score of one."""
+    xp = _array_module(numerator, ps)
+    complement = 1 - ps
+    at_one = complement == 0
+    quotient = numerator / xp.where(at_one, 1.0, complement)
+    numerator_at_one = numerator[at_one]
+    # A zero numerator, such as a treated unit's, carries no weight at a score of one.
+    # Since callers treat infinity and NaN differently, any other numerator gives infinity with its sign or stays NaN.
+    quotient[at_one] = xp.where(
+        numerator_at_one == 0,
+        0.0,
+        xp.where(numerator_at_one > 0, xp.inf, xp.where(numerator_at_one < 0, -xp.inf, xp.nan)),
+    )
+    return quotient
+
+
+def _column_scales(x):
+    """Return powers of two that bring each column of a design near unit root mean square."""
+    xp = _array_module(x)
+    rms = xp.sqrt(xp.mean(x * x, axis=0))
+    usable = xp.isfinite(rms) & (rms > 0)
+    # Since a power of two rescales a column exactly, a column already near unit scale keeps every value.
+    return 2.0 ** xp.where(usable, xp.round(xp.log2(xp.where(usable, rms, 1.0))), 0.0)
+
+
+def _scaled_columns(x):
+    """Divide each column of a design by a power of two near its size so that fits keep their precision."""
+    return x / _column_scales(x)
+
+
+def _diagonal_scales(matrix):
+    """Return powers of two that bring the diagonal of a symmetric matrix near one."""
+    xp = _array_module(matrix)
+    diagonal = xp.diag(matrix)
+    usable = xp.isfinite(diagonal) & (diagonal > 0)
+    return 2.0 ** xp.where(usable, xp.round(-0.5 * xp.log2(xp.where(usable, diagonal, 1.0))), 0.0)
+
+
+def _scaled_inverse(matrix, message):
+    """Invert a symmetric matrix on a diagonal scaled near one and raise the message when it is singular."""
+    xp = _array_module(matrix)
+    scale = _diagonal_scales(matrix)
+    outer = scale[:, None] * scale[None, :]
+    scaled = matrix * outer
+    # Since some GPU array modules have no condition number function, the test compares the extreme singular values.
+    # Multiplying rather than dividing flags an exactly singular matrix without a division by zero.
+    singular_values = xp.linalg.svd(scaled, compute_uv=False)
+    if not float(singular_values.max()) * np.finfo(float).eps < float(singular_values.min()):
+        raise ValueError(message)
+    return xp.linalg.inv(scaled) * outer
+
+
+def _scaled_pseudo_inverse(matrix):
+    """Return a generalized inverse of a symmetric matrix computed on a diagonal scaled near one."""
+    xp = _array_module(matrix)
+    scale = _diagonal_scales(matrix)
+    outer = scale[:, None] * scale[None, :]
+    return xp.linalg.pinv(matrix * outer) * outer
+
+
+def _singular_pscore_message():
+    """Build the error for a propensity score fit whose covariates are collinear."""
+    return (
+        "The propensity score design matrix is singular. Consider removing covariates that are constant or collinear."
+    )

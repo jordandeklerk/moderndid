@@ -11,6 +11,8 @@ from moderndid.cupy.regression import cupy_wls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_reg_rc import wboot_reg_rc
+from ..utils import _scaled_columns, _scaled_inverse
+from .wols import _cell_name, _check_rc_cells, _has_collinear_columns, _singular_cell_message
 
 
 class RegDIDRCResult(NamedTuple):
@@ -33,7 +35,7 @@ def reg_did_rc(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
 ):
     r"""Compute the outcome regression DiD estimator for the ATT with repeated cross-section data.
@@ -68,7 +70,7 @@ def reg_did_rc(
         Whether to use bootstrap for inference. Default is False.
     boot_type : str, optional
         Type of bootstrap ("weighted" or "multiplier"). Default is "weighted".
-    nboot : int, optional
+    biters : int, optional
         Number of bootstrap repetitions. Default is 999.
     influence_func : bool, optional
         Whether to return the influence function. Default is False.
@@ -83,9 +85,9 @@ def reg_did_rc(
         - se : float
             The outcome regression DiD standard error.
         - uci : float
-            Upper bound of a 95% confidence interval.
+            Upper bound of a 95 percent confidence interval.
         - lci : float
-            Lower bound of a 95% confidence interval.
+            Lower bound of a 95 percent confidence interval.
         - boots : ndarray or None
             Bootstrap draws of the ATT if boot=True.
         - att_inf_func : ndarray or None
@@ -103,12 +105,13 @@ def reg_did_rc(
 
     .. [1] Heckman, J., Ichimura, H., and Todd, P. (1997), "Matching as an Econometric Evaluation
            Estimator: Evidence from Evaluating a Job Training Programme", Review of Economic Studies,
-           vol. 64(4), p. 605–654. https://doi.org/10.2307/2971733
+           vol. 64(4), pp. 605-654. https://doi.org/10.2307/2971733
 
     .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020), "Doubly Robust Difference-in-Differences Estimators."
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
     """
     y, post, d, int_cov, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
+    _check_rc_cells(post, d, int_cov, i_weights, regressions=("comparison",))
 
     out_y_pre, out_y_post = _fit_outcome_regressions(y, post, d, int_cov, i_weights)
     weights = _compute_weights(d, post, i_weights)
@@ -145,13 +148,13 @@ def reg_did_rc(
         reg_boot = None
     else:
         if boot_type == "multiplier":
-            reg_boot = mboot_did(reg_att_inf_func, nboot)
+            reg_boot = mboot_did(reg_att_inf_func, biters)
             se_reg_att = stats.iqr(reg_boot) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.quantile(np.abs(reg_boot / se_reg_att), 0.95)
             uci = reg_att + cv * se_reg_att
             lci = reg_att - cv * se_reg_att
         else:  # "weighted"
-            reg_boot = wboot_reg_rc(y, post, d, int_cov, i_weights, n_bootstrap=nboot)
+            reg_boot = wboot_reg_rc(y, post, d, int_cov, i_weights, biters=biters)
             se_reg_att = stats.iqr(reg_boot - reg_att) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.quantile(np.abs((reg_boot - reg_att) / se_reg_att), 0.95)
             uci = reg_att + cv * se_reg_att
@@ -164,7 +167,7 @@ def reg_did_rc(
         "panel": False,
         "boot": boot,
         "boot_type": boot_type,
-        "nboot": nboot,
+        "biters": biters,
         "type": "or",
     }
 
@@ -208,22 +211,18 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
 def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
     """Fit outcome regression models for control units in pre and post periods."""
     xp = get_backend()
+    scaled = _scaled_columns(int_cov)
 
     # Pre-treatment period
     pre_filter = (d == 0) & (post == 0)
-    n_control_pre = np.sum(pre_filter)
-
-    if n_control_pre == 0:
-        raise ValueError("No control units in pre-treatment period.")
-
-    if n_control_pre < int_cov.shape[1]:
-        raise ValueError("Insufficient control units in pre-treatment period for regression.")
+    if _has_collinear_columns(int_cov[pre_filter], i_weights[pre_filter]):
+        raise ValueError(_singular_cell_message(_cell_name(True, False), False))
 
     if xp is not np:
         try:
             beta_pre, _ = cupy_wls(
                 xp.asarray(y[pre_filter]),
-                xp.asarray(int_cov[pre_filter]),
+                xp.asarray(scaled[pre_filter]),
                 xp.asarray(i_weights[pre_filter]),
             )
             reg_coeff_pre = to_numpy(beta_pre)
@@ -233,7 +232,7 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
         try:
             glm_pre = sm.GLM(
                 y[pre_filter],
-                int_cov[pre_filter],
+                scaled[pre_filter],
                 family=sm.families.Gaussian(link=sm.families.links.Identity()),
                 var_weights=i_weights[pre_filter],
             )
@@ -248,23 +247,18 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
             "Multicollinearity of covariates is probably the reason for it."
         )
 
-    out_y_pre = int_cov @ reg_coeff_pre
+    out_y_pre = scaled @ reg_coeff_pre
 
     # Post-treatment period
     post_filter = (d == 0) & (post == 1)
-    n_control_post = np.sum(post_filter)
-
-    if n_control_post == 0:
-        raise ValueError("No control units in post-treatment period.")
-
-    if n_control_post < int_cov.shape[1]:
-        raise ValueError("Insufficient control units in post-treatment period for regression.")
+    if _has_collinear_columns(int_cov[post_filter], i_weights[post_filter]):
+        raise ValueError(_singular_cell_message(_cell_name(False, False), False))
 
     if xp is not np:
         try:
             beta_post, _ = cupy_wls(
                 xp.asarray(y[post_filter]),
-                xp.asarray(int_cov[post_filter]),
+                xp.asarray(scaled[post_filter]),
                 xp.asarray(i_weights[post_filter]),
             )
             reg_coeff_post = to_numpy(beta_post)
@@ -274,7 +268,7 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
         try:
             glm_post = sm.GLM(
                 y[post_filter],
-                int_cov[post_filter],
+                scaled[post_filter],
                 family=sm.families.Gaussian(link=sm.families.links.Identity()),
                 var_weights=i_weights[post_filter],
             )
@@ -289,7 +283,7 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
             "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
         )
 
-    out_y_post = int_cov @ reg_coeff_post
+    out_y_post = scaled @ reg_coeff_post
 
     return out_y_pre, out_y_post
 
@@ -315,12 +309,7 @@ def _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weig
     weighted_resid_x_pre = weights_ols_pre[:, np.newaxis] * (y - out_y_pre)[:, np.newaxis] * int_cov
     gram_pre = weighted_x_pre.T @ int_cov / n_units
 
-    if np.linalg.cond(gram_pre) > 1e15:
-        raise ValueError(
-            "The regression design matrix for pre-treatment is singular. Consider removing some covariates."
-        )
-
-    gram_inv_pre = np.linalg.inv(gram_pre)
+    gram_inv_pre = _scaled_inverse(gram_pre, _singular_cell_message(_cell_name(True, False), False))
     asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
 
     # Asymptotic linear representation of OLS parameters in post-period
@@ -329,12 +318,7 @@ def _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weig
     weighted_resid_x_post = weights_ols_post[:, np.newaxis] * (y - out_y_post)[:, np.newaxis] * int_cov
     gram_post = weighted_x_post.T @ int_cov / n_units
 
-    if np.linalg.cond(gram_post) > 1e15:
-        raise ValueError(
-            "The regression design matrix for post-treatment is singular. Consider removing some covariates."
-        )
-
-    gram_inv_post = np.linalg.inv(gram_post)
+    gram_inv_post = _scaled_inverse(gram_post, _singular_cell_message(_cell_name(False, False), False))
     asy_lin_rep_ols_post = weighted_resid_x_post @ gram_inv_post
 
     return {

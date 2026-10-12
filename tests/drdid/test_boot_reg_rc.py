@@ -1,11 +1,13 @@
 """Tests for regression-based bootstrap DiD estimator with repeated cross-sections."""
 
+import re
+
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid import wboot_reg_rc
+
+pytestmark = pytest.mark.slow
 
 
 def test_wboot_reg_rc_basic():
@@ -19,7 +21,7 @@ def test_wboot_reg_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -43,25 +45,28 @@ def test_wboot_reg_rc_invalid_inputs():
         wboot_reg_rc(y[:-1], post, d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_reg_rc(y, post, d, x, weights, n_bootstrap=0)
+        wboot_reg_rc(y, post, d, x, weights, biters=0)
 
 
-@pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
-def test_wboot_reg_rc_insufficient_control_units():
+def test_wboot_reg_rc_warns_once_when_a_comparison_cell_is_too_small():
     rng = np.random.default_rng(42)
     n = 20
     x = np.column_stack([np.ones(n), rng.standard_normal(n), rng.standard_normal(n)])
     y = rng.standard_normal(n)
-    weights = np.ones(n)
-
+    post = np.repeat([0, 1], 10)
     d = np.ones(n)
-    d[:2] = 0
-    post = rng.binomial(1, 0.5, n)
+    d[[0, 10]] = 0
+    message = (
+        "All 10 bootstrap draws are NaN. The comparison group in the pre-period has fewer observations (1) than "
+        "regression coefficients (3). Pass fewer covariates."
+    )
 
-    with pytest.warns(UserWarning, match="Insufficient control units"):
-        boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=42)
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record:
+        boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=np.ones(n), biters=10, random_state=42)
 
-    assert np.sum(np.isnan(boot_estimates)) > 5
+    assert len(record) == 1
+    assert record[0].filename == __file__
+    assert np.all(np.isnan(boot_estimates))
 
 
 def test_wboot_reg_rc_reproducibility():
@@ -73,8 +78,8 @@ def test_wboot_reg_rc_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
-    boot_estimates2 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates1 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
+    boot_estimates2 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -89,28 +94,29 @@ def test_wboot_reg_rc_with_weights():
 
     weights = rng.exponential(1, n)
 
-    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
 
 
-@pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
-@pytest.mark.filterwarnings("ignore:Insufficient control units in pre-period.*:UserWarning")
-def test_wboot_reg_rc_no_treated_in_period():
+def test_wboot_reg_rc_warns_once_without_treated_rows_in_a_period():
     rng = np.random.default_rng(42)
     n = 100
     x = np.column_stack([np.ones(n), rng.standard_normal(n)])
     y = rng.standard_normal(n)
-    weights = np.ones(n)
-
     d = np.zeros(n)
     d[:20] = 1
     post = np.zeros(n)
-    post[20:] = 1
+    post[60:] = 1
+    message = (
+        "All 10 bootstrap draws are NaN. No units found in the treated group in the post-period. Pass a "
+        "treatment indicator that equals 1 for treated units in both periods."
+    )
 
-    with pytest.warns(UserWarning, match="No treated units in post-period"):
-        boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=42)
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record:
+        boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=np.ones(n), biters=10, random_state=42)
 
+    assert len(record) == 1
     assert np.all(np.isnan(boot_estimates))

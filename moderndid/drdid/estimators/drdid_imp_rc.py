@@ -11,7 +11,7 @@ from moderndid.cupy.backend import get_backend, to_numpy
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1
 from ..propensity.pscore_ipt import calculate_pscore_ipt
-from .wols import wols_rc
+from .wols import _check_rc_cells, wols_rc
 
 
 class DRDIDRCResult(NamedTuple):
@@ -34,14 +34,14 @@ def drdid_imp_rc(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
     r"""Compute the improved doubly robust DiD estimator for the ATT with repeated cross-section data.
 
-    Implements the improved and locally efficient DR-DiD estimator for the ATT
-    with repeated cross-sectional data, as defined in [2]_. The estimator is given by
+    Implements the improved DR-DiD estimator for the ATT with repeated cross-sectional
+    data in equation (3.9) of [2]_. The estimator is given by
 
     .. math::
         \widehat{\tau}_{1,imp}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T) -
@@ -51,7 +51,9 @@ def drdid_imp_rc(
     This estimator uses a logistic propensity score model and separate linear
     regression models for the control group's outcome in both pre and post-treatment
     periods. The resulting estimator is doubly robust for inference but is not
-    locally efficient.
+    locally efficient. For repeated cross-sections, ``drdid(est_method="imp")``
+    computes the locally efficient improved estimator of equation (3.10) through
+    :func:`drdid_imp_local_rc`.
 
     Parameters
     ----------
@@ -71,7 +73,7 @@ def drdid_imp_rc(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -100,8 +102,6 @@ def drdid_imp_rc(
         \left[\left.\frac{\Lambda(X^{\prime} \hat{\gamma}^{ipt})}{1-\Lambda(X^{\prime} \hat{\gamma}^{ipt})}
         (Y - X^{\prime} b)^{2} \right\rvert\, D=0, T=t\right]
 
-    The resulting estimator is doubly robust for inference but is not locally efficient.
-
     See Also
     --------
     drdid_imp_local_rc : Improved and locally efficient DR-DiD estimator for repeated cross-section data.
@@ -121,6 +121,7 @@ def drdid_imp_rc(
     """
     xp = get_backend()
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
+    _check_rc_cells(post, d, covariates, i_weights, regressions=("comparison",))
 
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = xp.clip(xp.asarray(ps_fit), 1e-6, 1 - 1e-6)
@@ -149,10 +150,10 @@ def drdid_imp_rc(
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
         if boot_type == "multiplier":
-            dr_boot = mboot_did(att_inf_func, nboot)
+            dr_boot = mboot_did(att_inf_func, biters)
             se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             if se_dr_att > 0:
                 cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
@@ -168,7 +169,7 @@ def drdid_imp_rc(
                 d=d,
                 x=covariates,
                 i_weights=i_weights,
-                n_bootstrap=nboot,
+                biters=biters,
                 trim_level=trim_level,
             )
             se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
@@ -187,10 +188,10 @@ def drdid_imp_rc(
         "panel": False,
         "estMethod": "imp1",
         "boot": boot,
-        "boot.type": boot_type,
-        "nboot": nboot,
+        "boot_type": boot_type,
+        "biters": biters,
         "type": "dr",
-        "trim.level": trim_level,
+        "trim_level": trim_level,
     }
 
     return DRDIDRCResult(

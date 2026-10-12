@@ -1,4 +1,4 @@
-"""Bootstrap inference for repeated cross-section DiD estimators using LogisticRegression."""
+"""Bootstrap inference for traditional doubly robust DiD estimators with repeated cross-sections."""
 
 import warnings
 
@@ -8,17 +8,19 @@ import statsmodels.api as sm
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls
 
-from ..estimators.wols import wols_rc
+from ..estimators.wols import ols_rc
 from ..propensity.aipw_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2
-from ..utils import _validate_inputs
+from ..utils import _scaled_columns, _validate_inputs
 
 
-def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_drdid_rc1(y, post, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for control-only doubly-robust DiD with repeated cross-sections.
 
-    Implements the bootstrap inference for the doubly-robust difference-in-differences
-    estimator with repeated cross-section data. This version uses outcome regression on control
-    units only and standard logistic regression for propensity scores.
+    Implements the weighted bootstrap for the traditional doubly-robust
+    difference-in-differences estimator with repeated cross-section data. That estimator
+    models the outcome of the comparison units only. Each draw refits the propensity score
+    by logistic regression and the comparison-group outcome regressions by ordinary least
+    squares. These are the fits of :func:`drdid_trad_rc`.
 
     Parameters
     ----------
@@ -34,7 +36,7 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -45,19 +47,19 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     aipw_did_rc_imp1 : The underlying simplified AIPW estimator for repeated cross-sections.
-    boot_drdid_rc : Traditional bootstrap for doubly-robust DiD.
+    wboot_drdid_rc2 : Bootstrap for the locally efficient traditional estimator.
     """
-    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level)
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -75,12 +77,10 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         trim_ps[control_mask] = ps_b[control_mask] < trim_level
 
         try:
-            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
+            control_pre_results = ols_rc(y=y, post=post, d=d, x=x, i_weights=b_weights, pre=True, treat=False)
             out_y_cont_pre_b = control_pre_results.out_reg
 
-            control_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
-            )
+            control_post_results = ols_rc(y=y, post=post, d=d, x=x, i_weights=b_weights, pre=False, treat=False)
             out_y_cont_post_b = control_post_results.out_reg
 
             out_y_b = post * out_y_cont_post_b + (1 - post) * out_y_cont_pre_b
@@ -110,12 +110,13 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
     return bootstrap_estimates
 
 
-def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_drdid_rc2(y, post, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for locally efficient doubly-robust DiD with repeated cross-sections.
 
-    Implements the bootstrap inference for the locally efficient doubly-robust
-    difference-in-differences estimator with repeated cross-section data. This version uses
-    outcome regression on both treatment and control groups.
+    Implements the weighted bootstrap for the locally efficient traditional doubly-robust
+    difference-in-differences estimator with repeated cross-section data. Each draw refits the
+    propensity score by logistic regression and the outcome regressions of both groups in both
+    periods by ordinary least squares. These are the fits of :func:`drdid_rc`.
 
     Parameters
     ----------
@@ -131,7 +132,7 @@ def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -142,19 +143,19 @@ def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     aipw_did_rc_imp2 : The underlying AIPW estimator for repeated cross-sections.
-    wboot_drdid_rc_imp2 : Improved bootstrap for doubly-robust DiD.
+    wboot_drdid_ipt_rc2 : Bootstrap for the improved locally efficient estimator.
     """
-    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level)
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -172,18 +173,16 @@ def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         trim_ps[control_mask] = ps_b[control_mask] < trim_level
 
         try:
-            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
+            control_pre_results = ols_rc(y=y, post=post, d=d, x=x, i_weights=b_weights, pre=True, treat=False)
             out_y_cont_pre_b = control_pre_results.out_reg
 
-            control_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
-            )
+            control_post_results = ols_rc(y=y, post=post, d=d, x=x, i_weights=b_weights, pre=False, treat=False)
             out_y_cont_post_b = control_post_results.out_reg
 
-            treat_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True)
+            treat_pre_results = ols_rc(y=y, post=post, d=d, x=x, i_weights=b_weights, pre=True, treat=True)
             out_y_treat_pre_b = treat_pre_results.out_reg
 
-            treat_post_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True)
+            treat_post_results = ols_rc(y=y, post=post, d=d, x=x, i_weights=b_weights, pre=False, treat=True)
             out_y_treat_post_b = treat_post_results.out_reg
 
         except (ValueError, np.linalg.LinAlgError, KeyError) as e:
@@ -217,13 +216,14 @@ def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
 def _fit_logistic_boot_rc(d, x, b_weights):
     """Dispatch logistic regression for bootstrap to GPU or statsmodels."""
     xp = get_backend()
+    scaled = _scaled_columns(x)
     if xp is not np:
         _, ps = cupy_logistic_irls(
             xp.asarray(d, dtype=xp.float64),
-            xp.asarray(x, dtype=xp.float64),
+            xp.asarray(scaled, dtype=xp.float64),
             xp.asarray(b_weights, dtype=xp.float64),
         )
         return to_numpy(ps)
-    logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
+    logit_model = sm.GLM(d, scaled, family=sm.families.Binomial(), freq_weights=b_weights)
     logit_results = logit_model.fit()
-    return logit_results.predict(x)
+    return logit_results.predict(scaled)

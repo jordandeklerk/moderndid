@@ -1,6 +1,7 @@
 """Wrapper for outcome regression DiD estimators."""
 
 from moderndid.core.preprocess import preprocess_drdid
+from moderndid.core.preprocess.validators import check_columns
 
 from .container import ORDIDResult
 from .estimators.reg_did_panel import reg_did_panel
@@ -18,12 +19,12 @@ def ordid(
     weightsname=None,
     boot=False,
     boot_type="weighted",
-    n_boot=999,
+    biters=999,
     inf_func=False,
 ):
     r"""Wrap the outcome regression DiD estimators for the ATT.
 
-    This function is a wrapper for outcome regression DiD estimators.
+    This function is a wrapper for outcome regression DiD estimators [1]_, [2]_.
     It calls the appropriate estimator based on the panel argument and
     performs pre-processing for the data.
 
@@ -39,13 +40,15 @@ def ordid(
     idname : str | None, default None
         Name of the column containing the unit ID. Required if panel=True.
     treatname : str
-        Name of the column containing the treatment group indicator.
-        For panel data: time-invariant indicator (1 if ever treated, 0 if never treated).
-        For repeated cross-sections: treatment status in the post-period.
+        Name of the column containing the treatment group indicator. With panel data it
+        is constant within a unit, 1 if ever treated and 0 if never treated. With
+        repeated cross-sections it marks the group treated in the post-period and equals
+        1 for that group's rows in both periods.
     xformla : str | None, default None
-        A formula for the covariates to include in the model.
-        Should be of the form "~ X1 + X2" (intercept is always included).
-        If None, equivalent to "~ 1" (intercept only).
+        Formula that joins covariate column names with ``+``, as in
+        ``"~ x1 + x2"``. The model always includes an intercept. Transformed
+        terms such as ``I(x**2)`` or ``C(x)`` and columns of strings or
+        categories require formulaic. If None, only the intercept enters.
     panel : bool, default True
         Whether the data is panel (True) or repeated cross-sections (False).
         Panel data should be in long format with each row representing
@@ -58,7 +61,7 @@ def ordid(
         Whether to compute bootstrap standard errors.
     boot_type : {"weighted", "multiplier"}, default "weighted"
         Type of bootstrap to perform (only relevant if boot=True).
-    n_boot : int, default 999
+    biters : int, default 999
         Number of bootstrap repetitions (only relevant if boot=True).
     inf_func : bool, default False
         Whether to return the influence function values.
@@ -70,8 +73,8 @@ def ordid(
 
         - **att**: The OR DiD point estimate.
         - **se**: The OR DiD standard error.
-        - **uci**: The upper bound of a 95% confidence interval.
-        - **lci**: The lower bound of a 95% confidence interval.
+        - **uci**: The upper bound of a 95 percent confidence interval.
+        - **lci**: The lower bound of a 95 percent confidence interval.
         - **boots**: Bootstrap draws of the ATT if boot=True.
         - **att_inf_func**: Influence function values if inf_func=True.
         - **call_params**: Original function call parameters.
@@ -124,7 +127,7 @@ def ordid(
     .. [1] Heckman, J., Ichimura, H., and Todd, P. (1997),
            "Matching as an Econometric Evaluation Estimator: Evidence from
            Evaluating a Job Training Programme", Review of Economic Studies,
-           vol. 64(4), p. 605–654. https://doi.org/10.2307/2971733
+           vol. 64(4), pp. 605-654. https://doi.org/10.2307/2971733
 
     .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
            "Doubly Robust Difference-in-Differences Estimators."
@@ -139,8 +142,17 @@ def ordid(
 
     if boot_type not in ("weighted", "multiplier"):
         raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
-    if not isinstance(n_boot, int) or n_boot < 1:
-        raise ValueError(f"n_boot={n_boot} is not valid. Must be a positive integer.")
+    if not isinstance(biters, int) or biters < 1:
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname if panel else None,
+        treatname=treatname,
+        xformla=xformla,
+        weightsname=weightsname,
+    )
 
     call_params = {
         "yname": yname,
@@ -153,7 +165,7 @@ def ordid(
         "weightsname": weightsname,
         "boot": boot,
         "boot_type": boot_type,
-        "n_boot": n_boot,
+        "biters": biters,
         "inf_func": inf_func,
     }
 
@@ -168,7 +180,7 @@ def ordid(
         weightsname=weightsname,
         boot=boot,
         boot_type=boot_type,
-        biters=n_boot,
+        biters=biters,
         inf_func=inf_func,
     )
 
@@ -181,7 +193,7 @@ def ordid(
             i_weights=dp.weights,
             boot=boot,
             boot_type=boot_type,
-            nboot=n_boot,
+            biters=biters,
             influence_func=inf_func,
         )
     else:
@@ -193,7 +205,7 @@ def ordid(
             i_weights=dp.weights,
             boot=boot,
             boot_type=boot_type,
-            nboot=n_boot,
+            biters=biters,
             influence_func=inf_func,
         )
 
@@ -204,8 +216,10 @@ def ordid(
             "normalized": True,
             "boot": boot,
             "boot_type": boot_type,
-            "nboot": n_boot,
+            "biters": biters,
             "type": "or",
+            "n_obs": 2 * dp.n_units if panel else dp.n_obs,
+            "n_covariates": sum(name != "Intercept" for name in dp.covariate_names),
         }
     )
 

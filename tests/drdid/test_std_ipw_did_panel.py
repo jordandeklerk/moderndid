@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
+from moderndid.drdid import ipw_did_panel, std_ipw_did_panel
 
-from moderndid.drdid import std_ipw_did_panel
+pytestmark = pytest.mark.slow
 
 
 def test_std_ipw_did_panel_basic():
@@ -79,7 +79,7 @@ def test_std_ipw_did_panel_bootstrap_weighted():
     y0 = x @ [1, 0.5] + rng.standard_normal(n)
     y1 = y0 + 2 * d + rng.standard_normal(n) * 0.5
 
-    result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
+    result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="weighted", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -94,7 +94,7 @@ def test_std_ipw_did_panel_bootstrap_multiplier():
     y0 = x @ [1, 0.5] + rng.standard_normal(n)
     y1 = y0 + 2 * d + rng.standard_normal(n) * 0.5
 
-    result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
+    result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="multiplier", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -184,13 +184,13 @@ def test_std_ipw_did_panel_args_output():
     y0 = x @ [1, 0.5] + rng.standard_normal(n)
     y1 = y0 + 2 * d + rng.standard_normal(n) * 0.5
 
-    result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, nboot=10, trim_level=0.99)
+    result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, biters=10, trim_level=0.99)
 
     assert result.args["panel"] is True
     assert result.args["normalized"] is True
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 10
+    assert result.args["biters"] == 10
     assert result.args["type"] == "ipw"
     assert result.args["trim_level"] == 0.99
 
@@ -220,7 +220,6 @@ def test_std_ipw_did_panel_multicollinear_covariates():
     y0 = 1 + 0.5 * x1 + rng.standard_normal(n)
     y1 = y0 + 2 * d + rng.standard_normal(n) * 0.5
 
-    # The function should handle multicollinearity gracefully
     result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)
     assert isinstance(result.att, float)
     assert not np.isnan(result.att)
@@ -264,8 +263,6 @@ def test_std_ipw_did_panel_vs_non_standardized():
     d = rng.binomial(1, 0.5, n)
     y0 = x @ [1, 0.5] + rng.standard_normal(n)
     y1 = y0 + 2 * d + rng.standard_normal(n) * 0.5
-
-    from moderndid.drdid import ipw_did_panel
 
     result_std = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)
     result_non_std = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)

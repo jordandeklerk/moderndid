@@ -77,7 +77,7 @@ def test_drdid_trad_rc_bootstrap_weighted():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
+    result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -92,7 +92,7 @@ def test_drdid_trad_rc_bootstrap_multiplier():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
+    result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", biters=10)
 
     assert result.boots is not None
     assert len(result.boots) == 10
@@ -163,12 +163,12 @@ def test_drdid_trad_rc_args_output():
     post = rng.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, nboot=10, trim_level=0.99)
+    result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, biters=10, trim_level=0.99)
 
     assert result.args["panel"] is False
-    assert result.args["estMethod"] == "trad2"
+    assert result.args["estMethod"] == "trad1"
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 10
+    assert result.args["biters"] == 10
     assert result.args["type"] == "dr"
     assert result.args["trim_level"] == 0.99

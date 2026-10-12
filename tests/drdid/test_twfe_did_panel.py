@@ -1,15 +1,17 @@
 """Tests for the two-way fixed effects DiD estimator with panel data."""
 
+import re
+
 import numpy as np
 import pytest
-
-pytestmark = pytest.mark.slow
 
 from moderndid import twfe_did_panel
 
 from ..helpers import importorskip
 
 pl = importorskip("polars")
+
+pytestmark = pytest.mark.slow
 
 
 def dgp_panel_for_test(n=2000, seed=42):
@@ -56,7 +58,7 @@ def test_no_covariates():
 
 def test_bootstrap_weighted():
     y1, y0, d, covariates = dgp_panel_for_test(n=500)
-    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", nboot=99)
+    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", biters=99)
 
     assert result.boots is not None
     assert len(result.boots) == 99
@@ -66,7 +68,7 @@ def test_bootstrap_weighted():
 
 def test_bootstrap_multiplier():
     y1, y0, d, covariates = dgp_panel_for_test(n=500)
-    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="multiplier", nboot=99)
+    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="multiplier", biters=99)
 
     assert result.boots is not None
     assert len(result.boots) == 99
@@ -94,28 +96,30 @@ def test_with_weights():
     assert result.se is not None
 
 
-def test_all_treated():
+def test_twfe_did_panel_rejects_data_without_comparison_units():
     rng = np.random.default_rng(42)
     n = 100
     y1 = rng.normal(0, 1, n)
     y0 = rng.normal(0, 1, n)
     d = np.ones(n)
     covariates = rng.normal(0, 1, (n, 3))
+    message = "No units found in the comparison group. Pass data in which some units have a treatment indicator of 0."
 
-    with pytest.raises(ValueError, match="All units are treated"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         twfe_did_panel(y1, y0, d, covariates)
 
 
-def test_all_control():
+def test_twfe_did_panel_rejects_data_without_treated_units():
     rng = np.random.default_rng(42)
     n = 100
     y1 = rng.normal(0, 1, n)
     y0 = rng.normal(0, 1, n)
     d = np.zeros(n)
     covariates = rng.normal(0, 1, (n, 3))
+    message = "No units found in the treated group. Pass data in which some units have a treatment indicator of 1."
 
-    result = twfe_did_panel(y1, y0, d, covariates)
-    assert result.att == 0.0
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        twfe_did_panel(y1, y0, d, covariates)
 
 
 def test_invalid_weights():
@@ -196,10 +200,10 @@ def test_mismatched_dimensions():
 
 def test_args_output():
     y1, y0, d, covariates = dgp_panel_for_test(n=100)
-    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", nboot=10)
+    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", biters=10)
 
     assert result.args["panel"] is True
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 10
+    assert result.args["biters"] == 10
     assert result.args["type"] == "twfe"

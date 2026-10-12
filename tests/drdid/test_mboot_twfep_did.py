@@ -3,23 +3,23 @@
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid import mboot_twfep_did
+
+pytestmark = pytest.mark.slow
 
 
 @pytest.mark.parametrize(
-    "n_units,n_bootstrap,expected_shape",
+    "n_units,biters,expected_shape",
     [
         (10, 100, (100,)),
         (20, 500, (500,)),
         (5, 50, (50,)),
     ],
 )
-def test_mboot_twfep_did_shape(n_units, n_bootstrap, expected_shape):
+def test_mboot_twfep_did_shape(n_units, biters, expected_shape):
     rng = np.random.default_rng(42)
     linrep = rng.normal(0, 1, 2 * n_units)
-    result = mboot_twfep_did(linrep, n_units, n_bootstrap, random_state=42)
+    result = mboot_twfep_did(linrep, n_units, biters, random_state=42)
     assert result.shape == expected_shape
 
 
@@ -28,8 +28,8 @@ def test_mboot_twfep_did_reproducibility():
     n_units = 10
     linrep = rng.normal(0, 1, 2 * n_units)
 
-    result1 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
-    result2 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
+    result1 = mboot_twfep_did(linrep, n_units, biters=20, random_state=42)
+    result2 = mboot_twfep_did(linrep, n_units, biters=20, random_state=42)
 
     np.testing.assert_allclose(result1, result2)
 
@@ -39,8 +39,8 @@ def test_mboot_twfep_did_different_seeds():
     n_units = 10
     linrep = rng.normal(0, 1, 2 * n_units)
 
-    result1 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
-    result2 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=123)
+    result1 = mboot_twfep_did(linrep, n_units, biters=20, random_state=42)
+    result2 = mboot_twfep_did(linrep, n_units, biters=20, random_state=123)
 
     assert not np.allclose(result1, result2)
 
@@ -49,7 +49,7 @@ def test_mboot_twfep_did_zero_influence():
     n_units = 10
     linrep = np.zeros(2 * n_units)
 
-    result = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
+    result = mboot_twfep_did(linrep, n_units, biters=20, random_state=42)
     np.testing.assert_allclose(result, np.zeros(20))
 
 
@@ -58,7 +58,7 @@ def test_mboot_twfep_did_constant_influence():
     constant_value = 5.0
     linrep = np.full(2 * n_units, constant_value)
 
-    result = mboot_twfep_did(linrep, n_units, n_bootstrap=2000, random_state=42)
+    result = mboot_twfep_did(linrep, n_units, biters=2000, random_state=42)
 
     assert np.abs(np.mean(result)) < 0.1
 
@@ -67,7 +67,7 @@ def test_mboot_twfep_did_weights_properties():
     n_units = 10
     linrep = np.ones(2 * n_units)
 
-    result = mboot_twfep_did(linrep, n_units, n_bootstrap=2000, random_state=42)
+    result = mboot_twfep_did(linrep, n_units, biters=2000, random_state=42)
 
     assert np.abs(np.mean(result)) < 0.05
 
@@ -81,16 +81,16 @@ def test_mboot_twfep_did_panel_structure():
     linrep_post = np.arange(n_units) + 10
     linrep = np.concatenate([linrep_pre, linrep_post])
 
-    result = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
+    result = mboot_twfep_did(linrep, n_units, biters=20, random_state=42)
     assert len(result) == 20
     assert result.dtype == np.float64
 
 
 def test_mboot_twfep_did_edge_cases():
     rng = np.random.default_rng(42)
-    result = mboot_twfep_did(np.array([1.0, 2.0]), n_units=1, n_bootstrap=10, random_state=42)
+    result = mboot_twfep_did(np.array([1.0, 2.0]), n_units=1, biters=10, random_state=42)
     assert result.shape == (10,)
 
     large_linrep = rng.normal(0, 1, 2000)
-    result = mboot_twfep_did(large_linrep, n_units=1000, n_bootstrap=10, random_state=42)
+    result = mboot_twfep_did(large_linrep, n_units=1000, biters=10, random_state=42)
     assert result.shape == (10,)

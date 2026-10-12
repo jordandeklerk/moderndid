@@ -38,7 +38,7 @@ class DRDIDResult(NamedTuple):
     def __maketables_stat__(self, key: str) -> int | str | float | None:
         """Return model-level statistics for maketables."""
         if key == "N":
-            return n_from_shape(self.call_params.get("data_shape"))
+            return self.args.get("n_obs", n_from_shape(self.call_params.get("data_shape")))
         if key == "se_type":
             return se_type_label(bool(self.args.get("boot", False)))
         return None
@@ -91,7 +91,7 @@ class IPWDIDResult(NamedTuple):
     def __maketables_stat__(self, key: str) -> int | str | float | None:
         """Return model-level statistics for maketables."""
         if key == "N":
-            return n_from_shape(self.call_params.get("data_shape"))
+            return self.args.get("n_obs", n_from_shape(self.call_params.get("data_shape")))
         if key == "se_type":
             return se_type_label(bool(self.args.get("boot", False)))
         return None
@@ -144,7 +144,7 @@ class ORDIDResult(NamedTuple):
     def __maketables_stat__(self, key: str) -> int | str | float | None:
         """Return model-level statistics for maketables."""
         if key == "N":
-            return n_from_shape(self.call_params.get("data_shape"))
+            return self.args.get("n_obs", n_from_shape(self.call_params.get("data_shape")))
         if key == "se_type":
             return se_type_label(bool(self.args.get("boot", False)))
         return None

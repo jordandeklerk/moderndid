@@ -28,7 +28,7 @@ def format_did_result(result: NamedTuple) -> str:
     est_method = args.get("est_method", args.get("estMethod", "default"))
     panel = args.get("panel", _infer_panel_type(result_type_name))
     boot = args.get("boot", False)
-    nboot = args.get("nboot", 999)
+    biters = args.get("biters", 999)
     boot_type = args.get("boot_type", "weighted")
 
     t_stat = att / se if se > 0 and not np.isnan(se) else np.nan
@@ -39,9 +39,10 @@ def format_did_result(result: NamedTuple) -> str:
     title = _get_estimator_title(estimator_type, est_method)
     lines.extend(format_title(title))
 
-    if hasattr(result, "call_params") and "data_shape" in result.call_params:
-        n_obs, n_cols = result.call_params["data_shape"]
-        lines.append(f" Computed from {n_obs} observations and {n_cols - 4} covariates.")
+    if "n_obs" in args:
+        n_covariates = args.get("n_covariates", 0)
+        noun = "covariate" if n_covariates == 1 else "covariates"
+        lines.append(f" Computed from {args['n_obs']} observations and {n_covariates} {noun}.")
 
     sig_marker = compute_significance(lci, uci)
 
@@ -64,13 +65,13 @@ def format_did_result(result: NamedTuple) -> str:
         lines.append(f" Data structure: {data_type}")
 
     lines.extend(format_section_header("Estimation Details"))
-    method_details = _get_method_description(estimator_type, est_method, args)
+    method_details = _get_method_description(estimator_type, est_method, args, panel)
     for detail in method_details:
         lines.append(f" {detail}")
 
     lines.extend(format_section_header("Inference"))
     if boot:
-        lines.append(f" Standard errors: Bootstrapped ({nboot} replications)")
+        lines.append(f" Standard errors: Bootstrapped ({biters} replications)")
         lines.append(f" Bootstrap type: {boot_type.capitalize()}")
     else:
         lines.append(" Standard errors: Analytical")
@@ -128,8 +129,6 @@ def _get_estimator_title(estimator_type: str, est_method: str) -> str:
         "dr": {
             "imp": "Doubly Robust DiD Estimator (Improved Method)",
             "trad": "Doubly Robust DiD Estimator (Traditional Method)",
-            "imp_local": "Doubly Robust DiD Estimator (Improved Locally Efficient Method)",
-            "trad_local": "Doubly Robust DiD Estimator (Traditional Local Method)",
             "default": "Doubly Robust DiD Estimator",
         },
         "ipw": {
@@ -146,28 +145,25 @@ def _get_estimator_title(estimator_type: str, est_method: str) -> str:
     return "Difference-in-Differences Estimator"
 
 
-def _get_method_description(estimator_type: str, est_method: str, args: dict) -> list[str]:
+def _get_method_description(estimator_type: str, est_method: str, args: dict, panel: bool | None = None) -> list[str]:
     details = []
 
     if estimator_type == "dr":
-        if est_method == "imp":
+        if est_method == "imp" and panel is False:
+            details.append("Outcome regression (comparison group): Weighted least squares")
+            details.append("Outcome regression (treated group): Ordinary least squares")
+            details.append("Propensity score: Inverse probability tilting")
+        elif est_method == "imp":
             details.append("Outcome regression: Weighted least squares")
             details.append("Propensity score: Inverse probability tilting")
         elif est_method == "trad":
             details.append("Outcome regression: Ordinary least squares")
             details.append("Propensity score: Logistic regression")
-        elif est_method == "imp_local":
-            details.append("Outcome regression: Locally weighted least squares")
-            details.append("Propensity score: Inverse probability tilting")
-        elif est_method == "trad_local":
-            details.append("Outcome regression: Local linear regression")
-            details.append("Propensity score: Logistic regression")
         else:
             details.append("Outcome regression and propensity score models")
 
     elif estimator_type == "ipw":
-        normalized = args.get("normalized", True)
-        if est_method == "std_ipw" or normalized:
+        if args.get("normalized", est_method == "std_ipw"):
             details.append("Weight type: Normalized (Hajek-type estimator)")
         else:
             details.append("Weight type: Unnormalized (Horvitz-Thompson-type)")

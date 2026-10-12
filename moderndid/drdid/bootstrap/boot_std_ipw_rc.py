@@ -8,7 +8,7 @@ import statsmodels.api as sm
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls
 
-from ..utils import _validate_inputs
+from ..utils import _scaled_columns, _validate_inputs
 
 
 def wboot_std_ipw_rc(
@@ -17,7 +17,7 @@ def wboot_std_ipw_rc(
     d,
     x,
     i_weights,
-    n_bootstrap=1000,
+    biters=1000,
     trim_level=0.995,
     random_state=None,
 ):
@@ -42,7 +42,7 @@ def wboot_std_ipw_rc(
         Covariate matrix of shape (n_units, n_features) including intercept.
     i_weights : ndarray
         Individual observation weights of shape (n_units,).
-    n_bootstrap : int, default=1000
+    biters : int, default=1000
         Number of bootstrap iterations.
     trim_level : float, default=0.995
         Trimming threshold for propensity scores. Control units with
@@ -53,7 +53,7 @@ def wboot_std_ipw_rc(
     Returns
     -------
     ndarray
-        Bootstrap estimates of shape (n_bootstrap,) containing the
+        Bootstrap estimates of shape (biters,) containing the
         standardized IPW DiD estimates for each bootstrap iteration.
 
     See Also
@@ -67,12 +67,13 @@ def wboot_std_ipw_rc(
         "d": d,
         "i_weights": i_weights,
     }
-    n_units = _validate_inputs(arrays_dict, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs(arrays_dict, x, biters, trim_level)
 
     rng = np.random.default_rng(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    scaled_x = _scaled_columns(x)
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -81,14 +82,14 @@ def wboot_std_ipw_rc(
             if xp is not np:
                 _, ps_b = cupy_logistic_irls(
                     xp.asarray(d, dtype=xp.float64),
-                    xp.asarray(x, dtype=xp.float64),
+                    xp.asarray(scaled_x, dtype=xp.float64),
                     xp.asarray(b_weights, dtype=xp.float64),
                 )
                 ps_b = to_numpy(ps_b)
             else:
-                logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
+                logit_model = sm.GLM(d, scaled_x, family=sm.families.Binomial(), freq_weights=b_weights)
                 logit_results = logit_model.fit()
-                ps_b = logit_results.predict(x)
+                ps_b = logit_results.predict(scaled_x)
             ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
         except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(
@@ -149,10 +150,10 @@ def wboot_std_ipw_rc(
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
-        pct_failed = (n_failed / n_bootstrap) * 100
+        pct_failed = (n_failed / biters) * 100
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed ({pct_failed:.1f}%). "
-            f"Results based on {n_bootstrap - n_failed} successful iterations.",
+            f"{n_failed} out of {biters} bootstrap iterations failed ({pct_failed:.1f}%). "
+            f"Results based on {biters - n_failed} successful iterations.",
             UserWarning,
         )
 
