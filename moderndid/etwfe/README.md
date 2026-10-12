@@ -1,6 +1,6 @@
 # Extended Two-Way Fixed Effects
 
-This module implements the Extended Two-Way Fixed Effects (ETWFE) estimator for staggered difference-in-differences following [Wooldridge (2021, 2023)](https://doi.org/10.1093/ectj/utad016). Rather than discarding the TWFE estimator in staggered settings, ETWFE saturates the model with cohort-by-time interaction dummies so that each coefficient recovers a cohort-time-specific average treatment effect on the treated. The approach extends naturally to nonlinear models through the two-way Mundlak regression.
+This module implements the Extended Two-Way Fixed Effects (ETWFE) estimator for staggered difference-in-differences following Wooldridge ([2023](https://doi.org/10.1093/ectj/utad016), [2025](https://doi.org/10.1007/s00181-025-02807-z)). Rather than discarding the TWFE estimator in staggered settings, ETWFE saturates the model with cohort-by-time interaction dummies so that each coefficient recovers a cohort-time-specific average treatment effect on the treated. The approach extends naturally to nonlinear models through the two-way Mundlak regression.
 
 The computational methods here are inspired by the corresponding Python package [etwfe](https://github.com/armandkapllani/etwfe) and the R package [etwfe](https://github.com/grantmcdermott/etwfe) by Grant McDermott.
 
@@ -35,6 +35,6 @@ did.plot_event_study(event)
 
 ## References
 
-Wooldridge, J. M. (2021). Two-way fixed effects, the two-way Mundlak regression, and difference-in-differences estimators.
+Wooldridge, J. M. (2025). Two-way fixed effects, the two-way Mundlak regression, and difference-in-differences estimators. *Empirical Economics*, 69(5), 2545-2587.
 
 Wooldridge, J. M. (2023). Simple approaches to nonlinear difference-in-differences with panel data. *The Econometrics Journal*, 26(3), C31-C66.
