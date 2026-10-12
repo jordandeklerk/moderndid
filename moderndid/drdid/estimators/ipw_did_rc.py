@@ -12,6 +12,8 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_ipw_rc import wboot_ipw_rc
 from ..bootstrap.boot_mult import mboot_did
+from ..utils import _scaled_columns, _scaled_inverse, _scaled_pseudo_inverse, _singular_pscore_message
+from .wols import _check_rc_cells
 
 
 class IPWDIDRCResult(NamedTuple):
@@ -34,7 +36,7 @@ def ipw_did_rc(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
@@ -48,7 +50,7 @@ def ipw_did_rc(
         \tau = \frac{1}{\mathbb{E}[D]} \mathbb{E}\left[\frac{D-p(X)}{1-p(X)}
         \frac{T-\lambda}{\lambda(1-\lambda)} Y\right].
 
-    IPW weights are not normalized to sum up to one, that is, the estimator is of the Horwitz-Thompson type.
+    IPW weights are not normalized to sum up to one. The estimator is of the Horvitz-Thompson type.
 
     Parameters
     ----------
@@ -68,7 +70,7 @@ def ipw_did_rc(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -101,6 +103,7 @@ def ipw_did_rc(
     there is uncertainty about model specification.
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
+    _check_rc_cells(post, d, covariates, i_weights, regressions=())
 
     ps_fit, ps_weights = _compute_propensity_score(d, covariates, i_weights)
 
@@ -149,14 +152,14 @@ def ipw_did_rc(
         ipw_boot = None
     else:
         if boot_type == "multiplier":
-            ipw_boot = mboot_did(att_inf_func, nboot)
+            ipw_boot = mboot_did(att_inf_func, biters)
             se_att = stats.iqr(ipw_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs(ipw_boot / se_att), 0.95)
             uci = ipw_att + cv * se_att
             lci = ipw_att - cv * se_att
         else:  # "weighted"
             ipw_boot = wboot_ipw_rc(
-                y=y, post=post, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
+                y=y, post=post, d=d, x=covariates, i_weights=i_weights, biters=biters, trim_level=trim_level
             )
             se_att = stats.iqr(ipw_boot - ipw_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs((ipw_boot - ipw_att) / se_att), 0.95)
@@ -171,7 +174,7 @@ def ipw_did_rc(
         "normalized": False,
         "boot": boot,
         "boot_type": boot_type,
-        "nboot": nboot,
+        "biters": biters,
         "type": "ipw",
         "trim_level": trim_level,
     }
@@ -219,11 +222,12 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
 def _compute_propensity_score(d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
     xp = get_backend()
+    scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
-                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(scaled, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
             )
             ps_fit = to_numpy(ps_fit)
@@ -236,7 +240,7 @@ def _compute_propensity_score(d, covariates, i_weights):
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
     else:
         try:
-            pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+            pscore_model = sm.GLM(d, scaled, family=sm.families.Binomial(), freq_weights=i_weights)
 
             pscore_results = pscore_model.fit()
             if not pscore_results.converged:
@@ -246,7 +250,7 @@ def _compute_propensity_score(d, covariates, i_weights):
                     "Propensity score model coefficients have NA components. \n"
                     "Multicollinearity (or lack of variation) of covariates is a likely reason."
                 )
-            ps_fit = pscore_results.predict(covariates)
+            ps_fit = pscore_results.predict(scaled)
         except np.linalg.LinAlgError as e:
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
@@ -306,11 +310,12 @@ def _get_influence_quantities(d, covariates, ps_fit, ps_weights, i_weights, n_un
     """Compute quantities needed for influence function."""
     # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
+    ps_hessian = covariates.T @ (ps_weights[:, np.newaxis] * covariates)
     try:
-        hessian_ps = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
-    except np.linalg.LinAlgError:
+        hessian_ps = _scaled_inverse(ps_hessian, _singular_pscore_message()) * n_units
+    except ValueError:
         warnings.warn("Failed to invert Hessian matrix. Using pseudo-inverse.", UserWarning)
-        hessian_ps = np.linalg.pinv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
+        hessian_ps = _scaled_pseudo_inverse(ps_hessian) * n_units
     asy_lin_rep_ps = score_ps @ hessian_ps
 
     return {

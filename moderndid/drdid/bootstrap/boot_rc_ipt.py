@@ -10,12 +10,15 @@ from ..propensity.pscore_ipt import calculate_pscore_ipt
 from ..utils import _validate_inputs
 
 
-def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute IPT bootstrap estimates for control-only doubly-robust DiD with repeated cross-sections.
 
-    Implements the bootstrap inference for the doubly-robust difference-in-differences
-    estimator using inverse probability tilting (IPT) for propensity score estimation. This version
-    uses outcome regression on control units only.
+    Implements the weighted bootstrap for the improved doubly-robust difference-in-differences
+    estimator with repeated cross-section data. That estimator models the outcome of the
+    comparison units only. Each draw refits the propensity score by inverse probability tilting
+    (IPT) and the comparison-group outcome regressions by weighted least squares. These are the
+    fits of :func:`drdid_imp_rc`. Propensity score trimming applies to the doubly robust weights
+    and not to the regressions.
 
     Parameters
     ----------
@@ -32,7 +35,7 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
         The first column MUST be an intercept.
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -44,16 +47,16 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
     """
     n_units = _validate_inputs(
-        {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level, check_intercept=True
+        {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level, check_intercept=True
     )
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -74,13 +77,11 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
         b_weights_trimmed[~trim_ps_mask] = 0.0
 
         try:
-            control_pre_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=True, treat=False
-            )
+            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
             out_y_cont_pre_b = control_pre_results.out_reg
 
             control_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=False, treat=False
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
             )
             out_y_cont_post_b = control_post_results.out_reg
 
@@ -112,22 +113,25 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            f"{n_failed} out of {biters} bootstrap iterations failed and resulted in NaN. "
             "This might be due to issues in propensity score estimation, outcome regression, "
-            "or the AIPW calculation itself (e.g. perfect prediction, collinearity, "
-            "small effective sample sizes after weighting/trimming).",
+            "or the AIPW calculation itself, such as perfect prediction, collinearity, or "
+            "small effective sample sizes after weighting or trimming.",
             UserWarning,
         )
 
     return bootstrap_estimates
 
 
-def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute IPT bootstrap estimates for locally efficient doubly-robust DiD with repeated cross-sections.
 
-    Implements the bootstrap inference for the locally efficient doubly-robust
-    difference-in-differences estimator using inverse probability tilting (IPT) for propensity
-    score estimation. This version uses outcome regression on both treatment and control groups.
+    Implements the weighted bootstrap for the improved locally efficient doubly-robust
+    difference-in-differences estimator with repeated cross-section data. Each draw refits the
+    propensity score by inverse probability tilting (IPT), the comparison-group outcome
+    regressions by weighted least squares, and the treated-group outcome regressions by ordinary
+    least squares. These are the fits of :func:`drdid_imp_local_rc`. Propensity score trimming
+    applies to the doubly robust weights and not to the regressions.
 
     Parameters
     ----------
@@ -144,7 +148,7 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
         The first column MUST be an intercept for IPT.
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -156,16 +160,16 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
     """
     n_units = _validate_inputs(
-        {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level, check_intercept=True
+        {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level, check_intercept=True
     )
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -186,22 +190,16 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
         b_weights_trimmed[~trim_ps_mask] = 0.0
 
         try:
-            control_pre_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=True, treat=False
-            )
+            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
             out_y_cont_pre_b = control_pre_results.out_reg
             control_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=False, treat=False
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
             )
             out_y_cont_post_b = control_post_results.out_reg
 
-            treat_pre_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=True, treat=True
-            )
+            treat_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True)
             out_y_treat_pre_b = treat_pre_results.out_reg
-            treat_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=False, treat=True
-            )
+            treat_post_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True)
             out_y_treat_post_b = treat_post_results.out_reg
 
         except (ValueError, np.linalg.LinAlgError, KeyError) as e:
@@ -229,10 +227,10 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            f"{n_failed} out of {biters} bootstrap iterations failed and resulted in NaN. "
             "This might be due to issues in propensity score estimation, outcome regression, "
-            "or the AIPW calculation itself (e.g. perfect prediction, collinearity, "
-            "small effective sample sizes after weighting/trimming).",
+            "or the AIPW calculation itself, such as perfect prediction, collinearity, or "
+            "small effective sample sizes after weighting or trimming.",
             UserWarning,
         )
 

@@ -51,8 +51,6 @@ def test_infer_panel_type(name, expected):
     [
         ("dr", "imp", "Improved"),
         ("dr", "trad", "Traditional"),
-        ("dr", "imp_local", "Locally Efficient"),
-        ("dr", "trad_local", "Local"),
         ("dr", "default", "Doubly Robust"),
         ("dr", "nonexistent", "Doubly Robust"),
         ("ipw", "ipw", "Inverse Probability"),
@@ -68,15 +66,21 @@ def test_get_estimator_title(etype, method, expected_substr):
 
 
 @pytest.mark.parametrize(
+    "method, title",
+    [
+        ("imp", "Doubly Robust DiD Estimator (Improved Method)"),
+        ("trad", "Doubly Robust DiD Estimator (Traditional Method)"),
+        ("other", "Doubly Robust DiD Estimator"),
+    ],
+)
+def test_get_estimator_title_names_only_the_dr_methods_drdid_records(method, title):
+    assert _get_estimator_title("dr", method) == title
+
+
+@pytest.mark.parametrize(
     "etype, method, args, expected_substr",
     [
-        ("dr", "imp", {}, "Weighted least squares"),
-        ("dr", "trad", {}, "Ordinary least squares"),
-        ("dr", "imp_local", {}, "Locally weighted"),
-        ("dr", "trad_local", {}, "Local linear"),
         ("dr", "other_method", {}, "propensity score"),
-        ("ipw", "std_ipw", {"normalized": True}, "Normalized"),
-        ("ipw", "ipw", {"normalized": False}, "Unnormalized"),
         ("or", "default", {}, "Ordinary least squares"),
         ("twfe", "default", {}, "Unit and time"),
     ],
@@ -84,6 +88,41 @@ def test_get_estimator_title(etype, method, expected_substr):
 def test_get_method_description(etype, method, args, expected_substr):
     details = _get_method_description(etype, method, args)
     assert any(expected_substr.lower() in d.lower() for d in details)
+
+
+@pytest.mark.parametrize(
+    "method, panel, details",
+    [
+        ("imp", True, ["Outcome regression: Weighted least squares", "Propensity score: Inverse probability tilting"]),
+        ("imp", None, ["Outcome regression: Weighted least squares", "Propensity score: Inverse probability tilting"]),
+        (
+            "imp",
+            False,
+            [
+                "Outcome regression (comparison group): Weighted least squares",
+                "Outcome regression (treated group): Ordinary least squares",
+                "Propensity score: Inverse probability tilting",
+            ],
+        ),
+        ("trad", True, ["Outcome regression: Ordinary least squares", "Propensity score: Logistic regression"]),
+        ("trad", False, ["Outcome regression: Ordinary least squares", "Propensity score: Logistic regression"]),
+    ],
+)
+def test_get_method_description_names_the_fits_of_each_dr_method(method, panel, details):
+    assert _get_method_description("dr", method, {}, panel) == details
+
+
+@pytest.mark.parametrize(
+    "method, args, weight_type",
+    [
+        ("std_ipw", {"normalized": True}, "Weight type: Normalized (Hajek-type estimator)"),
+        ("ipw", {"normalized": False}, "Weight type: Unnormalized (Horvitz-Thompson-type)"),
+        ("std_ipw", {}, "Weight type: Normalized (Hajek-type estimator)"),
+        ("ipw", {}, "Weight type: Unnormalized (Horvitz-Thompson-type)"),
+    ],
+)
+def test_get_method_description_weight_type_follows_the_flag_or_the_method(method, args, weight_type):
+    assert _get_method_description("ipw", method, args) == [weight_type, "Propensity score: Logistic regression"]
 
 
 def test_method_description_unknown_returns_empty():
@@ -103,7 +142,7 @@ def test_format_explicit_args():
         "est_method": "trad",
         "panel": True,
         "boot": True,
-        "nboot": 500,
+        "biters": 500,
         "boot_type": "weighted",
     }
     result = _DRPanel(att=2.0, se=0.5, lci=1.0, uci=3.0, args=args)
@@ -192,10 +231,21 @@ def test_format_no_significance_when_interval_includes_zero():
         assert "***" not in line
 
 
-def test_format_call_params_data_shape(result_with_call_params):
-    formatted = format_did_result(result_with_call_params)
-    assert "500" in formatted
-    assert "4 covariates" in formatted
+@pytest.mark.parametrize(
+    "n_covariates, header",
+    [
+        (3, " Computed from 500 observations and 3 covariates."),
+        (1, " Computed from 500 observations and 1 covariate."),
+        (0, " Computed from 500 observations and 0 covariates."),
+    ],
+)
+def test_format_header_counts_the_rows_and_covariates_used(n_covariates, header):
+    result = _DRPanel(att=1.0, se=0.2, lci=0.6, uci=1.4, args={"n_obs": 500, "n_covariates": n_covariates})
+    assert header in format_did_result(result).splitlines()
+
+
+def test_format_header_needs_the_recorded_counts(result_with_call_params):
+    assert "Computed from" not in format_did_result(result_with_call_params)
 
 
 @pytest.mark.parametrize(
@@ -231,7 +281,7 @@ def test_format_panel_none_omitted(unknown_result):
 
 
 def test_format_boot_type_capitalized():
-    args = {"boot": True, "nboot": 200, "boot_type": "multiplier"}
+    args = {"boot": True, "biters": 200, "boot_type": "multiplier"}
     result = _DRPanel(att=1.0, se=0.2, lci=0.6, uci=1.4, args=args)
     assert "Multiplier" in format_did_result(result)
 

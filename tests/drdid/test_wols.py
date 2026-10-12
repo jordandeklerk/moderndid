@@ -1,11 +1,13 @@
 """Tests for weighted OLS regression functions."""
 
+import re
 import warnings
 
 import numpy as np
 import pytest
 
 from moderndid import ols_panel, wols_panel, wols_rc
+from moderndid.drdid.estimators.wols import _has_collinear_columns, ols_rc
 
 
 def test_ols_panel_happy_path():
@@ -78,7 +80,9 @@ def test_wols_panel_no_control_units():
     ps = np.array([0.6, 0.7, 0.65, 0.8, 0.75])
     i_weights = np.ones(n_units)
 
-    with pytest.raises(ValueError, match="No control units found"):
+    message = "No units found in the comparison group. Pass data in which some units have a treatment indicator of 0."
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         wols_panel(delta_y, d, x, ps, i_weights)
 
 
@@ -145,12 +149,12 @@ def test_wols_panel_multicollinearity():
 
     x = np.zeros((n_units, n_features))
     x[:, 0] = np.random.default_rng(333).standard_normal(n_units)
-    x[:, 1] = x[:, 0] * 2  # Ensure perfect multicollinearity
+    x[:, 1] = x[:, 0] * 2
     x[:, 2] = x[:, 0] + x[:, 1]
     ps = np.array([0.6, 0.3, 0.4, 0.35, 0.7, 0.25, 0.45, 0.38, 0.65, 0.32])
     i_weights = np.ones(n_units)
 
-    with pytest.raises(ValueError, match="Failed to solve linear system"):
+    with pytest.raises(ValueError, match="^The regression design matrix of the comparison group is singular\\."):
         wols_panel(delta_y, d, x, ps, i_weights)
 
 
@@ -200,33 +204,96 @@ def test_wols_panel_shape_mismatch():
         wols_panel(delta_y, d, x, ps, i_weights)
 
 
-def test_wols_rc_happy_path_control_post():
-    n_units = 10
-    n_features = 3
+@pytest.mark.parametrize("regression", [wols_rc, ols_rc])
+@pytest.mark.parametrize(
+    ("pre", "treat", "sizes", "message"),
+    [
+        (
+            True,
+            False,
+            [2, 4, 4, 4],
+            "The comparison group in the pre-period has fewer observations (2) than regression coefficients (3). "
+            "Pass fewer covariates.",
+        ),
+        (
+            False,
+            False,
+            [4, 2, 4, 4],
+            "The comparison group in the post-period has fewer observations (2) than regression coefficients (3). "
+            "Pass fewer covariates.",
+        ),
+        (
+            True,
+            True,
+            [4, 4, 2, 4],
+            "The treated group in the pre-period has fewer observations (2) than regression coefficients (3). "
+            "Pass fewer covariates. The estimators drdid_imp_rc and drdid_trad_rc fit no regression for the "
+            "treated group and accept this design.",
+        ),
+        (
+            False,
+            True,
+            [4, 4, 4, 2],
+            "The treated group in the post-period has fewer observations (2) than regression coefficients (3). "
+            "Pass fewer covariates. The estimators drdid_imp_rc and drdid_trad_rc fit no regression for the "
+            "treated group and accept this design.",
+        ),
+    ],
+)
+def test_rc_regressions_reject_a_cell_with_fewer_observations_than_coefficients(regression, pre, treat, sizes, message):
+    post = np.repeat([0, 1, 0, 1], sizes)
+    d = np.repeat([0, 0, 1, 1], sizes)
+    rng = np.random.default_rng(5)
+    x = np.column_stack([np.ones(post.size), rng.standard_normal((post.size, 2))])
+    extra = {"ps": np.full(post.size, 0.5)} if regression is wols_rc else {}
 
-    y = np.array([10.0, 12.0, 11.0, 13.0, 20.0, 22.0, 15.0, 18.0, 19.0, 25.0])
-    post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1], dtype=int)
-    d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1], dtype=int)
-    x = np.random.default_rng(444).standard_normal((n_units, n_features))
-    ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
-    i_weights = np.ones(n_units)
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        result = wols_rc(y, post, d, x, ps, i_weights, pre=False, treat=False)
-        assert len(w) >= 1
-
-        assert any(
-            "Number of observations in subset (2) is less than the number of features (3)" in str(warn.message)
-            for warn in w
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        regression(
+            y=rng.standard_normal(post.size),
+            post=post,
+            d=d,
+            x=x,
+            i_weights=np.ones(post.size),
+            pre=pre,
+            treat=treat,
+            **extra,
         )
 
-    assert hasattr(result, "out_reg")
-    assert hasattr(result, "coefficients")
-    assert result.out_reg.shape == (n_units,)
-    assert result.coefficients.shape == (n_features,)
-    assert np.all(np.isnan(result.out_reg))
-    assert np.all(np.isnan(result.coefficients))
+
+@pytest.mark.parametrize("regression", [wols_rc, ols_rc])
+@pytest.mark.parametrize(
+    ("weights", "message"),
+    [
+        (
+            [0.0, 0.0, 1.0, 1.0],
+            "The comparison group in the pre-period has fewer observations with positive weight (2) than "
+            "regression coefficients (3). Pass fewer covariates.",
+        ),
+        (
+            [0.0, 0.0, 0.0, 0.0],
+            "The comparison group in the pre-period has no observations with positive weight. Pass positive "
+            "weights for some of its observations.",
+        ),
+    ],
+)
+def test_rc_regressions_count_only_observations_with_positive_weight(regression, weights, message):
+    post = np.repeat([0, 1, 0, 1], 4)
+    d = np.repeat([0, 0, 1, 1], 4)
+    rng = np.random.default_rng(6)
+    x = np.column_stack([np.ones(16), rng.standard_normal((16, 2))])
+    extra = {"ps": np.full(16, 0.5)} if regression is wols_rc else {}
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        regression(
+            y=rng.standard_normal(16),
+            post=post,
+            d=d,
+            x=x,
+            i_weights=np.r_[weights, np.ones(12)],
+            pre=True,
+            treat=False,
+            **extra,
+        )
 
 
 def test_wols_rc_happy_path_treat_pre():
@@ -273,37 +340,8 @@ def test_wols_rc_no_units_in_subset():
     ps = np.array([0.4, 0.5, 0.3, 0.45, 0.35, 0.42])
     i_weights = np.ones(n_units)
 
-    with pytest.raises(ValueError, match="No units found for pre=True, treat=False"):
+    with pytest.raises(ValueError, match="^No units found in the comparison group in the pre-period\\."):
         wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=False)
-
-
-def test_wols_rc_few_units_in_subset():
-    n_units = 10
-    n_features = 2
-
-    y = np.array([10.0, 15.0, 12.0, 18.0, 20.0, 22.0, 16.0, 14.0, 19.0, 21.0])
-    post = np.array([0, 1, 1, 1, 1, 1, 1, 1, 1, 1], dtype=int)
-    d = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1], dtype=int)
-    x = np.random.default_rng(888).standard_normal((n_units, n_features))
-    ps = np.array([0.4, 0.5, 0.3, 0.45, 0.35, 0.6, 0.7, 0.65, 0.72, 0.68])
-    i_weights = np.ones(n_units)
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        result = wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=False)
-        assert len(w) >= 1
-
-        assert any(
-            "Number of observations in subset (1) is less than the number of features (2)" in str(warn.message)
-            for warn in w
-        )
-
-    assert hasattr(result, "out_reg")
-    assert hasattr(result, "coefficients")
-    assert result.out_reg.shape == (n_units,)
-    assert result.coefficients.shape == (n_features,)
-    assert np.all(np.isnan(result.out_reg))
-    assert np.all(np.isnan(result.coefficients))
 
 
 @pytest.mark.filterwarnings("ignore:Only.*units available:UserWarning")
@@ -340,33 +378,51 @@ def test_wols_rc_extreme_weights():
     assert hasattr(result, "coefficients")
 
 
-def test_wols_rc_multicollinearity():
-    n_units = 10
-    n_features = 3
+@pytest.mark.parametrize("regression", [wols_rc, ols_rc])
+def test_rc_regressions_reject_collinear_covariates(regression):
+    post = np.repeat([0, 1, 0, 1], 4)
+    d = np.repeat([0, 0, 1, 1], 4)
+    x1 = np.random.default_rng(2222).standard_normal(16)
+    x = np.column_stack([np.ones(16), x1, 2 * x1])
+    extra = {"ps": np.full(16, 0.5)} if regression is wols_rc else {}
+    message = (
+        "The regression design matrix of the comparison group in the pre-period is singular. Consider removing "
+        "covariates that are constant or collinear within that group and period."
+    )
 
-    y = np.array([10.0, 15.0, 12.0, 18.0, 20.0, 22.0, 16.0, 14.0, 19.0, 21.0])
-    post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1], dtype=int)
-    d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1], dtype=int)
-    x = np.zeros((n_units, n_features))
-    x[:, 0] = np.random.default_rng(2222).standard_normal(n_units)
-    x[:, 1] = x[:, 0] * 2
-    x[:, 2] = x[:, 0] + x[:, 1]
-    ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
-    i_weights = np.ones(n_units)
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        regression(y=x1 + 1, post=post, d=d, x=x, i_weights=np.ones(16), pre=True, treat=False, **extra)
 
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        result = wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=False)
-        assert len(w) >= 1
-        assert any(
-            "Number of observations in subset (2) is less than the number of features (3)" in str(warn.message)
-            for warn in w
+
+@pytest.mark.parametrize("regression", [ols_panel, wols_panel])
+@pytest.mark.parametrize(
+    ("weights", "message"),
+    [
+        (
+            [1.0, 1.0],
+            "The comparison group has fewer units (2) than regression coefficients (3). Pass fewer covariates.",
+        ),
+        (
+            [0.0, 0.0, 1.0, 1.0],
+            "The comparison group has fewer units with positive weight (2) than regression coefficients (3). "
+            "Pass fewer covariates.",
+        ),
+    ],
+)
+def test_panel_regressions_reject_a_comparison_group_with_fewer_units_than_coefficients(regression, weights, message):
+    n = 6 + len(weights)
+    rng = np.random.default_rng(7)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, 2))])
+    extra = {"ps": np.full(n, 0.5)} if regression is wols_panel else {}
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        regression(
+            delta_y=rng.standard_normal(n),
+            d=np.r_[np.ones(6), np.zeros(len(weights))],
+            x=x,
+            i_weights=np.r_[np.ones(6), weights],
+            **extra,
         )
-
-    assert hasattr(result, "out_reg")
-    assert hasattr(result, "coefficients")
-    assert np.all(np.isnan(result.out_reg))
-    assert np.all(np.isnan(result.coefficients))
 
 
 @pytest.mark.parametrize(
@@ -430,3 +486,67 @@ def test_wols_rc_all_subset_combinations(pre, treat):
     assert hasattr(result, "coefficients")
     assert result.out_reg.shape == (n_units,)
     assert result.coefficients.shape == (n_features,)
+
+
+def test_collinearity_check_ignores_the_scale_of_a_covariate():
+    rng = np.random.default_rng(3)
+    z = rng.normal(size=1000)
+    weights = rng.uniform(0.5, 1.5, size=1000)
+
+    assert not _has_collinear_columns(np.column_stack([np.ones(1000), 1e13 * z]), weights)
+    assert _has_collinear_columns(np.column_stack([np.ones(1000), z, np.ones(1000)]), weights)
+    assert _has_collinear_columns(np.column_stack([np.ones(1000), z, 2 * z]), weights)
+    assert _has_collinear_columns(np.column_stack([np.ones(1000), np.zeros(1000)]), weights)
+
+
+@pytest.mark.parametrize("regression", [wols_rc, ols_rc])
+@pytest.mark.parametrize(("outcome", "covariate"), [(np.nan, 0.5), (0.5, np.inf)], ids=["nan-outcome", "inf-covariate"])
+def test_rc_regressions_reject_a_fit_that_cannot_be_solved(regression, outcome, covariate):
+    post = np.repeat([0, 1, 0, 1], 4)
+    d = np.repeat([0, 0, 1, 1], 4)
+    rng = np.random.default_rng(9)
+    x = np.column_stack([np.ones(16), rng.standard_normal((16, 2))])
+    y = rng.standard_normal(16)
+    y[8] = outcome
+    x[8, 1] = covariate
+    extra = {"ps": np.full(16, 0.5)} if regression is wols_rc else {}
+    message = (
+        "The regression of the treated group in the pre-period could not be solved. Pass finite outcomes and "
+        "covariates for that group and period."
+    )
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        regression(y=y, post=post, d=d, x=x, i_weights=np.ones(16), pre=True, treat=True, **extra)
+
+
+@pytest.mark.parametrize("regression", [ols_panel, wols_panel])
+def test_panel_regressions_reject_collinear_covariates(regression):
+    d = np.repeat([1, 0], [6, 10])
+    z = np.random.default_rng(10).standard_normal(16)
+    x = np.column_stack([np.ones(16), z, 3 * z])
+    extra = {"ps": np.full(16, 0.5)} if regression is wols_panel else {}
+    message = (
+        "The regression design matrix of the comparison group is singular. Consider removing covariates that are "
+        "constant or collinear among the comparison units."
+    )
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        regression(delta_y=z + 1, d=d, x=x, i_weights=np.ones(16), **extra)
+
+
+@pytest.mark.parametrize("regression", [wols_rc, ols_rc])
+@pytest.mark.parametrize("scale", [1e9, 1e16])
+def test_rc_regressions_fit_a_covariate_on_any_scale(regression, scale):
+    post = np.repeat([0, 1, 0, 1], 50)
+    d = np.repeat([0, 0, 1, 1], 50)
+    rng = np.random.default_rng(11)
+    z = rng.standard_normal((200, 2))
+    y = 1 + z @ np.array([2.0, -1.0]) + rng.standard_normal(200)
+    extra = {"ps": np.full(200, 0.5)} if regression is wols_rc else {}
+    spec = {"y": y, "post": post, "d": d, "i_weights": np.ones(200), "pre": True, "treat": False, **extra}
+
+    expected = regression(x=np.column_stack([np.ones(200), z]), **spec)
+    result = regression(x=np.column_stack([np.ones(200), z[:, 0], scale * z[:, 1]]), **spec)
+
+    np.testing.assert_allclose(result.out_reg, expected.out_reg, rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(result.coefficients[2] * scale, expected.coefficients[2], rtol=1e-12)

@@ -1,5 +1,7 @@
 """Tests for the improved doubly robust DiD estimator for panel data."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -63,13 +65,13 @@ def test_weighted_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="weighted",
-        nboot=20,
+        biters=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == result.args["nboot"]
+    assert len(result.boots) == result.args["biters"]
 
 
 def test_multiplier_bootstrap():
@@ -82,13 +84,13 @@ def test_multiplier_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="multiplier",
-        nboot=20,
+        biters=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == result.args["nboot"]
+    assert len(result.boots) == result.args["biters"]
 
 
 def test_influence_function():
@@ -119,3 +121,13 @@ def test_no_covariates():
     assert result.se is not None
     assert not np.isnan(result.att)
     assert not np.isnan(result.se)
+
+
+def test_rejects_a_covariate_that_is_constant_among_comparison_units(panel_married_in_comparison):
+    message = (
+        "The regression design matrix of the comparison group is singular. Consider removing covariates that are "
+        "constant or collinear among the comparison units."
+    )
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        drdid_imp_panel(**panel_married_in_comparison)

@@ -3,12 +3,14 @@
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid import (
+    drdid_rc,
+    drdid_trad_rc,
     wboot_drdid_rc1,
     wboot_drdid_rc2,
 )
+
+pytestmark = pytest.mark.slow
 
 
 def test_bootstrap_drdid_rc_basic():
@@ -22,7 +24,7 @@ def test_bootstrap_drdid_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -46,7 +48,7 @@ def test_bootstrap_drdid_rc_invalid_inputs():
         wboot_drdid_rc2(y[:-1], post, d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_drdid_rc2(y, post, d, x, weights, n_bootstrap=0)
+        wboot_drdid_rc2(y, post, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_drdid_rc2(y, post, d, x, weights, trim_level=1.5)
@@ -64,7 +66,7 @@ def test_bootstrap_drdid_rc_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_drdid_rc2(
-            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) > 5
@@ -79,7 +81,7 @@ def test_bootstrap_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates, boot_estimates)
 
@@ -94,7 +96,7 @@ def test_bootstrap_with_weights():
 
     weights = rng.exponential(1, n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -112,7 +114,7 @@ def test_wboot_drdid_rc_imp1_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
     assert len(wboot_estimates) == 20
@@ -136,7 +138,7 @@ def test_wboot_drdid_rc_imp1_invalid_inputs():
         wboot_drdid_rc1(y[:-1], post, d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_drdid_rc1(y, post, d, x, weights, n_bootstrap=0)
+        wboot_drdid_rc1(y, post, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_drdid_rc1(y, post, d, x, weights, trim_level=1.5)
@@ -154,7 +156,7 @@ def test_wboot_drdid_rc_imp1_edge_cases():
 
     with pytest.warns(UserWarning):
         wboot_estimates = wboot_drdid_rc1(
-            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(wboot_estimates)) > 5
@@ -169,9 +171,9 @@ def test_wboot_drdid_rc_imp1_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    wboot_estimates1 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    wboot_estimates1 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
-    wboot_estimates2 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    wboot_estimates2 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(wboot_estimates1, wboot_estimates2)
 
@@ -186,7 +188,7 @@ def test_wboot_drdid_rc_imp1_with_weights():
 
     weights = rng.exponential(1, n)
 
-    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
     assert len(wboot_estimates) == 20
@@ -202,10 +204,10 @@ def test_wboot_drdid_rc_imp1_compare_with_standard():
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    n_boot = 500
-    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=n_boot, random_state=42)
+    biters = 500
+    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=biters, random_state=42)
 
-    boot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=n_boot, random_state=42)
+    boot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=biters, random_state=42)
 
     assert np.isclose(np.nanmean(wboot_estimates), np.nanmean(boot_estimates), rtol=0.3)
     assert np.isclose(np.nanstd(wboot_estimates), np.nanstd(boot_estimates), rtol=0.3)
@@ -222,7 +224,7 @@ def test_wboot_drdid_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -246,7 +248,7 @@ def test_wboot_drdid_rc_invalid_inputs():
         wboot_drdid_rc2(y[:-1], post, d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_drdid_rc2(y, post, d, x, weights, n_bootstrap=0)
+        wboot_drdid_rc2(y, post, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_drdid_rc2(y, post, d, x, weights, trim_level=1.5)
@@ -264,7 +266,7 @@ def test_wboot_drdid_rc_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_drdid_rc2(
-            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) > 5
@@ -279,7 +281,7 @@ def test_wboot_drdid_rc_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates, boot_estimates)
 
@@ -294,8 +296,32 @@ def test_wboot_drdid_rc_with_weights():
 
     weights = rng.exponential(1, n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
+
+
+@pytest.mark.parametrize(
+    ("estimator", "bootstrap"),
+    [(drdid_rc, wboot_drdid_rc2), (drdid_trad_rc, wboot_drdid_rc1)],
+    ids=["drdid_rc", "drdid_trad_rc"],
+)
+def test_traditional_rc_bootstraps_reproduce_their_estimators_at_unit_weights(
+    unit_bootstrap_weights, trimmed_two_period_data, estimator, bootstrap
+):
+    data = trimmed_two_period_data
+    expected = estimator(data["y"], data["post"], data["d"], data["x"], trim_level=0.9).att
+
+    draws = bootstrap(
+        y=data["y"],
+        post=data["post"],
+        d=data["d"],
+        x=data["x"],
+        i_weights=np.ones(len(data["d"])),
+        biters=2,
+        trim_level=0.9,
+    )
+
+    np.testing.assert_allclose(draws, expected, rtol=1e-8)

@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid import wboot_std_ipw_rc
+
+pytestmark = pytest.mark.slow
 
 
 def test_wboot_std_ipw_rc_basic():
@@ -19,7 +19,7 @@ def test_wboot_std_ipw_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
+    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 20
@@ -39,7 +39,7 @@ def test_wboot_std_ipw_rc_with_covariates():
     y = x @ [1, 0.5, -0.3, 0.2, 0.1] + 1.5 * d * post + rng.standard_normal(n)
     weights = rng.uniform(0.5, 1.5, n)
 
-    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     assert len(boot_estimates) == 10
     finite_estimates = boot_estimates[np.isfinite(boot_estimates)]
@@ -63,7 +63,7 @@ def test_wboot_std_ipw_rc_invalid_inputs():
         wboot_std_ipw_rc(y[:-1], post, d, x, weights)
 
     with pytest.raises(ValueError):
-        wboot_std_ipw_rc(y, post, d, x, weights, n_bootstrap=0)
+        wboot_std_ipw_rc(y, post, d, x, weights, biters=0)
 
     with pytest.raises(ValueError):
         wboot_std_ipw_rc(y, post, d, x, weights, trim_level=1.5)
@@ -81,7 +81,7 @@ def test_wboot_std_ipw_rc_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_std_ipw_rc(
-            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) > 5
@@ -89,7 +89,7 @@ def test_wboot_std_ipw_rc_edge_cases():
     d_all_control = np.zeros(n)
     with pytest.warns(UserWarning):
         boot_estimates = wboot_std_ipw_rc(
-            y=y, post=post, d=d_all_control, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            y=y, post=post, d=d_all_control, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) > 5
@@ -104,9 +104,9 @@ def test_wboot_std_ipw_rc_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates1 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
-    boot_estimates2 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates2 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -123,7 +123,7 @@ def test_wboot_std_ipw_rc_no_variation():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_std_ipw_rc(
-            y=y, post=post_no_var, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+            y=y, post=post_no_var, d=d, x=x, i_weights=weights, biters=10, random_state=42
         )
 
     assert np.sum(np.isnan(boot_estimates)) > 0
@@ -140,7 +140,7 @@ def test_wboot_std_ipw_rc_extreme_propensity():
     weights = np.ones(n)
 
     boot_estimates = wboot_std_ipw_rc(
-        y=y, post=post, d=d, x=x_extreme, i_weights=weights, n_bootstrap=20, trim_level=0.95, random_state=42
+        y=y, post=post, d=d, x=x_extreme, i_weights=weights, biters=20, trim_level=0.95, random_state=42
     )
 
     assert len(boot_estimates) == 20
@@ -159,11 +159,11 @@ def test_wboot_std_ipw_rc_trimming_effect():
     weights = np.ones(n)
 
     boot_strict = wboot_std_ipw_rc(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, trim_level=0.9, random_state=42
+        y=y, post=post, d=d, x=x, i_weights=weights, biters=10, trim_level=0.9, random_state=42
     )
 
     boot_loose = wboot_std_ipw_rc(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, trim_level=0.999, random_state=42
+        y=y, post=post, d=d, x=x, i_weights=weights, biters=10, trim_level=0.999, random_state=42
     )
 
     assert np.sum(np.isfinite(boot_strict)) <= np.sum(np.isfinite(boot_loose))

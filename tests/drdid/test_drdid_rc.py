@@ -1,11 +1,14 @@
 """Tests for the locally efficient doubly robust DiD estimator for repeated cross-section data."""
 
+import re
+
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 from moderndid import drdid_rc
+from moderndid.drdid.estimators.drdid_rc import _compute_weights
+
+pytestmark = pytest.mark.slow
 
 
 def dgp_rc_for_test(n=5000, seed=42):
@@ -61,13 +64,13 @@ def test_weighted_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="weighted",
-        nboot=20,
+        biters=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == result.args["nboot"]
+    assert len(result.boots) == result.args["biters"]
 
 
 def test_multiplier_bootstrap():
@@ -80,13 +83,13 @@ def test_multiplier_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="multiplier",
-        nboot=20,
+        biters=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == result.args["nboot"]
+    assert len(result.boots) == result.args["biters"]
 
 
 def test_influence_function():
@@ -212,8 +215,12 @@ def test_singular_covariate_matrix():
     x1 = rng.standard_normal(n_units)
     x = np.column_stack([np.ones(n_units), x1, x1])
     y = rng.standard_normal(n_units) + 2 * d * post
+    message = (
+        "The regression design matrix of the comparison group in the pre-period is singular. Consider removing "
+        "covariates that are constant or collinear within that group and period."
+    )
 
-    with pytest.raises(ValueError, match="[Ss]ingular"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -241,8 +248,13 @@ def test_perfect_separation():
     x[0:10, 1] = 100
     d[0:10] = 1
     y = rng.standard_normal(n_units) + 2 * d * post
+    message = (
+        "The regression design matrix of the treated group in the pre-period is singular. Consider removing "
+        "covariates that are constant or collinear within that group and period. The estimators drdid_imp_rc "
+        "and drdid_trad_rc fit no regression for the treated group and accept this design."
+    )
 
-    with pytest.raises(np.linalg.LinAlgError, match="Singular matrix"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -255,7 +267,7 @@ def test_bootstrap_with_zero_se():
     x = np.column_stack([np.ones(n_units)])
     y = np.ones(n_units) * (1 + d * post)
 
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
+    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", biters=10)
 
     assert result.att is not None
     if result.se == 0:
@@ -299,9 +311,25 @@ def test_bootstrap_types(boot_type):
     x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
     y = rng.standard_normal(n_units) + 2 * d * post
 
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
+    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, biters=20)
 
     assert result.boots is not None
     assert len(result.boots) == 20
     assert result.se > 0
     assert result.lci < result.uci
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_compute_weights_propensity_score_one(forbid_errstate):
+    d = np.array([0, 0, 0, 0, 1, 1, 0])
+    post = np.array([0, 1, 0, 1, 0, 1, 0])
+    ps_fit = np.array([1.0, 1.0, 0.5, 0.5, 1.0, 0.5, 1.0])
+    i_weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -2.0])
+    trim_ps = np.ones(7, dtype=bool)
+    forbid_errstate()
+
+    weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
+
+    largest = np.finfo(float).max
+    assert weights["w_cont_pre"].tolist() == [largest, 0.0, 1.0, 0.0, 0.0, 0.0, -largest]
+    assert weights["w_cont_post"].tolist() == [0.0, largest, 0.0, 1.0, 0.0, 0.0, 0.0]

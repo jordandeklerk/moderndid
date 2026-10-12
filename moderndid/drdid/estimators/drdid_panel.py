@@ -12,7 +12,8 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_dr_tr_panel
-from .wols import ols_panel
+from ..utils import _scaled_columns, _scaled_inverse, _singular_pscore_message
+from .wols import _check_panel_groups, _singular_comparison_message, ols_panel
 
 
 class DRDIDPanelResult(NamedTuple):
@@ -35,7 +36,7 @@ def drdid_panel(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
@@ -74,7 +75,7 @@ def drdid_panel(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -108,6 +109,7 @@ def drdid_panel(
     y1, y0, d, covariates, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(
         xp, y1, y0, d, covariates, i_weights
     )
+    _check_panel_groups(d, covariates, i_weights, regressions=("comparison",))
 
     ps_fit, W = _compute_propensity_score(xp, d, covariates, i_weights)
     trim_ps = xp.ones(n_units, dtype=bool)
@@ -160,10 +162,10 @@ def drdid_panel(
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
         if boot_type == "multiplier":
-            dr_boot = mboot_did(att_inf_func, nboot)
+            dr_boot = mboot_did(att_inf_func, biters)
             se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             if se_dr_att > 0:
                 cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
@@ -174,7 +176,7 @@ def drdid_panel(
                 warnings.warn("Bootstrap standard error is zero.", UserWarning)
         else:  # "weighted"
             dr_boot = wboot_dr_tr_panel(
-                delta_y=delta_y, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
+                delta_y=delta_y, d=d, x=covariates, i_weights=i_weights, biters=biters, trim_level=trim_level
             )
             se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             if se_dr_att > 0:
@@ -192,10 +194,10 @@ def drdid_panel(
         "panel": True,
         "estMethod": "trad",
         "boot": boot,
-        "boot.type": boot_type,
-        "nboot": nboot,
+        "boot_type": boot_type,
+        "biters": biters,
         "type": "dr",
-        "trim.level": trim_level,
+        "trim_level": trim_level,
     }
 
     return DRDIDPanelResult(
@@ -227,22 +229,17 @@ def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
 
     i_weights /= xp.mean(i_weights)
 
-    unique_d = xp.unique(d)
-    if len(unique_d) < 2:
-        if unique_d[0] == 0:
-            raise ValueError("No effectively treated units after trimming. Cannot compute ATT.")
-        raise ValueError("No control units found (all d == 1). Cannot perform regression.")
-
     return y1, y0, d, covariates, i_weights, n_units, delta_y
 
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
+    scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
-                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(scaled, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
             )
             if xp.any(xp.isnan(beta)):
@@ -254,7 +251,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
     else:
         try:
-            pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+            pscore_model = sm.GLM(d, scaled, family=sm.families.Binomial(), freq_weights=i_weights)
             pscore_results = pscore_model.fit()
 
             if not pscore_results.converged:
@@ -266,7 +263,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
                     "Multicollinearity (or lack of variation) of covariates is a likely reason."
                 )
 
-            ps_fit = pscore_results.predict(covariates)
+            ps_fit = pscore_results.predict(scaled)
         except np.linalg.LinAlgError as e:
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
@@ -297,16 +294,13 @@ def _get_influence_quantities(xp, delta_y, d, covariates, ps_fit, out_delta, i_w
 
     weighted_cov_matrix = covariates.T @ wols_x / n_units
 
-    s = xp.linalg.svd(weighted_cov_matrix, compute_uv=False)
-    if s[-1] == 0 or s[0] / s[-1] > 1 / xp.finfo(float).eps:
-        raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
-
-    weighted_cov_matrix_inv = xp.linalg.solve(weighted_cov_matrix, xp.eye(weighted_cov_matrix.shape[0]))
+    weighted_cov_matrix_inv = _scaled_inverse(weighted_cov_matrix, _singular_comparison_message())
     asy_lin_rep_wols = wols_residual_covariates @ weighted_cov_matrix_inv
 
     # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
-    Hessian_ps = xp.linalg.inv(covariates.T @ (W[:, xp.newaxis] * covariates)) * n_units
+    ps_hessian = covariates.T @ (W[:, xp.newaxis] * covariates)
+    Hessian_ps = _scaled_inverse(ps_hessian, _singular_pscore_message()) * n_units
     asy_lin_rep_ps = score_ps @ Hessian_ps
 
     return {

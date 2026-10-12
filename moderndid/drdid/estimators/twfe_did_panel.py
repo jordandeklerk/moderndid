@@ -13,6 +13,8 @@ from moderndid.cupy.regression import cupy_wls
 from ..bootstrap.boot_mult import mboot_twfep_did
 from ..bootstrap.boot_panel import wboot_twfe_panel
 from ..ordid import ordid
+from ..utils import _column_scales, _scaled_inverse
+from .wols import _check_panel_groups
 
 
 class TWFEDIDPanelResult(NamedTuple):
@@ -35,7 +37,7 @@ def twfe_did_panel(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
 ):
     r"""Compute linear two-way fixed effects DiD estimator for the ATT with panel data.
@@ -67,7 +69,7 @@ def twfe_did_panel(
         Whether to compute bootstrap standard errors.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to be performed (not relevant if boot = False).
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions (not relevant if boot = False).
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -101,58 +103,49 @@ def twfe_did_panel(
     calls the ``ordid`` function directly.
     """
     d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(d, covariates, i_weights)
+    _check_panel_groups(d, covariates, i_weights, regressions=())
     x, post, d_stacked, y_stacked, i_weights_stacked = _stack_data(y0, y1, d, covariates, i_weights, n_units)
 
     if x is not None:
-        if np.all(d == 0):
-            att = 0.0
-            se = 0.0
-            uci = 0.0
-            lci = 0.0
+        att, att_inf_func = _fit_twfe_regression(y_stacked, d_stacked, post, x, i_weights_stacked)
+
+        if not boot:
+            se = np.std(att_inf_func, ddof=1) / np.sqrt(len(att_inf_func))
+            uci = att + 1.96 * se
+            lci = att - 1.96 * se
             boots = None
-            att_inf_func = np.zeros(len(y_stacked)) if influence_func else None
-        elif np.all(d == 1):
-            raise ValueError("All units are treated. Cannot identify ATT with TWFE.")
         else:
-            att, att_inf_func = _fit_twfe_regression(y_stacked, d_stacked, post, x, i_weights_stacked)
+            if biters is None:
+                biters = 999
 
-            if not boot:
-                se = np.std(att_inf_func, ddof=1) / np.sqrt(len(att_inf_func))
-                uci = att + 1.96 * se
-                lci = att - 1.96 * se
-                boots = None
-            else:
-                if nboot is None:
-                    nboot = 999
-
-                if boot_type == "multiplier":
-                    boots = mboot_twfep_did(att_inf_func, n_units, nboot)
-                    se = stats.iqr(boots) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-                    critical_value = np.quantile(np.abs(boots / se), 0.95)
-                    uci = att + critical_value * se
-                    lci = att - critical_value * se
-                else:  # "weighted"
-                    design_matrix = np.column_stack(
-                        [
-                            np.ones_like(y_stacked),
-                            d_stacked,
-                            post,
-                            d_stacked * post,
-                            x,
-                        ]
-                    )
-                    boots = wboot_twfe_panel(
-                        y=y_stacked,
-                        d=d_stacked,
-                        post=post,
-                        x=design_matrix[:, 4:] if x is not None else np.ones((len(y_stacked), 1)),
-                        i_weights=i_weights_stacked,
-                        n_bootstrap=nboot,
-                    )
-                    se = stats.iqr(boots - att) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-                    critical_value = np.quantile(np.abs((boots - att) / se), 0.95)
-                    uci = att + critical_value * se
-                    lci = att - critical_value * se
+            if boot_type == "multiplier":
+                boots = mboot_twfep_did(att_inf_func, n_units, biters)
+                se = stats.iqr(boots) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+                critical_value = np.quantile(np.abs(boots / se), 0.95)
+                uci = att + critical_value * se
+                lci = att - critical_value * se
+            else:  # "weighted"
+                design_matrix = np.column_stack(
+                    [
+                        np.ones_like(y_stacked),
+                        d_stacked,
+                        post,
+                        d_stacked * post,
+                        x,
+                    ]
+                )
+                boots = wboot_twfe_panel(
+                    y=y_stacked,
+                    d=d_stacked,
+                    post=post,
+                    x=design_matrix[:, 4:] if x is not None else np.ones((len(y_stacked), 1)),
+                    i_weights=i_weights_stacked,
+                    biters=biters,
+                )
+                se = stats.iqr(boots - att) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+                critical_value = np.quantile(np.abs((boots - att) / se), 0.95)
+                uci = att + critical_value * se
+                lci = att - critical_value * se
 
     else:
         unit_ids = np.arange(1, n_units + 1)
@@ -177,7 +170,7 @@ def twfe_did_panel(
             panel=True,
             boot=boot,
             boot_type=boot_type,
-            n_boot=nboot,
+            biters=biters,
             inf_func=influence_func,
         )
 
@@ -196,7 +189,7 @@ def twfe_did_panel(
         "panel": True,
         "boot": boot,
         "boot_type": boot_type_str,
-        "nboot": nboot,
+        "biters": biters,
         "type": "twfe",
     }
 
@@ -263,26 +256,26 @@ def _fit_twfe_regression(y_stacked, d_stacked, post, x, i_weights_stacked):
         ]
     )
 
+    scale = _column_scales(design_matrix)
     try:
         xp = get_backend()
         if xp is not np:
-            beta, _ = cupy_wls(xp.asarray(y_stacked), xp.asarray(design_matrix), xp.asarray(i_weights_stacked))
-            params = to_numpy(beta)
+            beta, _ = cupy_wls(xp.asarray(y_stacked), xp.asarray(design_matrix / scale), xp.asarray(i_weights_stacked))
+            params = to_numpy(beta) / scale
             att = params[3]
             fitted = design_matrix @ params
             residuals = y_stacked - fitted
         else:
-            wls_model = sm.WLS(y_stacked, design_matrix, weights=i_weights_stacked)
+            wls_model = sm.WLS(y_stacked, design_matrix / scale, weights=i_weights_stacked)
             wls_results = wls_model.fit()
-            att = wls_results.params[3]
+            att = wls_results.params[3] / scale[3]
             residuals = wls_results.resid
 
         x_prime_x = design_matrix.T @ (i_weights_stacked[:, np.newaxis] * design_matrix) / len(y_stacked)
-
-        if np.linalg.cond(x_prime_x) > 1e15:
-            raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
-
-        x_prime_x_inv = np.linalg.inv(x_prime_x)
+        x_prime_x_inv = _scaled_inverse(
+            x_prime_x,
+            "The regression design matrix is singular. Consider removing covariates that are constant or collinear.",
+        )
 
         influence_reg = (i_weights_stacked[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
 
@@ -292,6 +285,6 @@ def _fit_twfe_regression(y_stacked, d_stacked, post, x, i_weights_stacked):
         att_inf_func = influence_reg @ selection_theta
 
     except (np.linalg.LinAlgError, ValueError) as e:
-        raise ValueError(f"Failed to fit TWFE regression model: {e}") from e
+        raise ValueError(f"Failed to fit TWFE regression model. {e}") from e
 
     return att, att_inf_func

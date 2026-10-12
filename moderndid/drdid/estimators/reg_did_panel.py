@@ -1,6 +1,5 @@
 """Outcome regression DiD estimator for panel data."""
 
-import warnings
 from typing import NamedTuple
 
 import numpy as np
@@ -12,6 +11,8 @@ from moderndid.cupy.regression import cupy_wls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_reg_panel
+from ..utils import _scaled_columns, _scaled_inverse
+from .wols import _check_observations, _check_panel_groups, _has_collinear_columns, _singular_comparison_message
 
 
 class RegDIDPanelResult(NamedTuple):
@@ -34,7 +35,7 @@ def reg_did_panel(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
 ):
     r"""Compute the outcome regression DiD estimator for the ATT with panel data.
@@ -69,7 +70,7 @@ def reg_did_panel(
         Whether to compute bootstrap standard errors.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to be performed (not relevant if boot = False).
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions (not relevant if boot = False).
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -84,9 +85,9 @@ def reg_did_panel(
         - se : float
             The outcome regression DiD standard error.
         - uci : float
-            Upper bound of a 95% confidence interval.
+            Upper bound of a 95 percent confidence interval.
         - lci : float
-            Lower bound of a 95% confidence interval.
+            Lower bound of a 95 percent confidence interval.
         - boots : ndarray or None
             All bootstrap draws of the ATT, if bootstrap was used.
         - att_inf_func : ndarray or None
@@ -105,7 +106,7 @@ def reg_did_panel(
 
     .. [1] Heckman, J., Ichimura, H., and Todd, P. (1997), "Matching as an Econometric Evaluation
            Estimator: Evidence from Evaluating a Job Training Programme", Review of Economic Studies,
-           vol. 64(4), p. 605–654. https://doi.org/10.2307/2971733
+           vol. 64(4), pp. 605-654. https://doi.org/10.2307/2971733
 
     .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020), "Doubly Robust Difference-in-Differences Estimators."
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
@@ -114,6 +115,7 @@ def reg_did_panel(
     y1, y0, d, int_cov, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(
         xp, y1, y0, d, covariates, i_weights
     )
+    _check_panel_groups(d, int_cov, i_weights, regressions=("comparison",))
 
     out_delta = _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights)
 
@@ -125,39 +127,17 @@ def reg_did_panel(
     mean_w_treat = xp.mean(weights["w_treat"])
     mean_w_cont = xp.mean(weights["w_cont"])
 
-    if mean_w_treat == 0:
-        return RegDIDPanelResult(
-            att=0.0,
-            se=0.0,
-            uci=0.0,
-            lci=0.0,
-            boots=None,
-            att_inf_func=None,
-            args={
-                "panel": True,
-                "boot": boot,
-                "boot_type": boot_type if boot_type == "multiplier" else "weighted",
-                "nboot": nboot,
-                "type": "or",
-            },
-        )
+    eta_treat = xp.mean(reg_att_treat) / mean_w_treat
+    eta_cont = xp.mean(reg_att_cont) / mean_w_cont
+    reg_att = eta_treat - eta_cont
 
-    if mean_w_cont == 0:
-        eta_treat = xp.mean(reg_att_treat) / mean_w_treat
-        eta_cont = np.nan
-        reg_att = np.nan
-    else:
-        eta_treat = xp.mean(reg_att_treat) / mean_w_treat
-        eta_cont = xp.mean(reg_att_cont) / mean_w_cont
-        reg_att = eta_treat - eta_cont
-
-    # Check if reg_att is NaN (happens when all units are treated)
+    # Since the group checks guarantee positive weights, a NaN estimate here comes from a missing outcome.
     if np.isnan(float(reg_att)):
         reg_att_inf_func = np.full(n_units, np.nan)
         se_reg_att = np.nan
         uci = np.nan
         lci = np.nan
-        reg_boot = None if not boot else np.full(nboot if nboot is not None else 999, np.nan)
+        reg_boot = None if not boot else np.full(biters if biters is not None else 999, np.nan)
 
         if not influence_func:
             reg_att_inf_func = None
@@ -167,7 +147,7 @@ def reg_did_panel(
             "panel": True,
             "boot": boot,
             "boot_type": boot_type_str,
-            "nboot": nboot,
+            "biters": biters,
             "type": "or",
         }
 
@@ -206,11 +186,11 @@ def reg_did_panel(
         lci = reg_att - 1.96 * se_reg_att
         reg_boot = None
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
 
         if boot_type == "multiplier":
-            reg_boot = mboot_did(reg_att_inf_func, nboot)
+            reg_boot = mboot_did(reg_att_inf_func, biters)
             se_reg_att = stats.iqr(reg_boot) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.quantile(np.abs(reg_boot / se_reg_att), 0.95)
             uci = reg_att + cv * se_reg_att
@@ -221,7 +201,7 @@ def reg_did_panel(
                 d=d,
                 x=int_cov,
                 i_weights=i_weights,
-                n_bootstrap=nboot,
+                biters=biters,
             )
             se_reg_att = stats.iqr(reg_boot - reg_att) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.quantile(np.abs((reg_boot - reg_att) / se_reg_att), 0.95)
@@ -236,7 +216,7 @@ def reg_did_panel(
         "panel": True,
         "boot": boot,
         "boot_type": boot_type_str,
-        "nboot": nboot,
+        "biters": biters,
         "type": "or",
     }
 
@@ -282,20 +262,16 @@ def _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights):
     valid_mask = ~xp.isnan(delta_y)
     control_filter = control_filter & valid_mask
 
-    n_control = int(xp.sum(control_filter))
+    _check_observations(control_filter, int_cov, i_weights, "comparison group", "units", regressed=True, treat=False)
+    if _has_collinear_columns(int_cov[control_filter], i_weights[control_filter]):
+        raise ValueError(_singular_comparison_message())
 
-    if n_control == 0:
-        warnings.warn("All units are treated. Returning NaN.", UserWarning)
-        return xp.full(len(delta_y), np.nan)
-
-    if n_control < int_cov.shape[1]:
-        raise ValueError("Insufficient control units for regression.")
-
+    scaled = _scaled_columns(int_cov)
     if xp is not np:
         try:
             beta, _ = cupy_wls(
                 xp.asarray(delta_y[control_filter]),
-                xp.asarray(int_cov[control_filter]),
+                xp.asarray(scaled[control_filter]),
                 xp.asarray(i_weights[control_filter]),
             )
             reg_coeff = to_numpy(beta)
@@ -305,7 +281,7 @@ def _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights):
         try:
             glm_model = sm.GLM(
                 delta_y[control_filter],
-                int_cov[control_filter],
+                scaled[control_filter],
                 family=sm.families.Gaussian(link=sm.families.links.Identity()),
                 var_weights=i_weights[control_filter],
             )
@@ -320,7 +296,7 @@ def _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights):
             "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
         )
 
-    out_delta = int_cov @ xp.asarray(reg_coeff)
+    out_delta = scaled @ xp.asarray(reg_coeff)
 
     return out_delta
 
@@ -344,10 +320,7 @@ def _get_influence_quantities(xp, delta_y, d, int_cov, out_delta, i_weights, n_u
     weighted_resid_x = weights_ols[:, xp.newaxis] * (delta_y - out_delta)[:, xp.newaxis] * int_cov
     gram_matrix = weighted_x.T @ int_cov / n_units
 
-    if xp.linalg.cond(gram_matrix) > 1e15:
-        raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
-
-    gram_inv = xp.linalg.inv(gram_matrix)
+    gram_inv = _scaled_inverse(gram_matrix, _singular_comparison_message())
     asy_lin_rep_ols = weighted_resid_x @ gram_inv
 
     return {

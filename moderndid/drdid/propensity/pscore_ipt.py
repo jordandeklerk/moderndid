@@ -11,6 +11,8 @@ import statsmodels.api as sm
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls
 
+from ..utils import _scaled_columns
+
 
 def calculate_pscore_ipt(D, X, iw, quantiles=None):
     r"""Calculate propensity scores using Inverse Probability Tilting for the ATT.
@@ -34,8 +36,8 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
         \frac{\widehat{p}(X_i)}{1-\widehat{p}(X_i)} X_i,
 
     where :math:`\widehat{p}(X) = \text{expit}(X'\widehat{\gamma}^{ipt})` is the estimated
-    propensity score (i.e., the logistic function, :math:`\exp(v) / (1 + \exp(v))`)
-    and :math:`w_i` are the observation weights. This property ensures that the
+    propensity score, :math:`\text{expit}(v) = \exp(v) / (1 + \exp(v))` is the logistic
+    function, and :math:`w_i` are the observation weights. This property ensures that the
     weighted average of covariates in the control group matches the weighted
     average in the treated group, which is a key condition for identifying the ATT.
 
@@ -112,6 +114,9 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
     if quantiles is not None:
         X_processed = _add_quantile_constraints(X_processed, quantiles, iw)
 
+    # Since the optimizer stops on a tolerance that depends on the scale of each covariate, it runs on columns near
+    # unit scale. The propensity scores do not depend on that scale.
+    X_processed = _scaled_columns(X_processed)
     n_obs, k_features = X_processed.shape
     init_gamma = _get_initial_gamma(D, X_processed, iw, k_features)
 
@@ -302,7 +307,10 @@ def _remove_collinear_columns(X):
     if n_cols == 1:
         return X, []
 
-    _, R, P = scipy.linalg.qr(X, mode="economic", pivoting=True)
+    norms = np.linalg.norm(X, axis=0)
+    # Since the rank tolerance scales with the largest column, unit-norm columns keep a covariate measured on a
+    # large scale from passing for collinear.
+    _, R, P = scipy.linalg.qr(X / np.where(norms > 0, norms, 1.0), mode="economic", pivoting=True)
 
     diag_R = np.abs(np.diag(R))
     tol = diag_R[0] * max(n_obs, n_cols) * np.finfo(float).eps

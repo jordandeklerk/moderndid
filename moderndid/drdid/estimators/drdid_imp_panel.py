@@ -11,7 +11,7 @@ from moderndid.cupy.backend import get_backend, to_numpy
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_drdid_imp_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
-from .wols import wols_panel
+from .wols import _check_panel_groups, wols_panel
 
 
 class DRDIDPanelResult(NamedTuple):
@@ -34,7 +34,7 @@ def drdid_imp_panel(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
@@ -70,7 +70,7 @@ def drdid_imp_panel(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -81,7 +81,7 @@ def drdid_imp_panel(
     -------
     DRDIDPanelResult
         A NamedTuple containing the ATT estimate, standard error, confidence interval,
-        bootstrap draws, propensity score flag, and influence function.
+        bootstrap draws, and influence function.
 
     Notes
     -----
@@ -119,6 +119,7 @@ def drdid_imp_panel(
     """
     xp = get_backend()
     y1, y0, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights)
+    _check_panel_groups(d, covariates, i_weights, regressions=("comparison",))
 
     delta_y = y1 - y0
 
@@ -146,10 +147,10 @@ def drdid_imp_panel(
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
         if boot_type == "multiplier":
-            dr_boot = mboot_did(att_inf_func, nboot)
+            dr_boot = mboot_did(att_inf_func, biters)
             se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             if se_dr_att > 0:
                 cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
@@ -160,7 +161,7 @@ def drdid_imp_panel(
                 warnings.warn("Bootstrap standard error is zero.", UserWarning)
         else:  # "weighted"
             dr_boot = wboot_drdid_imp_panel(
-                delta_y=delta_y, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
+                delta_y=delta_y, d=d, x=covariates, i_weights=i_weights, biters=biters, trim_level=trim_level
             )
             se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             if se_dr_att > 0:
@@ -178,10 +179,10 @@ def drdid_imp_panel(
         "panel": True,
         "estMethod": "imp",
         "boot": boot,
-        "boot.type": boot_type,
-        "nboot": nboot,
+        "boot_type": boot_type,
+        "biters": biters,
         "type": "dr",
-        "trim.level": trim_level,
+        "trim_level": trim_level,
     }
 
     return DRDIDPanelResult(

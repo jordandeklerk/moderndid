@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
+from moderndid import ipw_did_rc, ipw_rc, wboot_ipw_rc
 
-from moderndid import ipw_rc, wboot_ipw_rc
+pytestmark = pytest.mark.slow
 
 
 def test_ipw_did_rc_basic():
@@ -57,7 +57,7 @@ def test_ipw_did_rc_no_treated():
     n = 50
     y = np.ones(n)
     post = rng.binomial(1, 0.5, n)
-    d = np.zeros(n)  # No treated units
+    d = np.zeros(n)
     ps = 0.5 * np.ones(n)
     i_weights = np.ones(n)
 
@@ -82,6 +82,19 @@ def test_ipw_did_rc_extreme_propensity():
     assert np.isnan(result)
 
 
+@pytest.mark.filterwarnings("error")
+def test_ipw_did_rc_treated_unit_with_propensity_score_one(forbid_errstate):
+    y = np.arange(1.0, 9.0)
+    post = np.array([0, 1, 0, 1, 0, 1, 0, 1])
+    d = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+    ps = np.array([0.3, 0.4, 0.5, 0.6, 0.5, 0.5, 0.5, 0.5])
+    expected = ipw_rc(y, post, d, ps, np.ones(8))
+    ps[-1] = 1.0
+    forbid_errstate()
+
+    assert ipw_rc(y, post, d, ps, np.ones(8)) == expected
+
+
 def test_ipw_did_rc_lambda_edge_cases():
     rng = np.random.default_rng(42)
     n = 50
@@ -99,6 +112,19 @@ def test_ipw_did_rc_lambda_edge_cases():
     with pytest.warns(UserWarning, match="Lambda is 1"):
         result = ipw_rc(y, post, d, ps, i_weights)
     assert np.isnan(result)
+
+
+@pytest.mark.parametrize("scale", [0.5, 1.5])
+def test_ipw_rc_does_not_depend_on_the_scale_of_the_weights(scale):
+    rng = np.random.default_rng(5)
+    n = 400
+    post = rng.binomial(1, 0.3, n)
+    d = rng.binomial(1, 0.4, n)
+    ps = rng.uniform(0.2, 0.6, n)
+    y = 10 + 20 * d + post + rng.normal(0, 1, n)
+    i_weights = rng.exponential(1, n)
+
+    np.testing.assert_allclose(ipw_rc(y, post, d, ps, scale * i_weights), ipw_rc(y, post, d, ps, i_weights), rtol=1e-12)
 
 
 def test_ipw_did_rc_invalid_inputs():
@@ -130,7 +156,7 @@ def test_wboot_ipw_rc_basic():
     x[:, 0] = 1
     i_weights = np.ones(n)
 
-    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=10, random_state=42)
+    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, biters=10, random_state=42)
 
     assert bootstrap_estimates.shape == (10,)
     assert np.sum(np.isfinite(bootstrap_estimates)) >= 5
@@ -150,7 +176,18 @@ def test_wboot_ipw_rc_convergence():
     y = 1 + 0.5 * x[:, 1] + true_effect * d * post + rng.normal(0, 0.5, n)
     i_weights = np.ones(n)
 
-    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=20, random_state=123)
+    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, biters=20, random_state=123)
 
     mean_estimate = np.nanmean(bootstrap_estimates)
     assert np.abs(mean_estimate - true_effect) < 0.71
+
+
+def test_wboot_ipw_rc_reproduces_ipw_did_rc_at_unit_weights(unit_bootstrap_weights, trimmed_two_period_data):
+    data = trimmed_two_period_data
+    expected = ipw_did_rc(data["y"], data["post"], data["d"], data["x"], trim_level=0.9).att
+
+    draws = wboot_ipw_rc(
+        data["y"], data["post"], data["d"], data["x"], np.ones(len(data["d"])), biters=2, trim_level=0.9
+    )
+
+    np.testing.assert_allclose(draws, expected, rtol=1e-8)

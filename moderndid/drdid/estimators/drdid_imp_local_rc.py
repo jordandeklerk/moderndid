@@ -11,7 +11,7 @@ from moderndid.cupy.backend import get_backend, to_numpy
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc2
 from ..propensity.pscore_ipt import calculate_pscore_ipt
-from .wols import wols_rc
+from .wols import _check_rc_cells, wols_rc
 
 
 class DRDIDLocalRCResult(NamedTuple):
@@ -34,7 +34,7 @@ def drdid_imp_local_rc(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
@@ -61,7 +61,8 @@ def drdid_imp_local_rc(
 
     This estimator uses a logistic propensity score model and separate linear regression models for the
     control and treated groups' outcomes in both pre and post-treatment periods. The resulting estimator
-    is doubly robust and locally efficient.
+    is doubly robust and locally efficient. :func:`drdid` computes it for repeated cross-sections with
+    ``est_method="imp"``.
 
     Parameters
     ----------
@@ -81,7 +82,7 @@ def drdid_imp_local_rc(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -116,8 +117,6 @@ def drdid_imp_local_rc(
         \widehat{\beta}_{1,t}^{ols,rc} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
         \left[\left(Y-X^{\prime}b\right)^{2} \mid D=1, T=t\right]
 
-    The resulting estimator is doubly robust and locally efficient.
-
     See Also
     --------
     drdid_imp_rc : Improved, but not locally efficient, DR-DiD estimator for repeated cross-section data.
@@ -137,6 +136,7 @@ def drdid_imp_local_rc(
     """
     xp = get_backend()
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
+    _check_rc_cells(post, d, covariates, i_weights, regressions=("comparison", "treated"))
 
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = xp.clip(xp.asarray(ps_fit), 1e-6, 1 - 1e-6)
@@ -175,10 +175,10 @@ def drdid_imp_local_rc(
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
         if boot_type == "multiplier":
-            dr_boot = mboot_did(att_inf_func, nboot)
+            dr_boot = mboot_did(att_inf_func, biters)
             se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             if se_dr_att > 0:
                 cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
@@ -194,7 +194,7 @@ def drdid_imp_local_rc(
                 d=d,
                 x=covariates,
                 i_weights=i_weights,
-                n_bootstrap=nboot,
+                biters=biters,
                 trim_level=trim_level,
             )
             se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
@@ -213,10 +213,10 @@ def drdid_imp_local_rc(
         "panel": False,
         "estMethod": "imp2",
         "boot": boot,
-        "boot.type": boot_type,
-        "nboot": nboot,
+        "boot_type": boot_type,
+        "biters": biters,
         "type": "dr",
-        "trim.level": trim_level,
+        "trim_level": trim_level,
     }
 
     return DRDIDLocalRCResult(
@@ -316,7 +316,7 @@ def _get_influence_quantities(
     eta_cont_pre = w_cont_pre * (y - out_y_cont) / xp.mean(w_cont_pre)
     eta_cont_post = w_cont_post * (y - out_y_cont) / xp.mean(w_cont_post)
 
-    # Extra components for locally efficient estimator (see Sant'Anna and Zhao (2020))
+    # The treated-group regression terms of equation (3.10) make the estimator locally efficient.
     eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / xp.mean(w_d)
     eta_dt1_post = w_dt1 * (out_y_treat_post - out_y_cont_post) / xp.mean(w_dt1)
     eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / xp.mean(w_d)

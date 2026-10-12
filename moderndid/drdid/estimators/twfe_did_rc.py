@@ -11,6 +11,8 @@ from moderndid.cupy.regression import cupy_wls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_twfe_rc import wboot_twfe_rc
+from ..utils import _column_scales, _scaled_inverse
+from .wols import _check_rc_cells
 
 
 class TWFEDIDRCResult(NamedTuple):
@@ -33,7 +35,7 @@ def twfe_did_rc(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
 ):
     r"""Compute linear two-way fixed effects DiD estimator for the ATT with repeated cross-sections.
@@ -65,7 +67,7 @@ def twfe_did_rc(
         Whether to compute bootstrap standard errors.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to be performed (not relevant if boot = False).
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions (not relevant if boot = False).
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -93,6 +95,7 @@ def twfe_did_rc(
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
     """
     y, post, d, x, i_weights, n = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
+    _check_rc_cells(post, d, x, i_weights, regressions=())
     att, att_inf_func = _fit_twfe_regression(y, post, d, x, i_weights, n)
 
     if not boot:
@@ -101,11 +104,11 @@ def twfe_did_rc(
         lci = att - 1.96 * se
         boots = None
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
 
         if boot_type == "multiplier":
-            boots = mboot_did(att_inf_func, nboot)
+            boots = mboot_did(att_inf_func, biters)
             se = stats.iqr(boots) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             critical_value = np.quantile(np.abs(boots / se), 0.95)
             uci = att + critical_value * se
@@ -117,7 +120,7 @@ def twfe_did_rc(
                 d=d,
                 x=x if x is not None else np.empty((n, 0)),
                 i_weights=i_weights,
-                n_bootstrap=nboot,
+                biters=biters,
             )
             se = stats.iqr(boots - att) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             critical_value = np.quantile(np.abs((boots - att) / se), 0.95)
@@ -138,7 +141,7 @@ def twfe_did_rc(
             "panel": False,
             "boot": boot,
             "boot_type": boot_type,
-            "nboot": nboot,
+            "biters": biters,
             "type": "twfe",
         },
     )
@@ -199,27 +202,27 @@ def _fit_twfe_regression(y, post, d, x, i_weights, n):
             ]
         )
 
+    scale = _column_scales(design_matrix)
     try:
         xp = get_backend()
         if xp is not np:
-            beta, _ = cupy_wls(xp.asarray(y), xp.asarray(design_matrix), xp.asarray(i_weights))
-            params = to_numpy(beta)
+            beta, _ = cupy_wls(xp.asarray(y), xp.asarray(design_matrix / scale), xp.asarray(i_weights))
+            params = to_numpy(beta) / scale
             att = params[3]
             fitted = design_matrix @ params
             residuals = y - fitted
         else:
-            wls_model = sm.WLS(y, design_matrix, weights=i_weights)
+            wls_model = sm.WLS(y, design_matrix / scale, weights=i_weights)
             wls_results = wls_model.fit()
-            att = wls_results.params[3]
+            att = wls_results.params[3] / scale[3]
             residuals = wls_results.resid
 
         # Elements for influence function
         x_prime_x = design_matrix.T @ (i_weights[:, np.newaxis] * design_matrix) / n
-
-        if np.linalg.cond(x_prime_x) > 1e15:
-            raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
-
-        x_prime_x_inv = np.linalg.inv(x_prime_x)
+        x_prime_x_inv = _scaled_inverse(
+            x_prime_x,
+            "The regression design matrix is singular. Consider removing covariates that are constant or collinear.",
+        )
 
         # Influence function of the TWFE regression
         influence_reg = (i_weights[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
@@ -231,6 +234,6 @@ def _fit_twfe_regression(y, post, d, x, i_weights, n):
         att_inf_func = influence_reg @ selection_theta
 
     except (np.linalg.LinAlgError, ValueError) as e:
-        raise ValueError(f"Failed to fit TWFE regression model: {e}") from e
+        raise ValueError(f"Failed to fit TWFE regression model. {e}") from e
 
     return att, att_inf_func

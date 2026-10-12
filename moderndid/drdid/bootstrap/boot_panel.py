@@ -8,18 +8,20 @@ import statsmodels.api as sm
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 
-from ..estimators.wols import wols_panel
+from ..estimators.wols import _check_panel_groups, ols_panel, wols_panel
 from ..propensity.aipw_estimators import aipw_did_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
-from ..utils import _validate_inputs
+from ..utils import _column_scales, _scaled_columns, _validate_inputs
 
 
-def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_drdid_imp_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute improved bootstrap estimates for doubly-robust DiD with panel data.
 
-    Implements the improved bootstrap inference for the doubly-robust
-    difference-in-differences estimator with panel data, using the inverse probability
-    tilting method for propensity score estimation.
+    Implements the weighted bootstrap for the improved doubly-robust
+    difference-in-differences estimator with panel data. Each draw refits the propensity
+    score by inverse probability tilting and the outcome regression of the comparison units
+    by weighted least squares. These are the fits of :func:`drdid_imp_panel`. Like that
+    estimator, each draw divides both terms by the mean weight of the treated units.
 
     Parameters
     ----------
@@ -33,7 +35,7 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -44,19 +46,19 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
-    aipw_did_panel : The underlying AIPW estimator for panel data.
+    drdid_imp_panel : The improved doubly-robust estimator this bootstrap resamples.
     wols_panel : Weighted OLS for outcome regression in panel data.
     """
-    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -85,33 +87,31 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level
             bootstrap_estimates[b] = np.nan
             continue
 
-        try:
-            att_b = aipw_did_panel(
-                delta_y=delta_y,
-                d=d,
-                ps=ps_b,
-                out_reg=out_reg_b,
-                i_weights=b_weights_trimmed,
-            )
-            bootstrap_estimates[b] = att_b
-        except (ValueError, ZeroDivisionError, RuntimeWarning) as e:
-            warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
+        mean_treated_weight = np.mean(b_weights * d)
+        if mean_treated_weight == 0:
+            warnings.warn(f"No effectively treated units in bootstrap {b}. ATT will be NaN.", UserWarning)
             bootstrap_estimates[b] = np.nan
+            continue
+
+        # Without trimming, the treated weight mean equals the comparison odds mass. Dividing the
+        # comparison term by its own trimmed weights instead would resample a different estimator.
+        dr_weights = d - (1 - d) * ps_b / (1 - ps_b)
+        bootstrap_estimates[b] = np.mean(b_weights_trimmed * dr_weights * (delta_y - out_reg_b)) / mean_treated_weight
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            f"{n_failed} out of {biters} bootstrap iterations failed and resulted in NaN. "
             "This might be due to issues in propensity score estimation, outcome regression, "
-            "or the AIPW calculation itself (e.g. perfect prediction, collinearity, "
-            "small effective sample sizes after weighting/trimming).",
+            "or the AIPW calculation itself, such as perfect prediction, collinearity, or "
+            "small effective sample sizes after weighting or trimming.",
             UserWarning,
         )
 
     return bootstrap_estimates
 
 
-def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_ipw_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for IPW DiD with panel data.
 
     Implements a bootstrapped Inverse Probability Weighting (IPW)
@@ -130,7 +130,7 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -141,23 +141,23 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     wboot_drdid_imp_panel : Improved doubly-robust bootstrap for panel data.
     wboot_dr_tr_panel : Traditional doubly-robust bootstrap for panel data.
     """
-    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
 
     if len(np.unique(d)) < 2:
         warnings.warn("Treatment indicator `d` has no variation. Cannot compute IPW. Returning NaNs.", UserWarning)
-        return np.full(n_bootstrap, np.nan)
+        return np.full(biters, np.nan)
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -196,16 +196,16 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
-            "This might be due to issues in propensity score estimation or IPW calculation "
-            "(e.g. perfect prediction, small effective sample sizes after trimming).",
+            f"{n_failed} out of {biters} bootstrap iterations failed and resulted in NaN. "
+            "This might be due to issues in propensity score estimation or IPW calculation, "
+            "such as perfect prediction or small effective sample sizes after trimming.",
             UserWarning,
         )
 
     return bootstrap_estimates
 
 
-def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_std_ipw_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for standardized IPW DiD with panel data.
 
     Implements a bootstrapped standardized Inverse Probability Weighting (IPW)
@@ -224,7 +224,7 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -235,19 +235,19 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     wboot_ipw_panel : Non-standardized IPW bootstrap for panel data.
     calculate_pscore_ipt : IPT propensity score estimation.
     """
-    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -294,21 +294,23 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
-            "This might be due to issues in propensity score estimation or standardized IPW calculation "
-            "(e.g. perfect prediction, small effective sample sizes after trimming).",
+            f"{n_failed} out of {biters} bootstrap iterations failed and resulted in NaN. "
+            "This might be due to issues in propensity score estimation or standardized IPW calculation, "
+            "such as perfect prediction or small effective sample sizes after trimming.",
             UserWarning,
         )
 
     return bootstrap_estimates
 
 
-def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_dr_tr_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for traditional doubly-robust DiD with panel data.
 
-    Implements a traditional bootstrap approach for doubly-robust
-    difference-in-differences with panel data that uses standard logistic regression
-    for propensity score estimation.
+    Implements the weighted bootstrap for the traditional doubly-robust
+    difference-in-differences estimator with panel data. Each draw refits the
+    propensity score by logistic regression and the outcome regression of the
+    comparison units by ordinary least squares. These are the fits of
+    :func:`drdid_panel`.
 
     Parameters
     ----------
@@ -322,7 +324,7 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -333,19 +335,20 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     wboot_drdid_imp_panel : Improved bootstrap using IPT propensity scores.
     aipw_did_panel : The underlying AIPW estimator for panel data.
+    ols_panel : Ordinary least squares for the comparison-group outcome regression.
     """
-    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -366,7 +369,7 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
         b_weights_trimmed[~trim_ps_mask] = 0
 
         try:
-            out_reg_results = wols_panel(delta_y=delta_y, d=d, x=x, ps=ps_b, i_weights=b_weights)
+            out_reg_results = ols_panel(delta_y=delta_y, d=d, x=x, i_weights=b_weights)
             out_reg_b = out_reg_results.out_reg
 
         except (ValueError, np.linalg.LinAlgError, KeyError) as e:
@@ -390,17 +393,17 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            f"{n_failed} out of {biters} bootstrap iterations failed and resulted in NaN. "
             "This might be due to issues in propensity score estimation, outcome regression, "
-            "or the AIPW calculation itself (e.g. perfect prediction, collinearity, "
-            "small effective sample sizes after weighting/trimming).",
+            "or the AIPW calculation itself, such as perfect prediction, collinearity, or "
+            "small effective sample sizes after weighting or trimming.",
             UserWarning,
         )
 
     return bootstrap_estimates
 
 
-def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=None):
+def wboot_reg_panel(delta_y, d, x, i_weights, biters=1000, random_state=None):
     r"""Compute bootstrap estimates for regression-based robust DiD with panel data.
 
     This function implements a regression-based difference-in-differences estimator that
@@ -419,7 +422,7 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     random_state : int, RandomState instance or None
         Controls the random number generation for reproducibility.
@@ -427,82 +430,66 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     wboot_drdid_imp_panel : Doubly-robust bootstrap with propensity scores.
     wboot_ipw_panel : IPW bootstrap without outcome regression.
     """
-    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level=0.5)
+    n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level=0.5)
+    bootstrap_estimates = np.full(biters, np.nan)
 
+    # Since every draw keeps the same units with positive weight, a group too small for the estimator fails them all.
+    try:
+        _check_panel_groups(d, x, i_weights, regressions=("comparison",))
+    except ValueError as e:
+        warnings.warn(f"All {biters} bootstrap draws are NaN. {e}", UserWarning, stacklevel=2)
+        return bootstrap_estimates
+
+    control_mask = d == 0
+    scaled_x = _scaled_columns(x)
+    xp = get_backend()
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
-        control_mask = d == 0
-        n_control = np.sum(control_mask)
-
-        if n_control < x.shape[1]:
-            warnings.warn(f"Insufficient control units ({n_control}) for regression in bootstrap {b}.", UserWarning)
-            bootstrap_estimates[b] = np.nan
-            continue
-
         try:
-            x_control = x[control_mask]
-            y_control = delta_y[control_mask]
-            w_control = b_weights[control_mask]
-
-            xp = get_backend()
             if xp is not np:
                 reg_coeff, _ = cupy_wls(
-                    xp.asarray(y_control, dtype=xp.float64),
-                    xp.asarray(x_control, dtype=xp.float64),
-                    xp.asarray(w_control, dtype=xp.float64),
+                    xp.asarray(delta_y[control_mask], dtype=xp.float64),
+                    xp.asarray(scaled_x[control_mask], dtype=xp.float64),
+                    xp.asarray(b_weights[control_mask], dtype=xp.float64),
                 )
                 reg_coeff = to_numpy(reg_coeff)
             else:
                 glm_model = sm.GLM(
-                    y_control,
-                    x_control,
+                    delta_y[control_mask],
+                    scaled_x[control_mask],
                     family=sm.families.Gaussian(link=sm.families.links.Identity()),
-                    var_weights=w_control,
+                    var_weights=b_weights[control_mask],
                 )
-                glm_results = glm_model.fit()
-                reg_coeff = glm_results.params
-            out_reg_b = x @ reg_coeff
-
-        except (np.linalg.LinAlgError, ValueError) as e:
-            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
+                reg_coeff = glm_model.fit().params
+        except (np.linalg.LinAlgError, ValueError):
             continue
 
-        numerator = np.mean(b_weights * d * (delta_y - out_reg_b))
-        denominator = np.mean(b_weights * d)
+        out_reg_b = scaled_x @ reg_coeff
+        bootstrap_estimates[b] = np.mean(b_weights * d * (delta_y - out_reg_b)) / np.mean(b_weights * d)
 
-        if denominator == 0:
-            warnings.warn(f"No effectively treated units in bootstrap {b}. ATT will be NaN.", UserWarning)
-            bootstrap_estimates[b] = np.nan
-        else:
-            att_b = numerator / denominator
-            bootstrap_estimates[b] = att_b
-
-    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    n_failed = int(np.sum(np.isnan(bootstrap_estimates)))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
-            "This might be due to insufficient control units, collinearity in covariates, "
-            "or lack of treated units in bootstrap samples.",
+            f"{n_failed} of {biters} bootstrap draws are NaN because their outcome regressions could not be solved.",
             UserWarning,
+            stacklevel=2,
         )
 
     return bootstrap_estimates
 
 
-def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=None):
+def wboot_twfe_panel(y, d, post, x, i_weights, biters=1000, random_state=None):
     r"""Compute bootstrap estimates for Two-Way Fixed Effects DiD with panel data.
 
     This function implements a bootstrapped Two-Way Fixed Effects (TWFE)
@@ -525,7 +512,7 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
         (n_observations, n_features). Should be stacked to match y, d, and post.
     i_weights : ndarray
         A 1D array of individual observation weights for each unit-time observation.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     random_state : int, RandomState instance or None
         Controls the random number generation for reproducibility.
@@ -533,14 +520,14 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     wboot_reg_panel : Regression-based bootstrap for DiD with panel data.
     wboot_drdid_imp_panel : Doubly-robust bootstrap for DiD with panel data.
     """
-    n_obs = _validate_inputs({"y": y, "d": d, "post": post, "i_weights": i_weights}, x, n_bootstrap, trim_level=0.5)
+    n_obs = _validate_inputs({"y": y, "d": d, "post": post, "i_weights": i_weights}, x, biters, trim_level=0.5)
 
     if n_obs % 2 != 0:
         raise ValueError("Number of observations must be even for balanced panel data.")
@@ -548,9 +535,9 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
     n_units = n_obs // 2
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         v = np.repeat(v, 2)
         b_weights = i_weights * v
@@ -564,19 +551,20 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
             design_matrix = np.column_stack([np.ones(n_obs), d, post, d * post, x])
             interaction_idx = 3
 
+        scale = _column_scales(design_matrix)
         try:
             xp = get_backend()
             if xp is not np:
                 beta, _ = cupy_wls(
                     xp.asarray(y, dtype=xp.float64),
-                    xp.asarray(design_matrix, dtype=xp.float64),
+                    xp.asarray(design_matrix / scale, dtype=xp.float64),
                     xp.asarray(b_weights, dtype=xp.float64),
                 )
-                att_b = float(to_numpy(beta)[interaction_idx])
+                att_b = float(to_numpy(beta)[interaction_idx]) / scale[interaction_idx]
             else:
-                wls_model = sm.WLS(y, design_matrix, weights=b_weights)
+                wls_model = sm.WLS(y, design_matrix / scale, weights=b_weights)
                 wls_results = wls_model.fit()
-                att_b = wls_results.params[interaction_idx]
+                att_b = wls_results.params[interaction_idx] / scale[interaction_idx]
             bootstrap_estimates[b] = att_b
 
         except (np.linalg.LinAlgError, ValueError) as e:
@@ -586,7 +574,7 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            f"{n_failed} out of {biters} bootstrap iterations failed and resulted in NaN. "
             "This might be due to collinearity in the design matrix or numerical instability.",
             UserWarning,
         )
@@ -597,13 +585,14 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
 def _fit_logistic_boot(d, x, b_weights):
     """Dispatch logistic regression for bootstrap to GPU or statsmodels."""
     xp = get_backend()
+    scaled = _scaled_columns(x)
     if xp is not np:
         _, ps = cupy_logistic_irls(
             xp.asarray(d, dtype=xp.float64),
-            xp.asarray(x, dtype=xp.float64),
+            xp.asarray(scaled, dtype=xp.float64),
             xp.asarray(b_weights, dtype=xp.float64),
         )
         return to_numpy(ps)
-    logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
+    logit_model = sm.GLM(d, scaled, family=sm.families.Binomial(), freq_weights=b_weights)
     logit_results = logit_model.fit()
-    return logit_results.predict(x)
+    return logit_results.predict(scaled)

@@ -9,10 +9,10 @@ from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..propensity.ipw_estimators import ipw_rc
-from ..utils import _validate_inputs
+from ..utils import _scaled_columns, _validate_inputs
 
 
-def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+def wboot_ipw_rc(y, post, d, x, i_weights, biters=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for IPW DiD with repeated cross-sections.
 
     Implements the bootstrap inference for the inverse propensity weighted
@@ -33,7 +33,7 @@ def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, r
         A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
-    n_bootstrap : int
+    biters : int
         Number of bootstrap iterations. Default is 1000.
     trim_level : float
         Maximum propensity score value for control units to avoid extreme weights.
@@ -44,19 +44,20 @@ def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, r
     Returns
     -------
     ndarray
-        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+        A 1D array of bootstrap ATT estimates with length biters.
 
     See Also
     --------
     ipw_did_rc : The underlying IPW estimator for repeated cross-sections.
     wboot_drdid_rc1 : Bootstrap for doubly robust DiD with repeated cross-sections.
     """
-    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level)
 
     rng = np.random.RandomState(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
+    bootstrap_estimates = np.zeros(biters)
 
-    for b in range(n_bootstrap):
+    scaled_x = _scaled_columns(x)
+    for b in range(biters):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
 
@@ -65,14 +66,14 @@ def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, r
             if xp is not np:
                 _, ps_b = cupy_logistic_irls(
                     xp.asarray(d, dtype=xp.float64),
-                    xp.asarray(x, dtype=xp.float64),
+                    xp.asarray(scaled_x, dtype=xp.float64),
                     xp.asarray(b_weights, dtype=xp.float64),
                 )
                 ps_b = to_numpy(ps_b)
             else:
-                logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
+                logit_model = sm.GLM(d, scaled_x, family=sm.families.Binomial(), freq_weights=b_weights)
                 logit_results = logit_model.fit()
-                ps_b = logit_results.predict(x)
+                ps_b = logit_results.predict(scaled_x)
         except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
@@ -99,9 +100,9 @@ def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, r
             bootstrap_estimates[b] = np.nan
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
-    if n_failed > n_bootstrap * 0.1:
+    if n_failed > biters * 0.1:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. Results may be unreliable.", UserWarning
+            f"{n_failed} out of {biters} bootstrap iterations failed. Results may be unreliable.", UserWarning
         )
 
     return bootstrap_estimates

@@ -1,4 +1,4 @@
-"""Traditional doubly robust DiD estimator for repeated cross-sections data (not locally efficient)."""
+"""Traditional doubly robust DiD estimator for repeated cross-section data that is not locally efficient."""
 
 import warnings
 from typing import NamedTuple
@@ -12,7 +12,8 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc1
-from .wols import ols_rc
+from ..utils import _scaled_columns, _scaled_inverse, _singular_pscore_message
+from .wols import _cell_name, _check_rc_cells, _singular_cell_message, ols_rc
 
 
 class DRDIDTradRCResult(NamedTuple):
@@ -35,14 +36,14 @@ def drdid_trad_rc(
     i_weights=None,
     boot=False,
     boot_type="weighted",
-    nboot=999,
+    biters=999,
     influence_func=False,
     trim_level=0.995,
 ):
     r"""Compute the traditional doubly robust DiD estimator for the ATT with repeated cross-section data.
 
-    Implements the doubly robust difference-in-differences (DiD) estimator for the ATT
-    with repeated cross-sectional data, as defined in equation (3.3) in [1]_. The estimator is given by
+    Implements the traditional doubly robust difference-in-differences (DiD) estimator for the ATT
+    with repeated cross-sectional data in equation (3.3) of [1]_. The estimator is given by
 
     .. math::
         \widehat{\tau}_{1}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T) -
@@ -50,11 +51,12 @@ def drdid_trad_rc(
         (Y - \mu_{0,Y}^{rc}(T,X;\widehat{\beta}_{0,0}^{rc}, \widehat{\beta}_{0,1}^{rc}))\right].
 
     This estimator uses a logistic propensity score model and linear regression models for the outcome
-    among the comparison units in both pre and post-treatment time periods. Importantly, this estimator
-    is not locally efficient.
+    among the comparison units in both pre and post-treatment time periods. It is not locally efficient.
 
-    The propensity score parameters are estimated using maximum likelihood, and the outcome
-    regression coefficients are estimated using ordinary least squares.
+    The propensity score parameters are estimated by maximum likelihood. The outcome regression
+    coefficients are estimated by ordinary least squares. For repeated cross-sections,
+    ``drdid(est_method="trad")`` computes the locally efficient traditional estimator of equation (3.4)
+    through :func:`drdid_rc`.
 
     Parameters
     ----------
@@ -74,7 +76,7 @@ def drdid_trad_rc(
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default="weighted"
         Type of bootstrap to perform.
-    nboot : int, default=999
+    biters : int, default=999
         Number of bootstrap repetitions.
     influence_func : bool, default=False
         Whether to return the influence function.
@@ -102,27 +104,15 @@ def drdid_trad_rc(
     """
     xp = get_backend()
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
+    _check_rc_cells(post, d, covariates, i_weights, regressions=("comparison",))
 
     ps_fit, ps_weights = _compute_propensity_score(xp, d, covariates, i_weights)
 
     trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    out_reg_pre_result = ols_rc(y, post, d, covariates, i_weights, pre=True, treat=False)
-    if np.any(np.isnan(out_reg_pre_result.coefficients)):
-        raise ValueError(
-            "Outcome regression model coefficients have NA components. \n"
-            "Multicollinearity (or lack of variation) of covariates is a likely reason."
-        )
-    out_y_pre = out_reg_pre_result.out_reg
-
-    out_reg_post_result = ols_rc(y, post, d, covariates, i_weights, pre=False, treat=False)
-    if np.any(np.isnan(out_reg_post_result.coefficients)):
-        raise ValueError(
-            "Outcome regression model coefficients have NA components. \n"
-            "Multicollinearity (or lack of variation) of covariates is a likely reason."
-        )
-    out_y_post = out_reg_post_result.out_reg
+    out_y_pre = ols_rc(y, post, d, covariates, i_weights, pre=True, treat=False).out_reg
+    out_y_post = ols_rc(y, post, d, covariates, i_weights, pre=False, treat=False).out_reg
     out_y = post * out_y_post + (1 - post) * out_y_pre
 
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
@@ -148,17 +138,17 @@ def drdid_trad_rc(
         lci = dr_att - 1.96 * se_dr_att
         dr_boot = None
     else:
-        if nboot is None:
-            nboot = 999
+        if biters is None:
+            biters = 999
         if boot_type == "multiplier":
-            dr_boot = mboot_did(dr_att_inf_func, nboot)
+            dr_boot = mboot_did(dr_att_inf_func, biters)
             se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
             uci = dr_att + cv * se_dr_att
             lci = dr_att - cv * se_dr_att
         else:  # "weighted"
             dr_boot = wboot_drdid_rc1(
-                y=y, post=post, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
+                y=y, post=post, d=d, x=covariates, i_weights=i_weights, biters=biters, trim_level=trim_level
             )
             se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
             cv = np.nanquantile(np.abs((dr_boot - dr_att) / se_dr_att), 0.95)
@@ -170,10 +160,10 @@ def drdid_trad_rc(
 
     args = {
         "panel": False,
-        "estMethod": "trad2",
+        "estMethod": "trad1",
         "boot": boot,
         "boot_type": boot_type,
-        "nboot": nboot,
+        "biters": biters,
         "type": "dr",
         "trim_level": trim_level,
     }
@@ -220,11 +210,12 @@ def _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights):
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
+    scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
-                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(scaled, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
             )
             ps_fit = to_numpy(ps_fit)
@@ -237,7 +228,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
     else:
         try:
-            pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+            pscore_model = sm.GLM(d, scaled, family=sm.families.Binomial(), freq_weights=i_weights)
 
             pscore_results = pscore_model.fit()
             if not pscore_results.converged:
@@ -247,7 +238,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
                     "Propensity score model coefficients have NA components. \n"
                     "Multicollinearity (or lack of variation) of covariates is a likely reason."
                 )
-            ps_fit = pscore_results.predict(covariates)
+            ps_fit = pscore_results.predict(scaled)
         except np.linalg.LinAlgError as e:
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
@@ -311,12 +302,7 @@ def _get_influence_quantities(y, post, d, covariates, ps_fit, ps_weights, out_y_
     weighted_residual_x_pre = (weights_ols_pre * (y - out_y_pre))[:, np.newaxis] * covariates
     gram_matrix_pre = (weighted_x_pre.T @ covariates) / n_units
 
-    if np.linalg.cond(gram_matrix_pre) > 1 / np.finfo(float).eps:
-        raise ValueError(
-            "The regression design matrix for pre-treatment is singular. Consider removing some covariates."
-        )
-
-    gram_inv_pre = np.linalg.inv(gram_matrix_pre)
+    gram_inv_pre = _scaled_inverse(gram_matrix_pre, _singular_cell_message(_cell_name(True, False), False))
     asy_lin_rep_ols_pre = weighted_residual_x_pre @ gram_inv_pre
 
     # Asymptotic linear representation of OLS parameters in post-period
@@ -325,17 +311,13 @@ def _get_influence_quantities(y, post, d, covariates, ps_fit, ps_weights, out_y_
     weighted_residual_x_post = (weights_ols_post * (y - out_y_post))[:, np.newaxis] * covariates
     gram_matrix_post = (weighted_x_post.T @ covariates) / n_units
 
-    if np.linalg.cond(gram_matrix_post) > 1 / np.finfo(float).eps:
-        raise ValueError(
-            "The regression design matrix for post-treatment is singular. Consider removing some covariates."
-        )
-
-    gram_inv_post = np.linalg.inv(gram_matrix_post)
+    gram_inv_post = _scaled_inverse(gram_matrix_post, _singular_cell_message(_cell_name(False, False), False))
     asy_lin_rep_ols_post = weighted_residual_x_post @ gram_inv_post
 
     # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
-    hessian_ps = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
+    ps_hessian = covariates.T @ (ps_weights[:, np.newaxis] * covariates)
+    hessian_ps = _scaled_inverse(ps_hessian, _singular_pscore_message()) * n_units
     asy_lin_rep_ps = score_ps @ hessian_ps
 
     return {

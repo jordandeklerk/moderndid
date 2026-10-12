@@ -1,6 +1,6 @@
 # Doubly-Robust Difference-in-Differences
 
-This module provides doubly robust, inverse propensity weighted, and outcome regression difference-in-differences estimators for the ATT with two time periods and two groups, following [Sant'Anna and Zhao (2020)](https://doi.org/10.1016/j.jeconom.2020.09.006).
+This module provides doubly robust, inverse propensity weighted, and outcome regression difference-in-differences estimators for the ATT with two time periods and two groups, following [Sant'Anna and Zhao (2020)](https://doi.org/10.1016/j.jeconom.2020.06.003).
 
 The computational methods here are inspired by the corresponding R package [DRDID](https://github.com/pedrohcgs/drdid).
 
@@ -10,7 +10,7 @@ The computational methods here are inspired by the corresponding R package [DRDI
 import moderndid
 
 # NSW dataset
-nsw_data = moderndid.datasets.load_nsw()
+nsw_data = moderndid.load_nsw()
 
 # Estimate ATT using doubly robust DiD
 result = moderndid.drdid(
