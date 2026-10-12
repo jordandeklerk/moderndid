@@ -1,252 +1,315 @@
 .. _benchmarking:
 
-=============
-Benchmarking
-=============
+Measuring performance
+=====================
 
-**ModernDiD** includes a benchmark suite that measures the computational
-performance of Python estimators against their canonical R implementations.
-You can run predefined suites out of the box, write custom configurations,
-and add benchmarks for new estimators.
+When you change a calculation to make it faster, you need to check both
+its results and the time it takes. We use the benchmark suite to measure
+a specific workload after checking that its effects and uncertainty are
+still correct. This page shows you how to run that workload on your
+checkout, compare committed revisions, and understand which parts of the
+calculation each timing covers.
 
-Running benchmarks
-==================
+The suite uses Airspeed Velocity (ASV) through the commands in
+``.spin/cmds.py``. Run them from the repository root using the locked
+``benchmark`` environment so the package and measurement tools come from the
+same setup.
 
-Quick start
------------
+Choose a workload before collecting timings
+-------------------------------------------
 
-The fastest way to run benchmarks is with a predefined suite using the
-``--python-only`` flag (skips R, which requires the R packages to be
-installed)::
+Workloads in ``benchmarks/cases.py`` vary the number of units, periods,
+cohorts, and covariates, as well as the inference settings. The baseline has
+1,000 units, six periods, two treated cohorts, and no covariates. Two-period
+functions always use two periods and one treated cohort but keep the
+workload's unit and covariate counts.
 
-   python -m benchmark.run_benchmark attgt --suite quick --python-only
-   python -m benchmark.run_benchmark ddd --suite quick --python-only
-   python -m benchmark.run_benchmark contdid --suite quick --python-only
-   python -m benchmark.run_benchmark didinter --suite quick --python-only
+To keep quick runs fast, the ``small`` workload drops to 400 units and
+``short`` to four periods. The ``rows``, ``periods``, and ``covariates``
+workloads raise the units to 10,000, the periods to 12, and the covariates
+from none to four. Since five treated cohorts need room to adopt, ``cohorts``
+stretches the panel to ten periods as well. The ``bootstrap`` workload turns
+on the bootstrap in each call with 999 draws.
 
-You can also run the module-specific entry points directly::
+Each generated outcome combines a unit effect, a common time trend, covariate
+effects, a treatment effect that grows with exposure length, and noise.
+Triple-difference panels also split the units into an eligible half and an
+ineligible half. Continuous-treatment panels draw each treated unit's dose
+between 0.5 and 2.0. Intertemporal treatment instead takes an integer dose
+from one to three in each treated unit. Covariates stay fixed within units
+except in the intertemporal panels, where they also vary from period to
+period.
 
-   python -m benchmark.did.run_benchmark --suite quick --python-only
-   python -m benchmark.didtriple.run_benchmark --suite quick --python-only
-   python -m benchmark.didcont.run_benchmark --suite quick --python-only
-   python -m benchmark.didinter.run_benchmark --suite quick --python-only
+Choose a case that exercises the calculation you changed rather than running
+every large workload while you are still checking execution. A first run
+needs the environment and ASV's machine registration.
 
-Available estimators
---------------------
+.. code-block:: console
 
-The benchmark CLI has four subcommands, one per estimator.
+   pixi install --frozen -e benchmark
+   pixi run -e benchmark benchmark-machine
+   pixi run -e benchmark bench --quick -t 'bench_estimators.ATTgt.*small'
 
-.. list-table::
-   :header-rows: 1
-   :widths: 20 40 40
+The first run uses ``--quick`` to execute each selected benchmark once so
+you can check that it runs before collecting repeated measurements. Once
+it runs successfully, leave that option out to let ASV collect the samples
+needed for a timing comparison. The ``-t`` expression selects a module,
+class, method, or parameter value and can be repeated to include another
+selection.
 
-   * - Subcommand
-     - **ModernDiD** function
-     - R package comparison
-   * - ``attgt``
-     - ``att_gt``
-     - R ``did``
-   * - ``ddd``
-     - ``ddd``
-     - R ``triplediff``
-   * - ``contdid``
-     - ``cont_did``
-     - R ``contdid``
-   * - ``didinter``
-     - ``did_multiplegt``
-     - R ``DIDmultiplegtDYN``
+.. code-block:: console
 
-Predefined suites
------------------
+   pixi run -e benchmark bench -t 'bench_estimators.ATTgt.*small'
+   pixi run -e benchmark spin bench --help
 
-Each estimator has predefined benchmark suites that test different scaling
-dimensions. For the ``attgt`` estimator, for example, the available suites
-are listed below.
+The current-checkout run measures the package in your active environment
+and prints the results without adding them to a saved performance history.
+If you share a timing, include the machine, workload, dependency versions,
+and thread settings so another contributor can reproduce the comparison.
 
-.. list-table::
+Understand the operation inside a timing
+----------------------------------------
+
+Since estimator benchmarks in ``benchmarks/benchmarks/bench_estimators.py`` time
+complete public calls, each timing covers preprocessing and the requested
+inference. Their setup prepares the data and runs a warmup outside the timed
+operation.
+Aggregation benchmarks in ``bench_aggregation.py`` fit the underlying model
+during setup so the timing covers aggregation rather than another estimator
+fit.
+
+The environment limits the configured numerical libraries to one thread.
+Although this helps make repeated measurements comparable, it does not
+establish performance for a multithreaded fit or a GPU workload. If your optimization
+targets either case, define and report the relevant workload explicitly.
+The :doc:`debugging` guide explains why compilation and asynchronous GPU
+execution need special care when profiling.
+
+ASV's repeated samples help you see whether a timing is stable enough to
+support a speed claim. If the result changes substantially between runs,
+repeat the measurement under stable machine conditions before drawing that
+conclusion. Keep checking the estimates alongside the timings whenever an
+optimization changes the numerical calculation.
+
+Compare two committed revisions
+-------------------------------
+
+To measure a proposed change against another revision, ``--compare`` creates
+ASV environments for the selected commits. The following command compares
+``main`` with ``HEAD`` using the same small staggered-adoption workload.
+
+.. code-block:: console
+
+   pixi run -e benchmark spin bench --compare main HEAD \
+       -t 'bench_estimators.ATTgt.*small'
+
+Both revisions use the benchmark suite and configuration from your current
+checkout so the workload stays the same across the comparison. The
+dependencies for the managed environments come from
+``benchmarks/asv.conf.json`` rather than your development environment.
+
+.. admonition:: Comparisons skip uncommitted changes
+   :class: warning
+
+   Because these runs install committed package source, uncommitted library
+   changes never reach the timings. The command prints a warning when the
+   working tree has uncommitted changes.
+
+When the benchmark changes alongside the library, check that the revised
+workload still runs meaningfully against both commits. Comparing different
+observations or inference settings would make it hard to tell whether the
+code change explains the timing difference.
+
+Save a performance history when needed
+--------------------------------------
+
+The lower-level ``spin asv`` command passes its arguments to ASV from the
+benchmark directory. Use it when you want to save measurements for a commit
+instead of printing a current-checkout run.
+
+.. code-block:: console
+
+   pixi run -e benchmark spin asv run --show-stderr HEAD
+
+You can find the managed environments and results under ``benchmarks/.asv/``
+and the machine metadata in ``~/.asv-machine.json``. Since these generated
+files are outside the tracked source, keep the configuration and machine
+conditions consistent when interpreting a history.
+
+Read numerical reference comparisons
+------------------------------------
+
+The separate reference runner compares configured implementations on the
+same seeded workload and reports timings alongside gaps in estimates and
+standard errors. Select the estimators and workloads that relate to your
+change rather than treating a full comparison as a prerequisite for every
+documentation edit.
+
+.. code-block:: console
+
+   pixi run -e benchmark setup-r
+   pixi run -e benchmark spin compare --estimators att_gt aggte --workloads small baseline
+
+The first command installs the reference dependencies into the benchmark
+environment. The :doc:`testing guide <../contributing/testing>` describes the
+same setup for the validation environment. The runner reports a missing or
+failing reference in its status column and continues with the other cases.
+Before treating a successful run as numerical agreement, read the status and
+count of shared cells to see which comparisons were actually made.
+
+Settings shared by both implementations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``benchmarks/common.py`` and ``benchmarks/references.py`` set up these
+specifications for ModernDiD and the reference implementations,
+respectively. The :ref:`worked comparisons <r-comparisons>` set their own
+specifications in their code.
+
+.. list-table:: Settings shared by the compared calls
    :header-rows: 1
    :widths: 25 75
 
-   * - Suite name
-     - What it tests
-   * - ``quick``
-     - Small-scale sanity check (100 to 1,000 units)
-   * - ``scaling_units``
-     - Scaling from 100 to 100,000 units
-   * - ``scaling_periods``
-     - Scaling from 5 to 20 time periods
-   * - ``scaling_groups``
-     - Scaling from 3 to 10 treatment groups
-   * - ``est_methods``
-     - Comparing DR, IPW, and regression estimators
-   * - ``bootstrap``
-     - Scaling with bootstrap iterations (100 to 1,000)
-   * - ``large_scale``
-     - Stress test (100,000 to 2,000,000 units)
+   * - Function
+     - Specification
+   * - ``att_gt``
+     - Doubly robust estimation, never-treated controls, varying base
+       periods, and analytical inference.
+   * - ``aggte``
+     - Simple, group, and dynamic aggregation of the fitted ``att_gt``
+       result, with analytical standard errors and no simultaneous bands.
+   * - ``ddd``
+     - Doubly robust estimation, never-treated controls, universal base
+       periods, and analytical inference.
+   * - ``agg_ddd``
+     - Simple, group, and event-study aggregation of the fitted ``ddd``
+       result, with analytical standard errors and no simultaneous bands.
+   * - ``drdid``
+     - Panel data and the improved doubly robust estimator
+       (``est_method="imp"`` in ModernDiD).
+   * - ``ipwdid``
+     - Panel data and unnormalized inverse probability weights.
+   * - ``ordid``
+     - Panel data and outcome regression.
+   * - ``cont_did``
+     - Parametric continuous-dose estimation, not-yet-treated controls, a
+       cubic polynomial without interior knots, and 199 bootstrap draws.
+       Both implementations evaluate the dose curve at 20 points from 0.6
+       to 1.9 without simultaneous bands.
+   * - ``did_multiplegt``
+     - Two dynamic effects, one placebo contrast, no normalization, and
+       analytical inference.
 
-Run a specific suite::
+Covariate workloads add all four generated covariates to the baseline's
+intercept-only formula. Although the ``cont_did`` timing includes its
+bootstrap draws, its numerical checks use the returned influence functions
+instead. Only ASV runs the separate ``bootstrap`` workload, since the
+reference runner rejects it.
 
-   python -m benchmark.run_benchmark attgt --suite scaling_units
+.. _benchmarks-numerical-checks:
 
-Custom configurations
----------------------
+Numerical checks in the timing runner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For one-off benchmarks, pass parameters directly instead of using a suite::
+The runner checks cohort-period and aggregated effects for staggered DiD and
+triple differences, the ATT for each two-period estimator, and the requested
+intertemporal effects and placebos. It also compares their analytical standard
+errors where those are defined. Both comparisons use only the finite cells that
+the two outputs share. An estimate must satisfy
+``abs(moderndid - reference) <= 1e-6 + 1e-5 * abs(reference)``. A standard
+error must meet the same bound with a relative tolerance of ``1e-3`` in place
+of ``1e-5``. Undefined standard errors at normalized reference periods count
+as unavailable rather than as differences. The comparison rules live in
+``benchmarks/compare.py`` and the tolerances in ``benchmarks/reporting.py``.
+The runner exits with an error when a case is marked ``differs``.
 
-   python -m benchmark.run_benchmark attgt \
-       --n-units 5000 \
-       --n-periods 10 \
-       --n-groups 5 \
-       --est-method dr \
-       --warmup 2 \
-       --runs 10 \
-       --seed 42
+.. admonition:: Outputs that differ by construction
+   :class: note
 
-The following common parameters are shared across all estimators.
+   Where a reference computes an output differently from the method's paper,
+   the runner leaves that output out of the tolerance check and records it as
+   a known difference. Instead of failing the run, each case's known
+   differences appear below the printed table with their largest gaps and
+   the reason. A known difference that comes back missing or nonfinite still
+   marks an otherwise matching case ``partial``.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 25 15 60
+For continuous treatment, the runner compares the overall ATT and ACRT and
+all 20 points on each dose curve, 42 estimates and 42 standard errors in all.
+Computing each standard error as ``sqrt(sum(IF**2)) / n`` from the returned
+influence function keeps independent bootstrap draws out of the comparison.
+Only the two overall estimates are held to the tolerances. The 40 curve
+estimates and all 42 standard errors are known differences. The
+:ref:`continuous-treatment comparison <r-comparisons-continuous>` traces each
+of them to the reference code. The reference validation tests also compare
+bootstrap standard errors and band critical values by feeding the same
+multiplier draws to both implementations.
 
-   * - Flag
-     - Default
-     - Description
-   * - ``--warmup``
-     - 1
-     - Number of warmup runs (not timed, primes caches)
-   * - ``--runs``
-     - 5
-     - Number of timed runs (results are averaged)
-   * - ``--seed``
-     - 42
-     - Random seed for data generation (reproducibility)
-   * - ``--python-only``
-     - false
-     - Skip R benchmarks
-   * - ``--output-dir``
-     - ``benchmark/output``
-     - Directory for results and plots
-   * - ``--quiet``
-     - false
-     - Suppress verbose output
-   * - ``--boot``
-     - false
-     - Enable bootstrap inference
-   * - ``--biters``
-     - 100
-     - Number of bootstrap iterations
+Triple-difference checks cover every aggregated estimate and standard error
+except the undefined standard errors of normalized reference effects. Where
+the reference counts every unit of the enabling cohort in a cohort's weight,
+ModernDiD counts only its eligible treated units, as the method's paper does.
+Since every cohort of the generated panels is half eligible, the
+estimates still agree and stay held to the tolerances. The standard errors
+of ``agg_ddd`` outputs that average two or more cohorts are known
+differences. The group aggregation's overall standard error also differs
+because the reference builds its term for estimated cohort shares from
+group-time cohort labels instead of the distinct cohorts. Each cohort's own
+standard error and those of event times observed for a single cohort stay
+held to the tolerances. Because these panels hold covariates fixed within
+units, the covariate years that the reference mixes in pre-treatment
+comparisons cannot affect the checks. The
+:ref:`triple-difference comparison <r-comparisons-triple>` explains each of
+these behaviors on application data.
 
-Including R comparisons
------------------------
+Where the runner's timer starts and stops
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To run benchmarks that compare against R, you need the corresponding R
-packages installed. The same R packages used by the validation test suite
-work here. If you've already run ``pixi run -e validation setup-r``, you're
-set.
+Like the ASV benchmarks, the runner times the complete public call of an
+estimator and starts an aggregation timing from an already fitted result. Data
+generation, CSV transfer, package loading, the reference process's startup, and
+writing results happen outside the timer. Each implementation runs one warmup
+before the timed calls that ``--repeats`` sets, five by default. The report
+summarizes those samples by their median and interquartile range (IQR). On the
+Python side, the runner measures elapsed time with ``time.perf_counter``. A
+call that the reference clock rounds down to zero milliseconds gets no ratio in
+the printed table.
 
-Without the ``--python-only`` flag, each benchmark configuration runs the
-following steps.
+Save a comparison
+~~~~~~~~~~~~~~~~~
 
-1. Generates a synthetic dataset in Python
-2. Exports the dataset to CSV for R
-3. Runs the Python estimator with warmup + timed runs
-4. Runs the R estimator via ``subprocess`` with the same protocol
-5. Reports timing comparisons
+When you share a comparison, save it with ``--output`` as a JSON report.
 
-Interpreting results
-====================
+.. code-block:: console
 
-The benchmark suite produces three types of output. The console summary
-shows median and mean runtimes for each configuration, with speedup ratios
-when R benchmarks are included. Saved results are JSON files in the output
-directory with full timing data. Plots are PNG files showing scaling
-behavior across configurations.
+   pixi run -e benchmark spin compare --estimators att_gt aggte \
+       --workloads small baseline --output comparison.json
 
-When interpreting results, keep the following in mind.
+Along with each case's workload, timings, and comparisons, the report records
+the processor model, software versions, thread settings, and source revision.
+With ``--strict``, a missing reference or an incomplete comparison gives an
+unsuccessful exit status after the report is saved.
 
-- Focus on medians, not means. A single slow run (e.g., due to garbage
-  collection or OS scheduling) can skew the mean.
-- Warmup runs matter. The first run is often slower due to JIT compilation
-  (Numba), import overhead, and cache cold-starts. The benchmark suite
-  handles this automatically, but if you're timing manually, always include
-  warmup.
-- Compare relative scaling. Absolute runtimes depend on hardware. The
-  interesting question is usually how performance scales with dataset size,
-  not the raw seconds.
-- R comparisons use subprocess. The R timing includes R startup overhead,
-  CSV parsing, and package loading. For very small datasets, this overhead
-  may dominate the actual computation time, making Python appear faster than
-  it really is for the statistical computation alone.
+Add a benchmark for the changed calculation
+-------------------------------------------
 
-Benchmark structure
-===================
+Put data generation and warmup in ``setup`` so a ``time_`` method measures
+the operation its name describes. Shared helpers in ``benchmarks/common.py``
+prepare estimator calls and check their outputs. Reuse them when they supply
+the workload you need rather than creating a second version of the same
+specification.
 
-The benchmark code lives in `benchmark <https://github.com/jordandeklerk/moderndid/tree/main/benchmark>`__ and mirrors the package's module
-structure::
+Keep ``params`` and ``param_names`` stable when the workload remains the
+same. Increase the benchmark's ``version`` when its setup, inputs, or measured
+operation changes so ASV does not treat the new measurement as a continuation
+of an unchanged task. Check discovery and run the affected case before
+requesting review.
 
-   benchmark/
-   ├── run_benchmark.py       # Unified CLI entry point
-   ├── common/                # Shared utilities
-   ├── did/                   # att_gt benchmarks
-   │   ├── config.py          # ATTgtBenchmarkConfig dataclass and suites
-   │   ├── dgp.py             # Data generation
-   │   ├── runners.py         # Python and R runner functions
-   │   ├── storage.py         # Result serialization
-   │   └── run_benchmark.py   # Module-specific CLI
-   ├── didcont/               # cont_did benchmarks
-   ├── didinter/              # did_multiplegt benchmarks
-   ├── didtriple/             # ddd benchmarks
-   ├── output/                # Generated results and plots
-   └── plot.py                # Cross-estimator plotting
+.. code-block:: console
 
-Each estimator module follows the same pattern. ``config.py`` defines a
-``@dataclass`` with benchmark parameters and a dictionary of named suites.
-``dgp.py`` generates synthetic data matching the estimator's expected input
-format. ``runners.py`` contains ``run_python()`` and ``run_r()`` functions
-that execute the estimator and return timing results. ``run_benchmark.py``
-wires everything together with ``argparse``.
+   pixi run -e benchmark benchmark-check
+   pixi run -e benchmark bench --quick -t 'bench_estimators.ATTgt.*small'
 
-Adding a new benchmark
-======================
-
-To add benchmarks for a new estimator, follow the steps below.
-
-1. **Create the directory**::
-
-      mkdir benchmark/newestimator
-
-2. **Define the config** in ``config.py``. Follow the existing pattern with
-   a dataclass and a ``SUITES`` dictionary::
-
-      @dataclass
-      class NewEstimatorBenchmarkConfig:
-          n_units: int = 1000
-          n_periods: int = 5
-          # ... estimator-specific parameters
-          n_warmup: int = 1
-          n_runs: int = 5
-          random_seed: int = 42
-
-      NEWESTIMATOR_BENCHMARK_SUITES = {
-          "quick": [
-              NewEstimatorBenchmarkConfig(n_units=100),
-              NewEstimatorBenchmarkConfig(n_units=500),
-              NewEstimatorBenchmarkConfig(n_units=1000),
-          ],
-          "scaling_units": [
-              # progressively larger datasets
-          ],
-      }
-
-3. **Implement the data generator** in ``dgp.py``. Use the project's data
-   generation functions from ``moderndid.core.data`` where possible.
-
-4. **Implement runners** in ``runners.py``. The Python runner should call the
-   estimator and time it. The R runner should export data to CSV, call R via
-   ``subprocess``, and parse the timing output.
-
-5. **Register the subcommand** in `run_benchmark.py <https://github.com/jordandeklerk/moderndid/tree/main/benchmark/run_benchmark.py>`__ by adding a
-   new subparser and wiring it to your module's ``main()`` function.
-
-6. **Add a ``quick`` suite** at minimum so others can verify the benchmark
-   works without waiting for large-scale runs.
+A quick run establishes that the selected case executes successfully.
+Collect repeated measurements under comparable conditions before describing
+the change as faster in a pull request. The
+:doc:`reviewing guide <../contributing/reviewing>` explains how a reviewer
+reads that evidence.
