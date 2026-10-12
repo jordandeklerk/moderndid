@@ -4,14 +4,14 @@ description = "Scalable, GPU-accelerated difference-in-differences for Python."
 channels = ["conda-forge"]
 name = "moderndid"
 platforms = ["linux-64", "osx-arm64", "osx-64"]
-version = "0.1.1"
+version = "0.2.0"
 
 [tasks]
 
 [dependencies]
 numpy = ">=1.22.0"
 scipy = ">=1.17"
-polars = ">=1.0.0"
+polars = ">=1.38"
 pyarrow = ">=8.0.0"
 narwhals = ">=1.13.3"
 statsmodels = ">=0.14.4"
@@ -27,35 +27,87 @@ pytest-cov = ">=4.0.0"
 pytest-timeout = ">=2.0.0"
 
 [feature.dev.tasks]
-tests-core = "pytest -m 'not slow' --ignore=tests/dask --ignore=tests/spark -vv"
-tests-full = "pytest --ignore=tests/dask --ignore=tests/spark -vv"
-tests-dask = "pytest tests/dask -m 'not slow' --timeout=120 -vv"
-tests-spark = "pytest tests/spark --timeout=120 -vv"
+tests-core = "pytest -m 'not slow' -vv"
+tests-full = "pytest -vv"
+
+[feature.benchmark.dependencies]
+python = "3.12.*"
+asv = ">=0.6.6,<0.7"
+asv_runner = "==0.3.1"
+spin = ">=0.18,<0.19"
+python-build = ">=1.2.2"
+pytest = ">=7.0.0"
+
+[feature.benchmark.activation.env]
+OMP_NUM_THREADS = "1"
+OPENBLAS_NUM_THREADS = "1"
+MKL_NUM_THREADS = "1"
+VECLIB_MAXIMUM_THREADS = "1"
+NUMEXPR_NUM_THREADS = "1"
+NUMBA_NUM_THREADS = "1"
+POLARS_MAX_THREADS = "1"
+
+[feature.benchmark.tasks]
+bench = "spin bench"
+benchmark-r = "spin compare"
+benchmark-check = "spin asv check -E existing"
+benchmark-machine = "spin asv machine --yes"
+benchmark-run = "spin asv run --show-stderr"
 
 [feature.docs]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 
 [feature.docs.dependencies]
 numpy = ">=1.22.0,<2.4"
-sphinx = "*"
-sphinx-book-theme = "*"
+sphinx = ">=8,<9"
 sphinx-copybutton = "*"
 sphinx-design = "*"
 numpydoc = "*"
 jupyter-sphinx = "*"
 
 [feature.docs.pypi-dependencies]
+sphinx-immaterial = ">=0.13.9"
+ipython = ">=8.0"
+matplotlib = ">=3.7.0"
 myst-parser = { version = ">=2.0.0", extras = ["linkify"] }
 myst-nb = ">=1.0.0"
 tqdm = ">=4.0.0"
 seaborn = ">=0.13.0"
 great-tables = ">=0.15.0"
+maketables = ">=0.1.9, <0.2"
 
 [feature.docs.tasks]
-docs = "sphinx-build -d docs/_doctree docs/source docs/_build --color -v -bhtml"
+docs = "env -u VIRTUAL_ENV sphinx-build -E -a --keep-going -d docs/_doctree docs/source docs/_build/html --color -bhtml"
+docs-open = { cmd = "python -c \"import functools, http.server, threading, webbrowser; threading.Timer(0.8, lambda: webbrowser.open('http://127.0.0.1:8765')).start(); handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory='docs/_build/html'); print('serving docs at http://127.0.0.1:8765, stop with ctrl-c'); http.server.HTTPServer(('127.0.0.1', 8765), handler).serve_forever()\"", depends-on = [
+  "docs",
+] }
+docs-serve = { cmd = "python -m http.server 8765 --directory docs/_build/html --bind 127.0.0.1", depends-on = [
+  "docs",
+] }
+docs-clean = "rm -rf docs/_build docs/_doctree"
 
+[feature.docs-r.dependencies]
+python = "3.12.*"
+r-base = ">=4.5,<4.6"
+r-jsonlite = "*"
+glpk = "*"
+rpy2 = ">=3.6,<3.7"
+nbclient = ">=0.10,<0.11"
+ipykernel = ">=6"
+
+[feature.docs-r.target.osx-arm64.dependencies]
+gfortran_osx-arm64 = "*"
+
+[feature.docs-r.tasks]
+setup-r = "bash .github/scripts/setup-r.sh"
+
+# Mirrors the etwfe extra in pyproject.toml, since pyfixest imports these without declaring them.
 [feature.etwfe.pypi-dependencies]
-pyfixest = ">=0.30.2"
+pyfixest = ">=0.40.0,<0.50.0"
+tabulate = ">=0.9.0"
+seaborn = ">=0.12.0"
+tqdm = ">=4.64.0"
+great-tables = ">=0.2.0"
 
 [feature.didcont.pypi-dependencies]
 formulaic = ">=1.1.0"
@@ -70,18 +122,14 @@ econml = ">=0.15.0"
 xgboost = ">=2.0.0"
 formulaic = ">=1.1.0"
 
+[feature.diddynamic.pypi-dependencies]
+scikit-learn = ">=1.3.0"
+
 [feature.plots.pypi-dependencies]
 plotnine = ">=0.14.0"
 
 [feature.numba.dependencies]
 numba = ">=0.57.0"
-
-[feature.dask.dependencies]
-dask = ">=2024.1.0"
-distributed = ">=2024.1.0"
-
-[feature.spark.pypi-dependencies]
-pyspark = ">=3.4.0"
 
 [feature.gpu]
 platforms = ["linux-64"]
@@ -119,8 +167,12 @@ r-drdid = "*"
 r-jsonlite = "*"
 glpk = "*"
 
+# Since R 4.3.3 links Fortran code against gfortran 14.3's libraries, a newer gfortran breaks source installs.
+[feature.validation.target.osx-arm64.dependencies]
+gfortran_osx-arm64 = "14.3.*"
+
 [feature.validation.tasks]
-setup-r = "bash scripts/setup.sh"
+setup-r = "bash .github/scripts/setup-r.sh"
 all = "pytest tests/validation/ -vv"
 did = "pytest tests/validation/test_r_did.py -vv"
 didcont = "pytest tests/validation/test_r_didcont.py -vv"
@@ -131,9 +183,11 @@ didhonest = "pytest tests/validation/test_r_didhonest.py -vv"
 npiv = "pytest tests/validation/test_r_npiv.py -vv"
 
 [environments]
-dev = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba", "dask", "spark"]
-docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba", "dask", "spark"]
+benchmark = { features = ["benchmark", "build", "didcont", "numba", "validation"], solve-group = "benchmark" }
+dev = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
+docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
+docs-r = ["docs", "docs-r", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
 check = ["lint"]
 build = ["build"]
 gpu = ["gpu"]
-validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "diddynamic", "plots", "numba"]

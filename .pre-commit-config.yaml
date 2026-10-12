@@ -34,3 +34,5 @@ repos:
   rev: 0.4.1
   hooks:
     - id: no-print-statements
+      # Command-line scripts report progress on stdout.
+      exclude: ^(benchmarks/|docs/run_r_examples\.py$)
