@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import scipy.stats
 
-from moderndid.did.mboot import mboot
+from moderndid.did.mboot import _mboot
 
 from ...cupy.backend import get_backend, to_numpy
 from ..container import GroupTimeATTResult
@@ -45,22 +45,37 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
     vcov_analytical = influence_func.T @ influence_func / n_units
 
     cband = pte_params.cband
-    alpha = pte_params.alp
+    alpha = pte_params.alpha
 
-    critical_value = scipy.stats.norm.ppf(1 - alpha / 2)
-    boot_results = mboot(
+    pointwise_value = scipy.stats.norm.ppf(1 - alpha / 2)
+    critical_value = pointwise_value
+    # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that column
+    # staying at zero, they stay in the sample.
+    boot_results = _mboot(
         influence_func,
         n_units=n_units,
         biters=int(pte_params.biters) if pte_params.biters else 1000,
-        alp=alpha,
+        alpha=alpha,
         random_state=rng,
+        keep_infinite_draws=True,
     )
 
     if cband:
         critical_value = boot_results["crit_val"]
+        # A band that covers every cell at once can't be narrower than the pointwise intervals.
+        if critical_value < pointwise_value:
+            warnings.warn("Simultaneous band smaller than pointwise; using pointwise intervals.")
+            critical_value = pointwise_value
 
     se = boot_results["se"]
-    pre_indices = np.where(groups > times)[0]
+    # Since the reference period of a universal base has no estimate, its standard error stays undefined.
+    if pte_params.base_period == "universal":
+        se = np.where(times == groups - 1 - pte_params.anticipation, np.nan, se)
+    # A cell without variance, such as the reference period under a universal base, carries nothing for the
+    # pre-test and would make its covariance singular. A cell without an estimate carries nothing either.
+    analytic_se = np.sqrt(np.diag(to_numpy(vcov_analytical)) / n_units)
+    zero_variance = analytic_se <= np.sqrt(np.finfo(float).eps) * 10
+    pre_indices = np.where((groups > times) & ~zero_variance & np.isfinite(att))[0]
     pre_att = att[pre_indices]
     pre_vcov = vcov_analytical[np.ix_(pre_indices, pre_indices)]
 
@@ -83,21 +98,17 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
         except (np.linalg.LinAlgError, Exception):  # noqa: BLE001
             warnings.warn("Could not compute Wald statistic due to numerical issues", UserWarning)
 
-    if hasattr(pte_params, "data") and hasattr(pte_params, "tname"):
-        original_time_periods = np.sort(np.unique(pte_params.data[pte_params.tname]))
+    time_map = _period_labels(pte_params)
+    if time_map:
+        groups = np.array([time_map.get(g, g) for g in groups])
+        times = np.array([time_map.get(t, t) for t in times])
 
-        if hasattr(pte_params, "t_list") and not np.all(np.isin(pte_params.t_list, original_time_periods)):
-            time_map = {i + 1: orig for i, orig in enumerate(original_time_periods)}
-
-            groups = np.array([time_map.get(g, g) for g in groups])
-            times = np.array([time_map.get(t, t) for t in times])
-
-            if extra_gt_returns:
-                for egr in extra_gt_returns:
-                    if "group" in egr:
-                        egr["group"] = time_map.get(egr["group"], egr["group"])
-                    if "time_period" in egr:
-                        egr["time_period"] = time_map.get(egr["time_period"], egr["time_period"])
+        if extra_gt_returns:
+            for egr in extra_gt_returns:
+                if "group" in egr:
+                    egr["group"] = time_map.get(egr["group"], egr["group"])
+                if "time_period" in egr:
+                    egr["time_period"] = time_map.get(egr["time_period"], egr["time_period"])
 
     return GroupTimeATTResult(
         groups=groups,
@@ -115,3 +126,28 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
         pte_params=pte_params,
         extra_gt_returns=extra_gt_returns,
     )
+
+
+def _period_labels(pte_params):
+    """Map the period positions that index the cells to the periods as the data codes them."""
+    data = getattr(pte_params, "data", None)
+    tname = getattr(pte_params, "tname", None)
+    t_list = getattr(pte_params, "t_list", None)
+    if data is None or tname is None or t_list is None:
+        return {}
+
+    # Cells index periods by their position in the "period" column. Reading each position's label from the
+    # data keeps a coding such as 2, 3, 4, 5 from passing for positions.
+    columns = getattr(data, "columns", [])
+    if "period" in columns and tname in columns and tname != "period":
+        pairs = data.select("period", tname).unique()
+        positions = pairs["period"].to_numpy()
+        if not np.all(np.isin(t_list, positions)):
+            return {}
+        time_map = dict(zip(positions.tolist(), pairs[tname].to_list(), strict=True))
+        return {} if all(position == label for position, label in time_map.items()) else time_map
+
+    original_time_periods = np.sort(np.unique(data[tname]))
+    if np.all(np.isin(t_list, original_time_periods)):
+        return {}
+    return {i + 1: orig for i, orig in enumerate(original_time_periods)}

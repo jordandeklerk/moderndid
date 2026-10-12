@@ -27,20 +27,26 @@ class PTEParams(NamedTuple):
     yname : str
         Name of the outcome variable.
     gname : str
-        Name of the group variable (first treatment period).
+        Name of the column that holds each unit's group (first treatment
+        period) as the data codes it. When the cells index periods by
+        position, as in ``cont_did`` results, this is the internal column
+        ``.group_label``.
     tname : str
-        Name of the time period variable.
+        Name of the column that holds each time period as the data codes it.
+        When the cells index periods by position, as in ``cont_did`` results,
+        this is the internal column ``.period_label``.
     idname : str
-        Name of the id variable.
+        Name of the column that holds each unit's id. In ``cont_did`` and
+        ``pte_default`` results this is the internal column ``id``.
     data : pl.DataFrame
-        Panel data as a pandas DataFrame.
+        Panel data as a polars DataFrame.
     g_list : np.ndarray
         Array of unique group identifiers.
     t_list : np.ndarray
         Array of unique time period identifiers.
     cband : bool
         Whether to compute a uniform confidence band.
-    alp : float
+    alpha : float
         Significance level for confidence intervals.
     boot_type : str
         Method for bootstrapping.
@@ -73,7 +79,7 @@ class PTEParams(NamedTuple):
     aggregation : str
         Type of aggregation for results.
     treatment_type : str
-        Type of treatment (e.g., 'continuous').
+        Type of treatment, such as 'continuous'.
     xformula : str
         Formula for covariates.
     dose_est_method : str
@@ -82,9 +88,9 @@ class PTEParams(NamedTuple):
 
     #: Name of the outcome variable.
     yname: str
-    #: Name of the group variable (first treatment period).
+    #: Name of the column holding each unit's group as the data codes it.
     gname: str
-    #: Name of the time period variable.
+    #: Name of the column holding each time period as the data codes it.
     tname: str
     #: Name of the id variable.
     idname: str
@@ -97,7 +103,7 @@ class PTEParams(NamedTuple):
     #: Whether to compute a uniform confidence band.
     cband: bool
     #: Significance level for confidence intervals.
-    alp: float
+    alpha: float
     #: Method for bootstrapping.
     boot_type: str
     #: Number of periods of anticipation.
@@ -145,6 +151,30 @@ class AttgtResult(NamedTuple):
     inf_func: np.ndarray | None
     #: Extra returns from group-time calculations.
     extra_gt_returns: dict | None
+
+
+class OverallResult(NamedTuple):
+    """Container for overall ATT results."""
+
+    #: Overall average treatment effect on the treated.
+    overall_att: float
+    #: Standard error for overall ATT.
+    overall_se: float
+    #: Influence function for overall ATT.
+    influence_func: np.ndarray
+
+
+class FullRankCheckResult(NamedTuple):
+    """Container for full rank check results."""
+
+    #: Whether the matrix has full rank.
+    is_full_rank: bool
+    #: Condition number of the matrix.
+    condition_number: float
+    #: Minimum eigenvalue.
+    min_eigenvalue: float
+    #: Maximum eigenvalue.
+    max_eigenvalue: float
 
 
 class PTEResult(NamedTuple):
@@ -248,11 +278,11 @@ class PTEAggteResult(NamedTuple):
 
         - **overall**: Overall ATT influence function
         - **by_event**: Event-specific influence functions
-    min_event_time : int, optional
+    min_event_time : int or float, optional
         Minimum event time (for dynamic effects).
-    max_event_time : int, optional
+    max_event_time : int or float, optional
         Maximum event time (for dynamic effects).
-    balance_event : int, optional
+    balance_event : int or float, optional
         Balanced event time threshold.
     att_gt_result : object
         Original group-time ATT result object.
@@ -275,11 +305,11 @@ class PTEAggteResult(NamedTuple):
     #: Influence functions for overall and event-specific ATTs.
     influence_func: dict | None = None
     #: Minimum event time.
-    min_event_time: int | None = None
+    min_event_time: int | float | None = None
     #: Maximum event time.
-    max_event_time: int | None = None
+    max_event_time: int | float | None = None
     #: Balanced event time threshold.
-    balance_event: int | None = None
+    balance_event: int | float | None = None
     #: Original group-time ATT result object.
     att_gt_result: object | None = None
 
@@ -300,7 +330,7 @@ class PTEAggteResult(NamedTuple):
             estimates.extend(np.asarray(self.att_by_event, dtype=float).tolist())
             se.extend(np.asarray(self.se_by_event, dtype=float).tolist())
 
-        alpha = float(getattr(pte_params, "alp", 0.05))
+        alpha = float(getattr(pte_params, "alpha", 0.05))
         crit = self.critical_value if self.critical_value is not None else None
         if self.event_times is not None and crit is not None:
             z_crit = stats.norm.ppf(1 - alpha / 2)
@@ -323,7 +353,7 @@ class PTEAggteResult(NamedTuple):
         if key == "control_group":
             return getattr(pte_params, "control_group", None)
         if key == "est_method":
-            return getattr(pte_params, "gt_type", None)
+            return _estimation_method_label(pte_params)
         return None
 
     @property
@@ -513,9 +543,11 @@ class PteEmpBootResult(NamedTuple):
     group_results : pl.DataFrame | None
         Group-specific ATT estimates and standard errors.
     dyn_results : pl.DataFrame | None
-        Dynamic (event-time) ATT estimates and standard errors.
+        Dynamic (event-time) ATT estimates and standard errors, sorted by event time.
     extra_gt_returns : list | None
         Extra returns from group-time calculations.
+    dyn_draws : np.ndarray | None
+        Bootstrap draws of the dynamic effects, one row per draw and one column per row of ``dyn_results``.
     """
 
     #: ATT(g,t) estimates with standard errors.
@@ -524,10 +556,12 @@ class PteEmpBootResult(NamedTuple):
     overall_results: dict
     #: Group-specific ATT estimates and standard errors.
     group_results: pl.DataFrame | None = None
-    #: Dynamic (event-time) ATT estimates and standard errors.
+    #: Dynamic (event-time) ATT estimates and standard errors, sorted by event time.
     dyn_results: pl.DataFrame | None = None
     #: Extra returns from group-time calculations.
     extra_gt_returns: list | None = None
+    #: Bootstrap draws of the dynamic effects, one row per draw.
+    dyn_draws: np.ndarray | None = None
 
 
 class DoseResult(NamedTuple):
@@ -608,7 +642,7 @@ class DoseResult(NamedTuple):
     @property
     def __maketables_coef_table__(self):
         """Return canonical coefficient table for maketables."""
-        alpha = float(getattr(self.pte_params, "alp", 0.05))
+        alpha = float(getattr(self.pte_params, "alpha", 0.05))
         z_crit = stats.norm.ppf(1 - alpha / 2)
 
         names: list[str] = []
@@ -701,3 +735,14 @@ def _n_obs_from_pte_params(params: PTEParams | None) -> int | None:
         return len(data)
     except TypeError:
         return None
+
+
+def _estimation_method_label(params):
+    """Name the estimator behind the group-time effects of a result."""
+    target = getattr(params, "target_parameter", None)
+    if target == "slope":
+        return "Parametric (B-spline)"
+    if target == "level":
+        return "Doubly Robust (binarized treatment)"
+    # Results without a target parameter, such as those of pte_default, have a binary treatment.
+    return getattr(params, "gt_type", None)

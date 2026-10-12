@@ -1,11 +1,16 @@
 """Shared fixtures for tests."""
 
+from functools import partial
+from importlib import import_module
+
 import numpy as np
 import polars as pl
 import pytest
 
-from moderndid import att_gt, load_mpdta
+from moderndid import att_gt, cont_did, gen_cont_did_data, load_mpdta
 from moderndid.didcont.estimation import PTEParams, process_att_gt
+from moderndid.npiv import npiv
+from tests.helpers import importorskip
 
 
 @pytest.fixture
@@ -398,6 +403,21 @@ def simple_influence_func():
 
 
 @pytest.fixture
+def fix_bootstrap_draws(monkeypatch):
+    """Replace the multiplier draws with fixed columns that repeat in turn across the influence function."""
+
+    def install(columns):
+        columns = np.asarray(columns, dtype=float)
+
+        def draws(inf_func, biters, random_state=None):
+            return columns[:, np.arange(inf_func.shape[1]) % columns.shape[1]]
+
+        monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws)
+
+    return install
+
+
+@pytest.fixture
 def att_gt_raw_results():
     np.random.seed(42)
     n_groups = 3
@@ -413,6 +433,16 @@ def att_gt_raw_results():
     n_units = 200
     influence_func = np.random.randn(n_units, n_gt) * 0.1
 
+    return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": []}
+
+
+@pytest.fixture
+def two_cell_results():
+    attgt_list = [
+        {"att": 0.1, "group": 2004, "time_period": 2003},
+        {"att": 0.2, "group": 2004, "time_period": 2005},
+    ]
+    influence_func = np.random.default_rng(0).standard_normal((200, 2))
     return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": []}
 
 
@@ -443,7 +473,7 @@ def pte_params_basic():
         g_list=np.array([2004, 2006, 2007]),
         t_list=np.array([2003, 2004, 2005, 2006]),
         cband=True,
-        alp=0.05,
+        alpha=0.05,
         boot_type="multiplier",
         anticipation=0,
         base_period="varying",
@@ -520,7 +550,7 @@ def att_gt_result_with_data():
         g_list=np.array([2, 3]),
         t_list=np.array(periods),
         cband=True,
-        alp=0.05,
+        alpha=0.05,
         boot_type="multiplier",
         anticipation=0,
         base_period="varying",
@@ -603,6 +633,7 @@ def mock_gt_results_with_dose():
                     "beta": np.random.randn(n_basis),
                     "bread": np.random.randn(n_basis, n_basis),
                     "x_expanded": np.random.randn(50, n_basis),
+                    **mock_dose_cell_pieces(n_units, n_treated=50),
                 },
             }
             extra_gt_returns.append(dose_results)
@@ -619,9 +650,28 @@ def mock_gt_results_no_dose(att_gt_raw_results):
 
 @pytest.fixture
 def contdid_data():
-    from moderndid import gen_cont_did_data
-
     data = gen_cont_did_data(n=1000, seed=12345)
+    return data.rename({"time_period": "period"})
+
+
+@pytest.fixture
+def contdid_staggered_dose(contdid_data):
+    """contdid_data without its group column and with each dose at 0 before the unit's group starts."""
+    before = pl.col("period") < pl.col("G")
+    return contdid_data.with_columns(pl.when(before).then(0.0).otherwise(pl.col("D")).alias("D")).drop("G")
+
+
+@pytest.fixture
+def contdid_one_missing_dose(request, contdid_data):
+    """Give the last-period row of the first treated unit a missing dose."""
+    unit = contdid_data.filter(pl.col("D") > 0)["id"][0]
+    row = (pl.col("id") == unit) & (pl.col("period") == contdid_data["period"].max())
+    return contdid_data.with_columns(pl.when(row).then(request.param).otherwise(pl.col("D")).alias("D"))
+
+
+@pytest.fixture
+def contdid_two_period_data():
+    data = gen_cont_did_data(n=1000, num_time_periods=2, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=2024)
     return data.rename({"time_period": "period"})
 
 
@@ -678,6 +728,13 @@ def panel_data_with_group(panel_data_balanced):
     return data
 
 
+def mock_dose_cell_pieces(n_units, n_treated, n_cell=120):
+    rows = np.sort(np.random.choice(n_units, size=n_cell, replace=False))
+    treated = np.zeros(n_cell, dtype=bool)
+    treated[np.random.choice(n_cell, size=n_treated, replace=False)] = True
+    return {"att_inf_func": np.random.randn(n_cell), "rows": rows, "treated": treated, "boundary_knots": None}
+
+
 def mock_gt_results(degree, knots, n_doses=20):
     if knots is None:
         n_knots = 0
@@ -711,6 +768,7 @@ def mock_gt_results(degree, knots, n_doses=20):
                     "beta": np.random.randn(n_basis),
                     "bread": np.random.randn(n_basis, n_basis),
                     "x_expanded": np.random.randn(50, n_basis),
+                    **mock_dose_cell_pieces(n_units, n_treated=50),
                 },
             }
             extra_gt_returns.append(dose_results)
@@ -831,7 +889,7 @@ def create_pte_params():
             g_list=np.array(groups),
             t_list=np.array(times),
             cband=False,
-            alp=0.05,
+            alpha=0.05,
             boot_type="weighted",
             anticipation=0,
             base_period="varying",
@@ -923,8 +981,6 @@ def panel_data_with_groups():
 
 @pytest.fixture
 def cont_did_baseline_result(contdid_data):
-    from moderndid import cont_did
-
     return cont_did(
         data=contdid_data,
         yname="Y",
@@ -943,8 +999,6 @@ def cont_did_baseline_result(contdid_data):
 
 @pytest.fixture
 def contdid_converted(request, contdid_data):
-    from tests.helpers import importorskip
-
     df_type = request.param
     if df_type == "pandas":
         importorskip("pandas")
@@ -958,3 +1012,103 @@ def contdid_converted(request, contdid_data):
         conn.register("contdid_data", contdid_data.to_arrow())
         return conn.execute("SELECT * FROM contdid_data").fetch_arrow_table()
     raise ValueError(f"Unknown dataframe type: {df_type}")
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def contdid_duplicated(request, contdid_data):
+    """Continuous dose panel in which unit 1 has two rows in period 2."""
+    unit = pl.col("id") == 1
+    row = contdid_data.filter(unit & (pl.col("period") == 2))
+    if request.param == "repeated_row":
+        return pl.concat([contdid_data, row])
+    if request.param == "hidden_gap":
+        return pl.concat([contdid_data.filter(~(unit & (pl.col("period") == 3))), row])
+    return pl.concat([contdid_data, row.with_columns(pl.col("Y") + 1)])
+
+
+@pytest.fixture
+def contdid_one_infinite(request, contdid_data):
+    """Continuous dose panel with an infinite value in the period 2 row of the first treated unit."""
+    column = request.param
+    unit = contdid_data.filter(pl.col("G") != 0)["id"].min()
+    row = (pl.col("id") == unit) & (pl.col("period") == 2)
+    return contdid_data.with_columns(pl.when(row).then(float("inf")).otherwise(pl.col(column)).alias(column))
+
+
+@pytest.fixture
+def make_dose_cell():
+    """Build one group-time cell of cont_did_acrt from the doses of its treated units."""
+
+    def build(treated_doses, n_comparison=80, seed=7):
+        rng = np.random.default_rng(seed)
+        dose = np.concatenate([np.asarray(treated_doses, dtype=float), np.zeros(n_comparison)])
+        n = len(dose)
+        pre = rng.normal(size=n)
+        post = pre + 0.5 + dose + 0.5 * dose**2 + rng.normal(scale=0.5, size=n)
+        return pl.DataFrame(
+            {
+                "id": np.tile(np.arange(n), 2),
+                "Y": np.concatenate([pre, post]),
+                "D": np.tile(dose, 2),
+                "period": np.repeat([1, 2], n),
+                "name": np.repeat(["pre", "post"], n),
+            }
+        )
+
+    return build
+
+
+@pytest.fixture
+def few_dose_panel():
+    """Two periods in which every treated unit takes one of three doses and ATT(d) = d."""
+    rng = np.random.default_rng(0)
+    n = 300
+    treated = rng.random(n) < 0.6
+    dose = np.where(treated, rng.choice([0.2, 0.5, 0.9], n), 0.0)
+    rows = []
+    for t in (1, 2):
+        y = rng.normal(size=n) + (t == 2) * (1.0 + dose)
+        rows.append(pl.DataFrame({"id": np.arange(n), "period": t, "Y": y, "D": dose, "G": np.where(treated, 2, 0)}))
+    return pl.concat(rows)
+
+
+@pytest.fixture
+def single_dose_cohort_panel():
+    """Staggered panel in which every unit of the 2003 cohort takes the dose 0.6."""
+    rng = np.random.default_rng(2)
+    n = 600
+    cohort = rng.choice([0, 2002, 2003], size=n, p=[0.3, 0.35, 0.35])
+    dose = np.where(cohort == 2002, rng.uniform(0.2, 1.0, n), np.where(cohort == 2003, 0.6, 0.0))
+    unit_effect = rng.normal(size=n)
+    rows = []
+    for t in (2001, 2002, 2003):
+        treated_now = (cohort > 0) & (t >= cohort)
+        y = unit_effect + 0.5 * (t - 2000) + rng.normal(scale=0.5, size=n) + treated_now * dose
+        rows.append(pl.DataFrame({"id": np.arange(n), "period": t, "Y": y, "D": dose, "G": cohort}))
+    return pl.concat(rows)
+
+
+@pytest.fixture
+def disjoint_dose_panel():
+    """Staggered panel whose two cohorts take doses in [0.1, 0.4] and [0.6, 1.0], 150 units each."""
+    rng = np.random.default_rng(3)
+    cohort = np.repeat([0, 2, 3], 150)
+    n = len(cohort)
+    dose = np.where(cohort == 2, rng.uniform(0.1, 0.4, n), np.where(cohort == 3, rng.uniform(0.6, 1.0, n), 0.0))
+    unit_effect = rng.normal(size=n)
+    rows = []
+    for t in (1, 2, 3):
+        treated_now = (cohort > 0) & (t >= cohort)
+        y = unit_effect + 0.5 * t + rng.normal(scale=0.5, size=n) + treated_now * dose
+        rows.append(pl.DataFrame({"id": np.arange(n), "period": t, "Y": y, "D": dose, "G": cohort}))
+    return pl.concat(rows)
+
+
+@pytest.fixture
+def cck_fixed_sieve(monkeypatch):
+    """Make the CCK path fit npiv's cubic sieve with a given number of segments rather than choose one."""
+
+    def install(segments):
+        monkeypatch.setattr(import_module("moderndid.didcont.cont_did"), "npiv", partial(npiv, j_x_segments=segments))
+
+    return install

@@ -8,6 +8,7 @@ import polars as pl
 from ...core.dataframe import to_polars
 from ..container import PteEmpBootResult
 from ..utils import _quantile_basis
+from .process_aggte import _event_times
 
 
 def panel_empirical_bootstrap(
@@ -54,7 +55,7 @@ def panel_empirical_bootstrap(
     data = pte_params.data
     idname = pte_params.idname
     boot_type = pte_params.boot_type
-    n_boot = pte_params.biters
+    biters = pte_params.biters
     gt_type = pte_params.gt_type
 
     if gt_type == "qtt":
@@ -71,7 +72,7 @@ def panel_empirical_bootstrap(
     bootstrap_results = []
 
     rng = np.random.default_rng(random_state)
-    for _ in range(n_boot):
+    for _ in range(biters):
         boot_data = block_boot_sample(data, idname, rng=rng)
 
         boot_params = setup_pte_fun(
@@ -80,7 +81,7 @@ def panel_empirical_bootstrap(
             tname=pte_params.tname,
             idname=pte_params.idname,
             data=boot_data,
-            alp=pte_params.alp,
+            alpha=pte_params.alpha,
             boot_type=boot_type,
             gt_type=gt_type,
             biters=pte_params.biters,
@@ -109,7 +110,12 @@ def panel_empirical_bootstrap(
             pl.col("time_period").cast(pl.Float64),
         ]
     )
-    attgt_se = attgt_boots.group_by(["group", "time_period"]).agg(pl.col("att").std().alias("se"))
+    # A draw in which a cell has no estimate is left out of that cell's standard error, like a draw without its cohort.
+    attgt_se = (
+        attgt_boots.filter(pl.col("att").is_not_nan())
+        .group_by(["group", "time_period"])
+        .agg(pl.col("att").std().alias("se"))
+    )
     attgt_results = aggte_results["attgt_results"].clone()
     attgt_results = attgt_results.with_columns(
         [
@@ -117,14 +123,15 @@ def panel_empirical_bootstrap(
             pl.col("time_period").cast(pl.Float64),
         ]
     )
-    attgt_results = attgt_results.join(attgt_se, on=["group", "time_period"], how="left")
+    # Keeping the cells in their estimation order lines the table up with the multiplier bootstrap's.
+    attgt_results = attgt_results.join(attgt_se, on=["group", "time_period"], how="left", maintain_order="left")
 
     if aggte_results.get("dyn_results") is not None:
         dyn_boots = pl.concat([res["dyn_results"] for res in bootstrap_results if res.get("dyn_results") is not None])
 
         counts = dyn_boots.group_by("e").len()
         original_e_count = len(counts)
-        complete_groups = counts.filter(pl.col("len") == n_boot)["e"].to_list()
+        complete_groups = counts.filter(pl.col("len") == biters)["e"].to_list()
         new_e_count = len(complete_groups)
 
         if new_e_count != original_e_count:
@@ -135,13 +142,23 @@ def panel_empirical_bootstrap(
             dyn_se = filtered_boots.group_by("e").agg(pl.col("att_e").std().alias("se"))
 
             dyn_results = aggte_results["dyn_results"].clone()
-            dyn_results = dyn_results.join(dyn_se, on="e", how="inner")
+            dyn_results = dyn_results.join(dyn_se, on="e", how="inner").sort("e")
+            # Every draw holds each event time kept here once. Sorting lines its effects up with the estimates.
+            kept_e = dyn_results["e"].to_list()
+            dyn_draws = np.vstack(
+                [
+                    res["dyn_results"].filter(pl.col("e").is_in(kept_e)).sort("e")["att_e"].to_numpy()
+                    for res in bootstrap_results
+                ]
+            )
         else:
             dyn_results = aggte_results["dyn_results"].clone()
             dyn_results = dyn_results.with_columns(pl.lit(np.nan).alias("se"))
             dyn_results = dyn_results.filter(pl.col("e").is_in([]))
+            dyn_draws = None
     else:
         dyn_results = None
+        dyn_draws = None
 
     if aggte_results.get("group_results") is not None:
         group_boots = pl.concat(
@@ -150,7 +167,7 @@ def panel_empirical_bootstrap(
 
         counts = group_boots.group_by("group").len()
         original_g_count = len(counts)
-        complete_groups = counts.filter(pl.col("len") == n_boot)["group"].to_list()
+        complete_groups = counts.filter(pl.col("len") == biters)["group"].to_list()
         new_g_count = len(complete_groups)
 
         if new_g_count != original_g_count:
@@ -180,11 +197,16 @@ def panel_empirical_bootstrap(
         group_results=group_results,
         dyn_results=dyn_results,
         extra_gt_returns=extra_gt_returns,
+        dyn_draws=dyn_draws,
     )
 
 
 def attgt_pte_aggregations(attgt_list, pte_params):
     """Aggregate average treatment effects into overall, group, and dynamic effects.
+
+    A cell without an estimate keeps its row in the group-time table with a
+    NaN estimate. It leaves every aggregate. The other cells of the same
+    aggregate share its weight.
 
     Parameters
     ----------
@@ -196,7 +218,15 @@ def attgt_pte_aggregations(attgt_list, pte_params):
     Returns
     -------
     dict
-        Dictionary containing aggregated results and weights.
+        Dictionary containing:
+
+        - **attgt_results**: Group-time table with the columns ``group``, ``time_period``, and ``att``
+        - **dyn_results**: Effects by event time ``e``, or None
+        - **dyn_weights**: Weights of the cells with an estimate for each event time
+        - **group_results**: Effects by group, or None
+        - **group_weights**: Weights of the cells with an estimate for each group
+        - **overall_results**: Overall effect
+        - **overall_weights**: Weights of the cells with an estimate in the overall effect
     """
     time_periods = pte_params.t_list
     groups = pte_params.g_list
@@ -236,7 +266,13 @@ def attgt_pte_aggregations(attgt_list, pte_params):
         groups = np.array([time_map.get(g, g) for g in groups])
         time_periods = np.array([time_map.get(t, t) for t in time_periods])
 
-    attgt_df = attgt_df.with_columns((pl.col("time_period") - pl.col("group")).alias("e"))
+    # The group-time table lists every cell, as the multiplier bootstrap's does. Since drop_nulls keeps NaN, a cell
+    # without an estimate needs its own filter to leave the aggregates.
+    attgt_results = attgt_df.select(["group", "time_period", "att"])
+    attgt_df = attgt_df.filter(pl.col("att").is_not_nan())
+
+    event_times = _event_times((attgt_df["time_period"] - attgt_df["group"]).to_numpy())
+    attgt_df = attgt_df.with_columns(pl.Series("e", event_times, dtype=pl.Float64))
 
     first_period = time_periods[0]
     group_sizes = (
@@ -314,9 +350,9 @@ def attgt_pte_aggregations(attgt_list, pte_params):
 
             e_mask = e_values >= 0
             overall_weights = np.zeros(len(attgt_df))
-            with np.errstate(divide="ignore", invalid="ignore"):
-                weights_calc = overall_w_values / group_post_length_values
-                weights_calc = np.nan_to_num(weights_calc, nan=0.0, posinf=0.0, neginf=0.0)
+            # group_post_length is a row count of at least one, or NaN for a group without post-treatment periods.
+            weights_calc = overall_w_values / group_post_length_values
+            weights_calc = np.nan_to_num(weights_calc, nan=0.0, posinf=0.0, neginf=0.0)
             overall_weights[e_mask] = weights_calc[e_mask]
         else:
             overall_att = np.nan
@@ -324,10 +360,6 @@ def attgt_pte_aggregations(attgt_list, pte_params):
     else:
         overall_att = np.nan
         overall_weights = np.zeros(len(attgt_df))
-
-    attgt_results = attgt_df.select(["group", "time_period", "att"]).filter(
-        pl.col("att").is_not_null() & pl.col("att").is_not_nan()
-    )
 
     group_results = group_df.select(["group", "att_g"]) if group_df is not None else None
 

@@ -1,5 +1,7 @@
 """Tests for setup functions."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -200,6 +202,41 @@ def test_setup_pte_cont_dvals(contdid_data):
     np.testing.assert_array_equal(params.dvals, dvals)
 
 
+def test_setup_pte_cont_passes_ret_quantile_to_setup_pte(contdid_data):
+    params = setup_pte_cont(
+        data=contdid_data, yname="Y", gname="G", tname="period", idname="id", dname="D", ret_quantile=0.25
+    )
+
+    assert params.ret_quantile == 0.25
+
+
+@pytest.mark.parametrize("option", ["anticipaton", "boot"])
+def test_setup_pte_cont_rejects_unknown_keyword_arguments(contdid_data, option):
+    message = f"setup_pte_cont() got an unexpected keyword argument '{option}'"
+
+    with pytest.raises(TypeError, match=f"^{re.escape(message)}"):
+        setup_pte_cont(data=contdid_data, yname="Y", gname="G", tname="period", idname="id", dname="D", **{option: 1})
+
+
+@pytest.mark.parametrize("option", ["anticipaton", "d_outcome"])
+def test_setup_pte_rejects_unknown_keyword_arguments(contdid_data, option):
+    message = f"setup_pte() got an unexpected keyword argument '{option}'"
+
+    with pytest.raises(TypeError, match=f"^{re.escape(message)}"):
+        setup_pte(data=contdid_data, yname="Y", gname="G", tname="period", idname="id", **{option: 1})
+
+
+@pytest.mark.parametrize("control_group", ["notyettreated", "nevertreated"])
+def test_setup_functions_record_the_control_group(contdid_data, control_group):
+    spec = {"data": contdid_data, "yname": "Y", "gname": "G", "tname": "period", "idname": "id"}
+
+    params = setup_pte(control_group=control_group, **spec)
+    cont_params = setup_pte_cont(dname="D", control_group=control_group, **spec)
+
+    assert params.control_group == control_group
+    assert cont_params.control_group == control_group
+
+
 def test_make_balanced_panel_basic(unbalanced_simple_panel):
     result = _make_balanced_panel(unbalanced_simple_panel, "id", "time")
     assert result["id"].n_unique() == 3
@@ -282,3 +319,9 @@ def test_integration_balanced_panel_with_groups(unbalanced_simple_panel):
     groups = _get_group(balanced, "id", "time", "treat")
     assert len(groups) == len(balanced)
     assert set(groups["G"].unique().to_list()) == {0, 2, 3}
+
+
+@pytest.mark.parametrize("setup_fun", [setup_pte_basic, setup_pte])
+def test_setup_functions_reject_the_removed_alp_argument(panel_data_with_group, setup_fun):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'alp'"):
+        setup_fun(data=panel_data_with_group, yname="y", gname="group", tname="time_id", idname="unit_id", alp=0.1)

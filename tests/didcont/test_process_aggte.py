@@ -10,12 +10,14 @@ from moderndid.didcont.estimation import (
     overall_weights,
 )
 from moderndid.didcont.estimation.process_aggte import (
+    _event_times,
     check_critical_value,
     get_aggregated_influence_function,
     get_se,
     safe_normalize,
     set_small_se_to_nan,
     weight_influence_function_from_att_indices,
+    weight_influence_function_from_cells,
     weight_influence_function_from_groups,
 )
 
@@ -174,7 +176,7 @@ def test_check_critical_value_too_large():
 
 
 def test_get_se_bootstrap(simple_influence_func):
-    se = get_se(simple_influence_func, bootstrap=True, bootstrap_iterations=100, alpha=0.05)
+    se = get_se(simple_influence_func, bootstrap=True, biters=100, alpha=0.05)
 
     assert isinstance(se, float)
     assert se > 0
@@ -333,3 +335,98 @@ def test_aggregate_att_gt_group_no_positive_groups(mock_att_gt_result):
 
     assert result.aggregation_type == "group"
     assert len(result.att_by_event) == 0
+
+
+def test_weight_influence_function_from_groups_matches_delta_method():
+    rng = np.random.default_rng(5)
+    group = rng.choice([0, 1, 2, 3], 2000)
+    labels = np.array([1, 2, 3])
+    pg = np.array([np.mean(group == g) for g in labels])
+    treated = group > 0
+    shares = pg / pg.sum()
+    expected = np.column_stack([((group == g) - shares[j] * treated) / treated.mean() for j, g in enumerate(labels)])
+
+    result = weight_influence_function_from_groups(pg, np.ones(len(group)), group, labels)
+
+    np.testing.assert_allclose(result, expected, atol=1e-12)
+
+
+def test_weight_influence_function_from_cells_spreads_cohort_shares(att_gt_result_with_data):
+    weights = overall_weights(att_gt_result_with_data)["weights"]
+
+    result = weight_influence_function_from_cells(att_gt_result_with_data, weights)
+
+    groups = np.asarray(att_gt_result_with_data.groups)
+    assert result.shape == (100, len(weights))
+    assert np.all(result[:, weights == 0] == 0)
+    np.testing.assert_allclose(result.sum(axis=1), 0, atol=1e-12)
+    for g in np.unique(groups):
+        cells = np.flatnonzero((groups == g) & (weights > 0))
+        ratio = result[:, cells] / weights[cells]
+        np.testing.assert_allclose(ratio, np.repeat(ratio[:, :1], len(cells), axis=1), atol=1e-12)
+
+
+def test_event_times_match_labels_with_rounding_error():
+    fractional = _event_times(np.array([2001.3 - 2001.1, 2001.4 - 2001.2, 2001.2 - 2001.2]))
+    whole = _event_times(np.array([2003.0 - 2001.0, 2001.0 - 2002.0, 1_000_000_001.0, 946_080_001.0]))
+
+    np.testing.assert_array_equal(fractional, [0.2, 0.2, 0.0])
+    np.testing.assert_array_equal(whole, [2, -1, 1_000_000_001, 946_080_001])
+    assert whole.dtype.kind == "i"
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_get_se_is_zero_when_every_draw_leaves_the_influence_function_at_zero(fix_bootstrap_draws):
+    fix_bootstrap_draws(np.zeros((21, 1)))
+
+    se = get_se(np.ones((200, 1)), bootstrap=True, biters=21, alpha=0.05)
+
+    assert se == 0.0
+
+
+@pytest.mark.parametrize("aggregation_type", ["dynamic", "group"])
+def test_aggregate_att_gt_band_is_pointwise_when_draws_move_a_zero_scale_column(
+    fix_bootstrap_draws, central_zero_scale_draws, mock_att_gt_result, aggregation_type
+):
+    fix_bootstrap_draws(central_zero_scale_draws)
+
+    with pytest.warns(UserWarning, match="NA/Inf"):
+        result = aggregate_att_gt(
+            mock_att_gt_result, aggregation_type=aggregation_type, min_event_time=0, max_event_time=1
+        )
+
+    assert result.critical_value == pytest.approx(scipy.stats.norm.ppf(0.975))
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_aggregate_att_gt_overall_band_standardizes_a_column_with_a_negligible_scale(
+    fix_bootstrap_draws, central_zero_scale_draws, mock_att_gt_result
+):
+    fix_bootstrap_draws(1e-9 * central_zero_scale_draws[:, [0]])
+
+    result = aggregate_att_gt(mock_att_gt_result, aggregation_type="overall")
+
+    assert result.critical_value == pytest.approx(50 / (10 / 1.3489795))
+    assert np.isnan(result.overall_se)
+
+
+def test_overall_weights_gives_no_weight_to_cells_without_estimates(att_gt_result_with_data):
+    estimable = np.asarray(att_gt_result_with_data.groups) == 2
+
+    weights = overall_weights(att_gt_result_with_data, estimable=estimable)["weights"]
+
+    np.testing.assert_allclose(weights, [0, 1 / 3, 1 / 3, 1 / 3, 0, 0, 0, 0], atol=1e-14)
+
+
+def test_aggregate_att_gt_leaves_out_cells_without_estimates(att_gt_result_with_data):
+    att_gt_result_with_data.att[[4, 6]] = np.nan
+    att_gt_result_with_data.influence_func[:, [4, 6]] = np.nan
+
+    result = aggregate_att_gt(att_gt_result_with_data, aggregation_type="dynamic", rng=np.random.default_rng(0))
+
+    np.testing.assert_array_equal(result.event_times, [-1, 0, 1, 2])
+    assert result.att_by_event[1] == pytest.approx(att_gt_result_with_data.att[1], rel=1e-14)
+    np.testing.assert_allclose(
+        result.influence_func["by_event"][:, 1], att_gt_result_with_data.influence_func[:, 1], atol=1e-14
+    )
+    assert np.all(np.isfinite(result.se_by_event))
