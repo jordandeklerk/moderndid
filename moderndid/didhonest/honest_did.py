@@ -59,33 +59,20 @@ def honest_did(
 ):
     r"""Compute sensitivity analysis for event study estimates.
 
-    Implements the approach of [1]_ for robust inference in difference-in-differences
-    and event study designs. The method relaxes the parallel trends assumption by
-    allowing bounded violations and reports confidence intervals that remain valid
-    under those violations.
+    The method of [1]_ gives confidence intervals for one effect of an event study
+    that stay valid when parallel trends fails by a bounded amount. The restriction in
+    ``sensitivity_type`` bounds how far the differential trend can move after treatment.
+    :func:`~moderndid.create_sensitivity_results_sm` and
+    :func:`~moderndid.create_sensitivity_results_rm` compute the intervals and set the
+    default method for each restriction.
 
-    Because every coefficient must be measured against one reference period before treatment,
-    the event study must use a universal base period. Estimate it with
-    :func:`~moderndid.att_gt` and ``base_period="universal"`` before aggregating it with
-    :func:`~moderndid.aggte`. An event study whose estimation parameters record another
-    base period raises an error. The reference period is :math:`-1` minus the number of
-    anticipation periods.
-
-    The covariance of the event-study coefficients comes from the event study's influence
-    function. When the event study was estimated with ``clustervars``, the influence function
-    is summed within each cluster before the covariance is formed. The sensitivity analysis then
-    allows for dependence within clusters. Its covariance stays analytic when the event study's own
-    standard errors come from the bootstrap. That covariance needs more clusters than event-study
-    coefficients besides the reference period. With few clusters, or with one or two clusters that
-    dominate an event time, it can understate the variance. Since the fixed-length interval chooses
-    its weights to minimize the estimated variance, its coverage drops the most in those cases.
-
-    Smoothness restrictions use the fixed-length confidence interval (FLCI) by default.
-    Since the FLCI ignores sign and shape restrictions, the method switches to the conditional
-    FLCI hybrid (C-F) when ``bias_direction`` or ``monotonicity_direction`` is given.
-    The C-F, C-LF, and conditional methods invert a test over a grid of candidate values.
-    Their bounds are points of that grid. Relative magnitudes always use a grid and default
-    to the conditional least favorable hybrid (C-LF).
+    Since the restrictions measure every coefficient from one reference period, an event
+    study that records a base period other than ``"universal"`` raises an error. That
+    reference period is :math:`-1` minus the number of anticipation periods. The covariance
+    of the coefficients comes from the event study's influence function. When the event
+    study used ``clustervars``, the influence function is first summed within each cluster.
+    The call raises an error unless the clusters outnumber the coefficients besides the
+    reference period.
 
     See the :ref:`sensitivity analysis example <example_honest_did>` for a full analysis of
     the Medicaid expansion data under smoothness, relative magnitudes, and sign restrictions.
@@ -93,17 +80,19 @@ def honest_did(
     Parameters
     ----------
     event_study : AGGTEResult or similar
-        Event study result with influence functions, estimated with a universal base period.
+        Dynamic event study with influence functions, such as an :func:`~moderndid.aggte` result
+        for effects that :func:`~moderndid.att_gt` estimated with ``base_period="universal"``.
     event_time : int, default=0
-        Event time to compute sensitivity analysis for. Default is 0 (on impact).
-    sensitivity_type : {'smoothness', 'relative_magnitude'}, default='smoothness'
-        Restriction on the violations of parallel trends. 'smoothness' bounds how much the
-        differential trend can bend from one period to the next. 'relative_magnitude' bounds
-        each change in the violation from the reference period on by a multiple of the largest
-        such change up to it.
+        The post-treatment event time of the effect, 0 for the effect on impact.
+    sensitivity_type : {"smoothness", "relative_magnitude"}, default="smoothness"
+        The restriction on violations of parallel trends. ``"smoothness"`` bounds how much
+        the differential trend can bend from one period to the next. ``"relative_magnitude"``
+        bounds each change in the differential trend from the reference period on by a
+        multiple of the largest such change up to it.
     grid_points : int, optional
-        Number of grid points for the test inversion. If None, smoothness uses 1000 points
-        and relative magnitudes uses 100.
+        The number of candidate values that the conditional and hybrid methods test. Their
+        bounds are points of this grid. If None, smoothness uses 1000 and relative magnitudes
+        uses 100.
     **kwargs
         Additional arguments for :func:`~moderndid.create_sensitivity_results_sm` or
         :func:`~moderndid.create_sensitivity_results_rm`, such as ``method``, ``m_vec``,
@@ -114,28 +103,28 @@ def honest_did(
     HonestDiDResult
         NamedTuple containing:
 
-        - **robust_ci**: DataFrame with sensitivity analysis results
-        - **original_ci**: Original confidence interval
-        - **sensitivity_type**: Type of analysis performed
+        - **robust_ci**: DataFrame with the robust interval for each bound
+        - **original_ci**: Interval that assumes exact parallel trends
+        - **sensitivity_type**: The restriction used
 
     Notes
     -----
-    The event study coefficient vector :math:`\boldsymbol{\beta}` admits the causal
-    decomposition
+    The event-study coefficients :math:`\boldsymbol{\beta}` combine treatment effects
+    :math:`\boldsymbol{\tau}` and differential trends :math:`\boldsymbol{\delta}` between the
+    treated and comparison groups,
 
     .. math::
 
         \boldsymbol{\beta} = \begin{pmatrix} \boldsymbol{\tau}_{pre} \\
         \boldsymbol{\tau}_{post} \end{pmatrix} + \begin{pmatrix} \boldsymbol{\delta}_{pre} \\
-        \boldsymbol{\delta}_{post} \end{pmatrix},
+        \boldsymbol{\delta}_{post} \end{pmatrix}.
 
-    where :math:`\boldsymbol{\tau}` represents treatment effects and
-    :math:`\boldsymbol{\delta}` represents differential trends between treated and
-    comparison groups. The conventional parallel trends assumption imposes
-    :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`. The method relaxes it by assuming
-    :math:`\boldsymbol{\delta} \in \Delta` for a researcher-specified set :math:`\Delta`,
-    such as :math:`\Delta^{SD}(M)` in :func:`~moderndid.compute_conditional_cs_sd` or
-    :math:`\Delta^{RM}(\bar{M})` in :func:`~moderndid.compute_conditional_cs_rm`.
+    Parallel trends imposes :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`. The method relaxes
+    it to :math:`\boldsymbol{\delta} \in \Delta` for a chosen set :math:`\Delta`, such as
+    :math:`\Delta^{SD}(M)` in :func:`~moderndid.compute_conditional_cs_sd` or
+    :math:`\Delta^{RM}(\bar{M})` in :func:`~moderndid.compute_conditional_cs_rm`. The
+    :ref:`sensitivity analysis background <background-didhonest>` derives the intervals and
+    explains why few clusters, or clusters that dominate an event time, can make them too narrow.
 
     References
     ----------
