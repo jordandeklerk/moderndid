@@ -174,16 +174,15 @@ whether later adopters can serve as controls before their own minimum wage
 increases.
 
 ```{code-cell} ipython3
-# The empty change keeps the original fit as the first column.
+# Each variant changes one setting of the original fit.
 changes = [
-    {},
     {"control_group": "notyettreated"},
     {"est_method": "ipw"},
     {"est_method": "reg"},
 ]
 
-# Refit the other three variants and turn every fit into an event study.
-models = [result] + [did.att_gt(data, **(spec | change)) for change in changes[1:]]
+# Keep the original fit as the first column and turn every fit into an event study.
+models = [result] + [did.att_gt(data, **(spec | change)) for change in changes]
 event_studies = [did.aggte(model, type="dynamic") for model in models]
 ```
 
@@ -403,17 +402,14 @@ aggregations = {
 }
 
 # Aggregate both fits four ways and keep event times 0 through 3 in the event study.
-results = {
-    panel: {
-        kind: did.aggte(
-            model,
-            type=kind,
-            **({"min_e": 0, "max_e": 3} if kind == "dynamic" else {}),
-        )
-        for kind in aggregations
+results = {}
+for panel, model in specifications.items():
+    results[panel] = {
+        "simple": did.aggte(model, type="simple"),
+        "group": did.aggte(model, type="group"),
+        "dynamic": did.aggte(model, type="dynamic", min_e=0, max_e=3),
+        "calendar": did.aggte(model, type="calendar"),
     }
-    for panel, model in specifications.items()
-}
 ```
 
 There are at most four component estimates in each of these rows. The

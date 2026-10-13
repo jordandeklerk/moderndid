@@ -434,13 +434,15 @@ results with the data's choice.
 
 ```{code-cell} ipython3
 # The same specification with the number of segments fixed instead of chosen.
-print("segments  critical  band width  rising steps  rules out flat")
 for segments in (1, 2, 4, 8):
     fit = did.npiv(data, **(spec | {"j_x_segments": segments}))
     width = np.mean(fit.h_upper - fit.h_lower)
     rises = np.sum(np.diff(fit.h) > 0)
-    flat_ruled_out = "yes" if fit.h_lower.max() > fit.h_upper.min() else "no"
-    print(f"{segments:>8}{fit.cv:>10.4f}{width:>12.4f}{rises:>14}{flat_ruled_out:>16}")
+    flat_ruled_out = fit.h_lower.max() > fit.h_upper.min()
+    print(
+        f"segments {segments}: critical value {fit.cv:.4f}, band width {width:.4f}, "
+        f"rising steps {rises}, rules out flat {flat_ruled_out}"
+    )
 ```
 
 Fixing a single segment reproduces our curve exactly, since that's the number the
@@ -526,10 +528,9 @@ different seed could in principle change either one.
 
 ```{code-cell} ipython3
 # The main specification under the ten bootstrap seeds from 0 to 9.
-print(f"{'seed':>4}{'segments':>10}{'critical value':>16}")
 for seed in range(10):
     fit = did.npiv(data, **(spec | {"seed": seed}))
-    print(f"{seed:>4}{fit.j_x_segments:>10}{fit.cv:>16.4f}")
+    print(f"seed {seed}: segments {fit.j_x_segments}, critical value {fit.cv:.4f}")
 ```
 
 All ten seeds pick a single segment and so give the same curve. Across the ten,

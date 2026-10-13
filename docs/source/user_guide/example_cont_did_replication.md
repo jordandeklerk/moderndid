@@ -241,8 +241,7 @@ def paper_event_study(sample, biters, random_state):
 
     # Report the inference actually computed, including the overall standard error.
     params = dict(
-        result.estimation_params, bootstrap=True, uniform_bands=False,
-        biters=biters, random_state=random_state,
+        result.estimation_params, bootstrap=True, biters=biters, random_state=random_state
     )
     call_info = dict(
         result.call_info, multiplier="rademacher", biters=biters, random_state=random_state
@@ -250,7 +249,6 @@ def paper_event_study(sample, biters, random_state):
     return result._replace(
         se_by_event=standard_errors[:-1],
         overall_se=float(standard_errors[-1]),
-        critical_values=np.full(len(result.event_times), norm.ppf(0.975)),
         estimation_params=params,
         call_info=call_info,
     )
@@ -297,7 +295,7 @@ def event_frame(result, label):
 
 def comparison_plot(frame, colors, xlabel, event=False):
     plot = (
-        ggplot(frame.to_pandas(), aes("x", "estimate", color="series", fill="series"))
+        ggplot(frame, aes("x", "estimate", color="series", fill="series"))
         + geom_hline(yintercept=0, linetype="dotted", color="#555555")
         + geom_ribbon(aes(ymin="lower", ymax="upper"), alpha=0.15, color=None)
         + geom_line(size=1.1)
@@ -501,7 +499,7 @@ def fit_window(sample):
         "lower": estimate - dose_spec["critical_value"] * se,
         "upper": estimate + dose_spec["critical_value"] * se,
     })
-    return {"curve": curve, "knots": knots, "coefficients": beta, "counties": n}
+    return {"curve": curve, "knots": knots}
 
 
 short_fit = fit_window(short_sample)
@@ -679,26 +677,27 @@ checks = [
     ("Figure B1", "all", event_frame(all_event, "All doses")),
     ("Figure B3", "pooled", displayed_curve(pooled_fit, "Years 0–4")),
 ]
-print(f"{'Figure':<11} {'Series':<8} {'Points':>7} {'Max estimate gap':>18} "
-      f"{'Max interval gap':>18}")
+rows = []
 for figure, series, calculated in checks:
     published = reference.filter((pl.col("figure") == figure) & (pl.col("series") == series))
     nearest = np.abs(
         published["x"].to_numpy()[:, None] - calculated["x"].to_numpy()
     ).argmin(axis=1)
     actual = calculated[nearest]
-    estimate_gap = np.max(np.abs(
-        actual["estimate"].to_numpy() - published["estimate"].to_numpy()
-    ))
+    estimate_gap = (actual["estimate"] - published["estimate"]).abs().max()
     interval_gap = max(
-        np.max(np.abs(actual["lower"].to_numpy() - published["lower"].to_numpy())),
-        np.max(np.abs(actual["upper"].to_numpy() - published["upper"].to_numpy())),
+        (actual["lower"] - published["lower"]).abs().max(),
+        (actual["upper"] - published["upper"]).abs().max(),
     )
     assert estimate_gap < 1.5e-5
     if figure in {"Figure 2", "Figure B3"}:
         assert interval_gap < 1.5e-5
-    print(f"{figure:<11} {series:<8} {published.height:>7} {estimate_gap:>18.6f} "
-          f"{interval_gap:>18.6f}")
+    rows.append((figure, series, published.height, estimate_gap, interval_gap))
+pl.DataFrame(
+    rows,
+    schema=["figure", "series", "points", "max estimate gap", "max interval gap"],
+    orient="row",
+)
 ```
 
 The checks recover the published point estimates and dose-curve intervals

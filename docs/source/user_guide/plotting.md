@@ -384,7 +384,7 @@ comparison_plot = (
         shape="Comparison group",
     )
     + did.theme_moderndid()
-    + theme(figure_size=(12, 5), legend_position="bottom")
+    + theme(legend_position="bottom")
 )
 comparison_plot
 ```
