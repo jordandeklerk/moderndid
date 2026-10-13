@@ -1,17 +1,23 @@
 .. _api-diddynamic:
 
-Dynamic Covariate Balancing DiD
-================================
+Dynamic covariate balancing
+===========================
 
-The dynamic covariate balancing module provides methods for estimating
-treatment effects in panel data settings with time-varying treatments.
-The implementation follows
+:func:`~moderndid.diddynamic.dyn_balancing` compares average outcomes under two
+treatment histories. Because treatment in each period may depend on past
+outcomes and treatments, the method balances covariates period by period
+rather than making a single adjustment at baseline.
+
+The :ref:`dynamic covariate balancing example <example_dyn_balancing>` uses
+the democracy and economic growth data to choose histories and interpret
+the resulting contrast. The :ref:`background page <background-diddynamic>`
+develops the sequential comparisons and assumptions in
 `Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_.
 
-Main Functions
---------------
-
 .. currentmodule:: moderndid.diddynamic
+
+Main functions
+--------------
 
 .. autosummary::
    :toctree: generated/diddynamic/
@@ -19,7 +25,7 @@ Main Functions
 
    dyn_balancing
 
-Result Objects
+Result objects
 --------------
 
 .. autosummary::

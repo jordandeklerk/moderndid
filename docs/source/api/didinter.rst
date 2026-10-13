@@ -3,15 +3,21 @@
 Intertemporal DiD
 =================
 
-The intertemporal treatment effects module provides methods for difference-in-differences
-estimation with non-binary, non-absorbing (time-varying) treatments where lagged
-treatments may affect the outcome. The implementation follows
+When treatment can switch on and off or change in intensity, a unit's past
+exposure may still affect its current outcome. :func:`~moderndid.did_multiplegt`
+estimates effects in this setting using the comparisons developed by
 `de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_.
+The :ref:`background page <background-didinter>` explains which treatment
+changes contribute to each effect and how to interpret its normalization.
 
-Main Functions
---------------
+The :ref:`intertemporal treatment example <example_inter_did>` follows the
+banking deregulation data through estimation, placebo comparisons, and
+inference.
 
 .. currentmodule:: moderndid
+
+Main functions
+--------------
 
 .. autosummary::
    :toctree: generated/didinter/
@@ -31,7 +37,7 @@ Inference
    compute_clustered_variance
    compute_joint_test
 
-Result Objects
+Result objects
 --------------
 
 .. currentmodule:: moderndid.didinter.container

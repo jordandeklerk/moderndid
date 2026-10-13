@@ -1,19 +1,23 @@
 .. _api-didml:
 
-Machine Learning DiD
+Machine learning DiD
 ====================
 
-The machine learning DiD module estimates group-time average treatment effects
-on the treated and individual conditional treatment effects (CATTs) in
-staggered adoption designs using cross-fitted ML nuisance models. Treatment
-effect heterogeneity is recovered through a doubly-robust orthogonal score
-plus an augmented minimax-linear weighting scheme. The implementation follows
-`Hatamyar, Kreif, Rocha, and Huber (2023) <https://arxiv.org/abs/2310.11962>`_.
+:func:`~moderndid.didml` estimates group-time average treatment effects in a
+staggered design along with conditional effects for treated units. Following
+`Hatamyar, Kreif, Rocha, and Huber (2023) <https://arxiv.org/abs/2310.11962>`_,
+it fits the nuisance functions with cross-fitted machine learning models and
+combines them in a doubly robust score.
 
-Main Functions
---------------
+To examine how effects change with exposure, :func:`~moderndid.aggte_didml`
+and :func:`~moderndid.dynamic_cates` summarize the group-time and unit-level
+results by event time. The heterogeneity functions below help you investigate
+how conditional effects vary with covariates.
 
 .. currentmodule:: moderndid
+
+Main functions
+--------------
 
 .. autosummary::
    :toctree: generated/didml/
@@ -23,7 +27,7 @@ Main Functions
    aggte_didml
    dynamic_cates
 
-Heterogeneity Analysis
+Heterogeneity analysis
 ----------------------
 
 .. autosummary::
@@ -35,7 +39,7 @@ Heterogeneity Analysis
    clan_glhtest
    clan_ttest
 
-Doubly-Robust Score
+Doubly robust score
 -------------------
 
 .. autosummary::
@@ -45,8 +49,8 @@ Doubly-Robust Score
    lnw_did
    amle_weights
 
-Nuisance Backends
------------------
+Nuisance models
+---------------
 
 .. currentmodule:: moderndid.didml.nuisance
 
@@ -58,7 +62,7 @@ Nuisance Backends
    fit_causal_forest
    fit_delta
 
-Result Objects
+Result objects
 --------------
 
 .. currentmodule:: moderndid

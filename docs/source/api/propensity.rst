@@ -1,15 +1,20 @@
 .. _api-propensity:
 
-Propensity Score Functions
-===========================
+Propensity scores
+=================
 
-The propensity score module provides core functions for calculating propensity
-scores via inverse probability tilting (IPT), augmented inverse
-probability weighting (AIPW), and inverse probability weighting (IPW).
+The :doc:`two-period DiD estimators <drdid>` use propensity scores to weight
+the comparison observations when estimating the average effect on treated
+units. :func:`~moderndid.calculate_pscore_ipt` fits the score by inverse
+probability tilting. The remaining routines use fitted scores to construct
+weighting estimates, with outcome adjustment in the augmented estimators.
+
+The :ref:`two-period background <background-drdid>` explains how the weights
+and outcome model enter the comparison and what double robustness requires.
 
 .. currentmodule:: moderndid
 
-Inverse Probability Tilting
+Inverse probability tilting
 ---------------------------
 
 .. autosummary::
@@ -18,7 +23,7 @@ Inverse Probability Tilting
 
    calculate_pscore_ipt
 
-Augmented Inverse Probability Weighting
+Augmented inverse probability weighting
 ---------------------------------------
 
 .. autosummary::
@@ -29,8 +34,8 @@ Augmented Inverse Probability Weighting
    aipw_did_rc_imp1
    aipw_did_rc_imp2
 
-Inverse Probability Weighting
-------------------------------
+Inverse probability weighting
+-----------------------------
 
 .. autosummary::
    :toctree: generated/propensity/

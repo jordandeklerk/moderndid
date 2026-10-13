@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title description">
+  <title id="title">Constructing the missing outcome in a two-period DiD</title>
+  <desc id="description">The comparison group's outcome rises between the before and after periods. Under parallel trends, the unobserved no-treatment outcome for the treated group rises by the same amount. The difference between its observed and counterfactual outcome after treatment is the average treatment effect on the treated.</desc>
+  <rect width="1200" height="500" fill="#fff"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#30343b">
+    <text x="100" y="55" font-size="28">Average outcome</text>
+    <path d="M100 90V425H730" fill="none" stroke="#737982" stroke-width="2"/>
+    <path d="M170 280L690 220" fill="none" stroke="#636973" stroke-width="4" stroke-dasharray="12 10"/>
+    <path d="M170 280L690 140" fill="none" stroke="#315bc4" stroke-width="4"/>
+    <path d="M170 390L690 330" fill="none" stroke="#007d76" stroke-width="4"/>
+    <g fill="#315bc4">
+      <circle cx="170" cy="280" r="7"/>
+      <circle cx="690" cy="140" r="7"/>
+      <text x="770" y="137" font-size="28">Observed treated group</text>
+    </g>
+    <circle cx="690" cy="220" r="7" fill="#fff" stroke="#636973" stroke-width="3"/>
+    <path d="M720 140H740M730 140V220M720 220H740" fill="none" stroke="#30343b" stroke-width="2"/>
+    <text x="770" y="188" font-size="26">ATT</text>
+    <text x="770" y="234" font-size="28">Without treatment</text>
+    <text x="770" y="267" font-size="23">(unobserved; parallel trends)</text>
+    <g fill="#007d76">
+      <circle cx="170" cy="390" r="7"/>
+      <circle cx="690" cy="330" r="7"/>
+      <text x="770" y="339" font-size="28">Observed comparison group</text>
+    </g>
+    <path d="M170 425V434M690 425V434" fill="none" stroke="#737982" stroke-width="2"/>
+    <text x="170" y="472" text-anchor="middle" font-size="28">Before treatment</text>
+    <text x="690" y="472" text-anchor="middle" font-size="28">After treatment</text>
+  </g>
+</svg>

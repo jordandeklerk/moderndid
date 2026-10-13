@@ -3,18 +3,14 @@
 Plotting
 ========
 
-The plotting module provides a unified interface for visualizing difference-in-differences
-results, sensitivity analyses, and event studies. All plotting functions return
-plotnine ``ggplot`` objects that can be further customized using standard plotnine syntax.
-
-DiD Result Plots
-----------------
-
-High-level functions for plotting treatment effect estimates from DiD analyses.
-Automatically selects the appropriate visualization based on the result type
-(group-time ATT, event study, and aggregated effects).
+Each plotting function takes a result and returns a plotnine ``ggplot`` that you
+can extend with layers, scales, and themes. The :ref:`plotting guide <plotting>`
+walks through the plots and how to customize them.
 
 .. currentmodule:: moderndid.plots
+
+Treatment effect plots
+----------------------
 
 .. autosummary::
    :toctree: generated/plotting/
@@ -24,10 +20,8 @@ Automatically selects the appropriate visualization based on the result type
    plot_event_study
    plot_agg
 
-Continuous Treatment Plots
+Continuous treatment plots
 --------------------------
-
-Functions for visualizing dose-response relationships from continuous treatment DiD.
 
 .. autosummary::
    :toctree: generated/plotting/
@@ -35,10 +29,8 @@ Functions for visualizing dose-response relationships from continuous treatment 
 
    plot_dose_response
 
-Intertemporal DiD Plots
+Intertemporal DiD plots
 -----------------------
-
-Functions for visualizing dynamic treatment effects from the intertemporal DiD estimator.
 
 .. autosummary::
    :toctree: generated/plotting/
@@ -46,10 +38,20 @@ Functions for visualizing dynamic treatment effects from the intertemporal DiD e
 
    plot_multiplegt
 
-Sensitivity Analysis Plots
---------------------------
+Dynamic covariate balancing plots
+---------------------------------
 
-Functions for visualizing HonestDiD sensitivity analysis results.
+.. autosummary::
+   :toctree: generated/plotting/
+   :nosignatures:
+
+   plot_dyn_balancing
+   plot_dyn_balancing_history
+   plot_dyn_balancing_het
+   plot_dyn_balancing_coefs
+
+Sensitivity analysis plots
+--------------------------
 
 .. autosummary::
    :toctree: generated/plotting/
@@ -57,9 +59,23 @@ Functions for visualizing HonestDiD sensitivity analysis results.
 
    plot_sensitivity
 
-Data Converters
----------------
+Themes
+------
 
-To extract the underlying data from any result object as a polars DataFrame,
-use :func:`~moderndid.to_df`. See the :ref:`Result Extraction <api-results>`
-API reference for details and the full list of individual converters.
+Each theme replaces the default gray panels and grid lines when you add it to a
+plot with ``+``.
+
+.. autosummary::
+   :toctree: generated/plotting/
+   :nosignatures:
+
+   theme_moderndid
+   theme_publication
+   theme_minimal
+
+Plot data
+---------
+
+To get the numbers behind a plot as a Polars DataFrame, pass its result to
+:func:`~moderndid.to_df`. The :ref:`result extraction reference <api-results>`
+lists the converter for each result type.

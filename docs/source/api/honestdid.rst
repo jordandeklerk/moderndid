@@ -3,15 +3,28 @@
 Honest DiD
 ==========
 
-The Honest DiD module provides sensitivity analysis tools for potential violations
-of the parallel trends assumption, following `Rambachan and Roth (2023) <https://arxiv.org/abs/2203.04511>`_.
-This allows researchers to assess the robustness of their DiD estimates to
-various forms of pre-trend violations.
+To examine how an event-study conclusion depends on parallel trends,
+:func:`~moderndid.honest_did` builds confidence sets that allow deviations
+within limits you choose. The method follows
+`Rambachan and Roth (2023) <https://arxiv.org/abs/2203.04511>`_. Its lower-level
+functions construct sets for restrictions on the size or smoothness of
+those deviations, including combinations of the two.
 
-Main Functions
---------------
+The :ref:`sensitivity analysis example <example_honest_did>` works through
+the Medicaid expansion data. The :ref:`background page <background-didhonest>`
+explains how each restriction changes the conclusions the data support.
+
+.. admonition:: The restriction determines the robustness claim
+   :class: important
+
+   Coverage depends on the chosen restriction holding. A confidence set for
+   bounded deviations does not establish robustness to unrestricted failures
+   of parallel trends.
 
 .. currentmodule:: moderndid
+
+Main functions
+--------------
 
 .. autosummary::
    :toctree: generated/honestdid/
@@ -22,10 +35,10 @@ Main Functions
    create_sensitivity_results_rm
    create_sensitivity_results_sm
 
-Confidence Intervals
+Confidence intervals
 --------------------
 
-ARP Confidence Intervals
+ARP confidence intervals
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
@@ -41,8 +54,8 @@ ARP Confidence Intervals
    test_in_identified_set_flci_hybrid
    test_in_identified_set_lf_hybrid
 
-Fixed-Length Confidence Intervals
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Fixed-length confidence intervals
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
    :toctree: generated/honestdid/
@@ -53,11 +66,11 @@ Fixed-Length Confidence Intervals
    maximize_bias
    minimize_variance
 
-Restriction Types
+Restriction types
 -----------------
 
-Relative Magnitude Restrictions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Relative magnitude restrictions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
    :toctree: generated/honestdid/
@@ -70,7 +83,7 @@ Relative Magnitude Restrictions
    compute_conditional_cs_rmm
    compute_identified_set_rmm
 
-Smoothness Restrictions
+Smoothness restrictions
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
@@ -84,7 +97,7 @@ Smoothness Restrictions
    compute_conditional_cs_sdm
    compute_identified_set_sdm
 
-Combined Restrictions
+Combined restrictions
 ^^^^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
@@ -98,7 +111,7 @@ Combined Restrictions
    compute_conditional_cs_sdrmm
    compute_identified_set_sdrmm
 
-Result Objects
+Result objects
 --------------
 
 .. autosummary::
