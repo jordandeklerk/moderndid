@@ -62,44 +62,26 @@ def dyn_balancing(
 ):
     r"""Estimate treatment effects under dynamic treatment regimes.
 
-    Implements the dynamic covariate balancing (DCB) estimator of [1]_ for
-    comparing potential outcomes under two treatment
-    histories :math:`d_{1:T}` and :math:`d'_{1:T}`. The average treatment
-    effect is defined as
+    Implements the dynamic covariate balancing estimator of [1]_ for comparing potential
+    outcomes under the treatment histories :math:`d_{1:T}` in ``ds1`` and
+    :math:`d'_{1:T}` in ``ds2``. The average treatment effect is
 
     .. math::
 
         \text{ATE}(d_{1:T}, d'_{1:T}) = \mu_T(d_{1:T}) - \mu_T(d'_{1:T}),
 
-    where :math:`\mu_T(d_{1:T}) = \mathbb{E}[Y_T(d_{1:T})]` is the
-    potential outcome under treatment history :math:`d_{1:T}`.
+    where :math:`\mu_T(d_{1:T}) = \mathbb{E}[Y_T(d_{1:T})]` is the potential outcome
+    under treatment history :math:`d_{1:T}`.
 
-    Identification relies on a sequential conditional independence assumption
-    and overlap. For each period :math:`t`, the DCB estimator solves a
-    quadratic program to find balancing weights :math:`\hat{\gamma}_t` that
-    satisfy dynamic covariate balance constraints while minimising the
-    :math:`\ell_2` norm. The potential outcome is then estimated as a
-    bias-corrected weighted average of outcomes in the final period. IPW and
-    AIPW alternatives are also available as benchmarks.
+    Under sequential ignorability and overlap, the estimator projects the outcome
+    backward from the final period. For each period :math:`t`, it solves a quadratic
+    program for the balancing weights :math:`\hat{\gamma}_t` of smallest :math:`\ell_2`
+    norm that satisfy the dynamic covariate balance constraints. These weights correct
+    the projections. The standard errors are analytic and treat the first-period
+    covariates as fixed.
 
-    Standard errors are analytic and condition on the first-period
-    covariates. The reported interval uses the Gaussian critical value by
-    default. The inference theorem of [1]_ supports that choice.
-
-    The variance of the ATE is the sum of the variances of ``mu1`` and
-    ``mu2`` minus twice their covariance. Both estimates weight the same
-    units until the two histories first differ. The covariance comes from
-    those shared periods. When standard errors are clustered, it also comes
-    from units of one cluster that follow different histories. Without
-    clusters, two histories that differ in their first treatment have zero
-    covariance. The variance then matches the ATE variance of [1]_.
-
-    Rows with a null, NaN, or infinite unit, period, or cluster are dropped with a
-    warning. An infinite outcome, treatment, or covariate counts as missing. So
-    does a null, NaN, or infinite fixed effect.
-
-    See the :ref:`dynamic covariate balancing example <example_dyn_balancing>`
-    for a full analysis of the democracy and economic growth data.
+    See the :ref:`dynamic covariate balancing example <example_dyn_balancing>` for a
+    full analysis of the democracy and economic growth data.
 
     Parameters
     ----------
@@ -108,127 +90,97 @@ def dyn_balancing(
         PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
         pyarrow Table, and cudf DataFrames.
     yname : str
-        The name of the outcome variable.
+        The name of the outcome column.
     tname : str
-        The name of the column containing the time periods. The periods must
-        be consecutive integers.
+        The name of the time period column. The periods must be consecutive integers.
     idname : str
-        The individual (cross-sectional unit) id name.
+        The name of the unit identifier column.
     treatment_name : str
         The name of the binary treatment column.
     ds1 : list[int]
-        Target treatment history for the first potential outcome over the
-        ``len(ds1)`` periods that end at ``final_period``.
+        Treatment history of the first potential outcome over the ``len(ds1)`` periods
+        that end at ``final_period``.
     ds2 : list[int]
-        Target treatment history for the second potential outcome.
-        Must have the same length as ``ds1``.
-    xformla : str or None, default=None
-        A formula for the covariates to include in the model. It should be of
-        the form ``"~ X1 + X2"``, where each term is a column name such as
-        ``X1`` or ``lag1.Value1``. A term that transforms a column, such as
-        ``log(X1)``, raises an error. The estimator needs at least one
-        covariate, from ``xformla``, ``fixed_effects``, or both.
-    fixed_effects : list[str] or None, default=None
-        Column names to include as fixed-effect dummies.
+        Treatment history of the second potential outcome, as long as ``ds1``.
+    xformla : str, optional
+        Formula for the covariates, such as ``"~ X1 + X2"``. Each term must name a
+        column. The estimator needs at least one covariate from ``xformla``,
+        ``fixed_effects``, or both.
+    fixed_effects : list[str], optional
+        Columns to include as fixed-effect dummies.
     pooled : bool, default=False
-        If True, also use every complete earlier treatment-history window that
-        ends at or after ``initial_period``, each as a separate unit history.
-        Standard errors then cluster on ``idname`` unless ``clustervars`` is set.
-    clustervars : str, list[str], or None, default=None
-        Name of the column on which to cluster standard errors. Since only
-        one-way clustering is supported, a list must hold a single name.
-    balancing : {'dcb', 'aipw', 'ipw'}, default='dcb'
-        Weighting strategy. ``'dcb'`` uses dynamic covariate balancing,
-        ``'ipw'`` uses inverse probability weighting, and ``'aipw'`` corrects
-        the outcome projections of every period with inverse probability
-        weights. Since stabilized marginal structural model weights would only
-        rescale the ``'ipw'`` weights of the target history, ``'ipw_msm'``
-        raises an error.
-    method : {'lasso_plain', 'lasso_subsample'}, default='lasso_plain'
-        LASSO estimation strategy for the coefficient stage. The outcome
-        projections of ``balancing='aipw'`` always use ``'lasso_subsample'``
-        with 10 folds.
+        Whether to add every complete earlier window that ends at or after
+        ``initial_period`` as a separate unit history. Standard errors then cluster on
+        ``idname`` unless ``clustervars`` is set.
+    clustervars : str or list[str], optional
+        The column to cluster standard errors on. A list must hold one name.
+    balancing : {"dcb", "aipw", "ipw"}, default="dcb"
+        Weights of the estimator. ``"dcb"`` balances the covariates. ``"ipw"`` uses
+        inverse probability weights and ``"aipw"`` corrects the projections with them.
+    method : {"lasso_plain", "lasso_subsample"}, default="lasso_plain"
+        LASSO strategy of the coefficient stage. The projections of
+        ``balancing="aipw"`` always use ``"lasso_subsample"`` with 10 folds.
     alpha : float, default=0.05
-        Significance level of the reported confidence interval and p-value.
-    final_period : int or None, default=None
-        Last period of the treatment history. Defaults to the latest period in
-        the data.
-    initial_period : int or None, default=None
-        Earliest final period of the stacked windows when ``pooled=True``.
-        Defaults to the first period at which a full treatment history ends.
-        Ignored when ``pooled=False``.
+        Significance level of the confidence interval and p-value.
+    final_period : int, optional
+        Last period of the treatment histories. Defaults to the latest period.
+    initial_period : int, optional
+        Earliest final period of the windows that ``pooled=True`` stacks. Defaults to
+        the first period at which a full history ends.
     adaptive_balancing : bool, default=True
-        If True, use tighter balance constraints on covariates with large
-        estimated coefficients.
+        Whether to tighten balance on covariates with large estimated coefficients.
     debias : bool, default=False
-        If True, subtract a bootstrap estimate of the bias that the
-        projection coefficients leave in each potential outcome. The estimate
-        uses 20 resamples. Set ``random_state`` to make it reproducible.
+        Whether to subtract a bootstrap estimate from 20 resamples of the bias that the
+        projection coefficients leave in each potential outcome.
     continuous_treatment : bool, default=False
-        Continuous treatments are not implemented yet. Only False is
-        accepted.
+        Whether the treatment is continuous. Only False is supported.
     lb : float, default=0.0005
-        Lower bound for tuning constant grid search.
+        Lower bound of the grid of tuning constants.
     ub : float, default=2.0
-        Upper bound for tuning constant grid search.
+        Upper bound of the grid of tuning constants.
     regularization : bool, default=True
-        If True, fit the coefficient stage by cross-validated LASSO.
-        Otherwise use ridge with a negligible penalty. With
-        ``method='lasso_plain'``, the LASSO penalty is the largest one whose
-        cross-validated error lies within one standard error of the minimum.
+        Whether to fit the coefficient stage by cross-validated LASSO rather than ridge
+        with a negligible penalty.
     fast_adaptive : bool, default=False
-        If True, use flat grid search instead of three-segment nested search.
+        Whether to use a flat grid search instead of the three-segment nested search.
     grid_length : int, default=1000
-        Number of grid points for tuning constant search.
+        Number of points in the grid of tuning constants.
     n_beta_nonsparse : float, default=1e-4
-        Threshold below which a rescaled coefficient is treated as zero.
+        Threshold below which a rescaled coefficient counts as zero.
     ratio_coefficients : float, default=1/3
-        Fraction of largest coefficients to prioritise when sparsity is low.
+        Fraction of the largest coefficients to prioritize when sparsity is low.
     nfolds : int, default=10
-        Cross-validation folds for LASSO.
-    lags : int or None, default=None
-        Number of most recent treatment indicators that the ``lasso_plain``
-        coefficient stage leaves unpenalized. Older indicators are penalized
-        like the covariates. Defaults to ``len(ds1)``.
+        Number of cross-validation folds for LASSO.
+    lags : int, optional
+        Number of most recent treatment indicators that ``"lasso_plain"`` leaves
+        unpenalized. Defaults to ``len(ds1)``.
     robust_quantile : bool, default=False
-        If True, the reported interval and p-value use the square root of a
-        chi-squared critical value with :math:`2T` degrees of freedom. That
-        critical value is larger and gives more conservative intervals.
-        Otherwise they use the Gaussian critical value.
+        Whether the interval and p-value use the square root of a chi-squared critical
+        value with :math:`2T` degrees of freedom instead of the Gaussian one.
     demeaned_fe : bool, default=False
-        Only False is accepted, since the option applies only to continuous
-        treatments. With a binary treatment the fixed-effect dummies enter the
-        projections and the balancing in every period.
-    histories_length : list[int] or None, default=None
-        If provided, estimate ATEs for varying treatment history lengths.
-        Each entry ``k`` must satisfy ``1 <= k <= len(ds1)``. For each ``k``,
-        the last ``k`` elements of ``ds1`` and ``ds2`` are used. Returns a
-        :class:`DynBalancingHistoryResult`. Mutually exclusive with
+        Option for continuous treatments. Only False is supported.
+    histories_length : list[int], optional
+        History lengths, each from 1 to ``len(ds1)``, at which to estimate the ATE on
+        the last entries of ``ds1`` and ``ds2``. Can't be combined with
         ``final_periods``.
-    final_periods : list[int] or None, default=None
-        If provided, estimate ATEs at each specified final period. Returns a
-        :class:`DynBalancingHetResult`. Mutually exclusive with
+    final_periods : list[int], optional
+        Final periods at which to estimate the ATE. Can't be combined with
         ``histories_length``.
     impulse_response : bool, default=False
-        If True (requires ``histories_length``), estimate impulse responses
-        instead of cumulative effects. For each history length ``k``, the
-        treatment sequences are set to ``ds1 = [1, 0, ..., 0]`` and
-        ``ds2 = [0, 0, ..., 0]`` (both length ``k``), measuring the effect
-        of a one-period treatment shock at varying horizons.
+        Whether each history length compares ``[1, 0, ..., 0]`` with ``[0, ..., 0]`` in
+        place of ``ds1`` and ``ds2``. Requires ``histories_length``.
     n_jobs : int, default=1
-        Number of parallel workers for ``histories_length`` and
-        ``final_periods`` modes. 1 = sequential, -1 = all cores,
-        >1 = that many threads.
+        Number of parallel workers for ``histories_length`` or ``final_periods``.
+        ``-1`` uses all cores.
     random_state : int, Generator, optional
-        Seeds the bootstrap resamples of ``debias=True``. Pass an int for
-        reproducible results.
+        Seeds the resamples of ``debias=True``. Pass an int for reproducible results.
 
     Returns
     -------
     DynBalancingResult or DynBalancingHistoryResult or DynBalancingHetResult
-        When neither ``histories_length`` nor ``final_periods`` is set,
-        returns a single :class:`DynBalancingResult`. Otherwise returns the
-        corresponding multi-result container.
+        With ``histories_length`` or ``final_periods``, a container whose ``summary``
+        table and ``results`` list hold one entry per history length or final period.
+        Otherwise a DynBalancingResult containing:
 
         - **att**: The ATE point estimate (:math:`\mu_1 - \mu_2`)
         - **var_att**: Variance of the ATE
@@ -243,6 +195,21 @@ def dyn_balancing(
         - **coefficients**: LASSO coefficients per treatment history (DCB only)
         - **imbalances**: Standardized imbalance of each covariate and fixed-effect dummy per period
         - **estimation_params**: Metadata such as the observation count and the variable names
+
+    Notes
+    -----
+    The variance of the ATE is the sum of the variances of ``mu1`` and ``mu2`` minus
+    twice their covariance. Since both estimates weight the same units until the two
+    histories first differ, the covariance comes from those shared periods. With
+    clustered standard errors, it also comes from units of one cluster that follow
+    different histories. Without clusters, two histories that differ in their first
+    treatment have zero covariance. The variance then matches the ATE variance of [1]_.
+    The :ref:`dynamic covariate balancing background <background-diddynamic>` derives
+    the weights and these variances.
+
+    Rows with a null, NaN, or infinite unit, period, or cluster are dropped with a
+    warning. An infinite outcome, treatment, covariate, or fixed effect counts as
+    missing. So does a null or NaN fixed effect.
 
     References
     ----------

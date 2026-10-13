@@ -69,48 +69,24 @@ def cont_did(
 ):
     r"""Compute difference-in-differences with a continuous treatment.
 
-    Implements the difference-in-differences estimator of [1]_ for a treatment
-    that comes in different amounts, or doses, across units. Units may start
-    treatment in different periods but keep one dose over time.
+    Implements the difference-in-differences estimator of [1]_ for a treatment that
+    units receive in different amounts, or doses. Units may start treatment in
+    different periods but keep one dose over time. At each dose :math:`d`, the level
+    effect and the average causal response on the treated are
 
-    Two effects arise at each dose :math:`d`. The level effect
-    :math:`ATT(d \mid d)` compares outcomes under dose :math:`d` with outcomes
-    without treatment among the units that received dose :math:`d`. The
-    average causal response :math:`ACRT(d \mid d)` measures how the outcome of
-    those units would respond to a slightly larger dose. Parallel trends
-    identifies the level effects and their local average :math:`ATT^{loc}`
-    over treated doses. The curve's derivative also changes the dose group
-    being compared. A causal interpretation therefore requires restrictions
-    on treated potential outcomes. In two periods, strong parallel trends
-    identifies the response for all treated units rather than necessarily
-    the response local to the observed dose group.
+    .. math::
 
-    With ``aggregation="dose"``, the estimator fits a curve in the dose for
-    each cohort in each period after treatment starts. It then averages those
-    curves using fixed cohort shares and averages each cell's effects over
-    its own observed doses for the overall summaries. With
-    ``aggregation="eventstudy"``, it reports the level effects or the average
-    slopes by time since treatment started.
+        ATT(d \mid d) = \mathbb{E}[Y_{t}(d) - Y_{t}(0) \mid D = d], \qquad
+        ACRT(d \mid d) = \left.\frac{\partial}{\partial l}
+        \mathbb{E}[Y_{t}(l) \mid D = d]\right|_{l=d}.
 
-    ``min_e``, ``max_e``, and ``balance_e`` trim or balance the event study.
-    A window that keeps no event time raises an error. When it keeps no
-    event time from the start of treatment on, the overall effect is NaN and
-    a warning says why.
-
-    Each cohort's spline uses the interior knots that fall inside its own
-    dose range. It has ``degree + 1`` coefficients plus one for each of those
-    knots. A unique fit needs at least that many distinct positive doses
-    spread across the knots. Doses that nearly coincide count as one. A
-    warning names each cohort whose doses can't give a unique fit. Such a
-    cohort has no curve or slope. Its cells leave the curves, the overall
-    ACRT, and the event study of slopes. Its binary ATT stays in the overall
-    ATT. If no cohort is left, ``cont_did`` raises an error.
+    With ``aggregation="dose"``, the function fits a B-spline in the dose for each
+    cohort and period after treatment starts and averages the curves with fixed cohort
+    shares. With ``aggregation="eventstudy"``, it reports the level effects or the
+    average slopes by time since treatment started.
 
     See the :ref:`continuous treatment example <example_cont_did>` for a full
     analysis of county employment and geological exposure to fracking.
-    The :ref:`continuous treatment background <background-didcont>` explains
-    the distinction between local and global effects and the additional
-    restrictions needed to interpret the reported slopes.
 
     Parameters
     ----------
@@ -119,117 +95,81 @@ def cont_did(
         PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
         pyarrow Table, and cudf DataFrames.
     yname : str
-        Name of the column containing the outcome variable.
+        The name of the outcome column.
     tname : str
-        Name of the column containing the time period variable.
+        The name of the time period column.
     idname : str
-        Name of the column containing the unit ID variable.
+        The name of the unit identifier column.
     gname : str, optional
-        Name of the column containing the timing-group variable indicating
-        when treatment starts for each unit. Each group must be one of the
-        observed periods, or 0 for never-treated units. If None, each unit's
-        group is the first period in which its dose is positive. The dose
-        must then be 0 before treatment starts. Because the group is stored
-        in a column named ``.G``, no column that the other arguments name may
-        be called ``.G``.
+        The name of the column holding the observed period in which each unit starts
+        treatment, or 0 for never-treated units. If None, a unit's group is its first
+        period with a positive dose. No other named column may then be called ``.G``.
     dname : str
-        Name of the column containing the continuous treatment variable,
-        the "dose" or amount of treatment received. Each unit's dose must
-        stay the same over time. Before treatment starts, it may also be
-        recorded as 0. Never-treated units get a dose of 0 whatever the column
-        holds.
+        The name of the dose column. A unit's dose must stay fixed but may be 0 before
+        treatment starts. Never-treated units get a dose of 0 whatever the column holds.
     xformla : str, default="~1"
-        Formula for the covariates. Since covariates aren't supported yet, it
-        must be ``"~1"``.
+        Formula for the covariates. Only ``"~1"`` is supported.
     target_parameter : {"level", "slope"}, default="level"
-        Effect that an event study averages. ``"level"`` treats every unit in
-        a cohort as treated whatever its dose. ``"slope"`` averages the slope
-        of each cohort's curve. With ``aggregation="dose"``, both curves are
-        returned whatever this says.
+        Effect that the event study averages, either the binary effect of treatment or
+        the slope of each cohort's curve. The dose aggregation returns both curves.
     aggregation : {"dose", "eventstudy"}, default="dose"
-        How to average the cohort-period effects. ``"dose"`` reports the curves
-        over doses along with the overall ATT and ACRT. ``"eventstudy"``
-        reports the effects by time since treatment started. It counts that
-        time in units of ``tname``.
+        ``"dose"`` reports the curves over doses with the overall ATT and ACRT.
+        ``"eventstudy"`` reports the effects at each number of ``tname`` units since
+        treatment started.
     balance_e : float, optional
-        Event time to balance the event study on. With ``balance_e=2``, the
-        event study keeps only the cohorts observed through event time 2 and
-        reports event times up to 2. The same cohorts then make up every event
-        time from 0 to 2. It needs ``aggregation="eventstudy"``.
+        Last event time of an event study that keeps only the cohorts observed through
+        it. It needs ``aggregation="eventstudy"``.
     min_e : float, default=-inf
-        Smallest event time to include in the event study. It needs
-        ``aggregation="eventstudy"``.
+        Smallest event time to include. It needs ``aggregation="eventstudy"``.
     max_e : float, default=inf
-        Largest event time to include in the event study. It needs
-        ``aggregation="eventstudy"``.
+        Largest event time to include. It needs ``aggregation="eventstudy"``.
     treatment_type : {"continuous", "discrete"}, default="continuous"
         Type of treatment. Only ``"continuous"`` is supported.
     dose_est_method : {"parametric", "cck"}, default="parametric"
-        Estimator of the curves. ``"parametric"`` fits the B-spline that
-        ``degree`` and ``num_knots`` set. ``"cck"`` chooses the sieve from the
-        data following [2]_ and needs two periods with a single treated cohort.
-        It also needs at least four distinct treated doses. The sieve that it
-        selects can need more.
+        Estimator of the curves. ``"parametric"`` fits the B-spline that ``degree`` and
+        ``num_knots`` set. ``"cck"`` chooses the sieve from the data [2]_ and needs two
+        periods, one treated cohort, and at least four distinct treated doses.
     dvals : array-like, optional
-        One or more finite doses at which to evaluate the curves. Defaults to
-        50 evenly spaced doses between the smallest and largest treated dose.
+        Finite doses at which to evaluate the curves. Defaults to 50 evenly spaced doses
+        between the smallest and largest treated dose.
     degree : int, default=3
-        Degree of the B-spline in the dose. With ``num_knots=0`` the spline is
-        a single polynomial of this degree.
+        Degree of the B-spline in the dose. It must be at least 1.
     num_knots : int, default=0
-        Number of interior knots of the B-spline, placed at quantiles of the
-        treated doses. More knots make the curve more flexible and its
-        estimates noisier. Ties among the treated doses must not put more
-        than ``degree`` knots at one dose.
+        Number of interior knots at quantiles of the treated doses. Ties among the
+        treated doses must not put more than ``degree`` knots at one dose.
     allow_unbalanced_panel : bool, default=False
         Whether to allow an unbalanced panel. Only False is supported.
     control_group : {"notyettreated", "nevertreated"}, default="notyettreated"
-        Units to compare with. ``"notyettreated"`` uses never-treated units
-        together with cohorts whose treatment, including any anticipation,
-        starts after both periods of a comparison. ``"nevertreated"`` uses
-        never-treated units alone.
+        Units to compare with. ``"notyettreated"`` adds to the never-treated units the
+        cohorts whose treatment, anticipation included, starts after both periods of a
+        comparison.
     anticipation : int, default=0
-        Number of observed periods before treatment in which outcomes may
-        already react. It counts the periods in the data rather than units of
-        ``tname``.
+        Number of observed periods before treatment in which outcomes may already react.
     weightsname : str, optional
-        Name of the column containing sampling weights. Sampling weights
-        are not supported yet. Only None is accepted.
+        The name of the sampling weights column. Only None is supported.
     alpha : float, default=0.05
-        Significance level of the intervals and bands, such as 0.05 for 95
-        percent coverage.
+        Significance level of the intervals and bands.
     cband : bool, default=False
         Whether each band covers all doses, or all event times, at once.
-        With ``dose_est_method="cck"``, the fitted level band uses a
-        conservative approximation.
     boot_type : {"multiplier", "weighted", "empirical"}, default="multiplier"
-        Bootstrap for event-study standard errors and bands.
-        ``"multiplier"`` draws a random weight for each unit and applies it to
-        that unit's influence function. ``"weighted"`` is another name for
-        ``"multiplier"``. ``"empirical"`` resamples units and reruns the
-        estimation in each draw. Since the dose curves always use the
-        multiplier bootstrap, ``"empirical"`` needs
-        ``aggregation="eventstudy"``. It doesn't support the event-time
-        options ``min_e``, ``max_e``, and ``balance_e``.
+        Bootstrap for the event-study standard errors and bands. ``"weighted"`` is
+        another name for ``"multiplier"``. ``"empirical"`` resamples units and needs
+        ``aggregation="eventstudy"`` without ``min_e``, ``max_e``, or ``balance_e``.
     biters : int, default=1000
-        Number of bootstrap draws.
+        The number of bootstrap draws.
     clustervars : str or list of str, optional
-        Variables for clustering standard errors. The standard errors always
-        cluster by ``idname``. Any other variable is ignored with a warning
-        because clustering on it isn't supported yet.
+        Variables to cluster on. The standard errors cluster by ``idname`` only and
+        ignore any other variable with a warning.
     base_period : {"varying", "universal"}, default="varying"
-        Base period of each comparison. ``"universal"`` measures every period
-        from the one before the cohort starts. ``"varying"`` measures each
-        period before treatment from the period just before it.
+        Base period of each comparison. ``"universal"`` measures every period from the
+        one before the cohort starts. ``"varying"`` measures each period before
+        treatment from the period just before it.
     random_state : int, Generator, optional
-        Controls the randomness of the bootstrap. Pass an int for reproducible
-        results across multiple function calls. Can also accept a NumPy
-        ``Generator`` instance.
-    backend : {"numpy", "cupy"} or None, default=None
-        Array backend to use for this call only. When set, the backend is
-        activated before estimation and the previous backend is restored
-        when the call returns. ``None`` (the default) uses whatever backend
-        is currently active (see :func:`~moderndid.set_backend`).
+        Controls the randomness of the bootstrap. Pass an int for reproducible results
+        across calls.
+    backend : {"numpy", "cupy"}, optional
+        Array backend for this call only. If None, the call uses the backend that
+        :func:`~moderndid.set_backend` activated.
 
     Returns
     -------
@@ -248,22 +188,14 @@ def cont_did(
         - **overall_acrt**: Overall ACRT
         - **overall_acrt_se**: Standard error of the overall ACRT
 
-        With ``aggregation="eventstudy"``, a PTEResult that holds the event
-        study in ``event_study``. Its overall effect averages the event-study
-        effects at the event times e >= 0 that the event study reports.
+        With ``aggregation="eventstudy"``, a PTEResult that holds the event study in
+        ``event_study``. Its overall effect averages the reported effects from event
+        time 0 on.
 
     Notes
     -----
-    The level effect and the average causal response at dose :math:`d` are
-
-    .. math::
-
-        ATT(d \mid d) = \mathbb{E}[Y_{t}(d) - Y_{t}(0) \mid D = d], \qquad
-        ACRT(d \mid d) = \left.\frac{\partial}{\partial l}
-        \mathbb{E}[Y_{t}(l) \mid D = d]\right|_{l=d}.
-
-    Under parallel trends, a comparison of the outcome changes of units at
-    dose :math:`d` with those of untreated units identifies the level effect,
+    Under parallel trends, a comparison of the outcome changes of units at dose
+    :math:`d` with those of untreated units identifies the level effect,
 
     .. math::
 
@@ -276,17 +208,24 @@ def cont_did(
         ATT^{loc} = \mathbb{E}[ATT(D \mid D) \mid D > 0], \qquad
         ACRT^{loc} = \mathbb{E}[ACRT(D \mid D) \mid D > 0].
 
-    The slope of the observed level comparison includes selection across
-    dose groups under ordinary parallel trends. The two-period strong
-    parallel trends assumption identifies :math:`ACRT(d)` for all treated
-    units and its global average. The stronger multi-period restriction in
-    Appendix C of [1]_ supports a local response interpretation as well.
+    The slope of the observed level comparison includes selection across dose groups
+    under ordinary parallel trends. The two-period strong parallel trends assumption
+    identifies :math:`ACRT(d)` for all treated units and its global average. The
+    stronger multi-period restriction in Appendix C of [1]_ supports a local response
+    interpretation as well. The
+    :ref:`continuous treatment background <background-didcont>` develops these
+    restrictions.
 
-    With staggered adoption, these quantities are estimated for each cohort in
-    each period after treatment starts. The dose aggregation gives each cohort
-    its share of the treated units and splits that share evenly over the
-    cohort's periods after treatment starts. When a cohort has no curve, the
-    other cohorts share its weight in the curves and the overall ACRT.
+    With staggered adoption, these quantities are estimated for each cohort in each
+    period after treatment starts. The dose aggregation gives each cohort its share of
+    the treated units and splits that share evenly over the cohort's periods after
+    treatment starts. A warning names each cohort whose doses can't give its spline a
+    unique fit. The other cohorts share that cohort's weight in the curves, the overall
+    ACRT, and the event study of slopes. If no cohort is left, ``cont_did`` raises an
+    error.
+
+    An event-study window that keeps no event time also raises an error. If it keeps
+    none from 0 on, the overall effect is NaN and a warning says why.
 
     References
     ----------
