@@ -507,6 +507,17 @@ def lp_conditional_test(
 
         # Variance of the test statistic
         sigma2_b = float((v_b.T @ sigma_arp @ v_b).item())
+
+        # Since a statistic without sampling variance has no conditional distribution, it rejects exactly when it
+        # is positive, as in the dual approach above.
+        if abs(sigma2_b) < np.finfo(float).eps:
+            return {
+                "reject": bool(lin_soln["eta_star"] > 0),
+                "eta": lin_soln["eta_star"],
+                "delta": lin_soln["delta_star"],
+                "lambda": lin_soln["lambda"],
+            }
+
         sigma_b = np.sqrt(sigma2_b)
 
         # Correlation vector between non-binding and binding constraints
