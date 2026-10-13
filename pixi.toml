@@ -25,10 +25,11 @@ pytest = ">=7.0.0"
 pytest-benchmark = ">=4.0.0"
 pytest-cov = ">=4.0.0"
 pytest-timeout = ">=2.0.0"
+pytest-xdist = ">=3.6"
 
 [feature.dev.tasks]
-tests-core = "pytest -m 'not slow' -vv"
-tests-full = "pytest -vv"
+tests-core = "pytest -m 'not slow' -n auto --dist worksteal -vv"
+tests-full = "pytest -n auto --dist worksteal -vv"
 
 [feature.benchmark.dependencies]
 python = "3.12.*"
