@@ -28,86 +28,123 @@ def drdid(
 ):
     r"""Compute the doubly robust DiD estimator for the ATT.
 
-    Implements the doubly robust difference-in-differences estimators of [2]_ for the
-    average treatment effect on the treated (ATT) with two periods. They combine inverse
-    probability weighting with outcome regression. The estimate is consistent if either
-    the propensity score model or the outcome model of the comparison group is correctly
-    specified.
+    Estimates the average treatment effect on the treated (ATT) of a design with two
+    periods [2]_,
 
-    The function accepts panel data and stationary repeated cross-sections and calls the
-    estimator that matches ``panel`` and ``est_method``. With either design, both
-    methods give a locally efficient estimator.
+    .. math::
+
+        \tau = \mathbb{E}[Y_1(1) - Y_1(0) \mid D = 1].
+
+    The estimators combine inverse probability weighting with an outcome regression for
+    the comparison group. The estimate is consistent if either the propensity score
+    model or the outcome model is correctly specified. With panel data and with
+    stationary repeated cross-sections, both methods give a locally efficient estimator.
+    The function runs :func:`~moderndid.drdid_imp_panel` or
+    :func:`~moderndid.drdid_panel` on a panel and :func:`~moderndid.drdid_imp_local_rc`
+    or :func:`~moderndid.drdid_rc` on repeated cross-sections, as ``est_method``
+    selects.
 
     Parameters
     ----------
-    data : pd.DataFrame | pl.DataFrame
-        The input data containing outcome, time, unit ID, treatment,
-        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
+    data : DataFrame
+        Data in long format. Accepts pandas and polars DataFrames.
     yname : str
-        Name of the column containing the outcome variable.
+        The name of the outcome column.
     tname : str
-        Name of the column containing the time periods (must have exactly 2 periods).
-    idname : str | None, default None
-        Name of the column containing the unit ID. Required if panel=True.
+        The name of the time period column. It must hold exactly two periods.
+    idname : str, optional
+        The name of the unit identifier column. Required if ``panel=True``.
     treatname : str
-        Name of the column containing the treatment group indicator. With panel data it
-        is constant within a unit, 1 if ever treated and 0 if never treated. With
-        repeated cross-sections it marks the group treated in the post-period and equals
-        1 for that group's rows in both periods.
-    xformla : str | None, default None
-        Formula that joins covariate column names with ``+``, as in
-        ``"~ x1 + x2"``. The model always includes an intercept. Transformed
-        terms such as ``I(x**2)`` or ``C(x)`` and columns of strings or
-        categories require formulaic. If None, only the intercept enters.
-    panel : bool, default True
-        Whether the data is panel (True) or repeated cross-sections (False).
-        Panel data should be in long format with each row representing
-        a unit-time observation.
-    est_method : {"imp", "trad"}, default "imp"
-        The estimator to compute. The default "imp" fits the propensity score by inverse
-        probability tilting [1]_ and the outcome regressions of the comparison group by
-        weighted least squares. It is the estimator in equation (3.7) of [2]_ for panel
-        data and in equation (3.10) for repeated cross-sections. With repeated
-        cross-sections, it also fits outcome regressions for the treated group in each
-        period by ordinary least squares. "trad" fits the propensity score by maximum
-        likelihood and the outcome regressions by ordinary least squares. It is the
-        estimator in equation (3.1) for panel data and in equation (3.4) for repeated
-        cross-sections.
-    weightsname : str | None, default None
-        Name of the column containing sampling weights.
-        If None, all observations have equal weight.
-        Weights are normalized to have mean 1.
-    boot : bool, default False
-        Whether to compute bootstrap standard errors. If False,
-        analytical standard errors are reported.
-    boot_type : {"weighted", "multiplier"}, default "weighted"
-        Type of bootstrap to perform (only relevant if boot=True).
-    biters : int, default 999
-        Number of bootstrap repetitions (only relevant if boot=True).
-    inf_func : bool, default False
+        The name of the treatment group column, 1 in both periods for the group treated in
+        the post-period and 0 for the comparison group.
+    xformla : str, optional
+        A formula joining covariate columns with ``+``, such as ``"~ x1 + x2"``. The
+        model always includes an intercept. Terms such as ``I(x**2)`` or ``C(x)`` and
+        string or categorical columns require formulaic.
+    panel : bool, default=True
+        Whether the data is a panel (True) or repeated cross-sections (False).
+    est_method : {"imp", "trad"}, default="imp"
+        ``"imp"`` fits the propensity score by inverse probability tilting [1]_ and the
+        outcome regressions by weighted least squares. ``"trad"`` uses maximum
+        likelihood and ordinary least squares.
+    weightsname : str, optional
+        The name of the sampling weights column. The weights are normalized to mean 1.
+    boot : bool, default=False
+        Whether to compute bootstrap standard errors instead of analytical ones.
+    boot_type : {"weighted", "multiplier"}, default="weighted"
+        The kind of bootstrap. Only applicable if ``boot=True``.
+    biters : int, default=999
+        The number of bootstrap draws. Only applicable if ``boot=True``.
+    inf_func : bool, default=False
         Whether to return the influence function values.
-    trim_level : float, default 0.995
-        The level of trimming for the propensity score.
+    trim_level : float, default=0.995
+        The propensity score level at which comparison units are trimmed.
 
     Returns
     -------
     DRDIDResult
         NamedTuple containing:
 
-        - **att**: The DR DiD point estimate.
-        - **se**: The DR DiD standard error.
-        - **uci**: The upper bound of a 95 percent confidence interval.
-        - **lci**: The lower bound of a 95 percent confidence interval.
-        - **boots**: Bootstrap draws of the ATT if boot=True.
-        - **att_inf_func**: Influence function values if inf_func=True.
-        - **call_params**: Original function call parameters.
-        - **args**: Arguments used in the estimation.
+        - **att**: The DR DiD point estimate
+        - **se**: The DR DiD standard error
+        - **uci**: The upper bound of a 95 percent confidence interval
+        - **lci**: The lower bound of a 95 percent confidence interval
+        - **boots**: Bootstrap draws of the ATT if boot=True
+        - **att_inf_func**: Influence function values if inf_func=True
+        - **call_params**: Original function call parameters
+        - **args**: Arguments used in the estimation
+
+    See Also
+    --------
+    ipwdid : Inverse propensity weighted DiD estimator.
+    ordid : Outcome regression DiD estimator.
+
+    Notes
+    -----
+    Identification rests on conditional parallel trends given the covariates
+    :math:`X`,
+
+    .. math::
+
+        \mathbb{E}[Y_1(0) - Y_0(0) \mid D=1, X] = \mathbb{E}[Y_1(0) - Y_0(0) \mid D=0, X].
+
+    With panel data, the outcome regression
+    :math:`\mu_{0,\Delta}(X) = \mathbb{E}[\Delta Y \mid D=0, X]` and the propensity
+    score :math:`\pi(X) = \mathbb{P}(D=1 \mid X)` give the doubly robust estimand
+
+    .. math::
+
+        \tau^{dr} = \mathbb{E}\left[\left(\frac{D}{\mathbb{E}[D]}
+        - \frac{\pi(X)(1-D)/(1-\pi(X))}
+        {\mathbb{E}[\pi(X)(1-D)/(1-\pi(X))]}\right)
+        (\Delta Y - \mu_{0,\Delta}(X))\right].
+
+    The :ref:`doubly robust DiD background <background-drdid>` develops both designs and
+    the efficiency of each estimator.
+
+    With repeated cross-sections, both methods also fit an outcome regression for the
+    treated group in each period. When a period's treated group has fewer observations
+    than coefficients, or a covariate constant or collinear within it, the function
+    raises a ValueError that names the group and period. :func:`~moderndid.drdid_imp_rc`
+    and :func:`~moderndid.drdid_trad_rc` leave those regressions out but are not locally
+    efficient.
+
+    References
+    ----------
+
+    .. [1] Graham, B., Pinto, C., and Egel, D. (2012),
+           "Inverse Probability Tilting for Moment Condition Models with Missing Data."
+           Review of Economic Studies, vol. 79 (3), pp. 1053-1079.
+           https://doi.org/10.1093/restud/rdr047
+
+    .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
+           "Doubly Robust Difference-in-Differences Estimators."
+           Journal of Econometrics, Vol. 219 (1), pp. 101-122.
+           https://doi.org/10.1016/j.jeconom.2020.06.003
 
     Examples
     --------
-    Estimate the average treatment effect on the treated (ATT) using panel data from a job training
-    program. The data tracks the same individuals over time, before and after
-    some received training.
+    Estimate the ATT of a job training program on earnings with panel data.
 
     .. ipython::
         :okwarning:
@@ -129,67 +166,6 @@ def drdid(
            ...: )
 
         In [2]: print(att_result)
-
-    Notes
-    -----
-    The parameter of interest is the ATT in a two-period setting
-
-    .. math::
-
-        \tau = \mathbb{E}[Y_1(1) - Y_1(0) \mid D = 1].
-
-    Identification relies on a conditional parallel trends assumption requiring
-    that treated and comparison groups would have evolved similarly absent
-    treatment, conditional on covariates :math:`X`
-
-    .. math::
-
-        \mathbb{E}[Y_1(0) - Y_0(0) \mid D=1, X] = \mathbb{E}[Y_1(0) - Y_0(0) \mid D=0, X].
-
-    For panel data, the doubly robust estimand combines outcome regression
-    :math:`\mu_{0,\Delta}(X) = \mathbb{E}[\Delta Y \mid D=0, X]` with propensity
-    score weighting :math:`\pi(X) = \mathbb{P}(D=1 \mid X)`
-
-    .. math::
-
-        \tau^{dr} = \mathbb{E}\left[\left(\frac{D}{\mathbb{E}[D]}
-        - \frac{\pi(X)(1-D)/(1-\pi(X))}
-        {\mathbb{E}[\pi(X)(1-D)/(1-\pi(X))]}\right)
-        (\Delta Y - \mu_{0,\Delta}(X))\right].
-
-    An estimator is locally efficient when its asymptotic variance attains the
-    semiparametric efficiency bound once every working model is correctly specified
-    [2]_. With panel data, both methods model the propensity score and the outcome
-    evolution of the comparison group. With stationary repeated cross-sections, they
-    also model the outcome of the treated group in each period. Those regressions cannot
-    be fit in a period where the treated group has fewer observations than coefficients
-    or a covariate that is constant or collinear within it. The function then raises a
-    ValueError that names the group and period. The estimators in equations (3.3) and
-    (3.9) of [2]_ leave those regressions out and are not locally efficient. Their
-    variance can be many times larger even when every working model is correct.
-    :func:`drdid_trad_rc` and :func:`drdid_imp_rc` compute them.
-
-    With the inverse probability tilting and weighted least squares fits of ``"imp"``,
-    the asymptotic variance does not depend on which working models are correct. That
-    estimator is therefore doubly robust for inference as well as for consistency [2]_.
-
-    See Also
-    --------
-    ipwdid : Inverse propensity weighted DiD estimator.
-    ordid : Outcome regression DiD estimator.
-
-    References
-    ----------
-
-    .. [1] Graham, B., Pinto, C., and Egel, D. (2012),
-           "Inverse Probability Tilting for Moment Condition Models with Missing Data."
-           Review of Economic Studies, vol. 79 (3), pp. 1053-1079.
-           https://doi.org/10.1093/restud/rdr047
-
-    .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
-           "Doubly Robust Difference-in-Differences Estimators."
-           Journal of Econometrics, Vol. 219 (1), pp. 101-122.
-           https://doi.org/10.1016/j.jeconom.2020.06.003
     """
     if treatname is None:
         raise ValueError("treatname is required. Please specify the treatment column.")

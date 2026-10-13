@@ -21,26 +21,12 @@ def aggte(
 ):
     r"""Aggregate group-time average treatment effects.
 
-    Takes the full set of group-time average treatment effects from ``att_gt``
-    and aggregates them into the summary measures of Callaway and Sant'Anna
-    (2021) [1]_. Different aggregation schemes answer different policy
-    questions about treatment effect heterogeneity.
-
-    Each overall effect averages post-treatment group-time effects. When none
-    is left, because those cells failed to estimate or ``max_e`` leaves them
-    out, the overall effect is NaN. A warning names the cause. The group and
-    calendar aggregations report only the cohorts and periods with an
-    estimated post-treatment effect. An event study without one still reports
-    its pre-treatment event times. An att_gt result without group-time
-    effects, or an event-study window without event times, stops with an
-    error.
-
-    Since aggte has no data of its own, its standard errors can only reuse
-    the cluster assignments of the att_gt fit. Apart from the idname, a
-    request for a variable the fit did not cluster on stops with an error.
-    With clusters, the analytic standard errors sum each aggregated influence
-    function within clusters. The bootstrap, including the one behind a
-    uniform band, draws one multiplier for each cluster.
+    Averages the group-time average treatment effects of :func:`~moderndid.att_gt` into
+    the summaries of Callaway and Sant'Anna (2021) [1]_. An event study follows the
+    effect over the time since treatment. The group and calendar aggregations average it
+    within each group or period. Every aggregation also reports an overall effect. The
+    standard errors combine the influence functions of the group-time effects and
+    account for the estimated weights.
 
     See the :ref:`staggered DiD example <example_staggered_did>` for event study,
     cohort, and overall aggregations of the minimum wage effects.
@@ -50,49 +36,37 @@ def aggte(
     MP : MPResult
         The result of :func:`~moderndid.att_gt`.
     type : {'simple', 'dynamic', 'group', 'calendar'}, default='group'
-        Which aggregated treatment effect parameter to compute. 'simple'
-        averages all post-treatment group-time effects with weights
-        proportional to group size. 'dynamic' averages effects by length of
-        exposure to the treatment, as an event study does. 'group' averages
-        effects within each treatment group. 'calendar' averages effects
-        within each time period.
+        The aggregation. 'dynamic' averages the effects at each event time, 'group'
+        within each treatment group, and 'calendar' within each period. 'simple' averages
+        all post-treatment effects with weights proportional to group size.
     balance_e : int, optional
-        Event time to balance an event study on. With ``balance_e=2``, the
-        event study keeps only the groups observed at event times 0, 1, and 2
-        and reports event times up to 2. The composition of groups then stays
-        the same across event times. The other aggregations ignore it.
+        The event time to balance an event study on. The event study then keeps only the
+        groups observed through that event time and stops there.
     min_e : float, default=-inf
-        Smallest event time to include in an event study. The other
-        aggregations ignore it.
+        The earliest event time in an event study.
     max_e : float, default=inf
-        Largest event time to include. It limits the event study and the
-        post-treatment effects that the simple and group aggregations average.
-        The calendar aggregation ignores it.
+        The latest event time in an event study and in the post-treatment effects that
+        the simple and group aggregations average.
     na_rm : bool, default=False
-        Whether to leave out group-time effects that are NaN before
-        aggregating. Without it, a NaN effect stops the aggregation with an
-        error.
+        Whether to drop group-time effects that are NaN before aggregating. Without it,
+        a NaN effect stops the aggregation with an error.
     boot : bool, optional
-        Whether to compute standard errors with the multiplier bootstrap
-        instead of analytically. Defaults to the setting of the att_gt fit.
+        Whether to compute the standard errors with the multiplier bootstrap. Defaults
+        to the setting of the att_gt fit.
     biters : int, optional
-        Number of bootstrap draws for the standard errors and the uniform
-        confidence band. Defaults to the setting of the att_gt fit.
+        The number of bootstrap draws. Defaults to the setting of the att_gt fit.
     cband : bool, optional
-        Whether to report a uniform confidence band that covers all the
-        disaggregated effects with probability 1 - alpha. It does not require
-        ``boot=True``. Defaults to the setting of the att_gt fit.
+        Whether to report a uniform confidence band over the disaggregated effects. It
+        does not require ``boot=True``. Defaults to the setting of the att_gt fit.
     alpha : float, optional
-        Significance level. Defaults to the level of the att_gt fit.
+        The significance level. Defaults to the level of the att_gt fit.
     clustervars : list[str], optional
-        Variables to cluster the standard errors on. Each must be the idname or
-        one of the clustervars of the att_gt fit. An empty list, or the idname
-        alone, gives unit-level inference. Defaults to the clustervars of the
-        att_gt fit.
+        Variables to cluster the standard errors on, each the idname or one of the
+        clustervars of the att_gt fit. An empty list, or the idname alone, gives
+        unit-level inference. Defaults to the clustervars of the att_gt fit.
     random_state : int, Generator, optional
-        Controls the randomness of the bootstrap. Pass an int for reproducible
-        results across multiple function calls. Can also accept a NumPy
-        ``Generator`` instance.
+        Controls the randomness of the bootstrap. Pass an int for reproducible results
+        across calls.
 
     Returns
     -------
@@ -120,60 +94,67 @@ def aggte(
 
     Notes
     -----
-    Let :math:`\mathcal{G}` denote the set of treatment groups, :math:`\mathcal{T}`
-    the final time period, :math:`G` the random variable for treatment timing,
-    and :math:`ATT(g,t)` the group-time average treatment effect for group
-    :math:`g` at time :math:`t`.
-
-    The event-study or dynamic aggregation reveals how effects evolve with
-    exposure time :math:`e = t - g`. The event-study parameter averages effects
-    across groups observed :math:`e` periods after treatment
+    Let :math:`\mathcal{G}` be the set of treatment groups, :math:`\mathcal{T}` the
+    final period, and :math:`G` the period in which a unit is first treated. The dynamic
+    aggregation, or event study, averages the groups observed :math:`e = t - g` periods
+    after treatment,
 
     .. math::
 
         \theta_{es}(e) = \sum_{g \in \mathcal{G}} \mathbf{1}\{g + e \le \mathcal{T}\}
         P(G = g \mid G + e \le \mathcal{T}) \, ATT(g, g + e).
 
-    Group-specific aggregation shows whether early and late adopters
-    experience different effects. It averages the effects of each treatment
-    cohort :math:`\tilde{g}` over its post-treatment periods
+    The group aggregation averages each group :math:`\tilde{g}` over its
+    post-treatment periods,
 
     .. math::
 
         \theta_{sel}(\tilde{g}) = \frac{1}{\mathcal{T} - \tilde{g} + 1}
         \sum_{t=\tilde{g}}^{\mathcal{T}} ATT(\tilde{g}, t).
 
-    The group aggregation's overall effect weights these cohort effects by the
-    distribution of treatment timing
+    Its overall effect weights these group effects by the distribution of treatment
+    timing,
 
     .. math::
 
         \theta_{sel}^O = \sum_{g \in \mathcal{G}} \theta_{sel}(g) \,
         P(G = g \mid G \le \mathcal{T}).
 
-    Calendar-time aggregation shows how effects vary with time-specific
-    factors. It averages across the groups treated by each period
-    :math:`\tilde{t}`
+    The calendar aggregation averages the groups treated by each period
+    :math:`\tilde{t}`,
 
     .. math::
 
         \theta_{c}(\tilde{t}) = \sum_{g \in \mathcal{G}} \mathbf{1}\{\tilde{t} \ge g\}
         P(G = g \mid G \le \tilde{t}) \, ATT(g, \tilde{t}).
 
-    The simple aggregation averages every post-treatment group-time effect with
-    weights proportional to group size
+    The overall effects of the dynamic and calendar aggregations give every
+    post-treatment event time or period the same weight. The simple aggregation
+    averages every post-treatment group-time effect with weights proportional to group
+    size,
 
     .. math::
 
         \theta_{W}^O = \frac{1}{\kappa} \sum_{g \in \mathcal{G}} \sum_{t=2}^{\mathcal{T}}
         \mathbf{1}\{g \le t\} \, ATT(g, t) \, P(G = g \mid G \le \mathcal{T}),
 
-    where :math:`\kappa` makes the weights sum to one. Since a group
-    contributes one term for each period after it is treated, groups treated
-    earlier receive more weight than in :math:`\theta_{sel}^O`.
+    where :math:`\kappa` makes the weights sum to one. Since a group contributes one
+    term for each period after it is treated, groups treated earlier receive more
+    weight than in :math:`\theta_{sel}^O`. The :ref:`staggered DiD background
+    <background-did>` develops these weights and the influence function of an
+    aggregate.
+
+    Each overall effect averages post-treatment group-time effects. When none is left,
+    because those cells failed to estimate or ``max_e`` leaves them out, the overall
+    effect is NaN. A warning names the cause. The group and calendar aggregations report
+    only the groups and periods with an estimated post-treatment effect. An event study
+    without one still reports its pre-treatment event times. An att_gt result without
+    group-time effects, or an event-study window without event times, stops with an
+    error.
 
     References
     ----------
+
     .. [1] Callaway, B., & Sant'Anna, P. H. (2021). Difference-in-differences
            with multiple time periods. Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
