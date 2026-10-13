@@ -973,11 +973,12 @@ What the CCK option implements
 ModernDiD's ``dose_est_method="cck"`` requires two periods and one
 treated timing cohort. It sends the centered positive-dose outcomes to
 :func:`~moderndid.npiv` with dose as both regressor and instrument, cubic
-splines at quantile knots, and 999 Gaussian multiplier draws internally.
+splines at quantile knots, and ``biters`` Gaussian multiplier draws.
 The inner calculation therefore uses :math:`n_+` observations rather
-than Appendix B's full-sample normalization. The wrapper uses
-``random_state`` for its seed but fixes those inner draws independently
-of the ``biters`` argument.
+than Appendix B's full-sample normalization. Seeded by ``random_state``,
+those multiplier draws set the selection threshold
+:math:`\gamma_{1-\widehat\alpha}^*` and the band quantiles
+:math:`z_{1-\alpha}^*` and :math:`z_{1-\alpha}^{*,acrt}`.
 
 .. admonition:: Check for four distinct treated doses
    :class: important

@@ -1470,7 +1470,7 @@ def test_cck_att_d_band_includes_comparison_mean(cck_test_data):
         x_grid=np.asarray(result.dose).reshape(-1, 1),
         alpha=0.05,
         knots="quantiles",
-        biters=999,
+        biters=1000,
         j_x_degree=3,
         k_w_degree=3,
         seed=3,
@@ -2270,6 +2270,42 @@ def test_cont_did_cck_overall_acrt_averages_the_npiv_derivative_over_treated_dos
     )
 
     assert result.overall_acrt == pytest.approx(np.mean(result.acrt_d), rel=1e-13)
+
+
+def test_cont_did_cck_bands_follow_biters_at_a_fixed_random_state(cck_test_data):
+    wide = cck_test_data.pivot(index=["id", "g", "d"], on="time", values="y").sort("id")
+    dy = (wide["2"] - wide["1"]).to_numpy()
+    dose = wide["d"].to_numpy()
+    treated = dose > 0
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "g",
+        "dname": "d",
+        "dose_est_method": "cck",
+        "cband": True,
+        "random_state": 3,
+    }
+
+    few = cont_did(data=cck_test_data, biters=99, **spec)
+    many = cont_did(data=cck_test_data, biters=999, **spec)
+    curve = npiv(
+        y=dy[treated] - dy[~treated].mean(),
+        x=dose[treated].reshape(-1, 1),
+        w=dose[treated].reshape(-1, 1),
+        x_grid=np.asarray(few.dose).reshape(-1, 1),
+        knots="quantiles",
+        biters=99,
+        j_x_degree=3,
+        k_w_degree=3,
+        seed=3,
+    )
+
+    np.testing.assert_allclose(few.att_d, curve.h, rtol=1e-12)
+    np.testing.assert_allclose(few.att_d_crit_val, curve.cv, rtol=1e-12)
+    np.testing.assert_allclose(few.acrt_d_crit_val, curve.cv_deriv, rtol=1e-12)
+    assert abs(few.att_d_crit_val - many.att_d_crit_val) > 1e-2
 
 
 def test_cont_did_rejects_the_removed_alp_argument(contdid_data):
