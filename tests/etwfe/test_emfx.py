@@ -197,15 +197,8 @@ def test_emfx_dropped_cells_nan_with_warning(mpdta_state_dummies):
     "family,expected_att,expected_se",
     [("logit", -0.0224197006154885, 0.0102903054621714), ("probit", -0.0225302051434962, 0.0103439266043137)],
 )
-def test_emfx_binary_family_simple(mpdta_moderators, family, expected_att, expected_se):
-    mod = etwfe(
-        data=mpdta_moderators,
-        yname="ybin",
-        tname="year",
-        gname="first.treat",
-        idname="countyreal",
-        family=family,
-    )
+def test_emfx_binary_family_simple(fit_mpdta_moderators, family, expected_att, expected_se):
+    mod = fit_mpdta_moderators(yname="ybin", family=family)
     result = emfx(mod)
     np.testing.assert_allclose(result.overall_att, expected_att, atol=1e-8)
     np.testing.assert_allclose(result.overall_se, expected_se, rtol=1e-4)
@@ -229,15 +222,15 @@ def test_emfx_never_event_window_with_pretreatment(etwfe_never):
     assert result.event_times[-1] == 1.0
 
 
-def test_emfx_custom_alpha(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", alpha=0.10)
+def test_emfx_custom_alpha(fit_mpdta):
+    mod = fit_mpdta(alpha=0.10)
     result = emfx(mod, type="simple")
     np.testing.assert_allclose(result.critical_value, stats.norm.ppf(0.95), atol=1e-6)
 
 
-def test_emfx_alpha_05_wider_than_10(mpdta_data):
-    mod05 = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", alpha=0.05)
-    mod10 = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", alpha=0.10)
+def test_emfx_alpha_05_wider_than_10(fit_mpdta):
+    mod05 = fit_mpdta(alpha=0.05)
+    mod10 = fit_mpdta(alpha=0.10)
     e05 = emfx(mod05, type="event")
     e10 = emfx(mod10, type="event")
     assert e05.critical_value > e10.critical_value

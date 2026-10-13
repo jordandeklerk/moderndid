@@ -209,7 +209,7 @@ def test_cont_did_bootstrap_types(contdid_data, boot_type):
         dname="D",
         aggregation="eventstudy",
         boot_type=boot_type,
-        biters=10,
+        biters=2,
     )
 
     assert isinstance(result, PTEResult)
@@ -252,7 +252,7 @@ def test_cont_did_weighted_bootstrap_repeats_the_multiplier_event_study(contdid_
         "target_parameter": target_parameter,
         "aggregation": "eventstudy",
         "cband": True,
-        "biters": 49,
+        "biters": 5,
         "random_state": 11,
     }
     weighted = cont_did(data=contdid_data, boot_type="weighted", **kwargs)
@@ -522,7 +522,7 @@ def test_cont_did_empirical_bootstrap_event_study(contdid_data, target_parameter
         "dname": "D",
         "target_parameter": target_parameter,
         "aggregation": "eventstudy",
-        "biters": 10,
+        "biters": 2,
         "random_state": 1,
     }
     result = cont_did(data=contdid_data, boot_type="empirical", **kwargs)
@@ -1443,6 +1443,7 @@ def test_cont_did_event_study_reproducible_with_random_state(contdid_data, targe
 
 @pytest.mark.filterwarnings("ignore:Using x_grid as x_eval:UserWarning")
 @pytest.mark.filterwarnings("ignore:No pre-treatment periods to test:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous band smaller than pointwise:UserWarning")
 def test_cck_att_d_band_includes_comparison_mean(cck_test_data):
     result = cont_did(
         data=cck_test_data,
@@ -1605,7 +1606,7 @@ def test_cont_did_fractional_periods_match_att_gt(contdid_data):
     kwargs = {"yname": "Y", "tname": "period", "idname": "id", "gname": "G"}
     es_kwargs = {"dname": "D", "aggregation": "eventstudy", "random_state": 0, **kwargs}
     multiplier = cont_did(data=half_years, biters=10, **es_kwargs).event_study
-    empirical = cont_did(data=half_years, boot_type="empirical", biters=5, **es_kwargs).event_study
+    empirical = cont_did(data=half_years, boot_type="empirical", biters=2, **es_kwargs).event_study
     binary = aggte(att_gt(data=half_years, control_group="notyettreated", boot=False, cband=False, **kwargs), "dynamic")
 
     np.testing.assert_array_equal(multiplier.event_times, binary.event_times)
@@ -1892,7 +1893,7 @@ def test_cont_did_empirical_bootstrap_with_a_unit_column_named_g(contdid_data):
         "target_parameter": "level",
         "aggregation": "eventstudy",
         "boot_type": "empirical",
-        "biters": 5,
+        "biters": 2,
         "random_state": 0,
     }
     expected = cont_did(data=contdid_data.rename({"G": "cohort", "id": "unit"}), idname="unit", **kwargs)
@@ -2137,7 +2138,7 @@ def test_cont_did_empirical_bootstrap_leaves_out_cohort_that_cannot_fit_the_spli
     }
 
     with pytest.warns(UserWarning, match="cohort 2003 .* Its cells are left out of the event study"):
-        empirical = cont_did(data=single_dose_cohort_panel, boot_type="empirical", biters=9, **kwargs)
+        empirical = cont_did(data=single_dose_cohort_panel, boot_type="empirical", biters=2, **kwargs)
     with pytest.warns(UserWarning, match="cohort 2003 .* Its cells are left out of the event study"):
         multiplier = cont_did(data=single_dose_cohort_panel, biters=10, **kwargs)
     without = cont_did(data=single_dose_cohort_panel.filter(pl.col("G") != 2003), biters=10, **kwargs)

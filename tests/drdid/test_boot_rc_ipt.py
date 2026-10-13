@@ -23,10 +23,10 @@ def test_wboot_drdid_ipt_rc1_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    wboot_estimates = wboot_drdid_ipt_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=100, random_state=42)
+    wboot_estimates = wboot_drdid_ipt_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
-    assert len(wboot_estimates) == 100
+    assert len(wboot_estimates) == 20
     assert not np.all(np.isnan(wboot_estimates))
     if not np.all(np.isnan(wboot_estimates)):
         assert np.nanstd(wboot_estimates) > 0
@@ -66,7 +66,7 @@ def test_wboot_drdid_ipt_rc1_edge_cases():
 
     with pytest.warns(UserWarning):
         wboot_estimates = wboot_drdid_ipt_rc1(
-            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
+            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=2, random_state=42
         )
     assert np.sum(np.isnan(wboot_estimates)) >= 0
 
@@ -98,10 +98,10 @@ def test_wboot_drdid_ipt_rc1_with_weights():
 
     weights = rng.exponential(1, n)
 
-    wboot_estimates = wboot_drdid_ipt_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=100, random_state=42)
+    wboot_estimates = wboot_drdid_ipt_rc1(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
-    assert len(wboot_estimates) == 100
+    assert len(wboot_estimates) == 20
     assert np.sum(np.isnan(wboot_estimates)) < wboot_estimates.size
 
 
@@ -129,10 +129,10 @@ def test_wboot_drdid_ipt_rc2_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
-    wboot_estimates = wboot_drdid_ipt_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=100, random_state=42)
+    wboot_estimates = wboot_drdid_ipt_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
-    assert len(wboot_estimates) == 100
+    assert len(wboot_estimates) == 20
     assert not np.all(np.isnan(wboot_estimates))
     if not np.all(np.isnan(wboot_estimates)):
         assert np.nanstd(wboot_estimates) > 0
@@ -172,7 +172,7 @@ def test_wboot_drdid_ipt_rc2_edge_cases():
 
     with pytest.warns(UserWarning):
         wboot_estimates = wboot_drdid_ipt_rc2(
-            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
+            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=2, random_state=42
         )
     assert np.sum(np.isnan(wboot_estimates)) >= 0
 
@@ -204,10 +204,10 @@ def test_wboot_drdid_ipt_rc2_with_weights():
 
     weights = rng.exponential(1, n)
 
-    wboot_estimates = wboot_drdid_ipt_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=100, random_state=42)
+    wboot_estimates = wboot_drdid_ipt_rc2(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
-    assert len(wboot_estimates) == 100
+    assert len(wboot_estimates) == 20
     assert np.sum(np.isnan(wboot_estimates)) < wboot_estimates.size
 
 

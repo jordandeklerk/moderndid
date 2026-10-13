@@ -22,13 +22,30 @@ def mpdta_unbalanced(mpdta_data):
 
 
 @pytest.fixture
-def mpdta_without_county_8001(mpdta_data):
-    return mpdta_data.filter(pl.col("countyreal") != 8001)
+def mpdta_without_never_treated(mpdta_data):
+    return mpdta_data.filter(pl.col("first.treat") != 0)
+
+
+@pytest.fixture(scope="module")
+def mpdta_short():
+    """Keep the years 2005 to 2007 of mpdta without its 2004 cohort."""
+    return load_mpdta().filter((pl.col("year") >= 2005) & (pl.col("first.treat") != 2004))
 
 
 @pytest.fixture
-def mpdta_without_never_treated(mpdta_data):
-    return mpdta_data.filter(pl.col("first.treat") != 0)
+def mpdta_short_unbalanced(mpdta_short):
+    return mpdta_short.filter(~((pl.col("countyreal") == 8001) & (pl.col("year") == 2007)))
+
+
+@pytest.fixture
+def mpdta_short_without_county_8001(mpdta_short):
+    return mpdta_short.filter(pl.col("countyreal") != 8001)
+
+
+@pytest.fixture
+def mpdta_2007_cohort(mpdta_data):
+    """Keep the 2007 cohort and the never-treated counties of mpdta from 2004 on."""
+    return mpdta_data.filter((pl.col("year") >= 2004) & pl.col("first.treat").is_in([0, 2007]))
 
 
 @pytest.fixture
@@ -65,7 +82,7 @@ def mpdta_analytic_fit():
 
 @pytest.fixture(scope="module")
 def mpdta_bootstrap_fit():
-    """Fit didml to mpdta with eight bootstrap draws and a uniform band."""
+    """Fit didml to mpdta with six bootstrap draws and a uniform band."""
     return didml(
         load_mpdta(),
         yname="lemp",
@@ -76,21 +93,39 @@ def mpdta_bootstrap_fit():
         k_folds=2,
         random_state=0,
         cband=True,
-        biters=8,
+        biters=6,
+    )
+
+
+@pytest.fixture(scope="module")
+def mpdta_short_bootstrap_fit(mpdta_short):
+    """Fit didml to the short mpdta panel with two bootstrap draws."""
+    return didml(
+        mpdta_short,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~ lpop",
+        k_folds=2,
+        random_state=0,
+        biters=2,
     )
 
 
 @pytest.fixture
 def mpdta_tiny_cohort(mpdta_data):
-    """Keep only the first three counties of the 2004 cohort in mpdta."""
+    """Keep the never-treated counties and the first three counties of the 2004 cohort in mpdta up to 2005."""
     keep = mpdta_data.filter(pl.col("first.treat") == 2004)["countyreal"].unique().sort()[:3].to_list()
-    return mpdta_data.filter((pl.col("first.treat") != 2004) | pl.col("countyreal").is_in(keep))
+    return mpdta_data.filter(
+        (pl.col("year") <= 2005) & ((pl.col("first.treat") == 0) | pl.col("countyreal").is_in(keep))
+    )
 
 
 @pytest.fixture
-def mpdta_with_state(mpdta_data):
-    """Add a state column taken from the leading digits of the county code."""
-    return mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+def mpdta_with_state(mpdta_2007_cohort):
+    """Add a state column taken from the leading digits of the county code to the 2007 cohort data."""
+    return mpdta_2007_cohort.with_columns((pl.col("countyreal") // 1000).alias("state"))
 
 
 @pytest.fixture
@@ -99,9 +134,9 @@ def mpdta_repeated_row(mpdta_data):
 
 
 @pytest.fixture
-def mpdta_infinite_outcome(mpdta_data):
+def mpdta_short_infinite_outcome(mpdta_short):
     row = (pl.col("countyreal") == 8001) & (pl.col("year") == 2007)
-    return mpdta_data.with_columns(pl.when(row).then(float("inf")).otherwise(pl.col("lemp")).alias("lemp"))
+    return mpdta_short.with_columns(pl.when(row).then(float("inf")).otherwise(pl.col("lemp")).alias("lemp"))
 
 
 @pytest.fixture

@@ -107,10 +107,8 @@ def test_etwfe_adj_r_squared_matches_pyfixest(mpdta_extra, spec, effects, weight
 
 
 @pytest.mark.parametrize("family,yname", [("poisson", "lemp"), ("logit", "ybin"), ("probit", "ybin")])
-def test_etwfe_nonlinear_families_have_no_r_squared(mpdta_moderators, family, yname):
-    mod = etwfe(
-        data=mpdta_moderators, yname=yname, tname="year", gname="first.treat", idname="countyreal", family=family
-    )
+def test_etwfe_nonlinear_families_have_no_r_squared(fit_mpdta_moderators, family, yname):
+    mod = fit_mpdta_moderators(yname=yname, family=family)
     assert np.isnan(mod.r_squared)
     assert np.isnan(mod.adj_r_squared)
 
@@ -134,8 +132,8 @@ def test_etwfe_vcov_shape(etwfe_baseline):
 
 
 @pytest.mark.parametrize("cgroup", ["notyet", "never"])
-def test_etwfe_estimation_params_cgroup(mpdta_data, cgroup):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", cgroup=cgroup)
+def test_etwfe_estimation_params_cgroup(fit_mpdta, cgroup):
+    mod = fit_mpdta(cgroup=cgroup)
     assert mod.estimation_params["cgroup"] == cgroup
 
 
@@ -168,20 +166,20 @@ def test_etwfe_never_coefficients(etwfe_never):
     np.testing.assert_allclose(etwfe_never.coefficients, expected, atol=1e-4)
 
 
-def test_etwfe_feo_matches_vs_without_covariates(mpdta_data):
-    mod_vs = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", fe="vs")
-    mod_feo = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", fe="feo")
+def test_etwfe_feo_matches_vs_without_covariates(fit_mpdta):
+    mod_vs = fit_mpdta(fe="vs")
+    mod_feo = fit_mpdta(fe="feo")
     np.testing.assert_allclose(mod_vs.coefficients, mod_feo.coefficients, atol=1e-10)
 
 
 @pytest.mark.parametrize("fe", ["vs", "feo", "none"])
-def test_etwfe_fe_param_stored(mpdta_data, fe):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", fe=fe)
+def test_etwfe_fe_param_stored(fit_mpdta, fe):
+    mod = fit_mpdta(fe=fe)
     assert mod.estimation_params["fe"] == fe
 
 
-def test_etwfe_fe_none_no_fe_spec(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", fe="none")
+def test_etwfe_fe_none_no_fe_spec(fit_mpdta):
+    mod = fit_mpdta(idname=None, fe="none")
     assert mod.estimation_params["fe_spec"] is None
     assert len(mod.coefficients) == 7
     assert len(mod.coef_names) > 7
@@ -268,8 +266,8 @@ def test_etwfe_deterministic(mpdta_data):
     np.testing.assert_array_equal(mod1.std_errors, mod2.std_errors)
 
 
-def test_etwfe_custom_alpha(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", alpha=0.10)
+def test_etwfe_custom_alpha(fit_mpdta):
+    mod = fit_mpdta(alpha=0.10)
     assert mod.estimation_params["alpha"] == 0.10
 
 
@@ -279,8 +277,8 @@ def test_etwfe_rejects_the_removed_alp_argument(mpdta_data):
 
 
 @pytest.mark.parametrize("vcov,expected_type", [("iid", "iid"), ("hetero", "hetero")])
-def test_etwfe_vcov_type(mpdta_data, vcov, expected_type):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", vcov=vcov)
+def test_etwfe_vcov_type(fit_mpdta, vcov, expected_type):
+    mod = fit_mpdta(vcov=vcov)
     assert mod.estimation_params["vcov_type"] == expected_type
 
 
@@ -297,10 +295,9 @@ def test_etwfe_cluster_vcov(mpdta_data):
     assert mod.estimation_params["clustervar"] == "first.treat"
 
 
-def test_etwfe_different_vcov_different_se(mpdta_data):
-    kwargs = dict(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal")
-    mod_hetero = etwfe(**kwargs, vcov="hetero")
-    mod_iid = etwfe(**kwargs, vcov="iid")
+def test_etwfe_different_vcov_different_se(fit_mpdta):
+    mod_hetero = fit_mpdta(vcov="hetero")
+    mod_iid = fit_mpdta(vcov="iid")
     assert not np.allclose(mod_hetero.std_errors, mod_iid.std_errors)
 
 
@@ -333,8 +330,8 @@ def test_etwfe_poisson_default_matches_explicit_cluster(etwfe_poisson_id, mpdta_
     np.testing.assert_allclose(etwfe_poisson_id.std_errors, explicit.std_errors, rtol=1e-12)
 
 
-def test_etwfe_poisson_without_idname_no_warning(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+def test_etwfe_poisson_without_idname_no_warning(fit_mpdta):
+    mod = fit_mpdta(idname=None, family="poisson")
     assert mod.estimation_params["family"] == "poisson"
 
 
@@ -513,14 +510,14 @@ def test_etwfe_scipy_backend_matches_default(mpdta_data, etwfe_baseline):
 
 
 @pytest.mark.parametrize("family,yname", [("poisson", "lemp"), ("logit", "ybin"), ("probit", "ybin")])
-def test_etwfe_nonlinear_families_ignore_backend(mpdta_moderators, family, yname):
+def test_etwfe_nonlinear_families_ignore_backend(mpdta_moderators, fit_mpdta_moderators, family, yname):
     mod = _fit(mpdta_moderators, yname=yname, family=family, backend="scipy")
-    _assert_same_fit(mod, _fit(mpdta_moderators, yname=yname, family=family))
+    _assert_same_fit(mod, fit_mpdta_moderators(yname=yname, family=family))
 
 
 @pytest.mark.parametrize("family,yname", [(None, "lemp"), ("poisson", "lemp"), ("logit", "ybin")])
-def test_etwfe_fits_without_private_pyfixest_module(mpdta_moderators, monkeypatch, family, yname):
-    expected = _fit(mpdta_moderators, yname=yname, family=family)
+def test_etwfe_fits_without_private_pyfixest_module(mpdta_moderators, fit_mpdta_moderators, monkeypatch, family, yname):
+    expected = fit_mpdta_moderators(yname=yname, family=family)
     monkeypatch.setitem(sys.modules, "pyfixest.estimation.estimation", None)
     _assert_same_fit(_fit(mpdta_moderators, yname=yname, family=family), expected)
 
@@ -538,8 +535,8 @@ def test_etwfe_rejects_unknown_backend(mpdta_moderators, kwargs):
     [("cupy", 1e-10), ("cupy32", 1e-6), ("cupy64", 1e-10), ("numba", 1e-10), ("rust", 1e-10), ("scipy", 1e-10)],
 )
 @pytest.mark.parametrize("fe", ["vs", "none"])
-def test_etwfe_passes_backend_to_fixed_effect_fits(mpdta_data, monkeypatch, backend, atol, fe):
-    expected = _fit(mpdta_data, fe=fe)
+def test_etwfe_passes_backend_to_fixed_effect_fits(mpdta_data, fit_mpdta, monkeypatch, backend, atol, fe):
+    expected = fit_mpdta(fe=fe)
     feols = pf.feols
     received = []
 
@@ -556,8 +553,8 @@ def test_etwfe_passes_backend_to_fixed_effect_fits(mpdta_data, monkeypatch, back
 
 
 @pytest.mark.parametrize("fe", ["vs", "none"])
-def test_etwfe_passes_jax_backend_to_fixed_effect_fits(mpdta_data, monkeypatch, fe):
-    expected = _fit(mpdta_data, fe=fe)
+def test_etwfe_passes_jax_backend_to_fixed_effect_fits(mpdta_data, fit_mpdta, monkeypatch, fe):
+    expected = fit_mpdta(fe=fe)
     feols = pf.feols
     received = []
 
@@ -588,15 +585,15 @@ def test_etwfe_model_coefficients_align_with_coef_names(etwfe_with_covariates):
     np.testing.assert_array_equal(mod.model_coefficients[pos], mod.coefficients)
 
 
-def test_etwfe_poisson_emfx_simple(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+def test_etwfe_poisson_emfx_simple(fit_mpdta):
+    mod = fit_mpdta(idname=None, family="poisson")
     s = emfx(mod, type="simple")
     np.testing.assert_allclose(s.overall_att, -0.049194, atol=1e-3)
     assert s.overall_se > 0
 
 
-def test_etwfe_poisson_emfx_event(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+def test_etwfe_poisson_emfx_event(fit_mpdta):
+    mod = fit_mpdta(idname=None, family="poisson")
     e = emfx(mod, type="event")
     np.testing.assert_array_equal(e.event_times, [0.0, 1.0, 2.0, 3.0])
     expected = np.array([-0.032106, -0.055866, -0.135119, -0.106439])
@@ -604,8 +601,8 @@ def test_etwfe_poisson_emfx_event(mpdta_data):
     assert np.all(e.se_by_event > 0)
 
 
-def test_etwfe_poisson_emfx_group(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+def test_etwfe_poisson_emfx_group(fit_mpdta):
+    mod = fit_mpdta(idname=None, family="poisson")
     g = emfx(mod, type="group")
     np.testing.assert_array_equal(g.event_times, [2004.0, 2006.0, 2007.0])
     expected = np.array([-0.08317, -0.022918, -0.044491])
@@ -700,8 +697,8 @@ def test_etwfe_xformla_with_outcome_raises(mpdta_data):
 
 @pytest.mark.parametrize("label", ["inf", "9999"])
 @pytest.mark.parametrize("kwargs", [{}, {"cgroup": "never"}, {"idname": None, "vcov": "hetero"}])
-def test_etwfe_never_treated_codes_match_zero_coding(mpdta_data, mpdta_never_codes, label, kwargs):
-    _assert_same_fit(_fit(mpdta_never_codes[label], **kwargs), _fit(mpdta_data, **kwargs))
+def test_etwfe_never_treated_codes_match_zero_coding(fit_mpdta, mpdta_never_codes, label, kwargs):
+    _assert_same_fit(_fit(mpdta_never_codes[label], **kwargs), fit_mpdta(**kwargs))
 
 
 @pytest.mark.parametrize("label", ["null", "nan"])

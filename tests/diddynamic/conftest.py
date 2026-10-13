@@ -137,7 +137,7 @@ def simple_qp_data(rng):
     return x_all, d_col, coef
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def estimator_panel():
     """Panel with 60 units and 3 periods suitable for end-to-end estimation."""
     rng = np.random.default_rng(99)
@@ -261,7 +261,7 @@ def disjoint_history_results(two_history_results):
     return first, second._replace(gammas=gammas, predictions=predictions), y_t
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def history_result(estimator_panel):
     """History result with lag lengths 1, 2, 3 for estimation tests."""
     with warnings.catch_warnings():
@@ -283,7 +283,7 @@ def history_result(estimator_panel):
         )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def impulse_panel():
     """Panel of 80 units in four groups of 20 that differ in their treatment pattern.
 
@@ -308,7 +308,7 @@ def impulse_panel():
     return pl.DataFrame({"id": ids, "time": times, "y": y, "D": treatment, "X1": x1})
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def impulse_result(impulse_panel):
     """Impulse response result with history lengths 2 and 3."""
     with warnings.catch_warnings():
@@ -331,7 +331,7 @@ def impulse_result(impulse_panel):
         )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def het_result(estimator_panel):
     """Het result with final_periods=[2, 3] for estimation tests."""
     with warnings.catch_warnings():
@@ -365,7 +365,7 @@ def estimator_panel_duplicated(request, estimator_panel):
     return pl.concat([estimator_panel, row.with_columns(pl.col("y") + 1)])
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def estimator_spec():
     """Keyword arguments of a small dyn_balancing call on the estimator panel."""
     return dict(
@@ -383,7 +383,50 @@ def estimator_spec():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
+def estimator_result(estimator_panel, estimator_spec):
+    """Result of the small dyn_balancing call on the estimator panel."""
+    return dyn_balancing(data=estimator_panel, **estimator_spec)
+
+
+@pytest.fixture(scope="session")
+def pooled_spec(estimator_spec):
+    """Keyword arguments of a pooled dyn_balancing call with two-period histories on the estimator panel."""
+    return estimator_spec | {"ds1": [1, 1], "ds2": [0, 0], "pooled": True}
+
+
+@pytest.fixture(scope="session")
+def pooled_result(estimator_panel, pooled_spec):
+    """Result of the pooled dyn_balancing call on the estimator panel."""
+    return dyn_balancing(data=estimator_panel, **pooled_spec)
+
+
+@pytest.fixture(scope="session")
+def clustered_result_without_unit_5(estimator_panel, estimator_spec):
+    """Result clustered on cluster_var cast to floats for the estimator panel without unit 5."""
+    data = estimator_panel.filter(pl.col("id") != 5).with_columns(pl.col("cluster_var").cast(pl.Float64))
+    return dyn_balancing(data=data, clustervars="cluster_var", **estimator_spec)
+
+
+@pytest.fixture(scope="session")
 def float_keyed_panel(estimator_panel):
     """Estimator panel whose unit and period columns are floats, so that they can hold NaN and infinity."""
     return estimator_panel.with_columns(pl.col("id", "time").cast(pl.Float64))
+
+
+@pytest.fixture(scope="session")
+def float_keyed_result(float_keyed_panel, estimator_spec):
+    """Result of the small dyn_balancing call on the float-keyed panel."""
+    return dyn_balancing(data=float_keyed_panel, **estimator_spec)
+
+
+@pytest.fixture(scope="session")
+def float_keyed_result_without_unit_5(float_keyed_panel, estimator_spec):
+    """Result of the small dyn_balancing call on the float-keyed panel without unit 5."""
+    return dyn_balancing(data=float_keyed_panel.filter(pl.col("id") != 5.0), **estimator_spec)
+
+
+@pytest.fixture(scope="session")
+def float_keyed_result_without_units_5_and_6(float_keyed_panel, estimator_spec):
+    """Result of the small dyn_balancing call on the float-keyed panel without units 5 and 6."""
+    return dyn_balancing(data=float_keyed_panel.filter(~pl.col("id").is_in([5.0, 6.0])), **estimator_spec)
