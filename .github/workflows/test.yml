@@ -20,6 +20,8 @@ env:
   NUMEXPR_NUM_THREADS: 1
   NUMBA_NUM_THREADS: 1
   POLARS_MAX_THREADS: 1
+  # Since the default tracer slows the suite by about a third, coverage records lines through sys.monitoring.
+  COVERAGE_CORE: sysmon
 
 jobs:
   test:

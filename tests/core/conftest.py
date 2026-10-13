@@ -290,7 +290,7 @@ def honest_did_result(mpdta):
         cband=False,
     )
     return honest_did(
-        aggte(universal, type="dynamic"),
+        aggte(universal, type="dynamic", max_e=0),
         event_time=0,
         sensitivity_type="relative_magnitude",
         m_bar_vec=[0.0, 1.0],

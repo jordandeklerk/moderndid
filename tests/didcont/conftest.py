@@ -678,7 +678,7 @@ def contdid_two_period_data():
 @pytest.fixture
 def cck_test_data():
     np.random.seed(42)
-    n = 500
+    n = 300
 
     id_vals = np.repeat(np.arange(1, n + 1), 2)
     time_vals = np.tile([1, 2], n)

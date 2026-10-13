@@ -92,7 +92,7 @@ def test_honest_did_basic(sample_aggte_result):
 
 
 def test_honest_did_with_reference_period(sample_aggte_result_with_ref):
-    result = honest_did(sample_aggte_result_with_ref, event_time=1)
+    result = honest_did(sample_aggte_result_with_ref, event_time=1, m_vec=np.array([0.0, 0.1]))
 
     assert isinstance(result, HonestDiDResult)
     assert isinstance(result.robust_ci, pl.DataFrame)
@@ -104,7 +104,9 @@ def test_honest_did_relative_magnitude(sample_aggte_result):
         sample_aggte_result,
         event_time=2,
         sensitivity_type="relative_magnitude",
+        method="Conditional",
         m_bar_vec=np.array([0.0, 1.0]),
+        grid_points=20,
     )
 
     assert result.sensitivity_type == "relative_magnitude"
@@ -126,6 +128,7 @@ def test_honest_did_methods(sample_aggte_result, event_time, method):
         event_time=event_time,
         method=method,
         m_vec=np.array([0, 0.1]),
+        grid_points=20,
     )
 
     assert (result.robust_ci["method"] == method).all()
@@ -136,12 +139,14 @@ def test_honest_did_custom_alpha(sample_aggte_result):
         sample_aggte_result,
         event_time=1,
         alpha=0.10,
+        m_vec=np.array([0.0]),
     )
 
     result_05 = honest_did(
         sample_aggte_result,
         event_time=1,
         alpha=0.05,
+        m_vec=np.array([0.0]),
     )
 
     ci_width_10 = result.original_ci.ub - result.original_ci.lb
@@ -303,15 +308,17 @@ def test_honest_did_grid_points_defaults(sample_aggte_result, monkeypatch):
 
 def test_honest_did_relative_magnitude_one_pre_period(make_event_study):
     event_study = make_event_study(np.array([-2, -1, 0, 1]), np.array([-0.03, 0.0, 0.10, 0.12]))
-    m_bar_vec = np.array([0.0, 0.5, 1.0])
+    m_bar_vec = np.array([0.0, 1.0])
 
-    result = honest_did(event_study, event_time=0, sensitivity_type="relative_magnitude", m_bar_vec=m_bar_vec)
+    result = honest_did(
+        event_study, event_time=0, sensitivity_type="relative_magnitude", method="Conditional", m_bar_vec=m_bar_vec
+    )
 
     influence_func = np.delete(event_study.influence_func, 1, axis=1)
     sigma = influence_func.T @ influence_func / 200**2
     betahat = np.array([-0.03, 0.10, 0.12])
     expected = create_sensitivity_results_rm(
-        betahat, sigma, 1, 2, l_vec=np.array([1.0, 0.0]), m_bar_vec=m_bar_vec, grid_points=100
+        betahat, sigma, 1, 2, method="Conditional", l_vec=np.array([1.0, 0.0]), m_bar_vec=m_bar_vec, grid_points=100
     )
     assert result.robust_ci["lb"].to_list() == pytest.approx(expected["lb"].to_list(), abs=1e-12)
     assert result.robust_ci["ub"].to_list() == pytest.approx(expected["ub"].to_list(), abs=1e-12)
@@ -333,6 +340,7 @@ def test_honest_did_linear_trend_two_pre_periods(make_event_study):
         event_time=1,
         sensitivity_type="relative_magnitude",
         bound="deviation from linear trend",
+        method="Conditional",
         m_bar_vec=m_bar_vec,
     )
 

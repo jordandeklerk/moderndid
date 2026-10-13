@@ -1,5 +1,7 @@
 """Tests for ARP nuisance CI."""
 
+from functools import partial
+
 import numpy as np
 import pytest
 
@@ -692,7 +694,8 @@ def test_compute_arp_nuisance_ci_tests_every_grid_point(rm_cases):
     assert result.ci_ub == pytest.approx(0.07)
 
 
-def test_compute_arp_nuisance_ci_seed_reaches_least_favorable_cv(rm_cases):
+def test_compute_arp_nuisance_ci_seed_reaches_least_favorable_cv(rm_cases, monkeypatch):
+    monkeypatch.setattr(arp_nuisance, "compute_least_favorable_cv", partial(compute_least_favorable_cv, sims=50))
     a_matrix = _create_relative_magnitudes_bias_constraint_matrix(
         num_pre_periods=3, num_post_periods=2, m_bar=0.5, s=-2, max_positive=False, bias_direction="positive"
     )

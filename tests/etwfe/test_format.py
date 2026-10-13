@@ -43,8 +43,8 @@ def test_format_etwfe_never_control(etwfe_never):
     assert "Never Treated" in output
 
 
-def test_format_etwfe_poisson_family(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+def test_format_etwfe_poisson_family(fit_mpdta):
+    mod = fit_mpdta(idname=None, family="poisson")
     output = format_etwfe_result(mod)
     assert "Extended TWFE (poisson)" in output
 
@@ -58,17 +58,15 @@ def test_format_etwfe_nonlinear_labels_index_estimates(etwfe_poisson_id):
 
 
 @pytest.mark.parametrize("family,yname", [("poisson", "lemp"), ("logit", "ybin"), ("probit", "ybin")])
-def test_format_etwfe_nonlinear_leaves_out_r_squared(mpdta_moderators, family, yname):
-    mod = etwfe(
-        data=mpdta_moderators, yname=yname, tname="year", gname="first.treat", idname="countyreal", family=family
-    )
+def test_format_etwfe_nonlinear_leaves_out_r_squared(fit_mpdta_moderators, family, yname):
+    mod = fit_mpdta_moderators(yname=yname, family=family)
     output = format_etwfe_result(mod)
     assert f"Estimation Method:  Extended TWFE ({family})" in output
     assert "R-squared" not in output
 
 
-def test_format_etwfe_hetero_without_cluster_variable(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", vcov="hetero")
+def test_format_etwfe_hetero_without_cluster_variable(fit_mpdta):
+    mod = fit_mpdta(vcov="hetero")
     output = format_etwfe_result(mod)
     assert "Std. errors: hetero" in output
     assert "clustered by" not in output
@@ -177,8 +175,8 @@ def test_etwfe_maketables_fixef_without_idname(mpdta_data):
     assert "Fixed Effects:  first.treat + year" in format_etwfe_result(mod)
 
 
-def test_etwfe_maketables_fixef_none_without_fixed_effects(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", fe="none")
+def test_etwfe_maketables_fixef_none_without_fixed_effects(fit_mpdta):
+    mod = fit_mpdta(idname=None, fe="none")
     assert mod.__maketables_fixef_string__ is None
 
 
@@ -271,14 +269,14 @@ def test_emfx_maketables_coef_table_simple(etwfe_baseline):
     assert len(table) == 1
 
 
-def test_format_etwfe_fe_none_no_fe_line(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", fe="none")
+def test_format_etwfe_fe_none_no_fe_line(fit_mpdta):
+    mod = fit_mpdta(idname=None, fe="none")
     output = format_etwfe_result(mod)
     assert "Fixed Effects:" not in output
 
 
-def test_format_emfx_poisson_family(mpdta_data):
-    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+def test_format_emfx_poisson_family(fit_mpdta):
+    mod = fit_mpdta(idname=None, family="poisson")
     result = emfx(mod, type="event")
     output = format_emfx_result(result)
     assert "Extended TWFE (poisson)" in output

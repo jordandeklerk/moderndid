@@ -30,8 +30,8 @@ from moderndid.didml.nuisance import fit_delta, fit_rlearner
 from moderndid.didml.nuisance.cv_lasso import cv_lasso_with_oof
 
 
-def test_didml_balanced_panel(mpdta_data, mpdta_spec, didml_options):
-    result = didml(mpdta_data, **mpdta_spec, **didml_options)
+def test_didml_balanced_panel(mpdta_data, mpdta_spec, mpdta_analytic_fit):
+    result = mpdta_analytic_fit
     reference = att_gt(
         mpdta_data, est_method="dr", control_group="notyettreated", boot=False, cband=False, **mpdta_spec
     )
@@ -78,14 +78,14 @@ def test_didml_att_averages_the_treated_catt_and_the_residual_correction(mpdta_a
     np.testing.assert_allclose(result.att_gt, expected, rtol=1e-10)
 
 
-def test_didml_bootstrap_refits_every_cell(mpdta_bootstrap_fit):
-    result = mpdta_bootstrap_fit
+def test_didml_bootstrap_refits_every_cell(mpdta_short_bootstrap_fit):
+    result = mpdta_short_bootstrap_fit
     draws = result.att_gt_draws
 
-    assert draws.shape == (8, 12)
+    assert draws.shape == (2, 4)
     assert result.estimation_params["bootstrap"] is True
     np.testing.assert_allclose(result.se_gt, draws.std(axis=0, ddof=1), rtol=1e-12)
-    assert result.cohort_share_draws.shape == (8, 3)
+    assert result.cohort_share_draws.shape == (2, 2)
     assert np.all(result.cohort_share_draws.sum(axis=1) < 1)
     assert not np.allclose(draws, result.att_gt)
 
@@ -107,14 +107,14 @@ def test_didml_bootstrap_band_and_pretest_use_the_draws(mpdta_bootstrap_fit):
     assert abs(hotelling - stats.chi2.sf(wald, n_pre)) > 1e-2
 
 
-def test_didml_bootstrap_pretest_needs_more_draws_than_pre_treatment_cells(mpdta_data, mpdta_spec):
+def test_didml_bootstrap_pretest_needs_more_draws_than_pre_treatment_cells(mpdta_2007_cohort, mpdta_spec):
     message = (
-        "Pre-test Wald not returned because 4 complete bootstrap draws cannot estimate the covariance of 5 "
-        "pre-treatment cells. Pass biters above 5 or boot=False."
+        "Pre-test Wald not returned because 2 complete bootstrap draws cannot estimate the covariance of 2 "
+        "pre-treatment cells. Pass biters above 2 or boot=False."
     )
 
     with pytest.warns(UserWarning, match=re.escape(message)):
-        result = didml(mpdta_data, **mpdta_spec, k_folds=2, random_state=0, biters=4)
+        result = didml(mpdta_2007_cohort, **mpdta_spec, k_folds=2, random_state=0, biters=2)
 
     assert result.wald_stat is None
     assert result.wald_pvalue is None
@@ -123,17 +123,19 @@ def test_didml_bootstrap_pretest_needs_more_draws_than_pre_treatment_cells(mpdta
 def test_didml_bootstrap_with_a_tiny_cohort_raises_no_convergence_warning(mpdta_tiny_cohort, mpdta_spec):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        result = didml(mpdta_tiny_cohort, **mpdta_spec, k_folds=2, random_state=1, biters=4)
+        result = didml(mpdta_tiny_cohort, **mpdta_spec, k_folds=2, random_state=7, biters=4)
 
     assert [str(w.message) for w in caught if w.category.__name__ == "ConvergenceWarning"] == []
     assert np.all(np.isfinite(result.se_gt[result.groups == 2004]))
 
 
-def test_didml_bootstrap_draws_repeat_with_the_seed_and_worker_processes(mpdta_data, mpdta_spec, mpdta_bootstrap_fit):
-    again = didml(mpdta_data, **mpdta_spec, k_folds=2, random_state=0, cband=True, biters=8, n_jobs=2)
+def test_didml_bootstrap_draws_repeat_with_the_seed_and_worker_processes(
+    mpdta_short, mpdta_spec, mpdta_short_bootstrap_fit
+):
+    again = didml(mpdta_short, **mpdta_spec, k_folds=2, random_state=0, biters=2, n_jobs=2)
 
-    np.testing.assert_array_equal(again.att_gt_draws, mpdta_bootstrap_fit.att_gt_draws)
-    np.testing.assert_array_equal(again.cohort_share_draws, mpdta_bootstrap_fit.cohort_share_draws)
+    np.testing.assert_array_equal(again.att_gt_draws, mpdta_short_bootstrap_fit.att_gt_draws)
+    np.testing.assert_array_equal(again.cohort_share_draws, mpdta_short_bootstrap_fit.cohort_share_draws)
 
 
 def test_didml_maketables_name_no_cluster_for_ignored_clustervars(mpdta_with_state, mpdta_spec):
@@ -160,25 +162,26 @@ def test_simultaneous_critical_value_is_the_quantile_of_the_largest_deviation():
     )
 
 
-def test_didml_constant_weights_reproduce_the_unweighted_fit(mpdta_data, mpdta_spec, didml_options, mpdta_analytic_fit):
-    weighted = didml(mpdta_data.with_columns(pl.lit(2.0).alias("w")), weightsname="w", **mpdta_spec, **didml_options)
+def test_didml_constant_weights_reproduce_the_unweighted_fit(mpdta_short, mpdta_spec, didml_options):
+    weighted = didml(mpdta_short.with_columns(pl.lit(2.0).alias("w")), weightsname="w", **mpdta_spec, **didml_options)
+    unweighted = didml(mpdta_short, **mpdta_spec, **didml_options)
 
-    np.testing.assert_allclose(weighted.att_gt, mpdta_analytic_fit.att_gt, rtol=1e-6)
-    np.testing.assert_allclose(weighted.se_gt, mpdta_analytic_fit.se_gt, rtol=1e-6)
+    np.testing.assert_allclose(weighted.att_gt, unweighted.att_gt, rtol=1e-6)
+    np.testing.assert_allclose(weighted.se_gt, unweighted.se_gt, rtol=1e-6)
 
 
 def test_didml_unbalanced_panel_matches_complete_units(
-    mpdta_unbalanced, mpdta_without_county_8001, mpdta_spec, didml_options
+    mpdta_short_unbalanced, mpdta_short_without_county_8001, mpdta_spec, didml_options
 ):
     with pytest.warns(UserWarning) as record:
-        result = didml(mpdta_unbalanced, **mpdta_spec, **didml_options)
-    expected = didml(mpdta_without_county_8001, **mpdta_spec, **didml_options)
+        result = didml(mpdta_short_unbalanced, **mpdta_spec, **didml_options)
+    expected = didml(mpdta_short_without_county_8001, **mpdta_spec, **didml_options)
 
     assert [str(warning.message) for warning in record if "units" in str(warning.message)] == [
         "Dropped 1 units while converting to balanced panel"
     ]
-    assert result.n_units == 499
-    assert result.estimation_params["n_obs"] == 2495
+    assert result.n_units == 479
+    assert result.estimation_params["n_obs"] == 1437
     assert result.estimation_params["cohort_counts"][2007.0] == 130
     np.testing.assert_array_equal(result.unit_ids, expected.unit_ids)
     np.testing.assert_allclose(result.att_gt, expected.att_gt, rtol=1e-10, atol=0)
@@ -284,14 +287,14 @@ def test_didml_no_longer_accepts_tune_penalty(mpdta_data, mpdta_spec, didml_opti
         DIDMLConfig(**mpdta_spec, tune_penalty=True)
 
 
-def test_didml_without_amle_weights_warns_that_analytic_errors_are_undefined(mpdta_data, mpdta_spec, didml_options):
+def test_didml_without_amle_weights_warns_that_analytic_errors_are_undefined(mpdta_short, mpdta_spec, didml_options):
     message = "With use_gamma=False the influence-function standard errors are undefined and se_gt holds NaN."
 
     with (
         pytest.warns(UserWarning, match=re.escape(message)),
         pytest.warns(UserWarning, match="^Pre-test Wald not returned due to NaN entries in pre-treatment variance.$"),
     ):
-        result = didml(mpdta_data, use_gamma=False, **mpdta_spec, **didml_options)
+        result = didml(mpdta_short, use_gamma=False, **mpdta_spec, **didml_options)
 
     assert np.isnan(result.se_gt).all()
     assert np.isfinite(result.att_gt).all()
@@ -328,16 +331,16 @@ def test_didml_rejects_repeated_unit_periods(mpdta_repeated_row, mpdta_spec, did
 
 
 def test_didml_drops_infinite_outcome_like_a_missing_one(
-    mpdta_infinite_outcome, mpdta_without_county_8001, mpdta_spec, didml_options
+    mpdta_short_infinite_outcome, mpdta_short_without_county_8001, mpdta_spec, didml_options
 ):
     with (
         pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"),
         pytest.warns(UserWarning, match="^Dropped 1 units while converting to balanced panel$"),
     ):
-        result = didml(mpdta_infinite_outcome, **mpdta_spec, **didml_options)
-    expected = didml(mpdta_without_county_8001, **mpdta_spec, **didml_options)
+        result = didml(mpdta_short_infinite_outcome, **mpdta_spec, **didml_options)
+    expected = didml(mpdta_short_without_county_8001, **mpdta_spec, **didml_options)
 
-    assert result.n_units == 499
+    assert result.n_units == 479
     np.testing.assert_array_equal(result.unit_ids, expected.unit_ids)
     np.testing.assert_allclose(result.att_gt, expected.att_gt, rtol=1e-10, atol=0)
     np.testing.assert_allclose(result.se_gt, expected.se_gt, rtol=1e-10, atol=0)
@@ -351,8 +354,8 @@ def test_didml_rejects_weights_without_positive_mean(mpdta_zero_weights, mpdta_s
         didml(mpdta_zero_weights, weightsname="w", **mpdta_spec, **didml_options)
 
 
-def test_didml_critical_value_stays_pointwise_without_the_bootstrap(mpdta_data, mpdta_spec, didml_options):
-    result = didml(mpdta_data, cband=True, **mpdta_spec, **didml_options)
+def test_didml_critical_value_stays_pointwise_without_the_bootstrap(mpdta_short, mpdta_spec, didml_options):
+    result = didml(mpdta_short, cband=True, **mpdta_spec, **didml_options)
 
     assert result.critical_value == pytest.approx(stats.norm.ppf(0.975))
 

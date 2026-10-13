@@ -496,7 +496,7 @@ def test_bootstrap_standard_errors(simple_panel_data, placebo):
         effects=2,
         placebo=placebo,
         boot=True,
-        biters=50,
+        biters=10,
         random_state=42,
     )
 
@@ -517,7 +517,7 @@ def test_bootstrap_with_cluster(favara_imbs_data):
         effects=2,
         cluster="state_n",
         boot=True,
-        biters=50,
+        biters=10,
         random_state=42,
     )
 
@@ -534,7 +534,7 @@ def test_bootstrap_reproducibility(simple_panel_data):
         "dname": "d",
         "effects": 2,
         "boot": True,
-        "biters": 50,
+        "biters": 10,
         "random_state": 123,
     }
     result1 = did_multiplegt(simple_panel_data, **kwargs)

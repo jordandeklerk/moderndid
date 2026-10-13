@@ -9,7 +9,7 @@ from moderndid import etwfe, load_mpdta
 from moderndid.core.preprocess.config import EtwfeConfig
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mpdta_data():
     return load_mpdta()
 
@@ -29,54 +29,57 @@ def base_config():
     )
 
 
-@pytest.fixture
-def etwfe_baseline(mpdta_data):
-    return etwfe(
-        data=mpdta_data,
-        yname="lemp",
-        tname="year",
-        gname="first.treat",
-        idname="countyreal",
-    )
+def _fit_once(data):
+    """Build a function that fits etwfe to the data once for each set of options."""
+    fits = {}
+
+    def fit(**kwargs):
+        key = tuple(sorted(kwargs.items()))
+        if key not in fits:
+            spec = {"yname": "lemp", "tname": "year", "gname": "first.treat", "idname": "countyreal", **kwargs}
+            fits[key] = etwfe(data=data, **spec)
+        return fits[key]
+
+    return fit
 
 
-@pytest.fixture
-def etwfe_never(mpdta_data):
-    return etwfe(
-        data=mpdta_data,
-        yname="lemp",
-        tname="year",
-        gname="first.treat",
-        idname="countyreal",
-        cgroup="never",
-    )
+@pytest.fixture(scope="session")
+def fit_mpdta(mpdta_data):
+    """Function that fits etwfe to mpdta once for each set of options."""
+    return _fit_once(mpdta_data)
 
 
-@pytest.fixture
-def etwfe_with_covariates(mpdta_data):
-    return etwfe(
-        data=mpdta_data,
-        yname="lemp",
-        tname="year",
-        gname="first.treat",
-        idname="countyreal",
-        xformla="~ lpop",
-    )
+@pytest.fixture(scope="session")
+def fit_mpdta_moderators(mpdta_moderators):
+    """Function that fits etwfe to mpdta_moderators once for each set of options."""
+    return _fit_once(mpdta_moderators)
 
 
-@pytest.fixture
-def etwfe_poisson_id(mpdta_data):
-    return etwfe(
-        data=mpdta_data,
-        yname="lemp",
-        tname="year",
-        gname="first.treat",
-        idname="countyreal",
-        family="poisson",
-    )
+@pytest.fixture(scope="session")
+def etwfe_baseline(fit_mpdta):
+    """ETWFE fit of mpdta under the default options."""
+    return fit_mpdta()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
+def etwfe_never(fit_mpdta):
+    """ETWFE fit of mpdta that compares cohorts with the never-treated units."""
+    return fit_mpdta(cgroup="never")
+
+
+@pytest.fixture(scope="session")
+def etwfe_with_covariates(fit_mpdta):
+    """ETWFE fit of mpdta with lpop as a control."""
+    return fit_mpdta(xformla="~ lpop")
+
+
+@pytest.fixture(scope="session")
+def etwfe_poisson_id(fit_mpdta):
+    """Poisson ETWFE fit of mpdta with countyreal as the unit identifier."""
+    return fit_mpdta(family="poisson")
+
+
+@pytest.fixture(scope="session")
 def mpdta_moderators(mpdta_data):
     gls_states = [17, 18, 26, 27, 36, 39, 42, 55]
     lpop = pl.col("lpop")

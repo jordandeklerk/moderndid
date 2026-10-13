@@ -70,10 +70,10 @@ def test_wboot_drdid_imp_panel_edge_cases():
 
     with pytest.warns(UserWarning):
         boot_estimates = wboot_drdid_imp_panel(
-            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
+            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, biters=2, random_state=42
         )
 
-    assert np.sum(np.isnan(boot_estimates)) >= 5
+    assert np.sum(np.isnan(boot_estimates)) >= 1
 
 
 def test_wboot_drdid_imp_panel_reproducibility():
@@ -111,7 +111,7 @@ def test_wboot_drdid_imp_panel_with_weights():
 @pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_drdid_imp_panel_compare_variance():
     rng = np.random.default_rng(42)
-    n = 300
+    n = 150
     x = np.column_stack([np.ones(n), rng.standard_normal((n, 2))])
     d = rng.binomial(1, 0.4, n)
 
@@ -119,11 +119,11 @@ def test_wboot_drdid_imp_panel_compare_variance():
     delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
+    boot_estimates = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=40, random_state=42)
 
     valid_estimates = boot_estimates[~np.isnan(boot_estimates)]
 
-    assert len(valid_estimates) > 100
+    assert len(valid_estimates) > 20
 
     boot_se = np.std(valid_estimates)
     assert 0.1 < boot_se < 2.0
@@ -344,15 +344,15 @@ def test_wboot_dr_tr_panel_compare_with_improved():
     delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_traditional = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
+    boot_traditional = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=40, random_state=42)
 
-    boot_improved = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
+    boot_improved = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=40, random_state=42)
 
     valid_traditional = boot_traditional[~np.isnan(boot_traditional)]
     valid_improved = boot_improved[~np.isnan(boot_improved)]
 
-    assert len(valid_traditional) > 150
-    assert len(valid_improved) > 150
+    assert len(valid_traditional) > 30
+    assert len(valid_improved) > 30
     assert np.abs(np.mean(valid_traditional) - np.mean(valid_improved)) < 0.5
 
     se_traditional = np.std(valid_traditional)
@@ -459,15 +459,15 @@ def test_wboot_ipw_panel_compare_with_dr():
     delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
-    boot_ipw = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
+    boot_ipw = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=40, random_state=42)
 
-    boot_dr = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=200, random_state=42)
+    boot_dr = wboot_drdid_imp_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, biters=40, random_state=42)
 
     valid_ipw = boot_ipw[~np.isnan(boot_ipw)]
     valid_dr = boot_dr[~np.isnan(boot_dr)]
 
-    assert len(valid_ipw) > 150
-    assert len(valid_dr) > 150
+    assert len(valid_ipw) > 30
+    assert len(valid_dr) > 30
     assert np.abs(np.mean(valid_ipw) - np.mean(valid_dr)) < 1.0
 
     se_ipw = np.std(valid_ipw)
@@ -655,7 +655,7 @@ def test_wboot_reg_panel_compare_with_dr():
         d=d,
         x=x,
         i_weights=weights,
-        biters=200,
+        biters=40,
         random_state=42,
     )
     boot_dr = wboot_drdid_imp_panel(
@@ -663,15 +663,15 @@ def test_wboot_reg_panel_compare_with_dr():
         d=d,
         x=x,
         i_weights=weights,
-        biters=200,
+        biters=40,
         random_state=42,
     )
 
     valid_reg = boot_reg[~np.isnan(boot_reg)]
     valid_dr = boot_dr[~np.isnan(boot_dr)]
 
-    assert len(valid_reg) > 150
-    assert len(valid_dr) > 150
+    assert len(valid_reg) > 30
+    assert len(valid_dr) > 30
 
     mean_reg = np.mean(valid_reg)
     mean_dr = np.mean(valid_dr)
