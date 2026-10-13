@@ -134,7 +134,7 @@ def _fit_delta_stack(X, y, *, k_folds, random_state):
     """Fit a super learner stacking ensemble with a non-negative least-squares meta-learner."""
     p = X.shape[1]
     base_estimators = [
-        ("lasso", LassoCV(cv=10, n_alphas=100, max_iter=10_000, random_state=random_state)),
+        ("lasso", LassoCV(cv=10, alphas=100, max_iter=10_000, random_state=random_state)),
         (
             "rf",
             RandomForestRegressor(
