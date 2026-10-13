@@ -112,7 +112,7 @@ def python_estimate_cck(data):
         treatment_type="continuous",
         dose_est_method="cck",
         control_group="notyettreated",
-        biters=100,
+        biters=999,
         cband=True,
         random_state=42,
     )

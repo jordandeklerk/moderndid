@@ -58,16 +58,37 @@ def check_r_available():
 R_AVAILABLE = check_r_available()
 
 
-def r_drdid(data_path, est_method="imp", panel=True, xformla=None):
+def r_subtract_pre_period_term():
+    return """
+for (name in c("drdid_rc", "drdid_rc1")) {
+  src <- deparse(get(name, envir = asNamespace("DRDID")), width.cutoff = 500L)
+  for (part in c("treat", "cont")) {
+    line <- grep(sprintf("inf.%s.or <- inf.%s.or.post + inf.%s.or.pre", part, part, part), src, fixed = TRUE)
+    stopifnot(length(line) == 1)
+    src[line] <- sub(" + ", " - ", src[line], fixed = TRUE)
+  }
+  fixed <- eval(parse(text = src))
+  environment(fixed) <- asNamespace("DRDID")
+  assignInNamespace(name, fixed, ns = "DRDID")
+  attached <- as.environment("package:DRDID")
+  unlockBinding(name, attached)
+  assign(name, fixed, envir = attached)
+  lockBinding(name, attached)
+}
+"""
+
+
+def r_drdid(data_path, est_method="imp", panel=True, xformla=None, subtract_pre_period_term=False):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
 
     xformla_str = f"xformla = {xformla}," if xformla else ""
+    patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
 
     r_script = f"""
 library(DRDID)
 library(jsonlite)
-
+{patch}
 data <- read.csv("{data_path}")
 
 result <- drdid(
@@ -96,16 +117,17 @@ write_json(out, "{result_path}", digits = 16)
         return None
 
 
-def r_drdid_rc_estimator(data_path, estimator, xformla=None):
+def r_drdid_rc_estimator(data_path, estimator, xformla=None, subtract_pre_period_term=False):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
 
     xformla_str = xformla if xformla else "~ 1"
+    patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
 
     r_script = f"""
 library(DRDID)
 library(jsonlite)
-
+{patch}
 data <- read.csv("{data_path}")
 
 tlist <- sort(unique(data$year))
@@ -243,14 +265,16 @@ write_json(list(message = message), "{result_path}", auto_unbox = TRUE)
         return None
 
 
-def r_rc_estimator_on_design(data_path, estimator, covariates):
+def r_rc_estimator_on_design(data_path, estimator, covariates, subtract_pre_period_term=False):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
+
+    patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
 
     r_script = f"""
 library(DRDID)
 library(jsonlite)
-
+{patch}
 data <- read.csv("{data_path}")
 covariates <- model.matrix(~ {" + ".join(covariates)}, data = data)
 
@@ -434,7 +458,7 @@ def test_drdid_rc_no_covariates(nsw_data, data_path, est_method):
 def test_drdid_rc_with_covariates(nsw_data, data_path, est_method):
     xformla = "~ age + educ + black + married"
 
-    r_result = r_drdid(data_path, est_method=est_method, panel=False, xformla=xformla)
+    r_result = r_drdid(data_path, est_method=est_method, panel=False, xformla=xformla, subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R estimation failed")
@@ -465,7 +489,7 @@ def test_drdid_rc_with_covariates(nsw_data, data_path, est_method):
 def test_rc_estimators_that_are_not_locally_efficient_match_r_low_level_estimators(
     nsw_data, data_path, py_estimator, r_estimator, xformla
 ):
-    r_result = r_drdid_rc_estimator(data_path, r_estimator, xformla=xformla)
+    r_result = r_drdid_rc_estimator(data_path, r_estimator, xformla=xformla, subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R estimation failed")
@@ -474,6 +498,26 @@ def test_rc_estimators_that_are_not_locally_efficient_match_r_low_level_estimato
 
     np.testing.assert_allclose(py_result.att, r_result["ATT"], rtol=1e-6, err_msg=f"{r_estimator}: ATT mismatch")
     np.testing.assert_allclose(py_result.se, r_result["se"], rtol=1e-4, err_msg=f"{r_estimator}: SE mismatch")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DRDID package not available")
+@pytest.mark.parametrize(
+    ("py_estimator", "r_estimator", "ratio"),
+    [(drdid_rc, "drdid_rc", 1.003417), (drdid_trad_rc, "drdid_rc1", 1.003244)],
+    ids=["drdid_rc", "drdid_trad_rc"],
+)
+def test_rc_dr_standard_errors_depart_from_reference_that_adds_the_pre_period_regression_term(
+    nsw_data, data_path, py_estimator, r_estimator, ratio
+):
+    xformla = "~ age + educ + black + married"
+
+    r_result = r_drdid_rc_estimator(data_path, r_estimator, xformla=xformla)
+    py_result = python_drdid_rc_estimator(nsw_data, py_estimator, xformla=xformla)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+    np.testing.assert_allclose(py_result.att, r_result["ATT"], rtol=1e-8)
+    np.testing.assert_allclose(r_result["se"][0] / py_result.se, ratio, rtol=1e-6)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R DRDID package not available")
@@ -792,7 +836,7 @@ def test_invalid_trim_level(nsw_data, trim_level):
 def test_drdid_covariates_without_formulaic_match_r(nsw_data, data_path, without_formulaic, panel):
     xformla = "~ age + educ + black + married"
 
-    r_result = r_drdid(data_path, est_method="trad", panel=panel, xformla=xformla)
+    r_result = r_drdid(data_path, est_method="trad", panel=panel, xformla=xformla, subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R estimation failed")
@@ -867,7 +911,7 @@ def test_rc_estimators_without_treated_regressions_match_r_on_an_unidentified_tr
     data = unidentified_treated_cell(design)
     data.write_csv(tmp_path / "data.csv")
 
-    r_result = r_rc_estimator_on_design(tmp_path / "data.csv", r_estimator, covariates)
+    r_result = r_rc_estimator_on_design(tmp_path / "data.csv", r_estimator, covariates, subtract_pre_period_term=True)
     py_result = py_estimator(**rc_arrays(data, covariates))
 
     if r_result is None:

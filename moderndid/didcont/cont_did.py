@@ -156,7 +156,8 @@ def cont_did(
         another name for ``"multiplier"``. ``"empirical"`` resamples units and needs
         ``aggregation="eventstudy"`` without ``min_e``, ``max_e``, or ``balance_e``.
     biters : int, default=1000
-        The number of bootstrap draws.
+        The number of bootstrap draws. With ``dose_est_method="cck"``, the sieve
+        selection and the uniform bands also use this many draws.
     clustervars : str or list of str, optional
         Variables to cluster on. The standard errors cluster by ``idname`` only and
         ignore any other variable with a warning.
@@ -773,7 +774,7 @@ def _estimate_cck(cont_did_data, original_data, random_state=None):
         x_grid=dvals,
         alpha=alpha,
         knots="quantiles",
-        biters=999,
+        biters=config.biters,
         j_x_degree=3,
         k_w_degree=3,
         seed=random_state,

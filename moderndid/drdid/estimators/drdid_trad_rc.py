@@ -363,7 +363,8 @@ def _compute_influence_function(y, post, out_y, covariates, weights, influence_c
     # Now get the influence function related to the estimation effect related to beta's
     inf_treat_or_post = asy_lin_rep_ols_post @ deriv_treat_post
     inf_treat_or_pre = asy_lin_rep_ols_pre @ deriv_treat_pre
-    inf_treat_or = inf_treat_or_post + inf_treat_or_pre
+    # Since the pre-period mean enters each component with a minus sign, so does its regression's estimation effect.
+    inf_treat_or = inf_treat_or_post - inf_treat_or_pre
 
     # Influence function for the treated component
     inf_treat = inf_treat_post - inf_treat_pre + inf_treat_or
@@ -392,7 +393,7 @@ def _compute_influence_function(y, post, out_y, covariates, weights, influence_c
     # Now get the influence function related to the estimation effect related to beta's
     inf_cont_or_post = asy_lin_rep_ols_post @ deriv_cont_or_post
     inf_cont_or_pre = asy_lin_rep_ols_pre @ deriv_cont_or_pre
-    inf_cont_or = inf_cont_or_post + inf_cont_or_pre
+    inf_cont_or = inf_cont_or_post - inf_cont_or_pre
 
     # Influence function for the control component
     inf_cont = inf_cont_post - inf_cont_pre + inf_cont_ps + inf_cont_or

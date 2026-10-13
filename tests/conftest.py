@@ -142,6 +142,23 @@ def draws_from_weights():
 
 
 @pytest.fixture
+def weight_derivative():
+    """Turn central differences of an estimate in single observation weights into influence function entries."""
+
+    def entries(estimate, n_obs, rows, step=1e-3):
+        values = []
+        for row in rows:
+            up = np.ones(n_obs)
+            up[row] += step
+            down = np.ones(n_obs)
+            down[row] -= step
+            values.append(n_obs * (estimate(up) - estimate(down)) / (2 * step))
+        return np.array(values)
+
+    return entries
+
+
+@pytest.fixture
 def did_offsetting_cohort_data():
     """Panel whose controls share one outcome path and where cohort 2 has two units with opposite shocks."""
     rng = np.random.default_rng(5)

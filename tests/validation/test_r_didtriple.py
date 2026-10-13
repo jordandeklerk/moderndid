@@ -1596,17 +1596,32 @@ def _convert_r_array(arr):
     return np.array(result)
 
 
-def r_estimate_2period_rcs(data, est_method="dr"):
+def r_subtract_pre_period_term():
+    return """
+src <- deparse(triplediff:::compute_did_rc, width.cutoff = 500L)
+for (part in c("treat", "control")) {
+  line <- grep(sprintf("inf_%s_or <- inf_%s_or_post + inf_%s_or_pre", part, part, part), src, fixed = TRUE)
+  stopifnot(length(line) == 1)
+  src[line] <- sub(" + ", " - ", src[line], fixed = TRUE)
+}
+fixed <- eval(parse(text = src))
+environment(fixed) <- asNamespace("triplediff")
+assignInNamespace("compute_did_rc", fixed, ns = "triplediff")
+"""
+
+
+def r_estimate_2period_rcs(data, est_method="dr", subtract_pre_period_term=False):
     with tempfile.TemporaryDirectory() as tmpdir:
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
         data.write_csv(data_path)
+        patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
 
         r_script = f"""
 library(triplediff)
 library(jsonlite)
-
+{patch}
 data <- read.csv("{data_path}")
 
 result <- ddd(
@@ -1738,7 +1753,7 @@ def test_2period_rcs_standard_errors_match(two_period_rcs_data, est_method):
     data = two_period_rcs_data
 
     py_result = python_estimate_2period_rcs(data, est_method)
-    r_result = r_estimate_2period_rcs(data, est_method)
+    r_result = r_estimate_2period_rcs(data, est_method, subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R RCS estimation failed")
@@ -1757,7 +1772,7 @@ def test_2period_rcs_confidence_intervals_match(two_period_rcs_data):
     data = two_period_rcs_data
 
     py_result = python_estimate_2period_rcs(data, "dr")
-    r_result = r_estimate_2period_rcs(data, "dr")
+    r_result = r_estimate_2period_rcs(data, "dr", subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R RCS estimation failed")
@@ -2073,6 +2088,7 @@ def r_estimate_with_eventstudy(
     xformla="~1",
     control_group="nevertreated",
     allow_unbalanced_panel=False,
+    subtract_pre_period_term=False,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         data_path = Path(tmpdir) / "data.csv"
@@ -2081,11 +2097,12 @@ def r_estimate_with_eventstudy(
         data.write_csv(data_path)
 
         unbalanced_str = "TRUE" if allow_unbalanced_panel else "FALSE"
+        patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
 
         r_script = f"""
 library(triplediff)
 library(jsonlite)
-
+{patch}
 data <- read.csv("{data_path}")
 
 result <- ddd(
@@ -2141,7 +2158,7 @@ def python_estimate_cai(data, xformla=None, allow_unbalanced_panel=False):
     )
 
 
-def r_estimate_cai(data, xformla=None, allow_unbalanced_panel=False):
+def r_estimate_cai(data, xformla=None, allow_unbalanced_panel=False, subtract_pre_period_term=False):
     return r_estimate_with_eventstudy(
         data,
         yname="checksaving_ratio",
@@ -2151,6 +2168,7 @@ def r_estimate_cai(data, xformla=None, allow_unbalanced_panel=False):
         pname="sector",
         xformla=xformla or "~1",
         allow_unbalanced_panel=allow_unbalanced_panel,
+        subtract_pre_period_term=subtract_pre_period_term,
     )
 
 
@@ -2158,7 +2176,7 @@ def r_estimate_cai(data, xformla=None, allow_unbalanced_panel=False):
 @pytest.mark.parametrize("xformla", [None, "~ hhsize + age"])
 def test_cai_unbalanced_att_gt_match(cai_data, xformla):
     py_result = python_estimate_cai(cai_data, xformla=xformla, allow_unbalanced_panel=True)
-    r_result = r_estimate_cai(cai_data, xformla=xformla, allow_unbalanced_panel=True)
+    r_result = r_estimate_cai(cai_data, xformla=xformla, allow_unbalanced_panel=True, subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R estimation failed")
@@ -2173,7 +2191,9 @@ def test_cai_unbalanced_att_gt_match(cai_data, xformla):
 def test_cai_unbalanced_eventstudy_matches(cai_data):
     py_result = python_estimate_cai(cai_data, xformla="~ hhsize + age", allow_unbalanced_panel=True)
     py_agg = agg_ddd(py_result, type="eventstudy", boot=False, cband=False)
-    r_result = r_estimate_cai(cai_data, xformla="~ hhsize + age", allow_unbalanced_panel=True)
+    r_result = r_estimate_cai(
+        cai_data, xformla="~ hhsize + age", allow_unbalanced_panel=True, subtract_pre_period_term=True
+    )
 
     if r_result is None:
         pytest.fail("R estimation failed")
@@ -2183,6 +2203,20 @@ def test_cai_unbalanced_eventstudy_matches(cai_data):
     np.testing.assert_allclose(py_agg.se_egt, _convert_r_array(r_result["es_se"]), rtol=0, atol=1e-10)
     np.testing.assert_allclose(py_agg.overall_att, r_result["es_overall_att"], rtol=0, atol=1e-10)
     np.testing.assert_allclose(py_agg.overall_se, r_result["es_overall_se"], rtol=0, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_cai_unbalanced_standard_errors_depart_from_reference_that_adds_the_pre_period_regression_term(cai_data):
+    py_result = python_estimate_cai(cai_data, xformla="~ hhsize + age", allow_unbalanced_panel=True)
+    r_result = r_estimate_cai(cai_data, xformla="~ hhsize + age", allow_unbalanced_panel=True)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    estimated = np.isfinite(py_result.se)
+    ratio = _convert_r_array(r_result["se"])[estimated] / py_result.se[estimated]
+    np.testing.assert_allclose(py_result.att, _convert_r_array(r_result["att"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose([ratio.min(), ratio.max()], [0.9410343, 1.0437949], rtol=1e-6)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -2363,17 +2397,18 @@ def test_2period_unbalanced_panel_matches_reference_on_complete_units(two_period
         np.testing.assert_allclose(getattr(py_result, key), r_result[key], rtol=0, atol=1e-8, err_msg=key)
 
 
-def r_estimate_unbalanced_cells(data, xformla, est_method):
+def r_estimate_unbalanced_cells(data, xformla, est_method, subtract_pre_period_term=False):
     with tempfile.TemporaryDirectory() as tmpdir:
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
         data.write_csv(data_path)
+        patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
 
         r_script = f"""
 library(triplediff)
 library(jsonlite)
-
+{patch}
 data <- data.table::as.data.table(read.csv("{data_path}"))
 prepared <- triplediff:::run_preprocess_multPeriods(
     yname = "y",
@@ -2429,7 +2464,7 @@ def test_2period_balanced_panel_that_loses_a_row_matches_reference_unbalanced_ce
             est_method=est_method,
             allow_unbalanced_panel=True,
         )
-    r_result = r_estimate_unbalanced_cells(data, xformla, est_method)
+    r_result = r_estimate_unbalanced_cells(data, xformla, est_method, subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R estimation failed")
@@ -2473,6 +2508,7 @@ def r_estimate_ddd_mp(
     cluster=None,
     boot=False,
     biters=999,
+    subtract_pre_period_term=False,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         data_path = Path(tmpdir) / "data.csv"
@@ -2486,11 +2522,12 @@ def r_estimate_ddd_mp(
         agg_str = ", ".join(f'"{agg_type}"' for agg_type in agg_types)
         cluster_str = "NULL" if cluster is None else f'"{cluster}"'
         boot_str = "TRUE" if boot else "FALSE"
+        patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
 
         r_script = f"""
 library(triplediff)
 library(jsonlite)
-
+{patch}
 set.seed(42)
 data <- read.csv("{data_path}")
 
@@ -2667,6 +2704,7 @@ def test_mp_weighted_aggregations_match_reference_with_enabling_cohort_shares(
         weightsname="w",
         xformla="~ cov1 + cov2",
         agg_types=agg_types,
+        subtract_pre_period_term=True,
     )
 
     if r_result is None:

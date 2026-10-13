@@ -254,7 +254,7 @@ row reads 0.0000 with no standard error because 2002 is the anchor year. The two
 rows above it serve as placebo tests for the years before coverage. Had the gap between tobacco farmers and other
 households moved alike in every county before 2003, both would hover near zero.
 
-Instead, the 2000 estimate of −0.0599 has an interval from −0.1081 to −0.0116
+Instead, the 2000 estimate of −0.0599 has an interval from −0.1069 to −0.0128
 that excludes zero. The 2001 estimate of −0.0264 sits between it and the base
 year, as if the gap were already widening on its way to 2002. We'll come back to
 that pattern near the end, since it shapes how to read everything after 2003.
@@ -278,7 +278,7 @@ The estimates are the same as in the table above, since event time $e$ is just
 the year $2003 + e$. The bands, however, now cover all eight estimates together
 with 95 percent probability and come out wider as a result. Under these bands,
 only the effect at event time 5 excludes zero. Both the band at event time 4, from
-−0.0059 to 0.1830, and the placebo band at event time −3, from −0.1250 to 0.0052,
+−0.0080 to 0.1851, and the placebo band at event time −3, from −0.1232 to 0.0035,
 just cover zero.
 
 :::{admonition} Aggregations with one adoption year
@@ -309,7 +309,7 @@ The overall effect at the top of the event study answers the central question.
 It averages the effects of the six years after the insurance arrived. At 0.0652,
 it says insured tobacco farmers kept about 6.5 percentage points more of their
 net savings in checking accounts than they would have without the insurance. Its
-95 percent interval runs from 0.0246 to 0.1059, entirely above zero. Like
+95 percent interval runs from 0.0216 to 0.1089, entirely above zero. Like
 everything here, it holds only if the four assumptions above do.
 
 ### Against the original regression
@@ -407,7 +407,7 @@ gray circles of the regression rise together in the figure after 2003. They part
 most at the
 ends, where the regression's 2000 placebo is −0.0175 against −0.0599 and its
 2008 effect is 0.1047 against 0.1553. On this data the regression's intervals
-also come out narrower, between 0.71 and 0.94 times as wide as the triple
+also come out narrower, between 0.67 and 0.98 times as wide as the triple
 difference's.
 
 :::{admonition} The regression's narrower intervals
@@ -482,8 +482,7 @@ Each of the three swaps lowers the overall effect from 0.0652 to somewhere
 between 0.0565 and 0.0608. The estimator and the adjustment for size and age
 matter little here.
 Outcome regression does give the least precise estimate of the three. Its
-standard error of
-0.0218 compares with 0.0207 for the doubly robust one.
+standard error of 0.0218 is close to the doubly robust estimate's 0.0223.
 
 ### The trend before 2003
 

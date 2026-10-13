@@ -597,7 +597,8 @@ def _compute_inf_func_rc(
 
         inf_treat_or_post = asy_lin_rep_ols_post @ treat_moment_post
         inf_treat_or_pre = asy_lin_rep_ols_pre @ treat_moment_pre
-        inf_treat_or = inf_treat_or_post + inf_treat_or_pre
+        # Since the pre-period mean enters each component with a minus sign, so does its regression's estimation effect.
+        inf_treat_or = inf_treat_or_post - inf_treat_or_pre
 
         cont_reg_moment_post = -xp.mean((w_cont_post * sub_post)[:, None] * sub_covariates, axis=0) / mean_w_cont_post
         cont_reg_moment_pre = (
@@ -606,7 +607,7 @@ def _compute_inf_func_rc(
 
         inf_cont_or_post = asy_lin_rep_ols_post @ cont_reg_moment_post
         inf_cont_or_pre = asy_lin_rep_ols_pre @ cont_reg_moment_pre
-        inf_cont_or = inf_cont_or_post + inf_cont_or_pre
+        inf_cont_or = inf_cont_or_post - inf_cont_or_pre
 
         mom_post = xp.mean(((w_d / mean_w_d) - (w_dt1 / mean_w_dt1))[:, None] * sub_covariates, axis=0)
         mom_pre = xp.mean(((w_d / mean_w_d) - (w_dt0 / mean_w_dt0))[:, None] * sub_covariates, axis=0)

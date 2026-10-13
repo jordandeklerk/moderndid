@@ -970,7 +970,7 @@ def test_drdid_panel_header_and_table_count_the_balanced_units(nsw_data):
     ("est_method", "estimator", "att", "se"),
     [
         ("imp", drdid_imp_local_rc, 0.08027838510, 0.2008845114),
-        ("trad", drdid_rc, 0.1013594144, 0.2042126933),
+        ("trad", drdid_rc, 0.1013594144, 0.2052425977),
     ],
 )
 def test_drdid_rc_methods_run_the_locally_efficient_estimators(
@@ -993,7 +993,7 @@ def test_drdid_rc_methods_run_the_locally_efficient_estimators(
 
 @pytest.mark.parametrize(
     ("estimator", "att", "se"),
-    [(drdid_imp_rc, -1.941300004, 3.104453917), (drdid_trad_rc, -1.918270052, 3.105141979)],
+    [(drdid_imp_rc, -1.941300004, 3.104453917), (drdid_trad_rc, -1.918270052, 3.105298316)],
 )
 def test_rc_estimators_that_are_not_locally_efficient_stay_reachable(rc_correct_models_arrays, estimator, att, se):
     result = estimator(**rc_correct_models_arrays)
