@@ -44,148 +44,100 @@ def etwfe(
 ):
     r"""Estimate the Extended Two-Way Fixed Effects model.
 
-    Implements the extended two-way fixed effects (ETWFE) estimator for
-    difference-in-differences with staggered adoption and heterogeneous
-    treatment effects [1]_ [2]_. Rather than discarding the two-way fixed
-    effects regression, the estimator adds an indicator for every treated
-    cohort-time cell. The coefficient on each indicator is the average
-    treatment effect on the treated for that cohort and period. Pooled least
-    squares on this saturated regression gives the same estimates as cohort
-    imputation (Proposition 5.2 in [1]_).
+    The extended two-way fixed effects (ETWFE) regression of [1]_ adds an indicator for every
+    treated cohort-time cell to the two-way fixed effects model. The coefficient on the cell of
+    cohort :math:`g` in period :math:`t` estimates the average treatment effect on the treated,
 
-    Use :func:`~moderndid.etwfe.emfx.emfx` to average the cell estimates into
-    overall, group, calendar, or event-study summaries.
+    .. math::
 
-    Rows with a null, NaN, or infinite value in the period, cohort, unit,
-    control, moderator, weight, or cluster variable leave the sample with a
-    warning before the controls are demeaned. Since an infinite cohort marks a
-    never-treated unit, it stays. The weights that remain must be non-negative
-    with a positive mean.
+        \tau_{g,t} \equiv E[y_t(g) - y_t(\infty) \mid d_g = 1],
+        \quad t \ge g.
 
-    A column that the call names may not take the name of a column the
-    regression adds. These are ``_g``, ``_t``, ``_Dtreat``, a name that starts
-    with ``__etwfe_``, a control's name followed by ``_dm``, and a name that
-    ends in ``_xdm`` and starts with the moderator's name or with ``_t``.
+    :func:`~moderndid.emfx` averages the cell estimates into overall, group, calendar, or
+    event-study summaries.
 
-    Since no untreated period identifies their effects, units already treated in
-    the first period leave with a warning as well. So do the units of any other
-    treated cohort with no untreated row in the sample. Under
-    ``cgroup="never"`` that row must lie in period :math:`g - 1`.
+    Rows with a missing or infinite value in any column the call names except the outcome leave
+    the sample with a warning before the controls are demeaned. Since an infinite cohort marks a
+    never-treated unit, it stays. The units of a cohort with no untreated row, such as one treated
+    in the first period, also leave with a warning. Under ``cgroup="never"``, that row must lie in
+    period :math:`g - 1`.
 
-    The covariate in ``xvar`` is demeaned within each cohort-time cell before it
-    interacts with the treatment cells. Because each category indicator of a
-    string covariate gets its own year terms, the estimates do not depend on
-    which category comes first. The controls in ``xformla`` already interact
-    with every cell. A covariate that is constant within the cells, or that
-    varies there only as a linear function of those controls, therefore adds no
-    terms and draws a warning.
-
-    See the :ref:`extended TWFE example <example_etwfe>` for ``etwfe`` on the
-    minimum wage data with not-yet-treated and never-treated controls, a
-    covariate, and standard errors clustered by county and by state.
+    See the :ref:`extended TWFE example <example_etwfe>` for a full analysis of the minimum wage
+    data.
 
     Parameters
     ----------
     data : DataFrame
-        Panel data in long format. Accepts any object implementing the Arrow
-        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
-        pyarrow Table, and cudf DataFrames.
+        Panel data in long format. Accepts any object implementing the Arrow PyCapsule Interface
+        (``__arrow_c_stream__``), including polars, pandas, pyarrow Table, and cudf DataFrames.
     yname : str
-        The name of the outcome variable.
+        The name of the outcome column.
     tname : str
-        The name of the column containing the time periods.
+        The name of the time period column.
     gname : str
-        The name of the column that holds the first period in which each unit
-        is treated. Never-treated units have 0, infinity, or a value after the
-        last period.
-    idname : str or None, default=None
-        The individual (cross-sectional unit) id name. When provided, linear
-        models absorb unit fixed effects and the default standard errors
-        cluster by unit.
-    xformla : str or None, default=None
-        A formula for the controls, such as ``"~ x1 + x2"``. Each term is a
-        column name. A name with spaces or symbols goes in backticks, as in
-        ``"~ `log pop` + x"``. Since every term must be a column, a
-        transformation such as ``I(x**2)`` or an interaction such as ``x1:x2``
-        raises an error and belongs in the data as a column of its own.
-    xvar : str or None, default=None
-        Name of a covariate to interact with the treatment cells for
-        heterogeneous treatment effects. A string covariate enters as an
-        indicator for each category but the first.
-    tref : numeric or None, default=None
-        Reference period, a value of ``tname``. Defaults to the first period.
-    gref : numeric or None, default=None
-        Reference cohort. Any never-treated code, such as 0, refers to every
-        never-treated unit. Defaults to the never-treated units. Without them,
-        ``cgroup="notyet"`` uses the latest-treated cohort. Under
-        ``cgroup="notyet"``, another value must be a cohort in ``gname`` first
-        treated after the first period. Any treated reference cohort drops
-        every row from its first treated period on. Since ``cgroup="never"``
-        compares every cohort with the never-treated units, it accepts only a
-        never-treated code and raises an error when no unit is never treated.
-    cgroup : {'notyet', 'never'}, default='notyet'
-        Control group. ``"notyet"`` compares the treated cells with the
-        never-treated units, the reference cohort, and the rows of other
-        cohorts before they are treated. ``"never"`` compares them with the
-        never-treated units alone.
-    fe : {'vs', 'feo', 'none'}, default='vs'
-        Fixed effects specification. ``"vs"`` and ``"feo"`` fit the same
-        regression. It absorbs unit and time fixed effects, or cohort and time
-        fixed effects when ``idname`` is None. Each control enters with its
-        cohort and time interactions. ``"none"`` absorbs nothing and adds cohort
-        and time dummies instead.
-    family : {None, 'gaussian', 'poisson', 'logit', 'probit'}, default=None
-        Model family. ``None`` and ``"gaussian"`` fit a linear regression.
-        ``"poisson"`` fits a Poisson quasi-maximum likelihood model. ``"logit"``
-        and ``"probit"`` fit binary response models. Nonlinear families replace
-        the absorbed fixed effects with cohort and time dummies [2]_ and use
-        ``idname`` only for clustering and for counting units. The binary
-        families cannot drop collinear columns. Their controls must therefore
-        vary within every cohort and period.
-    weightsname : str or None, default=None
-        The name of the column containing sampling weights. If not set, all
-        observations have equal weight. Nonlinear families take no weights.
-    vcov : str or dict or None, default=None
-        Variance-covariance specification, such as ``"iid"``, ``"hetero"``,
-        ``"HC1"``, or ``{"CRV1": "cluster_var"}``. The default clusters by
-        ``idname`` when it is given and is heteroskedasticity-robust otherwise.
-        Heteroskedasticity-robust errors ignore the correlation of a unit's
-        outcomes over time. Pass a cluster variable for panel data fitted
-        without ``idname``.
+        The name of the column with each unit's first treated period. Never-treated units have 0,
+        infinity, or a value after the last period.
+    idname : str, optional
+        The name of the unit identifier column. When given, linear models absorb unit fixed effects
+        and the default standard errors cluster by unit.
+    xformla : str, optional
+        A formula for the controls, such as ``"~ x1 + x2"``. Each term names a column, in backticks
+        if the name holds spaces or symbols. Terms such as ``I(x**2)`` or ``x1:x2`` raise an error.
+    xvar : str, optional
+        The name of a covariate that moderates the treatment effects. A string covariate enters as
+        an indicator for each category but the first. A covariate that is constant within the
+        cohort-time cells, or a linear function of the controls there, draws a warning.
+    tref : int or float, optional
+        The reference period, a value of ``tname``. If None, the first period.
+    gref : int or float, optional
+        The reference cohort, a never-treated code such as 0 or, under ``cgroup="notyet"``, a
+        cohort first treated after the first period. If None, the never-treated units, or the
+        latest-treated cohort when there are none.
+    cgroup : {"notyet", "never"}, default="notyet"
+        The control group. ``"notyet"`` uses the never-treated units, the reference cohort, and
+        other cohorts before they are treated. ``"never"`` uses the never-treated units alone and
+        raises an error when there are none.
+    fe : {"vs", "feo", "none"}, default="vs"
+        The fixed effects. ``"vs"`` and ``"feo"`` absorb unit and time fixed effects, or cohort and
+        time fixed effects without ``idname``. ``"none"`` adds cohort and time dummies instead.
+    family : {"gaussian", "poisson", "logit", "probit"}, optional
+        The model family. None and ``"gaussian"`` fit a linear regression, ``"poisson"`` a Poisson
+        quasi-maximum likelihood model, and ``"logit"`` and ``"probit"`` binary response models
+        [2]_. Nonlinear families ignore ``fe`` and use cohort and time dummies. Under the binary
+        ones, each control must vary within every cohort and period.
+    weightsname : str, optional
+        The name of the sampling weights column. The weights must be non-negative with a positive
+        mean. If None, observations have equal weight. Nonlinear families take none.
+    vcov : str or dict, optional
+        The variance-covariance specification, such as ``"iid"``, ``"hetero"``, or
+        ``{"CRV1": "cluster_var"}``. If None, it clusters by ``idname`` when given and is
+        heteroskedasticity-robust otherwise.
     alpha : float, default=0.05
         The significance level.
-    backend : {'cupy', 'cupy32', 'cupy64', 'jax', 'numba', 'rust', 'scipy'} or None, default=None
-        Backend that absorbs the fixed effects. ``"numba"``, ``"rust"``, and
-        ``"scipy"`` run on the CPU. ``None`` selects ``"numba"``. ``"cupy"``,
-        ``"cupy32"``, ``"cupy64"``, and ``"jax"`` run on a GPU when CuPy or JAX
-        finds one and otherwise use a CPU solver. On a GPU, ``"cupy"`` and
-        ``"cupy64"`` solve in double precision and ``"cupy32"`` in single
-        precision. Regressions under ``fe="none"`` or a nonlinear family absorb
-        no fixed effects and ignore the backend.
+    backend : {"cupy", "cupy32", "cupy64", "jax", "numba", "rust", "scipy"}, optional
+        The solver that absorbs the fixed effects. If None, ``"numba"``. The CuPy and JAX options
+        use a GPU when they find one and the CPU otherwise. On a GPU, ``"cupy32"`` solves in single
+        precision. Fits that absorb no fixed effects ignore it.
 
     Returns
     -------
     EtwfeResult
         Object containing ETWFE regression results:
 
-        - **coefficients**: estimate for each treatment cell (index scale for
-          nonlinear families), NaN for a cell the regression dropped as collinear
+        - **coefficients**: estimate for each treatment cell, on the index scale for nonlinear
+          families and NaN for a cell the regression dropped as collinear
         - **std_errors**: standard error of each cell estimate
         - **vcov**: variance-covariance matrix of all regression coefficients
         - **coef_names**: names of all regression coefficients
         - **gt_pairs**: (group, time) pair of each treatment cell
         - **n_obs**: number of observations
-        - **n_units**: number of units in the estimation sample, or of
-          observations when ``idname`` is None
+        - **n_units**: number of units in the sample, or of observations without ``idname``
         - **r_squared**: R-squared of the regression, NaN for nonlinear families
-        - **adj_r_squared**: adjusted R-squared of the regression, NaN for
-          nonlinear families
+        - **adj_r_squared**: adjusted R-squared, NaN for nonlinear families
         - **data**: fitted data (used internally by ``emfx``)
         - **config**: configuration object (used internally by ``emfx``)
-        - **estimation_params**: dictionary of estimation details whose
-          ``formula`` names internal columns
-        - **model_coefficients**: estimates of all regression coefficients,
-          ordered as ``coef_names``
+        - **estimation_params**: estimation details whose ``formula`` names internal columns
+        - **model_coefficients**: all regression coefficient estimates, ordered as ``coef_names``
 
     See Also
     --------
@@ -194,16 +146,8 @@ def etwfe(
 
     Notes
     -----
-    Each cell's coefficient targets the cohort-time average treatment effect on
-    the treated,
-
-    .. math::
-
-        \tau_{g,t} \equiv E[y_t(g) - y_t(\infty) \mid d_g = 1],
-        \quad t \ge g.
-
-    Under no anticipation, conditional parallel trends, and linearity, the
-    conditional expectation of the never-treated potential outcome is
+    Under no anticipation, conditional parallel trends, and linearity, the conditional
+    expectation of the never-treated potential outcome is
 
     .. math::
 
@@ -213,9 +157,8 @@ def etwfe(
         + \sum_s \gamma_s f_{s,t}
         + \sum_s (f_{s,t} \cdot \mathbf{x})\boldsymbol{\pi}_s,
 
-    where :math:`d_g` are treatment cohort indicators, :math:`f_{s,t}` are
-    time dummies, and :math:`\mathbf{x}` are time-constant covariates. The
-    ATTs are then identified as
+    where :math:`d_g` are cohort indicators, :math:`f_{s,t}` are time dummies, and
+    :math:`\mathbf{x}` are time-constant covariates. The ATTs are then identified as
 
     .. math::
 
@@ -226,10 +169,17 @@ def etwfe(
         \cdot (\boldsymbol{\kappa} + \boldsymbol{\xi}_g
         + \boldsymbol{\pi}_t)\bigr].
 
-    With :math:`w_t` the treatment indicator, the regression includes the full
-    set of treatment interactions :math:`w_t \cdot d_g \cdot f_{s,t}`. Their
-    interactions with the covariates use the covariates demeaned about their
-    cohort means, :math:`\dot{\mathbf{x}}_g = \mathbf{x} - \bar{\mathbf{x}}_g`.
+    With :math:`w_t` the treatment indicator, the regression includes every treatment interaction
+    :math:`w_t \cdot d_g \cdot f_{s,t}`. Their interactions with the covariates use the covariates
+    demeaned about their cohort means, :math:`\dot{\mathbf{x}}_g = \mathbf{x} - \bar{\mathbf{x}}_g`.
+    Since the covariate in ``xvar`` is demeaned within each cohort-time cell instead, each cell's
+    coefficient is the effect at the cell's mean of that covariate. The order of a string
+    covariate's categories does not change the estimates.
+
+    A column that the call names may not take the name of a column the regression adds, such as
+    ``_g``, ``_t``, ``_Dtreat``, or one that starts with ``__etwfe_``. The
+    :ref:`extended TWFE background <background-etwfe>` derives the untreated outcome model and
+    shows why the regression reproduces cohort imputation.
 
     References
     ----------
@@ -243,7 +193,6 @@ def etwfe(
        Difference-in-Differences with Panel Data." The Econometrics
        Journal, 26(3), C31-C66.
        https://doi.org/10.1093/ectj/utad016
-
     """
     if family not in (None, "gaussian", "poisson", "logit", "probit"):
         raise ValueError(f"family must be None, 'gaussian', 'poisson', 'logit', or 'probit', got '{family}'")

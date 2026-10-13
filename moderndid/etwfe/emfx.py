@@ -11,52 +11,39 @@ from .container import EmfxResult, EtwfeResult
 def emfx(result, type="simple", post_only=True, window=None):
     r"""Aggregate ETWFE cell-level treatment effects.
 
-    Averages the cohort-time ATTs :math:`\hat{\tau}_{g,t}` from
-    :func:`~moderndid.etwfe.etwfe.etwfe` into an overall effect or into effects
-    by cohort, calendar time, or exposure time [1]_. Each of these effects
-    weights a cell by its number of observations. For nonlinear families the
-    effect of each observation is the difference between its predicted outcome
-    with and without treatment [2]_.
+    Averages the cohort-time effects :math:`\hat{\tau}_{g,t}` of :func:`~moderndid.etwfe` into
+    an overall effect or into effects by cohort, calendar time, or exposure time [1]_. Each
+    effect weights a cell by its number of observations. For nonlinear families, the effect of
+    an observation is the difference between its predicted outcomes with and without
+    treatment [2]_.
 
-    Each aggregation type also reports a summary effect. For the simple type it
-    is the average over all post-treatment observations. The group summary
-    weights each cohort's effect by the cohort's number of units. Without
-    ``idname``, the size of a cohort is its average number of observations per
-    post-treatment period. Event and calendar summaries give equal weight to
-    each event time from zero on and to each calendar time. Pre-treatment cells
-    never enter a summary.
+    Every type also reports a summary effect of the post-treatment cells. Standard errors come
+    from the delta method with the regression's variance-covariance matrix and treat the weights
+    as fixed. A cell that the regression dropped as collinear draws a warning. Its effect and
+    every average that includes it are NaN.
 
-    Standard errors use the delta method with the regression's
-    variance-covariance matrix and treat the weights as fixed. A cell the
-    regression dropped as collinear has no estimate. Its effect and every
-    average that includes it come out as NaN with a warning.
-
-    See the :ref:`extended TWFE example <example_etwfe>` for overall, group, and event
-    study aggregations of ``etwfe`` estimates.
+    See the :ref:`extended TWFE example <example_etwfe>` for overall, group, and event study
+    aggregations of ``etwfe`` estimates.
 
     Parameters
     ----------
     result : EtwfeResult
-        Output from :func:`~moderndid.etwfe.etwfe.etwfe`.
-    type : {'simple', 'group', 'calendar', 'event'}, default='simple'
-        How to aggregate the cells. ``"simple"`` averages all post-treatment
-        cells, ``"group"`` averages within each treatment cohort,
-        ``"calendar"`` within each calendar time, and ``"event"`` within each
-        exposure time :math:`e = t - g`.
+        The result of :func:`~moderndid.etwfe`.
+    type : {"simple", "group", "calendar", "event"}, default="simple"
+        How to aggregate the cells. ``"simple"`` averages all post-treatment cells, ``"group"``
+        averages within each treatment cohort, ``"calendar"`` within each calendar time, and
+        ``"event"`` within each exposure time :math:`e = t - g`.
     post_only : bool, default=True
-        Whether the event study keeps only the event times from zero on. With
-        ``False`` it also reports the pre-treatment cells of the never-treated
-        design as placebo estimates and the reference period e = -1 at zero.
-        The not-yet-treated design has no pre-treatment cells. The other types
-        always use post-treatment cells only.
-    window : tuple[int, int] or None, default=None
-        For event-study aggregation, restrict to event times within
-        ``[window[0], window[1]]``.
+        Whether the event study keeps only the event times from zero on. With ``False``, the
+        never-treated design also reports its placebo cells and the reference period
+        :math:`e = -1` at zero. The other types never use pre-treatment cells.
+    window : tuple[int, int], optional
+        For the event study, keep only the event times from ``window[0]`` to ``window[1]``.
 
     Returns
     -------
     EmfxResult
-        Aggregated treatment effects with delta-method standard errors.
+        Aggregated treatment effects with delta-method standard errors:
 
         - **overall_att**: summary effect for the aggregation type
         - **overall_se**: standard error of the summary effect
@@ -77,19 +64,17 @@ def emfx(result, type="simple", post_only=True, window=None):
 
     Notes
     -----
-    The simple effect averages the post-treatment cells with weights
-    proportional to cohort size,
+    With :math:`N_g` the number of units in cohort :math:`g`, the simple effect averages the
+    post-treatment cells with weights proportional to cohort size,
 
     .. math::
 
         \hat{\bar{\tau}}_\omega
         = \sum_g \sum_{t=g}^{T} \hat{\omega}_g \, \hat{\tau}_{g,t},
         \qquad
-        \hat{\omega}_g = \frac{N_g}{\sum_{g'} (T - g' + 1) \, N_{g'}},
+        \hat{\omega}_g = \frac{N_g}{\sum_{g'} (T - g' + 1) \, N_{g'}}.
 
-    where :math:`N_g` is the number of units in cohort :math:`g`. The effect at
-    exposure time :math:`e = t - g` averages the cohorts observed at that
-    exposure with cohort-share weights,
+    The effect at exposure time :math:`e = t - g` averages the cohorts observed at that exposure,
 
     .. math::
 
@@ -98,9 +83,8 @@ def emfx(result, type="simple", post_only=True, window=None):
         \qquad
         \hat{\omega}_{ge} = \frac{N_g}{N_q + \cdots + N_{T-e}}.
 
-    With :math:`\hat{\tau}_g` the effect of cohort :math:`g` and
-    :math:`\hat{\tau}_t` the effect at calendar time :math:`t`, the summaries
-    of the other types are
+    With :math:`\hat{\tau}_g` the effect of cohort :math:`g` and :math:`\hat{\tau}_t` the effect
+    at calendar time :math:`t`, the summaries of the other types are
 
     .. math::
 
@@ -113,11 +97,14 @@ def emfx(result, type="simple", post_only=True, window=None):
         \hat{\theta}_{\mathrm{calendar}}
         = \frac{1}{|C|} \sum_{t \in C} \hat{\tau}_t,
 
-    where :math:`E_+` holds the reported event times from zero on and
-    :math:`C` the reported calendar times.
+    where :math:`E_+` holds the reported event times from zero on and :math:`C` the reported
+    calendar times. Without ``idname``, the group summary takes :math:`N_g` as the cohort's
+    average number of observations per post-treatment period. The
+    :ref:`extended TWFE background <background-etwfe>` explains what each average represents.
 
     References
     ----------
+
     .. [1] Wooldridge, J. M. (2025). "Two-Way Fixed Effects, the Two-Way
        Mundlak Regression, and Difference-in-Differences Estimators."
        Empirical Economics, 69(5), 2545-2587.
