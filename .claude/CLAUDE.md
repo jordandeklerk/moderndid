@@ -12,7 +12,7 @@ moderndid is a Python library for difference-in-differences and related causal i
 ## Code
 
 - Docstrings follow numpydoc with no `Raises` section, and a function documented that way takes no type hints in its signature, since the docstring owns the types. A one-line summary has no commas, a Parameters entry says only what the argument is and requires, and a Returns section stays short.
-- A docstring body runs in short paragraphs and keeps heavy math in Notes, in `.. math::` blocks, without pointing to its own sections. Each piece of math lives in one docstring, and others link to it with `:func:`.
+- A docstring reads as a reference card, not a chapter. Its prose runs in a few short paragraphs and never points to its own sections. Shorten wordy prose but keep the math, which can sit in the body as `.. math::` displays or in Notes. Each piece of math lives in one docstring, and others link to it with `:func:`.
 - A Returns section lists each field of a result on its own line as `- **name**: description`.
 - When a guide walks through a public function, its docstring has no Examples section. The main body ends instead with a sentence such as "See the :ref:`staggered DiD example <example_staggered_did>` for a full analysis of the minimum wage data," since the guide carries the worked example and docstring code runs on every docs build.
 - Every NamedTuple result type lives in its package's `container.py`.

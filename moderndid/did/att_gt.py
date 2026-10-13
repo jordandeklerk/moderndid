@@ -51,74 +51,19 @@ def att_gt(
 ):
     r"""Compute group-time average treatment effects.
 
-    Implements difference-in-differences estimation for staggered adoption designs
-    where treatment timing varies across units, following [1]_. This approach
-    addresses the challenges of standard two-way fixed-effects regressions by
-    providing flexible estimators that allow for treatment effect heterogeneity
-    across groups and over time.
-
-    Let :math:`G_i` denote the time period when unit :math:`i` is first treated,
-    with :math:`G_i = \infty` for never-treated units, and let :math:`C_i` be an
-    indicator for never-treated status. The fundamental parameter
-    of interest is the group-time average treatment effect, :math:`ATT(g,t)`,
-    which measures the average effect for units first treated in period :math:`g`
-    as of time :math:`t`
+    Estimates the average treatment effect for the cohort of units first treated in
+    period :math:`g` at each period :math:`t` of a staggered adoption design [1]_,
 
     .. math::
 
         ATT(g,t) = \mathbb{E}[Y_t(g) - Y_t(0) \mid G = g].
 
-    Identification relies on a conditional parallel trends assumption. When using
-    never-treated units as the comparison group, the assumption requires that
-    trends in untreated potential outcomes are the same for the treatment group
-    and never-treated units conditional on covariates :math:`X`
-
-    .. math::
-
-        \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, G = g]
-        = \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, C = 1],
-
-    where :math:`C = 1` indicates never-treated units. The doubly robust estimand
-    combines inverse probability weighting and outcome regression, providing
-    consistency if either the propensity score or outcome model is correctly
-    specified
-
-    .. math::
-
-        ATT_{dr}(g,t) = \mathbb{E}\left[\left(\frac{G_g}{\mathbb{E}[G_g]}
-        - \frac{\frac{p_g(X) C}{1 - p_g(X)}}
-        {\mathbb{E}\left[\frac{p_g(X) C}{1 - p_g(X)}\right]}\right)
-        \left(\Delta Y_t - m_{g,t}(X)\right)\right],
-
-    where :math:`p_g(X)` is the propensity score, :math:`\Delta Y_t` is the
-    change in outcomes, and :math:`m_{g,t}(X)` is the expected outcome change
-    for the comparison group.
-
-    Sampling weights may change over time within a unit of a balanced panel.
-    Each 2x2 comparison then uses the weights from the earlier of its two
-    periods. A warning names this rule. :func:`~moderndid.aggte` weights each
-    unit by its weight in the first period.
-
-    A group-time comparison can fail to estimate, such as when its fitted
-    propensity score reaches 0.999 or its estimator returns no estimate. A
-    warning then names the cell. Under the varying base the cell drops out of
-    the result. Under the universal base it stays in the result as NaN.
-
-    A cluster variable besides ``idname`` in ``clustervars`` makes the
-    inference cluster-robust. The analytic covariance of the estimates then
-    sums the influence function within each cluster before the outer
-    product. The standard errors without the bootstrap use that covariance.
-    The multiplier bootstrap draws one multiplier for each cluster.
-
-    Since a Wald test on a cluster-robust covariance rejects too often at
-    realistic cluster counts, a fit with such clusters reports no pre-test
-    of parallel trends. The bootstrap's uniform bands over the
-    pre-treatment cells take its place.
-
-    Since cluster-robust inference from very few clusters can give confidence
-    bands that are too narrow, a warning names each treated cohort whose
-    units fall in fewer than 5 clusters. It also appears when all units fall
-    in fewer than 30 clusters.
+    Each effect compares the cohort with never-treated or not-yet-treated units under
+    conditional parallel trends. Using only untreated units as controls avoids the bias
+    that a two-way fixed effects regression suffers when effects vary across cohorts or
+    over time. The standard errors come from the influence functions, analytically or
+    through the multiplier bootstrap. :func:`~moderndid.aggte` averages the effects into
+    an event study or an overall effect.
 
     See the :ref:`staggered DiD example <example_staggered_did>` for a full analysis of
     the minimum wage data with ``att_gt``.
@@ -126,74 +71,59 @@ def att_gt(
     Parameters
     ----------
     data : DataFrame
-        Panel data in long format. Accepts any object implementing the Arrow
-        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
-        pyarrow Table, and cudf DataFrames.
+        Panel data in long format. Accepts any object implementing the Arrow PyCapsule
+        Interface (``__arrow_c_stream__``), including polars, pandas, pyarrow Table, and
+        cudf DataFrames.
     yname : str
-        The name of the outcome variable.
+        The name of the outcome column.
     tname : str
-        The name of the column containing the time periods.
+        The name of the time period column.
     idname : str, optional
-        The individual (cross-sectional unit) id name. Required for panel data.
+        The name of the unit identifier column. Required for panel data.
     gname : str
-        The name of the variable that contains the first period when a particular
-        observation is treated. This should be a positive number for all observations
-        in treated groups. It defines which "group" a unit belongs to. It should be 0
-        for units in the untreated group.
+        The name of the column holding the period in which each unit is first treated.
+        It is 0 for never-treated units.
     xformla : str, optional
-        A formula for the covariates to include in the model. It should be of the
-        form "~ X1 + X2". Default is None which is equivalent to xformla="~1".
+        A formula for the covariates, such as ``"~ X1 + X2"``.
     weightsname : str, optional
-        The name of the column containing the sampling weights. If not set, all
-        observations have same weight.
+        The name of the sampling weights column.
     alpha : float, default=0.05
         The significance level.
     cband : bool, default=True
-        Whether or not to compute a uniform confidence band that covers all of the
-        group-time average treatment effects with fixed probability 1 - alpha.
+        Whether to report a uniform confidence band that covers all the group-time
+        effects with probability 1 - alpha. Applies only with ``boot=True``.
     boot : bool, default=False
-        Whether to compute standard errors with the multiplier bootstrap
-        instead of analytically.
+        Whether to compute the standard errors with the multiplier bootstrap.
     biters : int, default=1000
-        The number of bootstrap iterations to use. Only applicable if boot=True.
+        The number of bootstrap draws. Only applicable if ``boot=True``.
     clustervars : list[str], optional
-        Variables to cluster the standard errors on. Besides idname, the list
-        may hold one variable that stays fixed within each unit of a panel.
+        Variables to cluster the standard errors on. Besides ``idname``, the list may
+        hold one variable that stays fixed within each unit.
     est_method : {"dr", "ipw", "reg"} or callable, default="dr"
-        The method to compute group-time average treatment effects. The default is
-        "dr" which uses the doubly robust approach. Other built-in methods include
-        "ipw" for inverse probability weighting and "reg" for first step regression
-        estimators. The user can also pass their own function for estimating group
-        time average treatment effects.
+        The estimator of each effect, doubly robust, inverse probability weighting, or
+        outcome regression. A callable supplies a custom estimator.
     panel : bool, default=True
-        Whether or not the data is a panel dataset. The panel dataset should be
-        provided in long format. With panel=False every row is its own observation,
-        even when idname is given.
+        Whether the data is a panel. With ``panel=False`` every row is its own
+        observation, even when ``idname`` is given.
     allow_unbalanced_panel : bool, default=False
-        Whether to keep units observed in only some periods. If False, att_gt drops
-        every unit missing from any period. It applies only when panel=True.
+        Whether to keep the units of a panel observed in only some periods. If False,
+        att_gt drops every unit missing from any period.
     control_group : {"nevertreated", "notyettreated"}, default="nevertreated"
-        Which units to use the control group. The default is "nevertreated" which
-        sets the control group to be the group of units that never participate in
-        the treatment.
+        Whether the comparison group holds only the never-treated units or also the
+        units not yet treated.
     anticipation : int, default=0
-        The number of time periods before participating in the treatment where units
-        can anticipate participating in the treatment and therefore it can affect
-        their untreated potential outcomes.
+        The number of periods before treatment in which units may already respond to it.
     base_period : {"varying", "universal"}, default="varying"
-        Whether to use a "varying" base period or a "universal" base period.
+        ``"varying"`` compares each pre-treatment period with the one before it.
+        ``"universal"`` compares every period with one base period before treatment.
     random_state : int, Generator, optional
-        Controls the randomness of the bootstrap. Pass an int for reproducible
-        results across multiple function calls. Can also accept a NumPy
-        ``Generator`` instance.
+        Controls the randomness of the bootstrap. Pass an int for reproducible results
+        across calls.
     n_jobs : int, default=1
-        Number of parallel jobs for group-time estimation. 1 = sequential
-        (default), -1 = all cores, >1 = that many workers.
-    backend : {"numpy", "cupy"} or None, default=None
-        Array backend to use for this call only. When set, the backend is
-        activated for the duration of this call and reverted automatically
-        when the call returns. ``None`` (the default) uses whatever backend
-        is currently active (see :func:`~moderndid.set_backend`).
+        The number of parallel jobs for the group-time cells. Pass -1 to use all cores.
+    backend : {"numpy", "cupy"}, optional
+        The array backend for this call only. None uses the backend that
+        :func:`~moderndid.set_backend` made active.
 
     Returns
     -------
@@ -219,6 +149,44 @@ def att_gt(
     See Also
     --------
     aggte : Aggregate group-time average treatment effects.
+
+    Notes
+    -----
+    Let :math:`G` be the period in which a unit is first treated, :math:`G_g` the
+    indicator of :math:`G = g`, and :math:`C = \mathbf{1}\{G = \infty\}` the indicator
+    of never-treated units. With never-treated units as the comparison group,
+    identification rests on conditional parallel trends given the covariates :math:`X`,
+
+    .. math::
+
+        \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, G = g]
+        = \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, C = 1].
+
+    With the propensity score :math:`p_g(X)` and the regression :math:`m_{g,t}(X)` of
+    the comparison group's outcome change :math:`\Delta Y_t`, the doubly robust
+    estimand is
+
+    .. math::
+
+        ATT_{dr}(g,t) = \mathbb{E}\left[\left(\frac{G_g}{\mathbb{E}[G_g]}
+        - \frac{\frac{p_g(X) C}{1 - p_g(X)}}
+        {\mathbb{E}\left[\frac{p_g(X) C}{1 - p_g(X)}\right]}\right)
+        \left(\Delta Y_t - m_{g,t}(X)\right)\right].
+
+    It recovers the effect if either model is correctly specified. The
+    :ref:`staggered DiD background <background-did>` develops the identifying
+    assumptions, the estimators, and the inference.
+
+    A cell that fails to estimate, such as one whose propensity score reaches 0.999,
+    triggers a warning that names it. The cell then drops out under the varying base
+    period and stays as NaN under the universal one.
+
+    When sampling weights change over time within a unit of a balanced panel, a warning
+    notes that each comparison uses the weights of its earlier period.
+    :func:`~moderndid.aggte` weights each unit by its weight in the first period.
+
+    With a cluster variable besides ``idname``, a warning appears when a treated cohort's
+    units fall in fewer than 5 clusters or all units fall in fewer than 30.
 
     References
     ----------

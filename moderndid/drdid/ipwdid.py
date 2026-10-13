@@ -28,76 +28,96 @@ def ipwdid(
 ):
     r"""Wrap the inverse propensity weighted DiD estimators for the ATT.
 
-    This function is a wrapper for inverse propensity weighted (IPW) DiD estimators [1]_, [2]_.
-    It can be used with panel or stationary repeated cross-section data and calls the
-    appropriate estimator based on the panel argument and estimation method.
+    Estimates the average treatment effect on the treated (ATT) of a design with two
+    periods by inverse propensity weighting [1]_, [2]_. The comparison units carry the
+    odds of their propensity score as weights so that they resemble the treated units.
+    Unlike the doubly robust :func:`~moderndid.drdid`, the estimate is consistent only
+    if the propensity score model is correctly specified.
+
+    The function runs :func:`~moderndid.ipw_did_panel` or
+    :func:`~moderndid.std_ipw_did_panel` on a panel and :func:`~moderndid.ipw_did_rc` or
+    :func:`~moderndid.std_ipw_did_rc` on stationary repeated cross-sections, as
+    ``est_method`` selects.
 
     Parameters
     ----------
-    data : pd.DataFrame | pl.DataFrame
-        The input data containing outcome, time, unit ID, treatment,
-        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
+    data : DataFrame
+        Data in long format. Accepts pandas and polars DataFrames.
     yname : str
-        Name of the column containing the outcome variable.
+        The name of the outcome column.
     tname : str
-        Name of the column containing the time periods (must have exactly 2 periods).
-    idname : str | None, default None
-        Name of the column containing the unit ID. Required if panel=True.
+        The name of the time period column. It must hold exactly two periods.
+    idname : str, optional
+        The name of the unit identifier column. Required if ``panel=True``.
     treatname : str
-        Name of the column containing the treatment group indicator. With panel data it
-        is constant within a unit, 1 if ever treated and 0 if never treated. With
-        repeated cross-sections it marks the group treated in the post-period and equals
-        1 for that group's rows in both periods.
-    xformla : str | None, default None
-        Formula that joins covariate column names with ``+``, as in
-        ``"~ x1 + x2"``. The model always includes an intercept. Transformed
-        terms such as ``I(x**2)`` or ``C(x)`` and columns of strings or
-        categories require formulaic. If None, only the intercept enters.
-    panel : bool, default True
-        Whether the data is panel (True) or repeated cross-sections (False).
-        Panel data should be in long format with each row representing
-        a unit-time observation.
-    est_method : {"ipw", "std_ipw"}, default "ipw"
-        The IPW estimator to compute. The default "ipw" is the Horvitz-Thompson type
-        estimator of [1]_. Its weights are not normalized to sum to one. "std_ipw" is
-        the standardized estimator of the Hajek type. With panel data its weights sum to
-        one within each group. With repeated cross-sections they sum to one within each
-        group and period.
-    weightsname : str | None, default None
-        Name of the column containing sampling weights.
-        If None, all observations have equal weight.
-        Weights are normalized to have mean 1.
-    boot : bool, default False
-        Whether to compute bootstrap standard errors. If False,
-        analytical standard errors are reported.
-    boot_type : {"weighted", "multiplier"}, default "weighted"
-        Type of bootstrap to perform (only relevant if boot=True).
-    biters : int, default 999
-        Number of bootstrap repetitions (only relevant if boot=True).
-    inf_func : bool, default False
+        The name of the treatment group column, 1 in both periods for the group treated in
+        the post-period and 0 for the comparison group.
+    xformla : str, optional
+        A formula joining covariate columns with ``+``, such as ``"~ x1 + x2"``. The
+        model always includes an intercept. Terms such as ``I(x**2)`` or ``C(x)`` and
+        string or categorical columns require formulaic.
+    panel : bool, default=True
+        Whether the data is a panel (True) or repeated cross-sections (False).
+    est_method : {"ipw", "std_ipw"}, default="ipw"
+        ``"ipw"`` is the Horvitz-Thompson type estimator of [1]_ with weights that need
+        not sum to one. ``"std_ipw"`` is the Hajek type estimator with weights that sum
+        to one within each group, or within each group and period of repeated
+        cross-sections.
+    weightsname : str, optional
+        The name of the sampling weights column. The weights are normalized to mean 1.
+    boot : bool, default=False
+        Whether to compute bootstrap standard errors instead of analytical ones.
+    boot_type : {"weighted", "multiplier"}, default="weighted"
+        The kind of bootstrap. Only applicable if ``boot=True``.
+    biters : int, default=999
+        The number of bootstrap draws. Only applicable if ``boot=True``.
+    inf_func : bool, default=False
         Whether to return the influence function values.
-    trim_level : float, default 0.995
-        The level of trimming for the propensity score.
+    trim_level : float, default=0.995
+        The propensity score level at which comparison units are trimmed.
 
     Returns
     -------
     IPWDIDResult
         NamedTuple containing:
 
-        - **att**: The IPW DiD point estimate.
-        - **se**: The IPW DiD standard error.
-        - **uci**: The upper bound of a 95 percent confidence interval.
-        - **lci**: The lower bound of a 95 percent confidence interval.
-        - **boots**: Bootstrap draws of the ATT if boot=True.
-        - **att_inf_func**: Influence function values if inf_func=True.
-        - **call_params**: Original function call parameters.
-        - **args**: Arguments used in the estimation.
+        - **att**: The IPW DiD point estimate
+        - **se**: The IPW DiD standard error
+        - **uci**: The upper bound of a 95 percent confidence interval
+        - **lci**: The lower bound of a 95 percent confidence interval
+        - **boots**: Bootstrap draws of the ATT if boot=True
+        - **att_inf_func**: Influence function values if inf_func=True
+        - **call_params**: Original function call parameters
+        - **args**: Arguments used in the estimation
+
+    See Also
+    --------
+    drdid : Doubly robust DiD estimator.
+    ordid : Outcome regression DiD estimator.
+
+    Notes
+    -----
+    Weights that sum to one make the estimate much more stable when some propensity
+    scores are close to one [2]_. In the simulations of [2]_ with a correctly specified
+    propensity score, both IPW estimators have a larger variance than the doubly robust
+    estimators. The :ref:`doubly robust DiD background <background-drdid>` develops the
+    weighting estimand.
+
+    References
+    ----------
+
+    .. [1] Abadie, A. (2005), "Semiparametric Difference-in-Differences Estimators",
+           Review of Economic Studies, vol. 72(1), pp. 1-19.
+           https://doi.org/10.1111/0034-6527.00321
+
+    .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
+           "Doubly Robust Difference-in-Differences Estimators."
+           Journal of Econometrics, Vol. 219 (1), pp. 101-122.
+           https://doi.org/10.1016/j.jeconom.2020.06.003
 
     Examples
     --------
-    Estimate the average treatment effect on the treated (ATT) using inverse propensity
-    weighting with panel data from a job training program. IPW reweights observations
-    to create balance between treated and control groups.
+    Estimate the ATT of a job training program on earnings by propensity weighting.
 
     .. ipython::
         :okwarning:
@@ -119,53 +139,6 @@ def ipwdid(
            ...: )
 
         In [2]: print(att_result)
-
-    The standardized (Hajek-type) estimator normalizes the weights to sum to one and
-    can be more stable with extreme propensity scores.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: att_result_std = moderndid.ipwdid(
-           ...:     data=nsw_data,
-           ...:     yname="re",
-           ...:     tname="year",
-           ...:     idname="id",
-           ...:     treatname="experimental",
-           ...:     xformla="~ age + educ + black + married + nodegree + hisp + re74",
-           ...:     panel=True,
-           ...:     est_method="std_ipw",
-           ...: )
-
-        In [4]: print(att_result_std)
-
-    Notes
-    -----
-    The IPW estimators reweight the comparison units by the odds of the propensity
-    score, the probability of being in the treated group, so that they resemble the
-    treated units. Normalized weights make the estimate much more stable when some
-    propensity scores are close to one [2]_.
-
-    Unlike doubly robust methods, IPW estimators are not robust to misspecification
-    of the propensity score model. They also ignore the outcome model. In the
-    simulations of [2]_ with a correctly specified propensity score model, both IPW
-    estimators have a larger variance than the doubly robust estimators.
-
-    See Also
-    --------
-    drdid : Doubly robust DiD estimator.
-    ordid : Outcome regression DiD estimator.
-
-    References
-    ----------
-    .. [1] Abadie, A. (2005), "Semiparametric Difference-in-Differences Estimators",
-           Review of Economic Studies, vol. 72(1), pp. 1-19.
-           https://doi.org/10.1111/0034-6527.00321
-
-    .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
-           "Doubly Robust Difference-in-Differences Estimators."
-           Journal of Econometrics, Vol. 219 (1), pp. 101-122.
-           https://doi.org/10.1016/j.jeconom.2020.06.003
     """
     if treatname is None:
         raise ValueError("treatname is required. Please specify the treatment column.")

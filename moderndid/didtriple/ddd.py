@@ -44,141 +44,104 @@ def ddd(
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
-    Implements triple difference-in-differences (DDD) estimation following [1]_. DDD
-    extends standard DiD by incorporating a partition variable :math:`Q` that identifies
-    eligible units within treatment-enabling groups :math:`S`, allowing for violations
-    of traditional DiD parallel trends as long as these violations are stable across
-    groups.
-
-    Let :math:`S_i` denote the period when treatment is enabled for unit :math:`i`'s
-    group, and :math:`Q_i \in \{0,1\}` indicate eligibility within that group. The
-    group-time average treatment effect measures the effect among eligible units in
-    group :math:`g` at time :math:`t`
+    Estimates the effect of a treatment that reaches only the eligible units
+    (:math:`Q = 1`) of the groups that enable it [1]_. With :math:`S` the period in
+    which a unit's group enables treatment, the group-time average treatment effect on
+    the eligible units of cohort :math:`g` in period :math:`t` is
 
     .. math::
 
         ATT(g,t) = \mathbb{E}[Y_{i,t}(g) - Y_{i,t}(\infty) \mid S_i = g, Q_i = 1].
 
-    Identification relies on a DDD conditional parallel trends assumption that allows
-    for differential trends between eligible and ineligible units, provided these
-    differentials are stable across treatment-enabling groups. For groups :math:`g`
-    and :math:`g'` where :math:`g' > \max\{g,t\}`
+    The ineligible units measure the trend gap that an ordinary DiD would leave in the
+    estimate. Trends may therefore differ across groups and between eligible and
+    ineligible units, provided the eligible-minus-ineligible gap is the same in every
+    group. With two periods the function returns one effect. With more it returns an
+    :math:`ATT(g,t)` for each cohort and period for :func:`~moderndid.agg_ddd` to
+    aggregate.
 
-    .. math::
-
-        &\mathbb{E}[\Delta Y(\infty) \mid S=g, Q=1, X]
-        - \mathbb{E}[\Delta Y(\infty) \mid S=g, Q=0, X] \\
-        &= \mathbb{E}[\Delta Y(\infty) \mid S=g', Q=1, X]
-        - \mathbb{E}[\Delta Y(\infty) \mid S=g', Q=0, X],
-
-    where :math:`\Delta Y(\infty) = Y_t(\infty) - Y_{t-1}(\infty)` denotes the change
-    in untreated potential outcomes. This assumption does not impose standard DiD
-    parallel trends within or across groups, making DDD appealing when such assumptions
-    are implausible.
-
-    With a cluster, a warning appears when the eligible units of an enabling
-    cohort fall in fewer than 5 clusters or all units fall in fewer than 30.
-    Cluster-robust inference from so few clusters can give confidence
-    intervals that are too narrow.
-
-    See the :ref:`triple differences example <example_triple_did>` for a full analysis of
-    the crop insurance data.
+    See the :ref:`triple differences example <example_triple_did>` for a full analysis
+    of the crop insurance data.
 
     Parameters
     ----------
     data : DataFrame
-        Data in long format. Accepts any object implementing the Arrow
-        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
-        pyarrow Table, and cudf DataFrames.
+        Data in long format. Accepts any object implementing the Arrow PyCapsule
+        Interface (``__arrow_c_stream__``), including polars, pandas, pyarrow Table, and
+        cudf DataFrames.
     yname : str
-        Name of outcome variable column.
+        The name of the outcome column.
     tname : str
-        Name of time period column.
+        The name of the time period column.
     idname : str, optional
-        Name of unit identifier column. Required for panel data, where each
-        unit may appear only once per period. For repeated cross-section data
-        (panel=False), this can be omitted and a row index will be used
-        automatically.
+        The name of the unit identifier column. Required for panel data, where each unit
+        appears once per period.
     gname : str
-        Name of treatment group column. For 2-period data, this should be
-        0 for never-treated and a positive value for treated units. For
-        multi-period data, this is the first period when treatment is enabled
-        for the unit's group (use 0 or np.inf for never-treated units). A unit
-        first treated after the last period counts as never treated. Since a
-        unit already treated in the first period has no earlier period to
-        compare with, ddd drops it with a warning.
+        The name of the column holding the period in which each unit's group enables
+        treatment, 0 or ``np.inf`` if it never does. With two periods, any positive
+        value marks a treated group. A unit enabled after the last period counts as
+        never treated. Units already treated in the first period leave the data with a
+        warning.
     pname : str
-        Name of partition/eligibility column (1=eligible, 0=ineligible).
-        This identifies which units within a treatment group are actually
-        eligible to receive the treatment effect.
+        The name of the eligibility column, 1 for eligible units and 0 for the rest.
     xformla : str, optional
-        Formula for covariates in the form "~ x1 + x2 + x3". If None, only an
-        intercept is used.
+        A formula for the covariates, such as ``"~ x1 + x2"``.
     control_group : {"nevertreated", "notyettreated"}, default="nevertreated"
-        Which units to use as controls in multi-period settings.
-        This parameter is ignored for 2-period data. "nevertreated" requires
-        at least one never-treated unit. Without never-treated units,
-        "notyettreated" leaves out the periods from the first period of the
-        latest cohort on. That cohort then serves only as a comparison and
-        gets no ATT(g,t) of its own.
+        Whether the comparison group holds only the never-treated units or also the
+        units not yet treated. Ignored with two periods. Without never-treated units,
+        ``"nevertreated"`` raises an error. ``"notyettreated"`` instead leaves out the
+        periods from the latest cohort's first period on and uses that cohort only as a
+        comparison.
     base_period : {"universal", "varying"}, default="universal"
-        Base period selection for multi-period settings.
-        This parameter is ignored for 2-period data.
+        ``"universal"`` compares every period with the last period before treatment.
+        ``"varying"`` compares each pre-treatment period with the one before it.
+        Ignored with two periods.
     est_method : {"dr", "reg", "ipw"}, default="dr"
-        Estimation method: doubly robust, regression, or IPW.
+        The estimator, doubly robust, outcome regression, or inverse probability
+        weighting.
     weightsname : str, optional
-        Name of the column of sampling weights. With panel data, a unit must
-        keep the same weight in every period.
+        The name of the sampling weights column. With panel data, a unit must keep the
+        same weight in every period.
     boot : bool, default=False
-        Whether to use bootstrap for inference. Its intervals are pointwise.
-        For simultaneous bands, pass the result to :func:`~moderndid.agg_ddd`.
+        Whether to compute the standard errors with the bootstrap. Its intervals are
+        pointwise. :func:`~moderndid.agg_ddd` gives simultaneous bands.
     boot_type : {"multiplier", "weighted"}, default="multiplier"
-        Type of bootstrap for 2-period data (only used if boot=True).
-        Multi-period data always uses multiplier bootstrap.
+        The bootstrap with two periods. More periods always use the multiplier
+        bootstrap.
     biters : int, default=1000
-        Number of bootstrap repetitions (only used if boot=True).
+        The number of bootstrap draws. Only applicable if ``boot=True``.
     cluster : str, optional
-        Name of the column that assigns each unit to a cluster, such as its
-        county. A unit must keep the same cluster in every period. The standard
-        errors then sum the influence function within clusters. The bootstrap
-        draws one multiplier per cluster. With two periods, a cluster sets
-        boot=True and requires boot_type="multiplier". The aggregations of
-        :func:`~moderndid.agg_ddd` cluster by the same column.
+        The name of the column that assigns each unit to a cluster for the standard
+        errors, such as its county. A unit must keep the same cluster in every period.
+        With two periods, a cluster sets ``boot=True`` with a warning and requires
+        ``boot_type="multiplier"``.
     alpha : float, default=0.05
-        Significance level for confidence intervals. A value above 0.10 is
-        replaced by 0.05 with a warning.
+        The significance level. A value above 0.10 becomes 0.05 with a warning.
     trim_level : float, default=0.995
-        Trimming level for propensity scores. Only used for repeated
-        cross-section data (panel=False) and for unbalanced panels with
-        allow_unbalanced_panel=True.
+        The trimming level of the propensity scores. Used only with repeated
+        cross-sections and with unbalanced panels under ``allow_unbalanced_panel=True``.
     panel : bool, default=True
-        Whether the data is panel data (True) or repeated cross-section data (False).
-        Panel data has the same units observed across time periods. Repeated
-        cross-section data has different samples in each period.
+        Whether the data is a panel (True) or repeated cross-sections (False).
     allow_unbalanced_panel : bool, default=False
-        Whether to keep the units of a panel that miss some periods. If True,
-        an unbalanced panel takes the repeated cross-section estimator. If
-        False, the units that miss one of the remaining periods leave the data
-        with a warning. The periods that "notyettreated" leaves out without
-        never-treated units don't count. A balanced panel takes the panel
-        estimators either way. Since rows with a missing value leave the data
-        first, a unit that loses a row this way misses that period.
+        Whether to keep the units of a panel that miss some periods. If True, an
+        unbalanced panel takes the repeated cross-section estimator. If False, the units
+        that miss one of the periods kept for estimation leave the data with a warning.
+        A row with a missing value counts as a missed period.
     random_state : int, Generator, optional
-        Random seed for reproducibility of bootstrap.
+        Controls the randomness of the bootstrap. Pass an int for reproducible results
+        across calls.
     n_jobs : int, default=1
-        Number of parallel jobs for group-time estimation in multi-period
-        settings. 1 = sequential (default), -1 = all cores, >1 = that many
-        workers. Ignored for 2-period data.
-    backend : {"numpy", "cupy"} or None, default=None
-        Array backend to use for this call only. When set, the backend is
-        activated for the duration of this call and reverted automatically
-        when the call returns. ``None`` (the default) uses whatever backend
-        is currently active (see :func:`~moderndid.set_backend`).
+        The number of parallel jobs for the group-time cells. Pass -1 to use all cores.
+        Ignored with two periods.
+    backend : {"numpy", "cupy"}, optional
+        The array backend for this call only. None uses the backend that
+        :func:`~moderndid.set_backend` made active.
 
     Returns
     -------
     DDDPanelResult, DDDRCResult, DDDMultiPeriodResult, or DDDMultiPeriodRCResult
-        For 2-period panel data (panel=True), returns DDDPanelResult containing:
+        With two periods, a DDDPanelResult for a panel or a DDDRCResult for
+        repeated cross-sections, each containing:
 
         - **att**: The DDD point estimate
         - **se**: Standard error
@@ -190,10 +153,8 @@ def ddd(
         - **subgroup_counts**: Number of units per subgroup
         - **args**: Estimation arguments
 
-        For 2-period repeated cross-section data (panel=False), returns DDDRCResult
-        with the same structure.
-
-        For multi-period panel data, returns DDDMultiPeriodResult containing:
+        With more periods, a DDDMultiPeriodResult for a panel or a
+        DDDMultiPeriodRCResult for repeated cross-sections, each containing:
 
         - **att**: Array of ATT(g,t) point estimates
         - **se**: Standard errors for each ATT(g,t)
@@ -211,8 +172,7 @@ def ddd(
         - **unit_clusters**: Cluster of each unit, or None without a cluster
         - **unit_partition**: Eligibility of each unit, 1 if eligible and 0 if not
 
-        For multi-period repeated cross-section data, returns DDDMultiPeriodRCResult
-        with the same structure. Its unit-level arrays hold one entry per
+        The unit-level arrays of a DDDMultiPeriodRCResult hold one entry per
         observation.
 
     See Also
@@ -225,20 +185,25 @@ def ddd(
 
     Notes
     -----
-    The DDD estimator identifies treatment effects in settings where a unit is
-    treated only when its group enables the treatment, such as a state that passes
-    a policy, and when the unit belongs to the eligible partition, such as women
-    eligible for maternity benefits. This allows for violations of standard DiD
-    parallel trends assumptions, as long as these violations are stable across
-    groups.
+    Identification rests on DDD conditional parallel trends. For cohorts :math:`g` and
+    :math:`g' > \max\{g,t\}`,
 
-    When ``est_method="dr"`` (the default), the function implements doubly robust
-    DDD estimators that combine outcome regression and inverse probability weighting.
-    These estimators are consistent if either the outcome model or the propensity
-    score model is correctly specified.
+    .. math::
 
-    With ``allow_unbalanced_panel=True`` on an unbalanced panel, the standard
-    errors come from each unit's influence function summed over its observations.
+        &\mathbb{E}[\Delta Y(\infty) \mid S=g, Q=1, X]
+        - \mathbb{E}[\Delta Y(\infty) \mid S=g, Q=0, X] \\
+        &= \mathbb{E}[\Delta Y(\infty) \mid S=g', Q=1, X]
+        - \mathbb{E}[\Delta Y(\infty) \mid S=g', Q=0, X],
+
+    where :math:`\Delta Y(\infty) = Y_t(\infty) - Y_{t-1}(\infty)` is the change in
+    untreated potential outcomes. The :ref:`triple differences background
+    <background-tripledid>` derives the doubly robust estimator, its combination of
+    several comparison cohorts, and its influence function.
+
+    With a cluster, a warning appears when the eligible units of an enabling cohort fall
+    in fewer than 5 clusters or all units fall in fewer than 30. On an unbalanced panel
+    with ``allow_unbalanced_panel=True``, the standard errors sum each unit's influence
+    function over its observations.
 
     References
     ----------

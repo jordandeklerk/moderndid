@@ -24,46 +24,44 @@ def ordid(
 ):
     r"""Wrap the outcome regression DiD estimators for the ATT.
 
-    This function is a wrapper for outcome regression DiD estimators [1]_, [2]_.
-    It calls the appropriate estimator based on the panel argument and
-    performs pre-processing for the data.
+    Estimates the average treatment effect on the treated (ATT) of a design with two
+    periods by outcome regression [1]_, [2]_. Linear regressions fit on the comparison
+    group predict the untreated outcome change of the treated units from their
+    covariates. The estimate subtracts that predicted change from the treated group's
+    observed change. Unlike the doubly robust :func:`~moderndid.drdid`, it is consistent
+    only if the outcome regression is correctly specified.
+
+    The function runs :func:`~moderndid.reg_did_panel` on a panel and
+    :func:`~moderndid.reg_did_rc` on stationary repeated cross-sections.
 
     Parameters
     ----------
-    data : pd.DataFrame | pl.DataFrame
-        The input data containing outcome, time, unit ID, treatment,
-        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
+    data : DataFrame
+        Data in long format. Accepts pandas and polars DataFrames.
     yname : str
-        Name of the column containing the outcome variable.
+        The name of the outcome column.
     tname : str
-        Name of the column containing the time periods (must have exactly 2 periods).
-    idname : str | None, default None
-        Name of the column containing the unit ID. Required if panel=True.
+        The name of the time period column. It must hold exactly two periods.
+    idname : str, optional
+        The name of the unit identifier column. Required if ``panel=True``.
     treatname : str
-        Name of the column containing the treatment group indicator. With panel data it
-        is constant within a unit, 1 if ever treated and 0 if never treated. With
-        repeated cross-sections it marks the group treated in the post-period and equals
-        1 for that group's rows in both periods.
-    xformla : str | None, default None
-        Formula that joins covariate column names with ``+``, as in
-        ``"~ x1 + x2"``. The model always includes an intercept. Transformed
-        terms such as ``I(x**2)`` or ``C(x)`` and columns of strings or
-        categories require formulaic. If None, only the intercept enters.
-    panel : bool, default True
-        Whether the data is panel (True) or repeated cross-sections (False).
-        Panel data should be in long format with each row representing
-        a unit-time observation.
-    weightsname : str | None, default None
-        Name of the column containing sampling weights.
-        If None, all observations have equal weight.
-        Weights are normalized to have mean 1.
-    boot : bool, default False
-        Whether to compute bootstrap standard errors.
-    boot_type : {"weighted", "multiplier"}, default "weighted"
-        Type of bootstrap to perform (only relevant if boot=True).
-    biters : int, default 999
-        Number of bootstrap repetitions (only relevant if boot=True).
-    inf_func : bool, default False
+        The name of the treatment group column, 1 in both periods for the group treated in
+        the post-period and 0 for the comparison group.
+    xformla : str, optional
+        A formula joining covariate columns with ``+``, such as ``"~ x1 + x2"``. The
+        model always includes an intercept. Terms such as ``I(x**2)`` or ``C(x)`` and
+        string or categorical columns require formulaic.
+    panel : bool, default=True
+        Whether the data is a panel (True) or repeated cross-sections (False).
+    weightsname : str, optional
+        The name of the sampling weights column. The weights are normalized to mean 1.
+    boot : bool, default=False
+        Whether to compute bootstrap standard errors instead of analytical ones.
+    boot_type : {"weighted", "multiplier"}, default="weighted"
+        The kind of bootstrap. Only applicable if ``boot=True``.
+    biters : int, default=999
+        The number of bootstrap draws. Only applicable if ``boot=True``.
+    inf_func : bool, default=False
         Whether to return the influence function values.
 
     Returns
@@ -71,20 +69,41 @@ def ordid(
     ORDIDResult
         NamedTuple containing:
 
-        - **att**: The OR DiD point estimate.
-        - **se**: The OR DiD standard error.
-        - **uci**: The upper bound of a 95 percent confidence interval.
-        - **lci**: The lower bound of a 95 percent confidence interval.
-        - **boots**: Bootstrap draws of the ATT if boot=True.
-        - **att_inf_func**: Influence function values if inf_func=True.
-        - **call_params**: Original function call parameters.
-        - **args**: Arguments used in the estimation.
+        - **att**: The OR DiD point estimate
+        - **se**: The OR DiD standard error
+        - **uci**: The upper bound of a 95 percent confidence interval
+        - **lci**: The lower bound of a 95 percent confidence interval
+        - **boots**: Bootstrap draws of the ATT if boot=True
+        - **att_inf_func**: Influence function values if inf_func=True
+        - **call_params**: Original function call parameters
+        - **args**: Arguments used in the estimation
+
+    See Also
+    --------
+    drdid : Doubly robust DiD estimator.
+    ipwdid : Inverse propensity weighted DiD estimator.
+
+    Notes
+    -----
+    The :ref:`doubly robust DiD background <background-drdid>` develops the outcome
+    regression estimand and the conditional parallel trends it relies on.
+
+    References
+    ----------
+
+    .. [1] Heckman, J., Ichimura, H., and Todd, P. (1997),
+           "Matching as an Econometric Evaluation Estimator: Evidence from
+           Evaluating a Job Training Programme", Review of Economic Studies,
+           vol. 64(4), pp. 605-654. https://doi.org/10.2307/2971733
+
+    .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
+           "Doubly Robust Difference-in-Differences Estimators."
+           Journal of Econometrics, Vol. 219 (1), pp. 101-122.
+           https://doi.org/10.1016/j.jeconom.2020.06.003
 
     Examples
     --------
-    Estimate the average treatment effect on the treated (ATT) using outcome regression
-    with panel data from a job training program. The outcome regression approach models
-    the conditional expectation of the outcome given covariates.
+    Estimate the ATT of a job training program on earnings by outcome regression.
 
     .. ipython::
 
@@ -104,35 +123,6 @@ def ordid(
            ...: )
 
         In [2]: print(att_result)
-
-    Notes
-    -----
-    The outcome regression DiD estimator is based on a linear regression model for
-    the outcome conditional on covariates, time period, and treatment status. For
-    panel data, it estimates the ATT by comparing the change in outcomes for treated
-    units to the predicted change for control units based on their covariate values.
-
-    This estimator assumes that the conditional expectation function is correctly
-    specified and that the parallel trends assumption holds conditional on covariates.
-    Unlike the doubly robust estimator, it is not robust to misspecification of the
-    outcome regression model.
-
-    See Also
-    --------
-    drdid : Doubly robust DiD estimator.
-    ipwdid : Inverse propensity weighted DiD estimator.
-
-    References
-    ----------
-    .. [1] Heckman, J., Ichimura, H., and Todd, P. (1997),
-           "Matching as an Econometric Evaluation Estimator: Evidence from
-           Evaluating a Job Training Programme", Review of Economic Studies,
-           vol. 64(4), pp. 605-654. https://doi.org/10.2307/2971733
-
-    .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
-           "Doubly Robust Difference-in-Differences Estimators."
-           Journal of Econometrics, Vol. 219 (1), pp. 101-122.
-           https://doi.org/10.1016/j.jeconom.2020.06.003
     """
     if treatname is None:
         raise ValueError("treatname is required. Please specify the treatment column.")

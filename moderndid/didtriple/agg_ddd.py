@@ -20,48 +20,15 @@ def agg_ddd(
 ):
     r"""Aggregate group-time average treatment effects for triple differences.
 
-    Takes the group-time average treatment effects from :func:`ddd` and averages
-    them into the summaries of [1]_ and [2]_. Since the ineligible units of an
-    enabling cohort are never treated, each summary weights a cohort by its
-    share of the eligible treated units.
+    Averages the group-time average treatment effects of :func:`ddd` into an event
+    study, cohort or calendar summaries, or one overall effect [1]_, [2]_. Since the
+    ineligible units of an enabling cohort are never treated, each summary weights a
+    cohort by its share of the eligible treated units. The shares and the standard
+    errors carry over the sampling weights and clusters of the :func:`ddd` fit. The
+    standard errors also account for the estimated shares.
 
-    The event study averages the cohorts observed at each event time and shows
-    how the effect evolves with exposure. With balance_e, it keeps only the
-    cohorts observed through that event time and stops there. Its overall
-    effect gives every post-treatment event time the same weight. This overall
-    effect is the :math:`ES_{\mathrm{avg}}` of [2]_.
-
-    The group aggregation averages each cohort's post-treatment effects. Its
-    overall effect weights the averages of the cohorts with a post-treatment
-    effect by cohort size. The calendar aggregation averages the treated
-    cohorts within each period. Its overall effect averages the periods that
-    have an effect.
-
-    The simple aggregation of [1]_ averages every post-treatment ATT(g,t) with
-    weights proportional to cohort size. Although [2]_ calls
-    :math:`ES_{\mathrm{avg}}` a simple average of the event-study coefficients,
-    the simple aggregation is a different summary. A cohort treated for longer
-    contributes more of these effects. The simple aggregation therefore leans
-    toward early cohorts more than the group aggregation's overall effect does.
-    Since only early cohorts reach the late event times, the event study's
-    overall effect leans toward them even more.
-
-    Each overall effect averages post-treatment group-time effects. When none
-    is left, because those cells failed to estimate or max_e leaves them out,
-    the overall effect is NaN. A warning names the cause. The group and
-    calendar aggregations report only the cohorts and periods with an
-    estimated post-treatment effect. An event study without one still reports
-    its pre-treatment event times. A result whose ATT(g,t) are all NaN stops
-    with an error. So does an event-study window without event times.
-
-    When :func:`ddd` used sampling weights, each unit counts toward the cohort
-    shares with its weight. When it clustered its standard errors, the standard
-    errors here sum the influence functions within the same clusters. The
-    bootstrap then draws one multiplier per cluster. Since :func:`ddd` warns
-    when those clusters are few, agg_ddd does not warn again.
-
-    See the :ref:`triple differences example <example_triple_did>` for an event
-    study and an overall effect from the crop insurance data.
+    See the :ref:`triple differences example <example_triple_did>` for an event study
+    and an overall effect from the crop insurance data.
 
     Parameters
     ----------
@@ -112,13 +79,15 @@ def agg_ddd(
 
     Notes
     -----
-    Let :math:`G` denote the period in which a unit is first treated. An
-    eligible unit in enabling cohort :math:`S` has :math:`G = S`. An ineligible
-    unit is never treated and has :math:`G = \infty`. The aggregations weight
-    cohort :math:`g` by :math:`\mathbb{P}(G = g) = \mathbb{P}(S = g, Q = 1)`.
+    Let :math:`G` be the period in which a unit is first treated. An eligible unit in
+    enabling cohort :math:`S` has :math:`G = S`. An ineligible unit is never treated and
+    has :math:`G = \infty`. The aggregations weight cohort :math:`g` by
+    :math:`\mathbb{P}(G = g) = \mathbb{P}(S = g, Q = 1)`. Since the shares are
+    estimated, the influence function of every summary that weights cohorts by them
+    includes a share term, as in Corollary 2 of [1]_ and Corollary 4.2 of [2]_.
 
-    Let :math:`\mathcal{G}_e` hold the cohorts with an estimate at event time
-    :math:`e = t - g`. The event study of [2]_ is
+    The event study of [2]_ averages the cohorts :math:`\mathcal{G}_e` with an estimate
+    at event time :math:`e = t - g`,
 
     .. math::
 
@@ -126,8 +95,9 @@ def agg_ddd(
         \frac{\mathbb{P}(G = g)}{\sum_{h \in \mathcal{G}_e} \mathbb{P}(G = h)}
         \, ATT(g, g + e).
 
-    Its overall effect averages :math:`ES(e)` over the post-treatment event
-    times in :math:`\mathcal{E}`
+    With ``balance_e`` it keeps only the cohorts observed through that event time and
+    stops there. Its overall effect averages :math:`ES(e)` over the post-treatment event
+    times in :math:`\mathcal{E}`,
 
     .. math::
 
@@ -147,8 +117,8 @@ def agg_ddd(
 
         \theta_t = \sum_{g \leq t} \mathbb{P}(G = g \mid G \leq t) \, ATT(g, t).
 
-    Its overall effect averages :math:`\theta_t` over the periods that have at
-    least one :math:`ATT(g, t)`. The simple aggregation is
+    Its overall effect averages :math:`\theta_t` over the periods that have at least one
+    :math:`ATT(g, t)`. The simple aggregation of [1]_ is
 
     .. math::
 
@@ -156,9 +126,20 @@ def agg_ddd(
         \frac{\sum_{g} \sum_{t \geq g} \mathbb{P}(G = g) \, ATT(g, t)}
         {\sum_{g} \sum_{t \geq g} \mathbb{P}(G = g)}.
 
-    Since the shares are estimated, the influence function of every summary
-    that weights cohorts by them includes a share term, as in Corollary 2 of
-    [1]_ and Corollary 4.2 of [2]_.
+    A cohort treated for longer contributes more of these effects. The simple
+    aggregation therefore leans toward early cohorts more than the group aggregation
+    does.
+
+    Each overall effect averages post-treatment group-time effects. When none is left,
+    because those cells failed to estimate or ``max_e`` leaves them out, the overall
+    effect is NaN. A warning names the cause. The group and calendar aggregations report
+    only the cohorts and periods with an estimated post-treatment effect. An event study
+    without one still reports its pre-treatment event times. A result whose ATT(g,t) are
+    all NaN, or an event-study window without event times, stops with an error.
+
+    Since :func:`ddd` warns when the clusters are few, agg_ddd does not warn again. The
+    :ref:`triple differences background <background-tripledid>` derives the event study
+    and the influence function of the estimated shares.
 
     References
     ----------
