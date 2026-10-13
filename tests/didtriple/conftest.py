@@ -436,6 +436,18 @@ def rcs_nuisance_data():
     return y, post, subgroup, covariates, weights
 
 
+@pytest.fixture(scope="module")
+def rcs_misspecified_score_arrays():
+    """Two-period repeated cross-section DDD arrays whose logistic propensity score models are misspecified."""
+    data = gen_ddd_2periods(n=1000, dgp_type=2, panel=False, random_state=42)["data"]
+    return {
+        "y": data["y"].to_numpy(),
+        "post": (data["time"] == 2).cast(pl.Int64).to_numpy(),
+        "subgroup": 1 + data["partition"].to_numpy() + 2 * data["state"].to_numpy(),
+        "covariates": np.column_stack([np.ones(data.height), data.select("cov1", "cov2", "cov3", "cov4").to_numpy()]),
+    }
+
+
 @pytest.fixture
 def ddd_baseline_result(two_period_df):
     return ddd(

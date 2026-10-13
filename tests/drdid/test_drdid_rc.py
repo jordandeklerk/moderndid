@@ -107,6 +107,17 @@ def test_influence_function():
     assert np.abs(np.mean(result.att_inf_func)) < 0.1
 
 
+def test_drdid_rc_influence_function_matches_weight_derivative(rc_misspecified_score_arrays, weight_derivative):
+    arrays = rc_misspecified_score_arrays
+    cell = 2 * arrays["d"] + arrays["post"]
+    rows = np.concatenate([np.flatnonzero(cell == value)[:3] for value in np.unique(cell)])
+
+    result = drdid_rc(**arrays, influence_func=True)
+    expected = weight_derivative(lambda weights: drdid_rc(**arrays, i_weights=weights).att, cell.size, rows)
+
+    np.testing.assert_allclose(result.att_inf_func[rows], expected, rtol=1e-6, atol=1e-6)
+
+
 def test_no_covariates():
     setup = get_test_data()
     result = drdid_rc(

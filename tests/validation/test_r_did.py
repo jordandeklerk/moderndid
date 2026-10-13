@@ -53,6 +53,24 @@ def check_r_available():
 R_AVAILABLE = check_r_available()
 
 
+def r_subtract_pre_period_term():
+    return """
+src <- deparse(DRDID::drdid_rc, width.cutoff = 500L)
+for (part in c("treat", "cont")) {
+  line <- grep(sprintf("inf.%s.or <- inf.%s.or.post + inf.%s.or.pre", part, part, part), src, fixed = TRUE)
+  stopifnot(length(line) == 1)
+  src[line] <- sub(" + ", " - ", src[line], fixed = TRUE)
+}
+fixed <- eval(parse(text = src))
+environment(fixed) <- asNamespace("DRDID")
+assignInNamespace("drdid_rc", fixed, ns = "DRDID")
+imports <- parent.env(asNamespace("did"))
+unlockBinding("drdid_rc", imports)
+assign("drdid_rc", fixed, envir = imports)
+lockBinding("drdid_rc", imports)
+"""
+
+
 def r_att_gt(
     data_path,
     est_method="dr",
@@ -1237,6 +1255,34 @@ def test_repeated_cross_section(mpdta_data, mpdta_csv_path):
     np.testing.assert_allclose(py_result.se_gt, r_result["se_gt"], rtol=1e-8, atol=1e-10)
 
 
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+def test_repeated_cross_section_dr_standard_errors_depart_from_reference_that_adds_the_pre_period_regression_term(
+    mpdta_data, mpdta_csv_path
+):
+    r_result = r_att_gt(mpdta_csv_path, est_method="dr", xformla="~lpop", panel=False)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = att_gt(
+        data=mpdta_data,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        xformla="~lpop",
+        est_method="dr",
+        control_group="nevertreated",
+        panel=False,
+        boot=False,
+    )
+
+    py_cells = list(zip(py_result.groups.tolist(), py_result.times.tolist()))
+    ratio = np.asarray(r_result["se_gt"]) / py_result.se_gt
+    assert py_cells == list(zip(r_result["groups"], r_result["times"]))
+    np.testing.assert_allclose(py_result.att_gt, r_result["att_gt"], rtol=1e-8)
+    np.testing.assert_allclose([ratio.min(), ratio.max()], [0.9989815, 0.9999547], rtol=1e-6)
+
+
 def r_att_gt_repeated_cross_section(data_path, est_method="reg", allow_unbalanced_panel=False):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
@@ -1735,15 +1781,18 @@ def test_att_gt_unbalanced_cluster_sums_match_analytic_clustered_se(
     np.testing.assert_allclose(py_result.se_gt, r_result["se_gt"], rtol=1e-9, atol=1e-12)
 
 
-def r_att_gt_clustered_shared_weights(data_path, weights_path, panel, allow_unbalanced_panel):
+def r_att_gt_clustered_shared_weights(
+    data_path, weights_path, panel, allow_unbalanced_panel, subtract_pre_period_term=False
+):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
 
     idname = 'idname = "countyreal",' if panel else ""
+    patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
     r_script = f"""
 library(did)
 library(jsonlite)
-
+{patch}
 W <- as.matrix(read.csv("{weights_path}", header = FALSE))
 dimnames(W) <- NULL
 assignInNamespace(
@@ -1816,7 +1865,9 @@ def test_clustered_bootstrap_matches_reference_with_shared_weights(
     data.write_csv(tmp_path / "data.csv")
     np.savetxt(tmp_path / "weights.csv", weights, delimiter=",", fmt="%d")
 
-    r_result = r_att_gt_clustered_shared_weights(tmp_path / "data.csv", tmp_path / "weights.csv", panel, unbalanced)
+    r_result = r_att_gt_clustered_shared_weights(
+        tmp_path / "data.csv", tmp_path / "weights.csv", panel, unbalanced, subtract_pre_period_term=True
+    )
 
     if r_result is None:
         pytest.fail("R clustered bootstrap estimation failed")
@@ -1857,14 +1908,15 @@ def test_clustered_bootstrap_matches_reference_with_shared_weights(
             np.testing.assert_allclose(agg.critical_values, _r_numbers(r_agg["critical_value"])[0], rtol=1e-7)
 
 
-def r_att_gt_analytic_clustered(data_path, panel):
+def r_att_gt_analytic_clustered(data_path, panel, subtract_pre_period_term=False):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
 
+    patch = r_subtract_pre_period_term() if subtract_pre_period_term else ""
     r_script = f"""
 library(did)
 library(jsonlite)
-
+{patch}
 data <- read.csv("{data_path}")
 
 result <- att_gt(
@@ -1916,7 +1968,7 @@ def test_analytic_clustered_standard_errors_match_reference(mpdta_data, tmp_path
     data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
     data.write_csv(tmp_path / "data.csv")
 
-    r_result = r_att_gt_analytic_clustered(tmp_path / "data.csv", panel)
+    r_result = r_att_gt_analytic_clustered(tmp_path / "data.csv", panel, subtract_pre_period_term=True)
 
     if r_result is None:
         pytest.fail("R analytic clustered estimation failed")

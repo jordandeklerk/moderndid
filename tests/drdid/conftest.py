@@ -11,7 +11,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import load_nsw
+from moderndid import gen_did_scalable, load_nsw
 from moderndid.drdid.bootstrap import boot_mult
 
 
@@ -164,6 +164,21 @@ def rc_correct_models_arrays(rc_correct_models):
         "post": (rc_correct_models["year"] == 2001).cast(pl.Int64).to_numpy(),
         "d": rc_correct_models["d"].to_numpy(),
         "covariates": np.column_stack([np.ones(rc_correct_models.height), covariates]),
+    }
+
+
+@pytest.fixture(scope="module")
+def rc_misspecified_score_arrays():
+    """Two-period repeated cross-section arrays whose logistic propensity score model is misspecified."""
+    simulated = gen_did_scalable(
+        n=1000, dgp_type=2, n_periods=2, n_cohorts=1, n_covariates=4, panel=False, random_state=42
+    )
+    data = simulated["data"]
+    return {
+        "y": data["y"].to_numpy(),
+        "post": (data["time"] == 2).cast(pl.Int64).to_numpy(),
+        "d": (data["group"] == 2).cast(pl.Int64).to_numpy(),
+        "covariates": np.column_stack([np.ones(data.height), data.select("cov1", "cov2", "cov3", "cov4").to_numpy()]),
     }
 
 

@@ -90,6 +90,17 @@ def test_ddd_rc_influence_function(two_period_rcs_data):
     np.testing.assert_allclose(result.se, inf_se, rtol=0.1)
 
 
+def test_ddd_rc_influence_function_matches_weight_derivative(rcs_misspecified_score_arrays, weight_derivative):
+    arrays = rcs_misspecified_score_arrays
+    cell = 2 * arrays["subgroup"] + arrays["post"]
+    rows = np.concatenate([np.flatnonzero(cell == value)[:2] for value in np.unique(cell)])
+
+    result = ddd_rc(**arrays, influence_func=True)
+    expected = weight_derivative(lambda weights: ddd_rc(**arrays, i_weights=weights).att, cell.size, rows)
+
+    np.testing.assert_allclose(result.att_inf_func[rows], expected, rtol=1e-6, atol=1e-6)
+
+
 def test_ddd_rc_bootstrap(two_period_rcs_data):
     data = two_period_rcs_data
     y = data["y"].to_numpy()

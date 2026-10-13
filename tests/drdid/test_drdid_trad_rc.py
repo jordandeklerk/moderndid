@@ -56,6 +56,17 @@ def test_drdid_trad_rc_with_influence_func():
     assert np.isclose(np.mean(result.att_inf_func), 0, atol=1e-10)
 
 
+def test_drdid_trad_rc_influence_function_matches_weight_derivative(rc_misspecified_score_arrays, weight_derivative):
+    arrays = rc_misspecified_score_arrays
+    cell = 2 * arrays["d"] + arrays["post"]
+    rows = np.concatenate([np.flatnonzero(cell == value)[:3] for value in np.unique(cell)])
+
+    result = drdid_trad_rc(**arrays, influence_func=True)
+    expected = weight_derivative(lambda weights: drdid_trad_rc(**arrays, i_weights=weights).att, cell.size, rows)
+
+    np.testing.assert_allclose(result.att_inf_func[rows], expected, rtol=1e-6, atol=1e-6)
+
+
 def test_drdid_trad_rc_no_covariates():
     rng = np.random.default_rng(42)
     n = 200
