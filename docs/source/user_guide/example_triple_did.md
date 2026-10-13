@@ -374,13 +374,12 @@ regression_rows = {
     for e, row in zip(event_times, coefficients.to_dict("records"))
 }
 
+# Since to_df leaves out the base year, each event time pairs the two estimators.
 rows = []
-for e, att, se in zip(event_study.egt, event_study.att_egt, event_study.se_egt):
-    if e == -1:
-        continue
-    estimate, low, high = regression_rows[int(e)]
-    rows.append(("triple difference", int(e), att, att - z * se, att + z * se))
-    rows.append(("three-way fixed effects", int(e), estimate, low, high))
+for e, att, se in did.to_df(event_study).select("event_time", "att", "se").rows():
+    estimate, low, high = regression_rows[e]
+    rows.append(("triple difference", e, att, att - z * se, att + z * se))
+    rows.append(("three-way fixed effects", e, estimate, low, high))
 
 comparison = pl.DataFrame(rows, schema=["estimator", "event_time", "att", "low", "high"], orient="row")
 dodge = position_dodge(width=0.3)
@@ -447,11 +446,10 @@ comparisons = {
     "tobacco farmers across counties": data.filter(pl.col("sector") == 1),
     "both sectors in the insured county": inside_county,
 }
-two_differences = {}
-for name, frame in comparisons.items():
-    estimates = did.att_gt(frame, **did_spec)
-    two_differences[name] = did.aggte(estimates, type="dynamic", random_state=7)
-    print(f"{name:<38}{two_differences[name].overall_att:.4f}")
+for name, sample in comparisons.items():
+    estimates = did.att_gt(sample, **did_spec)
+    two_difference_study = did.aggte(estimates, type="dynamic", random_state=7)
+    print(f"{name}: {two_difference_study.overall_att:.4f}")
 ```
 
 Comparing tobacco farmers across counties gives 0.1111, about 1.7 times the
@@ -474,11 +472,10 @@ changes = {
     "reg": {"est_method": "reg"},
     "without covariates": {"xformla": None},
 }
-variants = {}
 for name, change in changes.items():
     variant = did.ddd(data, **(spec | change))
-    variants[name] = did.agg_ddd(variant, type="eventstudy", biters=999, random_state=7)
-    print(f"{name:>18}  {variants[name].overall_att:.4f}  ({variants[name].overall_se:.4f})")
+    variant_study = did.agg_ddd(variant, type="eventstudy", biters=999, random_state=7)
+    print(f"{name}: {variant_study.overall_att:.4f} ({variant_study.overall_se:.4f})")
 ```
 
 Each of the three swaps lowers the overall effect from 0.0652 to somewhere
@@ -524,9 +521,7 @@ between the two years of every comparison.
 
 ```{code-cell} ipython3
 # The same specification on the households observed in every year.
-households = data.group_by("hhno").agg(years=pl.len())
-complete_households = households.filter(pl.col("years") == 9).get_column("hhno").to_list()
-complete = data.filter(pl.col("hhno").is_in(complete_households))
+complete = did.make_balanced_panel(data, idname="hhno", tname="year")
 balanced = did.ddd(complete, **(spec | {"allow_unbalanced_panel": False}))
 balanced_event_study = did.agg_ddd(balanced, type="eventstudy", biters=999, random_state=7)
 print(

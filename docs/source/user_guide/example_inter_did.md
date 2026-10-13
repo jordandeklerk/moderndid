@@ -434,28 +434,27 @@ from plotnine import (
     scale_x_continuous,
 )
 
-# Line up each local projection with the eight-year effect at the same horizon.
-panels = [
-    "Local projections, per restriction lifted as of this year",
-    "did_multiplegt, whole deregulation path",
-]
-effects = eight_years.effects
+# The coefficient and 95 percent interval of each local projection by horizon.
 rows = []
 for ell, fit in projections.items():
     coefficient = fit.tidy().loc["inter_bra"]
-    estimate, low, high = coefficient["Estimate"], coefficient["2.5%"], coefficient["97.5%"]
-    rows.append((panels[0], ell, estimate, low, high))
-for horizon, (effect, low, high) in enumerate(
-    zip(effects.estimates, effects.ci_lower, effects.ci_upper), start=1
-):
-    rows.append((panels[1], horizon, effect, low, high))
+    rows.append((ell, coefficient["Estimate"], coefficient["2.5%"], coefficient["97.5%"]))
+local = pl.DataFrame(rows, schema=["horizon", "att", "ci_lower", "ci_upper"], orient="row")
 
-estimates = pl.DataFrame(rows, schema=["panel", "horizon", "estimate", "low", "high"], orient="row")
-estimates = estimates.with_columns(pl.col("panel").cast(pl.Enum(panels)))
+# Stack the eight-year effects under the local projections and label each panel.
+effects = did.to_df(eight_years).filter(pl.col("horizon") > 0).select(local.columns)
+estimates = pl.concat(
+    [
+        local.with_columns(
+            panel=pl.lit("Local projections, per restriction lifted as of this year")
+        ),
+        effects.with_columns(panel=pl.lit("did_multiplegt, whole deregulation path")),
+    ]
+)
 (
-    ggplot(estimates.to_pandas(), aes("horizon", "estimate"))
+    ggplot(estimates, aes("horizon", "att"))
     + geom_hline(yintercept=0, color="#7f8c8d")
-    + geom_errorbar(aes(ymin="low", ymax="high"), width=0.2, color="#1a3a5c")
+    + geom_errorbar(aes(ymin="ci_lower", ymax="ci_upper"), width=0.2, color="#1a3a5c")
     + geom_point(size=3, color="#1a3a5c")
     + facet_wrap("panel", scales="free_y")
     + scale_x_continuous(breaks=list(range(1, 10)))

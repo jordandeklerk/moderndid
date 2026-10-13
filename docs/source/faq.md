@@ -136,7 +136,7 @@ goes into the estimator without any other change.
 pandas_data = data.to_pandas()
 pandas_fit = did.att_gt(pandas_data, **spec)
 pandas_overall = did.aggte(pandas_fit, type="simple", cband=False)
-print(f"Simple average from pandas input: {pandas_overall.overall_att: .4f}")
+print(f"Simple average from pandas input: {pandas_overall.overall_att:.4f}")
 ```
 
 The pandas input gives the same simple average of −0.0400 that the Polars data
@@ -173,7 +173,7 @@ print(diagnostics)
 # Count the counties each panel setting keeps in the estimation.
 for allow in [False, True]:
     fit = did.att_gt(incomplete, **(spec | {"allow_unbalanced_panel": allow}))
-    print(f"allow_unbalanced_panel={str(allow):5}: {fit.n_units} counties retained")
+    print(f"allow_unbalanced_panel={allow}: {fit.n_units} counties retained")
 ```
 
 Under the default, the county with the missing year leaves the estimation
@@ -205,8 +205,8 @@ print(rc_overall)
 # Compare its standard error with the paired panel fit of the same specification.
 panel_fit = did.att_gt(data, **spec)
 panel_overall = did.aggte(panel_fit, type="simple", cband=False)
-print(f"Panel standard error:          {panel_overall.overall_se:.4f}")
-print(f"Cross-section standard error:  {rc_overall.overall_se:.4f}")
+print(f"Panel standard error: {panel_overall.overall_se:.4f}")
+print(f"Cross-section standard error: {rc_overall.overall_se:.4f}")
 ```
 
 ## Choosing an estimator and its settings
@@ -262,7 +262,7 @@ Both rows below report the simple average effect in log employment units.
 for comparison in ["nevertreated", "notyettreated"]:
     fit = did.att_gt(data, **(spec | {"control_group": comparison}))
     overall = did.aggte(fit, type="simple", cband=False)
-    print(f"{comparison:14} {overall.overall_att: .4f}")
+    print(f"{comparison}: {overall.overall_att:.4f}")
 ```
 
 On the county data, the extra comparisons move the simple average only from
@@ -288,7 +288,7 @@ also needs the `etwfe` extra, installed with `uv add "moderndid[etwfe]"` or
 # att_gt under its default never-treated comparison.
 fit = did.att_gt(data, **spec)
 overall = did.aggte(fit, type="simple", cband=False)
-print(f"att_gt, never-treated: {overall.overall_att: .4f}")
+print(f"att_gt, never-treated: {overall.overall_att:.4f}")
 
 # etwfe under its default not-yet-treated comparison and under never-treated controls.
 for comparison in ["notyet", "never"]:
@@ -301,7 +301,7 @@ for comparison in ["notyet", "never"]:
         cgroup=comparison,
     )
     average = did.emfx(regression, type="simple")
-    print(f"etwfe, {comparison:6}:     {average.overall_att: .4f}")
+    print(f"etwfe, {comparison}: {average.overall_att:.4f}")
 ```
 
 Once you add covariates, the two estimators adjust for them in different ways
@@ -337,7 +337,7 @@ the universal base compares 2005 with 2006.
 for base in ["varying", "universal"]:
     fit = did.att_gt(data, **(spec | {"base_period": base}))
     cell = did.to_df(fit).filter((pl.col("group") == 2007) & (pl.col("time") == 2005))
-    print(f"{base:9} {cell['att'][0]: .4f}")
+    print(f"{base}: {cell['att'][0]:.4f}")
 ```
 
 ### What can I put in `xformla`?
@@ -394,7 +394,7 @@ right. That double protection is why `"dr"` is the default, as
 for method in ["dr", "ipw", "reg"]:
     fit = did.att_gt(data, **(spec | {"est_method": method}))
     overall = did.aggte(fit, type="simple", cband=False)
-    print(f"{method:3} {overall.overall_att: .4f}")
+    print(f"{method}: {overall.overall_att:.4f}")
 ```
 
 ### What if the policy was announced before it took effect?
@@ -537,7 +537,7 @@ cell = did.to_df(fit).filter((pl.col("group") == 2007) & (pl.col("time") == 2004
 event = did.to_df(event_study).filter(pl.col("event_time") == -3)
 for label, row in [("Pointwise", cell), ("Simultaneous", event)]:
     estimate, lower, upper = row.select("att", "ci_lower", "ci_upper").row(0)
-    print(f"{label:12} {estimate:.4f} [{lower:.4f}, {upper:.4f}]")
+    print(f"{label}: {estimate:.4f} [{lower:.4f}, {upper:.4f}]")
 ```
 
 ### Why do the simple, group, and dynamic aggregations give different overall effects?
@@ -562,7 +562,7 @@ comparisons.
 fit = did.att_gt(data, **spec)
 for kind in ["group", "simple", "dynamic"]:
     average = did.aggte(fit, type=kind, cband=False)
-    print(f"{kind:7} {average.overall_att: .4f} log points")
+    print(f"{kind}: {average.overall_att:.4f} log points")
 ```
 
 ### Why are some group-time estimates missing?

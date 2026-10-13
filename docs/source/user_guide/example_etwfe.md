@@ -406,9 +406,11 @@ from plotnine import (
 default = "every untreated county-year (default)"
 colors = {default: "#315bc4", "never-treated counties only": "#7f8c8d"}
 shapes = {default: "^", "never-treated counties only": "o"}
-studies = {default: event_study, "never-treated counties only": never_event}
 comparison = pl.concat(
-    [did.to_df(study).with_columns(design=pl.lit(name)) for name, study in studies.items()]
+    [
+        did.to_df(event_study).with_columns(design=pl.lit(default)),
+        did.to_df(never_event).with_columns(design=pl.lit("never-treated counties only")),
+    ]
 )
 
 dodge = position_dodge(width=0.3)

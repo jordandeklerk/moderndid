@@ -401,11 +401,10 @@ changes = {
     "ipw": {"est_method": "ipw"},
     "reg": {"est_method": "reg"},
 }
-variants = {}
 for name, change in changes.items():
     variant = did.att_gt(data, **(spec | change))
-    variants[name] = did.aggte(variant, type="group")
-    print(f"{name:>14}  {variants[name].overall_att:.4f}")
+    variant_by_cohort = did.aggte(variant, type="group")
+    print(f"{name}: {variant_by_cohort.overall_att:.4f}")
 ```
 
 Across all three, the overall effect stays between −0.0323 and −0.0329. Neither
