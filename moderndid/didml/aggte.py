@@ -13,36 +13,31 @@ from .container import didml_agg
 def aggte_didml(result, type="dynamic", alpha=None):
     r"""Aggregate ML group-time ATTs to a dynamic event-study summary.
 
-    Implements the event-study aggregation of [1]_. It extends the aggregation
-    scheme of Callaway and Sant'Anna [2]_ to the doubly robust ML setting.
+    Implements the event-study aggregation of [1]_. It extends the aggregation scheme
+    of Callaway and Sant'Anna [2]_ to the doubly robust ML setting. The effect
+    :math:`\theta(e)` at event time :math:`e` averages the group-time ATTs that sit
+    :math:`e` periods from treatment. Cohorts enter in proportion to their shares of
+    the units. A fit with sampling weights uses weighted shares. The overall summary in
+    ``overall_att`` is the simple mean of the post-treatment event-time effects
 
-    The effect at each event time averages the group-time ATTs that sit the
-    same number of periods from treatment. Cohorts enter in proportion to
-    their shares of the units. A fit with sampling weights uses weighted
-    shares. The overall summary is the simple mean of the post-treatment
-    event-time effects.
+    .. math::
 
-    The standard errors account for the estimated cohort shares. A fit with
-    bootstrap draws aggregates each draw with that draw's own shares and
-    takes the spread of the aggregated draws. A fit without them adds the
-    shares' influence functions to the cells' influence functions.
+        \bar\theta = \frac{1}{|\mathcal{E}_+|} \sum_{e \ge 0} \theta(e).
 
-    A bootstrap draw can miss a small cohort entirely. That cohort then
-    drops out of the draw's average at each event time. When a draw holds
-    none of the cohorts at an event time, the standard errors of that event
-    time and of the overall summary leave the draw out.
+    The standard errors account for the estimated cohort shares. A fit with bootstrap
+    draws aggregates each draw with that draw's own shares. A cohort that a draw misses
+    drops out of that draw's average. A draw without any cohort at an event time is
+    left out of the standard errors of that event time and of the overall summary. A
+    fit without draws adds the shares' influence functions to those of the cells.
 
     Parameters
     ----------
     result : DIDMLResult
         Output of :func:`didml`.
-    type : {'dynamic'}, default='dynamic'
-        Aggregation scheme. Only ``'dynamic'`` is supported in the current
-        release; ``'simple'``, ``'group'``, and ``'calendar'`` raise
-        :class:`NotImplementedError`.
+    type : {"dynamic"}, default="dynamic"
+        Aggregation scheme. Only ``"dynamic"`` is supported.
     alpha : float, optional
-        Significance level for confidence bands. Defaults to
-        ``result.alpha``.
+        Significance level of the confidence bands. Defaults to ``result.alpha``.
 
     Returns
     -------
@@ -55,8 +50,8 @@ def aggte_didml(result, type="dynamic", alpha=None):
         - **event_times**: Array of integer event times :math:`e = t - g`
         - **att_by_event**: Per-event-time aggregate :math:`\theta(e)`
         - **se_by_event**: Standard error per event time
-        - **critical_values**: Critical values per event time, simultaneous across event times for a bootstrap
-          fit with uniform bands and the standard normal quantile at :math:`1 - \alpha/2` otherwise
+        - **critical_values**: Critical value of each event time, simultaneous for a bootstrap fit with
+          ``cband=True`` and the standard normal quantile at :math:`1 - \alpha/2` otherwise
         - **influence_func**: Aggregate influence-function matrix of shape ``(n_units, n_event_times)``
         - **influence_func_overall**: Influence-function vector of length ``n_units`` for ``overall_att``
         - **drdid_benchmark_by_event**: Doubly robust benchmark aggregated to event time when
@@ -69,68 +64,30 @@ def aggte_didml(result, type="dynamic", alpha=None):
 
     Examples
     --------
-    Run :func:`didml` and aggregate the group-time ATTs to event time:
+    Run :func:`didml` and aggregate the group-time ATTs to event time.
 
     .. ipython::
         :okwarning:
 
-        In [1]: from moderndid import didml, aggte_didml, gen_did_scalable
+        In [1]: from moderndid import aggte_didml, didml, gen_did_scalable
            ...:
            ...: data = gen_did_scalable(
-           ...:     n=300, n_periods=4, n_cohorts=2,
-           ...:     n_covariates=4, random_state=0,
-           ...: )["data"].to_pandas()
-           ...:
+           ...:     n=300, n_periods=4, n_cohorts=2, n_covariates=4, random_state=0
+           ...: )["data"]
            ...: res = didml(
            ...:     data, yname="y", tname="time", idname="id", gname="group",
-           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
-           ...:     k_folds=5, boot=False, random_state=0,
+           ...:     xformla="~ cov1 + cov2 + cov3 + cov4", k_folds=5, boot=False,
+           ...:     random_state=0,
            ...: )
-           ...: agg = aggte_didml(res, type="dynamic")
-           ...: print(agg)
+           ...: print(aggte_didml(res, type="dynamic"))
 
     Notes
     -----
-    The general aggregation has the form
-
-    .. math::
-
-        \theta = \sum_{g \in \mathcal{G}} \sum_{t=2}^{T} w(g, t)\,
-            \mathrm{ATT}(g, t),
-
-    where the weight function :math:`w(g, t)` selects which form of dynamic
-    treatment effect the parameter targets. The event-study weights are
-
-    .. math::
-
-        w(g, t) = \mathbb{1}\{g + e \le T\}\,
-            \mathbb{1}\{t - g = e\}\,
-            P(G = g \mid G + e \le T),
-
-    where :math:`e = t - g` is the length of exposure to treatment. Plugging
-    the weights back in collapses the double sum to the per-event-time
-    aggregate in ``att_by_event``
-
-    .. math::
-
-        \theta(e) = \sum_{g \in \mathcal{G}}
-            \mathbb{1}\{g + e \le T\}\,
-            P(G = g \mid G + e \le T)\,
-            \mathrm{ATT}(g, g + e).
-
-    The overall summary in ``overall_att`` is the simple mean of the
-    post-treatment event-time effects
-
-    .. math::
-
-        \bar\theta = \frac{1}{|\mathcal{E}_+|} \sum_{e \ge 0} \theta(e).
-
-    This summary follows the overall event-study convention of [2]_.
-
-    The weights use the estimated shares
-    :math:`\hat p_g = \sum_i w_i \mathbb{1}\{G_i = g\} / \sum_i w_i` with
-    sampling weights :math:`w_i`. Without bootstrap draws, the influence
-    function of :math:`\hat\theta(e)` for unit :math:`i` is
+    The effect :math:`\hat\theta(e)` at event time :math:`e` is the event-study
+    aggregation of :func:`~moderndid.aggte` with the estimated shares
+    :math:`\hat p_g = \sum_i w_i \mathbb{1}\{G_i = g\} / \sum_i w_i`. Here
+    :math:`w_i` is the sampling weight of unit :math:`i`. Without bootstrap draws, the
+    influence function of :math:`\hat\theta(e)` for unit :math:`i` is
 
     .. math::
 
@@ -139,9 +96,10 @@ def aggte_didml(result, type="dynamic", alpha=None):
             + \sum_{g \in \mathcal{G}_e} \widehat{\mathrm{ATT}}(g, g + e)\,
             \psi_i^{w_g(e)},
 
-    where :math:`\mathcal{G}_e` holds the cohorts observed at event time
-    :math:`e`, :math:`\psi_i^{(g, t)}` is the cell influence function in
-    ``result.influence_func``, and the share term is
+    where :math:`\mathcal{G}_e` holds the cohorts observed at event time :math:`e` and
+    :math:`\hat w_g(e) = \hat p_g / P_e` is the weight of cohort :math:`g`. Each
+    :math:`\psi_i^{(g, t)}` is a cell influence function from ``result.influence_func``.
+    The share term is
 
     .. math::
 

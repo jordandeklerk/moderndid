@@ -50,145 +50,108 @@ def didml(
 ):
     r"""Compute group-time ATTs and CATTs with cross-fitted ML nuisances.
 
-    Implements the staggered-adoption ML doubly robust DiD estimator of
-    [1]_. The target parameter for cohort :math:`g` and time period
-    :math:`t` is the group-time average treatment effect on the treated,
+    Implements the staggered-adoption ML doubly robust DiD estimator of [1]_. For cohort
+    :math:`g` in period :math:`t`, it estimates the group-time average treatment effect
+    on the treated and its conditional version, the CATT,
 
     .. math::
 
-        ATT(g, t) = \mathbb{E}[Y_t(g) - Y_t(0) \mid G = g],
+        ATT(g, t) = \mathbb{E}[Y_t(g) - Y_t(0) \mid G = g], \qquad
+        \tau_{g,t}(x) = \mathbb{E}[Y_t(g) - Y_t(0) \mid X = x, G = g],
 
-    where :math:`Y_t(g)` is the potential outcome at time :math:`t` for a
-    unit first treated at :math:`g` and :math:`Y_t(0)` is the
-    never-treated potential outcome. The conditional version is the CATT
+    where :math:`Y_t(g)` is the potential outcome at time :math:`t` for a unit first
+    treated at :math:`g` and :math:`Y_t(0)` is the never-treated potential outcome.
 
-    .. math::
+    Each cell stacks one pre-period and one post-period row per unit of the treated
+    cohort and of the controls that ``control_group`` selects. :func:`lnw_did` fits the
+    Nie-Lu-Wager score [2]_ with cross-fitted nuisances and predicts the CATT of each
+    unit. The cell ATT averages the CATTs of the treated cohort and adds a residual
+    correction with the augmented minimax-linear weights of [3]_.
 
-        \tau_{g,t}(x) = \mathbb{E}[Y_t(g) - Y_t(0) \mid X = x, G = g].
-
-    The function predicts it for each unit in the cell.
-
-    For each cell, the function stacks the relevant pre and post periods
-    over the treated cohort and the controls that ``control_group`` selects,
-    runs :func:`lnw_did` to compute the cell-level Nie-Lu-Wager [2]_ score
-    with cross-fitted nuisances, and combines the per-unit conditional
-    treatment effects with augmented minimax-linear weights from [3]_.
-
-    Since every cell compares each unit's outcomes in two periods, the
-    function keeps only the units observed in every period and warns about
-    the units it drops.
-
-    Standard errors come from a unit bootstrap by default. Each of the
-    ``biters`` draws resamples the units with replacement and repeats the
-    estimation of every cell. Every draw refits the AMLE weights, the
-    cross-fitted nuisance models, and the CATT fit under a new fold split.
-    The bootstrap therefore takes about ``biters`` times as long as the
-    estimates. With ``cband=True`` it also gives a uniform band that covers
-    all group-time ATTs jointly. The parallel-trends pre-test then rests on
-    the covariance of the draws and needs more draws than pre-treatment
-    cells. With too few draws the function warns and reports no pre-test.
-
-    With ``n_jobs`` above 1 the bootstrap draws run in separate worker
-    processes. Each worker takes a few seconds to start and holds a copy of
-    the data. A script that sets ``n_jobs`` must therefore call the function
-    inside an ``if __name__ == "__main__":`` block.
-
-    With ``boot=False`` the standard errors come from per-unit influence
-    functions instead. They take a fraction of the time but treat the fold
-    split as fixed and leave out part of the nuisance models' estimation
-    error. They can therefore understate the sampling variability. They
-    also need the AMLE weights that ``use_gamma=True`` computes.
-
-    Sampling weights from ``weightsname`` enter the AMLE balance target, the
-    average of the CATTs, the cohort shares of :func:`aggte_didml`, and the
-    bootstrap. The nuisance models are fit without them.
+    Standard errors come from a unit bootstrap by default. Each of the ``biters`` draws
+    resamples the units and refits every cell under a new fold split. The bootstrap
+    therefore takes about ``biters`` times as long as the estimates.
 
     Parameters
     ----------
     data : DataFrame
         Panel data in long format. Accepts any object implementing the Arrow
-        PyCapsule Interface (``__arrow_c_stream__``), including polars,
-        pandas, pyarrow Table, and cudf DataFrames.
+        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
+        pyarrow Table, and cudf DataFrames.
     yname : str
-        Name of the outcome variable.
+        The name of the outcome column.
     tname : str
-        Name of the column containing the time periods.
-    idname : str, optional
-        The individual unit identifier. Required for panel data.
+        The name of the time period column.
+    idname : str
+        The name of the unit identifier column. Since every cell compares two periods of
+        each unit, units missing from any period are dropped with a warning.
     gname : str
-        Name of the variable holding the first period a unit is treated.
-        Should be a positive integer for treated units and 0 for the
-        never-treated group.
+        The name of the column holding the first period in which each unit is treated,
+        or 0 for never-treated units.
     xformla : str, optional
-        A formula for the covariates, such as ``"~ x1 + x2"``. Defaults to
-        ``"~1"`` (no covariates) when ``None``.
+        Formula for the covariates, such as ``"~ x1 + x2"``. If None, the fit uses no
+        covariates.
     weightsname : str, optional
-        Name of the column containing per-unit sampling weights.
+        The name of the per-unit sampling weights column. The weights enter the AMLE
+        balance target, the average of the CATTs, the cohort shares of
+        :func:`aggte_didml`, and the bootstrap. The nuisance models ignore them.
     alpha : float, default=0.05
-        Significance level for the confidence intervals.
+        The significance level.
     cband : bool, default=False
-        Whether to compute a uniform confidence band. Only applicable if
-        ``boot=True``.
+        Whether to compute a uniform confidence band over all group-time ATTs. Only
+        applicable if ``boot=True``.
     boot : bool, default=True
-        Whether to compute standard errors with the unit bootstrap of the
-        whole cell fit. ``False`` uses the influence functions.
+        Whether to use the unit bootstrap. With False, the standard errors come from the
+        influence functions. They treat the fold split as fixed, can understate the
+        sampling variability, and need ``use_gamma=True``.
     biters : int, default=100
-        Number of bootstrap draws. Only applicable if ``boot=True``.
+        Number of bootstrap draws, at least 2 when ``boot=True``. The bootstrap pre-test
+        needs more draws than pre-treatment cells and otherwise warns and reports none.
     clustervars : list[str], optional
-        Variables to cluster on. Currently passed through to the
-        configuration but ignored at the variance-estimation step;
-        clustering support is forthcoming.
+        Variables to cluster on. The standard errors don't support clusters yet and
+        ignore them with a warning.
     control_group : {"nevertreated", "notyettreated"}, default="notyettreated"
         Comparison group for the doubly robust score.
     anticipation : int, default=0
-        Number of pre-treatment periods where treated units may anticipate
-        treatment.
+        Number of periods before treatment in which treated units may anticipate it.
     base_period : {"varying", "universal"}, default="varying"
-        Choice of base period for each comparison. With ``"varying"``,
-        each pre-treatment period is compared with the immediately
-        preceding period. With ``"universal"``, every comparison for
-        cohort ``g`` is anchored at the last period before ``g`` minus
-        the anticipation periods, the reference cell at that base period
-        is reported as zero, and earlier calendar periods are included
-        as placebo comparisons.
+        Base period of each comparison. ``"varying"`` compares each pre-treatment period
+        with the one before it. ``"universal"`` anchors every comparison of cohort ``g``
+        at the last period before ``g`` less the anticipation and reports that reference
+        cell as zero.
     nu_model : {"rlearner", "cf"}, default="rlearner"
-        Backend for the conditional time trend :math:`\nu(x)` (the effect
-        of the post-period indicator on the outcome marginal over cohort)
-        and the propensity :math:`t(x)`.
+        Backend for the conditional time trend :math:`\nu(x)` and the propensity
+        :math:`t(x)` of :func:`lnw_did`.
     sigma_model : {"rlearner", "cf"}, default="rlearner"
-        Backend for the conditional cohort contrast :math:`\zeta(x)` (the
-        effect of cohort membership on the outcome marginal over time) and
-        the propensity :math:`g(x)`.
+        Backend for the conditional cohort contrast :math:`\zeta(x)` and the propensity
+        :math:`g(x)` of :func:`lnw_did`.
     delta_model : {"glm", "stack"}, default="glm"
-        Backend for the conditional covariance term :math:`\Delta(x)`.
-        ``"glm"`` fits a cross-validated lasso and ``"stack"`` a stacking
-        ensemble.
+        Backend for the conditional covariance term :math:`\Delta(x)`. ``"glm"`` fits a
+        cross-validated lasso and ``"stack"`` a stacking ensemble.
     k_folds : int, default=10
         Number of folds for cross-fitting the nuisance models.
     lambda_choice : {"lambda.min", "lambda.1se"}, default="lambda.min"
-        Cross-validation rule for selecting the lasso penalty of each
-        R-learner backend's residual fit and of the linear CATT fit.
+        Cross-validation rule for the lasso penalty of the R-learner residual fits and
+        the linear CATT fit.
     t_func : bool, default=False
-        Whether to use the estimated post-period propensity. The default
-        replaces the estimate with the constant 0.5. Since each stacked cell
-        is balanced by construction, that constant is exact. See
-        :func:`lnw_did`.
+        Whether to use the estimated post-period propensity instead of the constant 0.5
+        that :func:`lnw_did` uses by default.
     use_gamma : bool, default=True
-        Whether to compute and apply AMLE weights. When ``False``, the
-        cell ATT reduces to the mean of the cross-fitted CATTs over the
-        treated cohort in the post period.
+        Whether to apply AMLE weights. Without them, the cell ATT is the mean CATT of
+        the treated cohort in the post period.
     zeta : float, default=0.5
         AMLE objective mixing weight in :math:`(0, 1)`.
     compute_drdid_benchmark : bool, default=True
-        Whether to compute the doubly robust group-time ATT of [4]_ for each
-        cell as a comparison reference. Each benchmark applies the doubly
-        robust estimator of [5]_ to its cell.
+        Whether to compute the doubly robust group-time ATT of [4]_ in each cell with
+        the estimator of [5]_ as a benchmark.
     random_state : int, optional
-        Seed for the cross-fitting fold splits, the inner CV, and the
-        bootstrap resamples.
+        Seed for the fold splits, the inner cross-validation, and the bootstrap
+        resamples. The estimates depend on it through the fold splits.
     n_jobs : int, default=1
-        Number of workers for the group-time cells and the bootstrap draws.
-        ``-1`` uses all cores.
+        Number of workers for the cells and the bootstrap draws. ``-1`` uses all cores.
+        The draws run in worker processes that each copy the data and take a few seconds
+        to start. A script that sets ``n_jobs`` must call ``didml`` inside an
+        ``if __name__ == "__main__":`` block.
 
     Returns
     -------
@@ -199,8 +162,7 @@ def didml(
         - **times**: Array indicating which time period each ATT is for
         - **att_gt**: Array of group-time ML ATT estimates
         - **se_gt**: Standard errors from the unit bootstrap, or from the influence functions with ``boot=False``
-        - **critical_value**: Critical value for confidence intervals, simultaneous with ``cband=True`` and
-          ``boot=True``
+        - **critical_value**: Critical value of the intervals, simultaneous with ``cband=True`` and ``boot=True``
         - **influence_func**: Per-unit influence-function matrix of shape ``(n_units, n_cells)``
         - **cates**: Sparse matrix of per-unit CATT predictions
         - **scores**: Sparse matrix of per-unit DR scores, each the average of the unit's two periods
@@ -211,23 +173,19 @@ def didml(
         - **drdid_benchmark_se**: Standard errors of the DRDID benchmark
         - **n_units**: Number of unique cross-sectional units
         - **wald_stat**: Wald statistic for pre-testing parallel trends
-        - **wald_pvalue**: P-value for the parallel-trends pre-test against Hotelling's distribution with the
-          bootstrap or the chi-square with ``boot=False``
-        - **aggregate_effects**: Placeholder left as None. ``aggte_didml`` returns the aggregate effects in a
-          separate result
+        - **wald_pvalue**: P-value of the parallel-trends pre-test
+        - **aggregate_effects**: Always None. ``aggte_didml`` returns the aggregate effects separately
         - **alpha**: Significance level used
-        - **estimation_params**: Dictionary of the estimation settings, such as ``nu_model``,
-          ``sigma_model``, ``delta_model``, and ``k_folds``
+        - **estimation_params**: Dictionary of the estimation settings
         - **G**: Cohort of each unit, in the row order of ``influence_func``
         - **weights_ind**: Sampling weight of each unit, in the same order
-        - **att_gt_draws**: Bootstrap draws of the group-time ATTs with shape ``(biters, n_cells)``, or None
-          with ``boot=False``
-        - **cohort_share_draws**: Bootstrap draws of the weighted cohort shares, or None with ``boot=False``
+        - **att_gt_draws**: Bootstrap draws of the group-time ATTs of shape ``(biters, n_cells)``, or None
+        - **cohort_share_draws**: Bootstrap draws of the weighted cohort shares, or None
 
     Examples
     --------
-    Generate a small staggered-adoption panel with four covariates, two
-    treated cohorts, and four periods:
+    Estimate the group-time ATTs and CATTs on a small simulated panel. The influence
+    function standard errors of ``boot=False`` keep the example fast.
 
     .. ipython::
         :okwarning:
@@ -235,43 +193,20 @@ def didml(
         In [1]: from moderndid import didml, gen_did_scalable
            ...:
            ...: df = gen_did_scalable(
-           ...:     n=300, n_periods=4, n_cohorts=2,
-           ...:     n_covariates=4, random_state=0,
+           ...:     n=300, n_periods=4, n_cohorts=2, n_covariates=4, random_state=0
            ...: )["data"]
-           ...: print(df.head())
-
-    Estimate group-time ATTs and CATTs with the R-learner nuisance backends
-    and the lasso delta model. The ``DIDMLResult`` holds the group-time ATT
-    estimates, per-unit CATT predictions, doubly robust scores, AMLE weights,
-    and the optional DRDID benchmark for direct comparison. To keep the
-    example fast, ``boot=False`` takes the standard errors from the
-    influence functions instead of the bootstrap:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = didml(
-           ...:     df,
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     gname="group",
-           ...:     idname="id",
-           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
-           ...:     k_folds=5,
-           ...:     boot=False,
+           ...: result = didml(
+           ...:     df, yname="y", tname="time", idname="id", gname="group",
+           ...:     xformla="~ cov1 + cov2 + cov3 + cov4", k_folds=5, boot=False,
            ...:     random_state=0,
            ...: )
            ...: print(result)
 
     Notes
     -----
-    A cell with :math:`n_v` of the :math:`n` units stacks one pre-period
-    row :math:`s = 0` and one post-period row :math:`s = 1` per unit. Its
-    estimate of :math:`ATT(g, t)` averages the CATT predictions of
-    :func:`lnw_did` over the post-period rows of cohort :math:`g` and adds
-    the AMLE-weighted residual correction. Since the two rows of a unit
-    share its fixed effect and its covariates, the influence function
-    averages them. For a unit :math:`i` in the cell it is
+    A cell with :math:`n_v` of the :math:`n` units stacks a pre-period row
+    :math:`s = 0` and a post-period row :math:`s = 1` per unit. The influence function
+    of its ATT averages each unit's two rows. For a unit :math:`i` in the cell, it is
 
     .. math::
 
@@ -281,13 +216,12 @@ def didml(
             \bigl(\tilde\gamma_{is}\,\hat\varepsilon_{is}
             - \overline{\tilde\gamma\,\hat\varepsilon}\bigr),
 
-    and zero for the units outside it. Here :math:`G_i` marks the units of
-    cohort :math:`g`, :math:`w_i` is the sampling weight, :math:`W_1` the
-    sum of the weights of the cell's treated units, :math:`\hat\tau_1` their
-    weighted mean CATT prediction, and :math:`\hat\varepsilon = Y - \hat y`
-    the residual of the orthogonal decomposition. The weights
-    :math:`\tilde\gamma` are the AMLE weights projected to balance the CATT
-    design :math:`W_{is} = C_{is} (1, X_{is})` exactly,
+    and zero for the units outside it. Here :math:`G_i` marks cohort :math:`g` and
+    :math:`w_i` is the sampling weight. The treated cell has weight sum :math:`W_1` and
+    weighted mean CATT :math:`\hat\tau_1`. The residual
+    :math:`\hat\varepsilon = Y - \hat y` comes from the orthogonal decomposition in
+    :func:`lnw_did`. The weights :math:`\tilde\gamma` are the AMLE weights projected to
+    balance the CATT design :math:`W_{is} = C_{is} (1, X_{is})` exactly,
 
     .. math::
 
@@ -295,39 +229,30 @@ def didml(
         M = \frac{W^\top W}{2 n_v}, \qquad
         d = \frac{W^\top \hat\gamma}{2 n_v} - (1, \bar X_1),
 
-    with :math:`\bar X_1` the weighted covariate mean of the treated cell.
-    The projection carries the estimation error of the CATT coefficients
-    into :math:`\psi_i`. With ``boot=False`` the variance of the cell ATT is
-    :math:`\sum_i \psi_i^2 / n^2`. The covariance of two cells follows from
-    their influence functions in the same way.
+    where :math:`\bar X_1` is the weighted covariate mean of the treated cell. The
+    projection carries the estimation error of the CATT coefficients into
+    :math:`\psi_i`. With ``boot=False``, the variance of the cell ATT is
+    :math:`\sum_i \psi_i^2 / n^2`. The covariance of two cells follows from their
+    influence functions in the same way.
 
-    The estimate depends on ``random_state`` through the fold split of the
-    cross-fitted nuisance models and of the CATT fit. Since every bootstrap
-    draw refits under a new fold split, the bootstrap standard errors
-    include that variation. The influence-function standard errors treat
-    the split as fixed.
-
-    The parallel-trends pre-test stacks the :math:`q` pre-treatment cells
-    in :math:`\hat\theta_{pre}` and forms
+    The parallel-trends pre-test stacks the :math:`q` pre-treatment cells in
+    :math:`\hat\theta_{pre}` and forms
 
     .. math::
 
-        W = \hat\theta_{pre}^\top \hat V_{pre}^{-1} \hat\theta_{pre},
+        W = \hat\theta_{pre}^\top \hat V_{pre}^{-1} \hat\theta_{pre}.
 
-    where :math:`\hat V_{pre}` is their covariance. With ``boot=False`` the
-    influence functions give that covariance. The p-value then comes from
-    the chi-square with :math:`q` degrees of freedom. With the bootstrap the
-    covariance is that of the :math:`B` draws in which every cell
-    estimated. Since an estimate from :math:`B` draws is itself noisy,
-    :math:`W` follows Hotelling's distribution rather than the chi-square.
-    The p-value therefore uses
+    With ``boot=False``, the covariance :math:`\hat V_{pre}` comes from the influence
+    functions and the p-value from the chi-square with :math:`q` degrees of freedom.
+    With the bootstrap, :math:`\hat V_{pre}` is the covariance of the :math:`B` draws in
+    which every cell estimated. Since that covariance is itself noisy, the p-value uses
+    Hotelling's distribution
 
     .. math::
 
         \frac{B - q}{q\,(B - 1)}\, W \sim F(q,\, B - q).
 
-    Since that covariance is singular when :math:`B \le q`, no pre-test is
-    reported then.
+    No pre-test is reported when :math:`B \le q`.
 
     See Also
     --------
