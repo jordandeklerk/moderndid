@@ -225,7 +225,7 @@ def _fit_lasso_with_lambda_choice(features, y, *, k_folds, lambda_choice, random
     inner_cv = max(2, min(k_folds, features.shape[0] - 1))
     model = LassoCV(
         cv=inner_cv,
-        n_alphas=100,
+        alphas=100,
         max_iter=10_000,
         random_state=random_state,
         fit_intercept=False,
