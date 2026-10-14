@@ -61,7 +61,7 @@ Extras add optional dependencies and work the same way with either tool.
 
 ```bash
 uv add "moderndid[plots]"            # Core estimators and plotting
-uv add "moderndid[all]"              # All estimator extras, plots, and Numba
+uv add "moderndid[all]"              # All estimator extras and plots
 uv add "moderndid[didcont,plots]"    # Choose individual extras
 uv add "moderndid[gpu]"              # CUDA 12 GPU dependencies
 ```
@@ -102,8 +102,7 @@ Every estimator also comes with the tools the rest of an analysis needs.
 - Results work directly with
   [maketables](https://py-econometrics.github.io/maketables/) to build LaTeX,
   HTML, Word, and Typst tables.
-- Parallel threads and an optional Numba bootstrap speed up estimation on one
-  machine.
+- Parallel threads speed up estimation on one machine.
 - Supported estimators also run on NVIDIA GPUs through CuPy for large panels.
 
 ## Quickstart

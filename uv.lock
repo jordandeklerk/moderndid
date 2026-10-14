@@ -1787,7 +1787,6 @@ benchmark = [
     { name = "asv-runner" },
     { name = "build" },
     { name = "formulaic" },
-    { name = "numba" },
     { name = "spin" },
 ]
 dev = [
@@ -1853,9 +1852,6 @@ gpu = [
     { name = "cupy-cuda12x" },
     { name = "rmm-cu12" },
 ]
-numba = [
-    { name = "numba" },
-]
 plots = [
     { name = "plotnine" },
 ]
@@ -1898,14 +1894,12 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'doc'", specifier = ">=3.7.0" },
     { name = "matplotlib", marker = "extra == 'etwfe'", specifier = ">=3.7.0" },
     { name = "ml-dtypes", marker = "extra == 'doc'" },
-    { name = "moderndid", extras = ["diddynamic", "didcont", "didhonest", "didml", "etwfe", "plots", "numba"], marker = "extra == 'all'" },
+    { name = "moderndid", extras = ["diddynamic", "didcont", "didhonest", "didml", "etwfe", "plots"], marker = "extra == 'all'" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "myst-nb", marker = "extra == 'doc'" },
     { name = "myst-parser", extras = ["linkify"], marker = "extra == 'doc'" },
     { name = "narwhals", specifier = ">=1.13.3" },
-    { name = "numba", marker = "extra == 'benchmark'", specifier = ">=0.57.0" },
     { name = "numba", marker = "extra == 'etwfe'", specifier = ">=0.59.0" },
-    { name = "numba", marker = "extra == 'numba'", specifier = ">=0.57.0" },
     { name = "numexpr", marker = "extra == 'doc'" },
     { name = "numpy", specifier = ">=1.22.0" },
     { name = "numpydoc", marker = "extra == 'doc'" },
@@ -1940,7 +1934,7 @@ requires-dist = [
     { name = "tqdm", marker = "extra == 'etwfe'", specifier = ">=4.64.0" },
     { name = "xgboost", marker = "extra == 'didml'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["all", "benchmark", "dev", "didcont", "diddynamic", "didhonest", "didml", "doc", "etwfe", "gpu", "numba", "plots", "test"]
+provides-extras = ["all", "benchmark", "dev", "didcont", "diddynamic", "didhonest", "didml", "doc", "etwfe", "gpu", "plots", "test"]
 
 [[package]]
 name = "multimark"

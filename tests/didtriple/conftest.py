@@ -123,27 +123,6 @@ def two_period_dgp_result():
 
 
 @pytest.fixture
-def bootstrap_data():
-    """Bootstrap data for numba tests."""
-    rng = np.random.default_rng(42)
-    n = 100
-    k = 5
-    inf_func = rng.standard_normal((n, k))
-    return inf_func
-
-
-@pytest.fixture
-def cluster_data():
-    """Cluster data for numba tests."""
-    rng = np.random.default_rng(42)
-    n = 100
-    k = 5
-    inf_func = rng.standard_normal((n, k))
-    cluster = np.repeat(np.arange(10), 10)
-    return inf_func, cluster
-
-
-@pytest.fixture
 def two_period_rcs_data():
     """Generate 2-period repeated cross-section data for DDD testing."""
     rng = np.random.default_rng(42)

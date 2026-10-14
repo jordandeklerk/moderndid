@@ -26,7 +26,7 @@ from moderndid import (
     gen_ddd_mult_periods,
     mboot_ddd,
 )
-from moderndid.core.numba_utils import multiplier_bootstrap
+from moderndid.core.bootstrap import multiplier_bootstrap
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
 np = importorskip("numpy")

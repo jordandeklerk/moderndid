@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
-from .numba import compute_cluster_sums
+from moderndid.core.bootstrap import compute_cluster_sums
 
 
 def build_treatment_paths(df, horizon, config):

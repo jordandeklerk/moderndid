@@ -119,6 +119,50 @@ def test_compute_delta_d_handles_decreasing_treatment(basic_config):
     assert result is not None
 
 
+@pytest.mark.parametrize(("direction", "horizon"), [(1, 1), (1, 2), (-1, 2)])
+def test_compute_delta_d_is_the_weighted_average_of_the_signed_treatment_changes(
+    uneven_weight_panel, basic_config, direction, horizon
+):
+    reached = (pl.col("time") == pl.col("F_g") - 1 + horizon) & (pl.col("S_g") == direction)
+    panel = uneven_weight_panel.with_columns(reached.cast(pl.Float64).alias(".dist"))
+
+    result = _compute_delta_d(panel, basic_config, horizon, "effect", ".dist")
+
+    treatment, baseline, first, weight, at_horizon = (
+        panel[name].to_numpy().reshape(120, 5) for name in ["d", "d_sq", "F_g", "weight_gt", ".dist"]
+    )
+    periods = np.arange(1, 6)
+    in_window = (periods >= first) & (periods <= first - 1 + horizon)
+    change = direction * np.where(in_window, treatment - baseline, 0.0).sum(axis=1)
+    weights = (weight * at_horizon).sum(axis=1)
+    np.testing.assert_allclose(result, (weights * change).sum() / weights.sum(), rtol=1e-12)
+
+
+@pytest.mark.parametrize("dist_col", [".dist", None])
+def test_compute_delta_d_is_identical_whatever_order_the_rows_arrive_in(uneven_weight_panel, basic_config, dist_col):
+    reached = (pl.col("time") == pl.col("F_g") + 1) & (pl.col("S_g") == 1)
+    panel = uneven_weight_panel.with_columns(reached.cast(pl.Float64).alias(".dist"))
+
+    unshuffled = _compute_delta_d(panel, basic_config, 2, "effect", dist_col)
+    shuffled = [
+        _compute_delta_d(panel.sample(fraction=1.0, shuffle=True, seed=seed), basic_config, 2, "effect", dist_col)
+        for seed in range(5)
+    ]
+
+    np.testing.assert_array_equal(shuffled, unshuffled)
+
+
+def test_compute_delta_d_is_identical_whatever_order_polars_returns_a_join(
+    uneven_weight_panel, basic_config, shuffling_joins
+):
+    reached = (pl.col("time") == pl.col("F_g") + 1) & (pl.col("S_g") == 1)
+    panel = uneven_weight_panel.with_columns(reached.cast(pl.Float64).alias(".dist"))
+
+    results = [_compute_delta_d(panel, basic_config, 2, "effect", ".dist") for _ in range(5)]
+
+    np.testing.assert_array_equal(results, results[0])
+
+
 def test_compute_ate_weighted_average(effects_results_basic):
     z_crit = 1.96
     n_groups = 100

@@ -6,9 +6,10 @@ import numpy as np
 
 from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
-from ...numba import create_first_differences_matrix, find_rows_with_post_period_values
 from ...utils import (
     basis_vector,
+    create_first_differences_matrix,
+    find_rows_with_post_period_values,
     identified_set_bounds,
     relative_magnitudes_grid_bounds,
     union_of_identified_sets,

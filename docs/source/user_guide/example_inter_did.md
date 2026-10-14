@@ -580,7 +580,9 @@ from better evidence.
 ### A bootstrap over states
 
 The last check redraws the 50 states with replacement and reruns the whole
-estimation on each of 1,000 draws.
+estimation on each of 1,000 draws. You can pass `n_jobs` to spread those draws
+over several threads and get the same standard errors sooner, as the
+{ref}`scaling guide <scaling>` explains.
 
 ```{code-cell} ipython3
 :tags: [skip-execution]

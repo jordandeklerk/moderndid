@@ -48,7 +48,6 @@ benchmark = [
     "spin>=0.18,<0.19",
     "build>=1.2.2",
     "formulaic>=1.1.0",
-    "numba>=0.57.0",
 ]
 diddynamic = [
     "scikit-learn>=1.7",
@@ -81,15 +80,12 @@ etwfe = [
 plots = [
     "plotnine>=0.14.0",
 ]
-numba = [
-    "numba>=0.57.0",
-]
 gpu = [
     "cupy-cuda12x>=13.0",
     "rmm-cu12>=24.04",
 ]
 all = [
-    "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots,numba]",
+    "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots]",
 ]
 test = [
     "pytest",

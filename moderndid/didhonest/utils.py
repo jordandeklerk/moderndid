@@ -351,6 +351,389 @@ def _solve_trend_program(objective, a_ub, b_ub, a_eq, b_eq):
     return result
 
 
+def lee_coefficient(eta, sigma):
+    r"""Compute the coefficient that separates a linear combination from the rest of the data.
+
+    For data :math:`y` with covariance :math:`\Sigma`, the coefficient of the linear combination
+    :math:`\eta' y` is
+
+    .. math::
+
+        c = \frac{\Sigma \eta}{\eta' \Sigma \eta}.
+
+    The remainder :math:`(I - c \eta') y` is uncorrelated with :math:`\eta' y`. The function raises an
+    error when :math:`\eta' \Sigma \eta` is effectively zero.
+
+    Parameters
+    ----------
+    eta : array-like
+        Weights of the linear combination.
+    sigma : ndarray
+        Covariance matrix of the data. Must have as many rows as ``eta`` has entries.
+
+    Returns
+    -------
+    ndarray
+        Coefficient vector with the same length as ``eta``.
+    """
+    eta = np.asarray(eta, dtype=np.float64).flatten()
+    # Since a product with a strided or transposed matrix can round differently, the covariance is made contiguous.
+    sigma = np.ascontiguousarray(sigma, dtype=np.float64)
+    sigma_eta = sigma @ eta
+    eta_sigma_eta = eta.T @ sigma_eta
+    if np.abs(eta_sigma_eta) < 1e-10:
+        raise ValueError("Estimated coefficient is effectively zero, cannot compute coefficient.")
+    return sigma_eta / eta_sigma_eta
+
+
+def selection_matrix(selection, size, select="columns"):
+    """Create a selection matrix for extracting specific rows or columns.
+
+    With ``select="rows"`` the product of the result and a matrix holds the selected rows of that matrix.
+    With ``select="columns"`` the product of a matrix and the result holds the selected columns.
+
+    Parameters
+    ----------
+    selection : array-like
+        One-based positions to select.
+    size : int
+        Number of rows or columns of the matrix to select from, according to ``select``.
+    select : {"rows", "columns"}, default="columns"
+        Whether the result selects rows or columns.
+
+    Returns
+    -------
+    ndarray
+        Matrix of zeros and ones with shape ``(len(selection), size)`` for rows or ``(size, len(selection))``
+        for columns.
+    """
+    selection = np.asarray(selection)
+    selection_0idx = selection - 1
+    n_selections = len(selection)
+    if select == "rows":
+        m = np.zeros((n_selections, size))
+        for i, idx in enumerate(selection_0idx):
+            m[i, idx] = 1
+    else:
+        m = np.zeros((size, n_selections))
+        for i, idx in enumerate(selection_0idx):
+            m[idx, i] = 1
+    return m
+
+
+def compute_bounds(eta, sigma, A, b, z):
+    r"""Compute the truncation bounds of a linear combination under linear inequalities.
+
+    Write the data as :math:`y = c \, \eta' y + z` with :math:`c` from :func:`~moderndid.lee_coefficient`. The
+    inequalities :math:`A y \le b` hold exactly when :math:`\eta' y` lies between the lower and the upper bound
+    that this function returns. Since an inequality whose entry of :math:`A c` is at most :math:`10^{-10}` in
+    absolute value places no usable bound on :math:`\eta' y`, the function skips it.
+
+    Parameters
+    ----------
+    eta : array-like
+        Weights of the linear combination.
+    sigma : ndarray
+        Covariance matrix of the data.
+    A : ndarray
+        Coefficient matrix of the inequalities.
+    b : array-like
+        Right-hand side of the inequalities.
+    z : array-like
+        Remainder :math:`(I - c \eta') y` of the data.
+
+    Returns
+    -------
+    tuple
+        Truncation bounds of the linear combination:
+
+        - **lower_bound**: Largest lower bound, or ``-inf`` when no inequality bounds it from below
+        - **upper_bound**: Smallest upper bound, or ``inf`` when no inequality bounds it from above
+    """
+    c = lee_coefficient(eta, sigma)
+    # Since a product with a strided or transposed matrix can round differently, the matrix is made contiguous.
+    A = np.ascontiguousarray(A, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64).flatten()
+    z = np.asarray(z, dtype=np.float64).flatten()
+
+    Az = A @ z
+    Ac = A @ c
+    nonzero_mask = np.abs(Ac) > 1e-10
+    objective = np.full_like(Ac, np.nan)
+    objective[nonzero_mask] = (b[nonzero_mask] - Az[nonzero_mask]) / Ac[nonzero_mask]
+    ac_negative_idx = nonzero_mask & (Ac < 0)
+    ac_positive_idx = nonzero_mask & (Ac > 0)
+    lower_bound = np.max(objective[ac_negative_idx]) if np.any(ac_negative_idx) else -np.inf
+    upper_bound = np.min(objective[ac_positive_idx]) if np.any(ac_positive_idx) else np.inf
+    return lower_bound, upper_bound
+
+
+def find_rows_with_post_period_values(A, post_period_indices):
+    """Find the rows of a matrix with nonzero entries in the post-period columns.
+
+    Parameters
+    ----------
+    A : ndarray
+        Constraint matrix.
+    post_period_indices : list[int], ndarray
+        Zero-based positions of the post-treatment columns.
+
+    Returns
+    -------
+    ndarray or None
+        Indices of the rows with a nonzero entry in any of the columns. None if no row has one.
+    """
+    has_post_period_values = np.any(A[:, post_period_indices] != 0, axis=1)
+    rows_for_arp = np.where(has_post_period_values)[0]
+    return rows_for_arp if len(rows_for_arp) > 0 else None
+
+
+def create_first_differences_matrix(num_pre_periods, num_post_periods):
+    """Create the matrix of first differences of the event study coefficients.
+
+    Row ``r`` holds -1 in column ``r`` and 1 in column ``r + 1``. The columns cover the pre-treatment periods,
+    the reference period, and the post-treatment periods in order.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+
+    Returns
+    -------
+    ndarray
+        Matrix with ``num_pre_periods + num_post_periods`` rows and one more column.
+    """
+    total_periods = num_pre_periods + num_post_periods + 1
+    a_tilde = np.zeros((num_pre_periods + num_post_periods, total_periods))
+    for r in range(num_pre_periods + num_post_periods):
+        a_tilde[r, r : (r + 2)] = [-1, 1]
+    return a_tilde
+
+
+def create_second_differences_matrix(num_constraints, total_periods):
+    """Create the matrix of second differences of the event study coefficients.
+
+    Row ``i`` holds 1, -2, and 1 in columns ``i`` to ``i + 2``. A row that would run past the last column
+    stays zero.
+
+    Parameters
+    ----------
+    num_constraints : int
+        Number of rows.
+    total_periods : int
+        Number of columns.
+
+    Returns
+    -------
+    ndarray
+        Matrix of shape ``(num_constraints, total_periods)``.
+    """
+    A_positive = np.zeros((num_constraints, total_periods))
+    for i in range(num_constraints):
+        if i + 3 <= total_periods:
+            A_positive[i, i : i + 3] = [1, -2, 1]
+    return A_positive
+
+
+def create_bounds_second_difference_matrix(num_pre_periods, num_post_periods):
+    """Create the matrix of second differences within the pre-treatment and post-treatment coefficients.
+
+    The rows for the pre-treatment coefficients come first and the rows for the post-treatment coefficients
+    follow. No row spans both groups. This is the matrix that :func:`~moderndid.create_second_difference_matrix`
+    returns.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+
+    Returns
+    -------
+    ndarray
+        Matrix with ``num_pre_periods + num_post_periods`` columns. It has no rows unless one group has at least
+        three periods.
+    """
+    total_periods = num_pre_periods + num_post_periods
+    n_pre_diffs = num_pre_periods - 2 if num_pre_periods >= 3 else 0
+    n_post_diffs = num_post_periods - 2 if num_post_periods >= 3 else 0
+    n_diffs = n_pre_diffs + n_post_diffs
+
+    if n_diffs == 0:
+        return np.zeros((0, total_periods))
+
+    a_sd = np.zeros((n_diffs, total_periods))
+
+    if n_pre_diffs > 0:
+        for r in range(n_pre_diffs):
+            a_sd[r, r : (r + 3)] = [1, -2, 1]
+
+    if n_post_diffs > 0:
+        for r in range(n_post_diffs):
+            post_idx = n_pre_diffs + r
+            coef_idx = num_pre_periods + r
+            a_sd[post_idx, coef_idx : (coef_idx + 3)] = [1, -2, 1]
+    return a_sd
+
+
+def create_monotonicity_matrix(num_pre_periods, num_post_periods):
+    r"""Create the base matrix of the monotonicity constraints.
+
+    The inequalities :math:`A \delta \le 0` hold when :math:`\delta` is nondecreasing over the pre-treatment
+    periods up to the reference period at zero and nondecreasing from zero over the post-treatment periods.
+    :func:`~moderndid.create_monotonicity_constraint_matrix` drops the zero rows and flips the signs for a
+    decreasing sequence.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+
+    Returns
+    -------
+    ndarray
+        Square matrix with ``num_pre_periods + num_post_periods`` rows.
+    """
+    total_periods = num_pre_periods + num_post_periods
+    a_m = np.zeros((total_periods, total_periods))
+
+    for r in range(num_pre_periods - 1):
+        a_m[r, r : (r + 2)] = [1, -1]
+
+    a_m[num_pre_periods - 1, num_pre_periods - 1] = 1
+
+    if num_post_periods > 0:
+        a_m[num_pre_periods, num_pre_periods] = -1
+        if num_post_periods > 1:
+            for r in range(num_pre_periods + 1, num_pre_periods + num_post_periods):
+                a_m[r, (r - 1) : r + 1] = [1, -1]
+    return a_m
+
+
+def create_sdrm_constraint_matrix(num_pre_periods, num_post_periods, m_bar, s, max_positive=True, drop_zero=True):
+    r"""Create the constraint matrix for second differences under relative magnitudes.
+
+    The rows bound every second difference in absolute value by the second difference at period ``s`` before
+    treatment and by ``m_bar`` times that second difference after treatment. Rows that the construction leaves
+    at zero are dropped. See :func:`~moderndid.compute_identified_set_sdrm` for the restriction
+    :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})` that the matrix defines through :math:`A \delta \le 0`.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+    m_bar : float
+        Relative magnitude parameter :math:`\bar{M}`.
+    s : int
+        Period of the largest pre-treatment second difference. Must run from ``-(num_pre_periods - 2)`` to 0.
+    max_positive : bool, default=True
+        Whether the second difference at period ``s`` is positive rather than negative.
+    drop_zero : bool, default=True
+        Whether to drop the column of the reference period.
+
+    Returns
+    -------
+    ndarray
+        Matrix with ``num_pre_periods + num_post_periods + 1`` columns, or one fewer if ``drop_zero`` is True.
+    """
+    total_periods = num_pre_periods + num_post_periods + 1
+
+    num_second_diffs = num_pre_periods + num_post_periods - 1
+    a_tilde = np.zeros((num_second_diffs, total_periods))
+
+    for r in range(num_second_diffs):
+        a_tilde[r, r : r + 3] = [1, -2, 1]
+
+    v_max_diff = np.zeros((1, total_periods))
+    idx = num_pre_periods + s - 2
+    v_max_diff[0, idx : idx + 3] = [1, -2, 1]
+
+    if not max_positive:
+        v_max_diff = -v_max_diff
+
+    a_ub_pre = np.tile(v_max_diff, (num_pre_periods - 1, 1))
+    a_ub_post = np.tile(m_bar * v_max_diff, (num_post_periods, 1))
+    a_ub = np.vstack([a_ub_pre, a_ub_post])
+
+    a_upper = a_tilde - a_ub
+    a_lower = -a_tilde - a_ub
+    a_matrix = np.vstack([a_upper, a_lower])
+
+    row_norms = np.sum(a_matrix**2, axis=1)
+    non_zero_rows = row_norms > 1e-10
+    a_matrix = a_matrix[non_zero_rows]
+
+    if drop_zero:
+        a_matrix = np.delete(a_matrix, num_pre_periods, axis=1)
+
+    return a_matrix
+
+
+def prepare_theta_grid_y_values(beta_hat_or_y, period_vec_or_a_inv, theta_grid):
+    """Compute the data adjusted for each candidate value of the parameter of interest.
+
+    Row ``i`` of the result is ``beta_hat_or_y - theta_grid[i] * period_vec_or_a_inv``.
+
+    Parameters
+    ----------
+    beta_hat_or_y : ndarray
+        Vector of estimated coefficients or of constraint moments.
+    period_vec_or_a_inv : ndarray
+        Vector of the same length that gives the direction in which the parameter enters the data.
+    theta_grid : ndarray
+        Candidate values of the parameter.
+
+    Returns
+    -------
+    ndarray
+        Matrix of shape ``(len(theta_grid), len(beta_hat_or_y))``.
+    """
+    return beta_hat_or_y - np.outer(theta_grid, period_vec_or_a_inv)
+
+
+def compute_hybrid_dbar(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta):
+    r"""Compute the bounds of the fixed-length interval constraint in the hybrid test.
+
+    The first stage of the hybrid test keeps a candidate value :math:`\theta` when
+    :math:`\bar{v}' y_\theta \le \bar{d}_1` and :math:`-\bar{v}' y_\theta \le \bar{d}_2`. Here :math:`y_\theta`
+    holds the constraint moments at :math:`\theta`. The bounds are
+
+    .. math::
+
+        \bar{d}_1 = h - \bar{v}' d + (1 - \bar{v}' a) \theta, \qquad
+        \bar{d}_2 = h + \bar{v}' d - (1 - \bar{v}' a) \theta.
+
+    Parameters
+    ----------
+    flci_halflength : float
+        Half-length :math:`h` of the fixed-length confidence interval.
+    vbar : ndarray
+        Weights :math:`\bar{v}` of the interval's estimator on the rows of the constraint matrix.
+    d_vec : ndarray
+        Right-hand side :math:`d` of the restriction :math:`A \delta \le d`.
+    a_gamma_inv_one : ndarray
+        Coefficients :math:`a` of the parameter of interest in the transformed constraint matrix.
+    theta : float
+        Candidate value :math:`\theta` of the parameter of interest.
+
+    Returns
+    -------
+    ndarray
+        Vector of length 2 that holds :math:`\bar{d}_1` and :math:`\bar{d}_2`.
+    """
+    vbar_d = np.dot(vbar, d_vec)
+    vbar_a = np.dot(vbar, a_gamma_inv_one)
+    return np.array([flci_halflength - vbar_d + (1 - vbar_a) * theta, flci_halflength + vbar_d - (1 - vbar_a) * theta])
+
+
 def bin_factor(bin_spec, values, name=""):
     """Apply binning transformation to array values.
 

@@ -8,8 +8,14 @@ from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...delta.sdrm.sdrm import _check_second_difference_pre_periods
-from ...numba import create_sdrm_constraint_matrix, find_rows_with_post_period_values
-from ...utils import basis_vector, identified_set_bounds, linear_trend_grid_bounds, union_of_identified_sets
+from ...utils import (
+    basis_vector,
+    create_sdrm_constraint_matrix,
+    find_rows_with_post_period_values,
+    identified_set_bounds,
+    linear_trend_grid_bounds,
+    union_of_identified_sets,
+)
 
 
 class DeltaSDRMBResult(NamedTuple):

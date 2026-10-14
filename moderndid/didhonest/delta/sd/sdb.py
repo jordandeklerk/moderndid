@@ -9,8 +9,7 @@ from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...delta.sd.sd import _create_sd_constraint_matrix, _create_sd_constraint_vector
 from ...fixed_length_ci import compute_flci
-from ...numba import find_rows_with_post_period_values
-from ...utils import basis_vector, identified_set_bounds, linear_trend_grid_bounds
+from ...utils import basis_vector, find_rows_with_post_period_values, identified_set_bounds, linear_trend_grid_bounds
 
 
 class DeltaSDBResult(NamedTuple):

@@ -27,7 +27,7 @@ from moderndid.didhonest.arp_nuisance import (
 )
 from moderndid.didhonest.delta.rm.rm import _create_relative_magnitudes_constraint_matrix
 from moderndid.didhonest.delta.rm.rmb import _create_relative_magnitudes_bias_constraint_matrix
-from moderndid.didhonest.numba import find_rows_with_post_period_values
+from moderndid.didhonest.utils import find_rows_with_post_period_values
 
 
 @pytest.fixture

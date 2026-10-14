@@ -22,9 +22,7 @@
       "pandas": ["3.0.6"],
       "statsmodels": ["0.15.0"],
       "prettytable": ["3.18.0"],
-      "formulaic": ["1.2.2"],
-      "numba": ["0.68.0"],
-      "llvmlite": ["0.50.0"]
+      "formulaic": ["1.2.2"]
     },
     "env": {
       "OMP_NUM_THREADS": ["1"],
@@ -32,7 +30,6 @@
       "MKL_NUM_THREADS": ["1"],
       "VECLIB_MAXIMUM_THREADS": ["1"],
       "NUMEXPR_NUM_THREADS": ["1"],
-      "NUMBA_NUM_THREADS": ["1"],
       "POLARS_MAX_THREADS": ["1"]
     }
   },

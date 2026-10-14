@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from moderndid.core.numba_utils import multiplier_bootstrap
+from moderndid.core.bootstrap import multiplier_bootstrap
 from moderndid.cupy.backend import get_backend
 from moderndid.cupy.bootstrap import _multiplier_bootstrap_cupy
 

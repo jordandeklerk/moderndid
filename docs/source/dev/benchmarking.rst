@@ -82,8 +82,8 @@ The environment limits the configured numerical libraries to one thread.
 Although this helps make repeated measurements comparable, it does not
 establish performance for a multithreaded fit or a GPU workload. If your optimization
 targets either case, define and report the relevant workload explicitly.
-The :doc:`debugging` guide explains why compilation and asynchronous GPU
-execution need special care when profiling.
+The :doc:`debugging` guide explains why the first fit's setup costs and
+asynchronous GPU execution need special care when profiling.
 
 ASV's repeated samples help you see whether a timing is stable enough to
 support a speed claim. If the result changes substantially between runs,

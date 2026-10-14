@@ -17,8 +17,14 @@ from moderndid import (
 )
 from moderndid.didhonest.delta.sd.sd import _create_sd_constraint_matrix
 from moderndid.didhonest.utils import (
+    compute_hybrid_dbar,
+    create_first_differences_matrix,
+    create_sdrm_constraint_matrix,
+    create_second_differences_matrix,
+    find_rows_with_post_period_values,
     identified_set_bounds,
     linear_trend_grid_bounds,
+    prepare_theta_grid_y_values,
     relative_magnitudes_grid_bounds,
     union_of_identified_sets,
 )
@@ -62,6 +68,23 @@ def test_lee_coefficient_zero_denominator():
         lee_coefficient(eta, sigma)
 
 
+def test_lee_coefficient_rejects_a_denominator_below_the_tolerance():
+    eta = np.array([1.0, 1.0])
+    sigma = np.eye(2) * 5e-13
+
+    with pytest.raises(ValueError, match="Estimated coefficient is effectively zero"):
+        lee_coefficient(eta, sigma)
+
+
+def test_lee_coefficient_accepts_a_small_denominator_above_the_tolerance():
+    eta = np.array([1.0, 1.0])
+    sigma = np.eye(2) * 5e-9
+
+    c = lee_coefficient(eta, sigma)
+
+    np.testing.assert_allclose(c, [0.5, 0.5], rtol=1e-12, atol=0)
+
+
 def test_compute_bounds():
     eta = np.array([1, 0])
     sigma = np.array([[1, 0], [0, 1]])
@@ -86,6 +109,19 @@ def test_compute_bounds_no_constraints():
 
     assert VLo == -np.inf
     assert VUp == np.inf
+
+
+def test_compute_bounds_skips_inequalities_with_a_negligible_coefficient():
+    eta = np.array([1, 0])
+    sigma = np.eye(2)
+    A = np.array([[1, 0], [-1, 0], [1e-11, 0], [-1e-11, 0]])
+    b = np.array([2, 3, -1, -1])
+    z = np.array([0, 0])
+
+    VLo, VUp = compute_bounds(eta, sigma, A, b, z)
+
+    assert VLo == -3.0
+    assert VUp == 2.0
 
 
 def test_basis_vector():
@@ -527,3 +563,90 @@ def test_identified_set_bounds_with_a_small_bound_on_large_coefficients():
 def test_union_of_identified_sets_drops_empty_sets():
     assert union_of_identified_sets([(np.nan, np.nan), (0.1, 0.3), (-0.2, 0.2)]) == (-0.2, 0.3)
     assert np.all(np.isnan(union_of_identified_sets([(np.nan, np.nan), (np.nan, np.nan)])))
+
+
+def test_prepare_theta_grid_y_values_subtracts_the_scaled_direction_for_each_value():
+    rng = np.random.default_rng(42)
+    y = rng.standard_normal(10)
+    direction = rng.standard_normal(10)
+    theta_grid = np.linspace(-1, 1, 5)
+
+    y_matrix = prepare_theta_grid_y_values(y, direction, theta_grid)
+
+    expected = np.array([y - theta * direction for theta in theta_grid])
+    assert y_matrix.shape == (5, 10)
+    np.testing.assert_allclose(y_matrix, expected, rtol=1e-12, atol=1e-15)
+
+
+def test_compute_hybrid_dbar_matches_hand_computation():
+    vbar = np.array([0.1, 0.2, 0.3])
+    d_vec = np.array([1.0, 2.0, 3.0])
+    a_gamma_inv_one = np.array([0.4, 0.5, 0.6])
+
+    dbar = compute_hybrid_dbar(0.5, vbar, d_vec, a_gamma_inv_one, 0.7)
+
+    np.testing.assert_allclose(dbar, [-0.424, 1.424], rtol=1e-12, atol=0)
+
+
+def test_create_first_differences_matrix_maps_a_vector_to_its_differences():
+    x = np.random.default_rng(42).standard_normal(8)
+
+    matrix = create_first_differences_matrix(3, 4)
+
+    assert matrix.shape == (7, 8)
+    np.testing.assert_allclose(matrix @ x, np.diff(x), rtol=1e-12, atol=1e-15)
+
+
+def test_create_second_differences_matrix_leaves_rows_beyond_the_last_column_at_zero():
+    matrix = create_second_differences_matrix(5, 5)
+
+    expected = np.vstack([np.diff(np.eye(5), n=2, axis=0), np.zeros((2, 5))])
+    np.testing.assert_array_equal(matrix, expected)
+
+
+@pytest.mark.parametrize(
+    "max_positive,expected",
+    [
+        (True, [[-2.0, 5.0, -4.0, 1.0], [-2.0, 4.0, -2.0, 0.0], [-2.0, 3.0, 0.0, -1.0]]),
+        (False, [[2.0, -4.0, 2.0, 0.0], [2.0, -3.0, 0.0, 1.0], [2.0, -5.0, 4.0, -1.0]]),
+    ],
+)
+def test_create_sdrm_constraint_matrix_matches_hand_derived_rows(max_positive, expected):
+    full = create_sdrm_constraint_matrix(2, 1, 2.0, 0, max_positive=max_positive, drop_zero=False)
+    dropped = create_sdrm_constraint_matrix(2, 1, 2.0, 0, max_positive=max_positive, drop_zero=True)
+
+    np.testing.assert_array_equal(full, expected)
+    np.testing.assert_array_equal(dropped, np.delete(expected, 2, axis=1))
+
+
+def test_find_rows_with_post_period_values_returns_the_rows_with_nonzero_post_entries():
+    a_matrix = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 2.0, 0.0, 0.0], [0.0, 0.0, 0.0, -1.0], [1.0, 1.0, 3.0, 0.0]])
+
+    from_list = find_rows_with_post_period_values(a_matrix, [2, 3])
+    from_array = find_rows_with_post_period_values(a_matrix, np.array([2, 3]))
+
+    np.testing.assert_array_equal(from_list, [2, 3])
+    np.testing.assert_array_equal(from_array, [2, 3])
+
+
+def test_find_rows_with_post_period_values_returns_none_without_nonzero_post_entries():
+    a_matrix = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+
+    rows = find_rows_with_post_period_values(a_matrix, [2])
+
+    assert rows is None
+
+
+def test_compute_bounds_does_not_depend_on_the_memory_layout_of_its_matrices():
+    rng = np.random.default_rng(42)
+    root = rng.standard_normal((12, 12))
+    sigma = root @ root.T + np.eye(12)
+    a_matrix = rng.standard_normal((6, 12))
+    eta = rng.standard_normal(12)
+    b = rng.standard_normal(6)
+    z = rng.standard_normal(12)
+
+    row_major = compute_bounds(eta, sigma, a_matrix, b, z)
+    column_major = compute_bounds(eta, np.asfortranarray(sigma), np.asfortranarray(a_matrix), b, z)
+
+    assert row_major == column_major

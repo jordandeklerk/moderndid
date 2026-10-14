@@ -6,8 +6,7 @@ from typing import NamedTuple
 import numpy as np
 
 from .conditional import _norminvp_generalized
-from .numba import compute_bounds, prepare_theta_grid_y_values, selection_matrix
-from .utils import basis_vector
+from .utils import basis_vector, compute_bounds, prepare_theta_grid_y_values, selection_matrix
 
 
 class APRCIResult(NamedTuple):

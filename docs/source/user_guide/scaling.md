@@ -13,8 +13,8 @@ An analysis that runs quickly on a small panel can take much longer when you
 add counties, treatment cohorts, or observed periods. Staggered DiD fits a
 separate comparison for each cohort and period before bootstrap inference
 adds its own calculations. We can speed up some of this work on one machine
-by fitting comparisons in parallel, using compiled CPU helpers, or moving
-supported calculations to an NVIDIA GPU.
+by fitting comparisons in parallel or by moving supported calculations to an
+NVIDIA GPU.
 
 The choice depends on where your analysis spends its time. While more worker
 threads can help when you have many comparisons to fit, a GPU may help with
@@ -90,6 +90,14 @@ processes. Since each worker takes a few seconds to start, a small bootstrap
 can run slower with several workers. A script that bootstraps `didml` with
 `n_jobs` above 1 must call it inside an `if __name__ == "__main__":` block.
 
+With `boot=True`, {func}`~moderndid.did_multiplegt` reruns the whole estimation
+on every bootstrap draw. Its `n_jobs` argument takes the same values as in
+`att_gt` and spreads those draws over worker threads. Since the analytic
+standard errors need no draws, `n_jobs` has no effect when `boot=False`. For a
+given `random_state`, the standard errors stay the same whatever the number of
+threads. Memory use does grow with `n_jobs` because each thread holds its own
+resampled copy of the panel.
+
 For {func}`~moderndid.diddynamic.dyn_balancing`, the `n_jobs` argument applies when you
 request several `histories_length` values or several `final_periods`.
 It parallelizes those separate fits rather than the calculations within a
@@ -102,28 +110,6 @@ single treatment history. Check the function's signature before passing
 Try two or four threads before using every available CPU core. Since
 numerical libraries may also use their own threads, increasing `n_jobs`
 can increase contention and temporary memory use enough to slow the fit.
-:::
-
-## Using compiled CPU helpers
-
-If bootstrap or aggregation calculations take much of the running time, you
-can install the optional Numba dependency for the CPU helpers that support it.
-ModernDiD selects those compiled helpers automatically when Numba is available
-without requiring another argument in your estimator call.
-
-```bash
-python -m pip install "moderndid[numba]"
-```
-
-Measure the complete analysis to see whether Numba helps your workload because
-it does not compile every part of an estimator.
-
-:::{admonition} Allow for compilation before timing repeated fits
-:class: tip
-
-The first call to a compiled helper may include compilation time. Run the
-same specification once before timing repeated fits so you can distinguish
-that initial cost from the time later calls take.
 :::
 
 ## Moving numerical work to a GPU

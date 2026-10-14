@@ -694,5 +694,4 @@ print(f"Same estimates: {np.allclose(serial.att_gt, parallel.att_gt)}")
 
 Since reducing bootstrap iterations trades precision in the simulated
 uncertainty for speed, keep enough draws for the inference you plan to report.
-The {ref}`scaling guide <scaling>` covers parallel fits, the compiled CPU
-helpers, and the GPU backend.
+The {ref}`scaling guide <scaling>` covers parallel fits and the GPU backend.

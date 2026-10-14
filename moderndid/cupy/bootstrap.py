@@ -31,21 +31,3 @@ def _multiplier_bootstrap_cupy(inf_func, biters, random_state=None):
         del draws, v
 
     return bres
-
-
-def _aggregate_by_cluster_cupy(inf_func, cluster_int, n_clusters):
-    """Sum influence functions within clusters on the GPU."""
-    xp = get_backend()
-    inf_gpu = xp.asarray(inf_func, dtype=xp.float64)
-    cluster_gpu = xp.asarray(cluster_int)
-
-    unique_gpu = xp.unique(cluster_gpu)
-    idx = xp.searchsorted(unique_gpu, cluster_gpu)
-
-    k = inf_gpu.shape[1]
-    sums = xp.zeros((n_clusters, k), dtype=xp.float64)
-
-    for j in range(k):
-        xp.add.at(sums[:, j], idx, inf_gpu[:, j])
-
-    return to_numpy(sums)

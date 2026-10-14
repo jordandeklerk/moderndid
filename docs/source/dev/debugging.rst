@@ -8,7 +8,7 @@ difference comes from before deciding whether the code or the expectation
 should change. It may come from the observations entering the comparison,
 the effect calculation, or the way uncertainty is calculated. This guide
 follows a failing test through those possibilities and shows you how to
-inspect the compiled and GPU paths when they're involved.
+inspect the GPU path when it's involved.
 
 Run the commands from the repository root in the development environment
 described in :doc:`../contributing/guide`. The :doc:`architecture` guide maps
@@ -115,46 +115,6 @@ than assigning one tolerance to every estimate and standard error.
    sample can change the estimator. Establish why a calculation fails before
    introducing one of these changes as a numerical fix.
 
-Inspect the compiled CPU path
------------------------------
-
-Some numerical helpers have Numba implementations that compile on first use.
-To step through their Python bodies, set ``NUMBA_DISABLE_JIT`` before starting
-the interpreter. We'll use a cluster aggregation test here because it calls the
-compiled ``_aggregate_by_cluster_impl`` helper directly.
-
-.. code-block:: console
-
-   NUMBA_DISABLE_JIT=1 pixi run -e dev pytest \
-       tests/didtriple/test_numba.py::test_aggregate_by_cluster_correctness -vv -x
-
-With compilation disabled, you can use ordinary breakpoints to inspect the
-decorated functions as Python code. Keep in mind that this need not be the
-same implementation that runs when Numba cannot be imported. In
-``core/numba_utils.py``, for example, installing Numba selects the compiled
-function bodies. Disabling compilation runs those bodies as Python rather
-than restoring the earlier fallback definitions.
-
-If the test fails only with compilation enabled, you've narrowed the
-search to that execution path without yet establishing that the compiler
-is at fault. Start by inspecting argument dtypes, array shapes, contiguous
-layout, and the operations accepted by the compiled function. A
-``TypingError`` traceback helps you locate the operation and inferred types
-that compilation could not resolve.
-
-If you suspect a compiled cache, point ``NUMBA_CACHE_DIR`` to an empty scratch
-directory for a fresh run. This avoids deleting caches throughout the checkout
-or the development environment.
-
-.. code-block:: console
-
-   NUMBA_CACHE_DIR=/tmp/moderndid-numba-debug pixi run -e dev pytest \
-       tests/didtriple/test_numba.py::test_aggregate_by_cluster_correctness -vv -x
-
-Use a new directory when repeating this probe so the comparison actually
-starts without a previous compiled cache. After the diagnosis, rerun the
-affected tests with normal compilation enabled to check the supported path.
-
 Compare supported CPU and GPU calculations
 ------------------------------------------
 
@@ -218,10 +178,8 @@ around the whole script.
    profiler.runcall(did.att_gt, **spec)
    profiler.print_stats(sort="cumulative")
 
-Python profiling shows calls into compiled helpers but does not reveal
-the work inside every compiled kernel. Timings
-with JIT disabled describe a different execution path and should not be used
-to predict the compiled path's bottlenecks.
+Python profiling shows calls into compiled libraries such as NumPy and Polars
+but does not reveal the work inside them.
 
 For GPU timings, account for asynchronous execution by synchronizing the
 device around the measured operation. Otherwise the host can finish timing

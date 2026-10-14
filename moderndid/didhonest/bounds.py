@@ -4,7 +4,7 @@ import numpy as np
 from scipy import stats
 
 from .conditional import _create_pre_period_second_diff_constraints, estimate_lowerbound_m_conditional_test
-from .numba import create_bounds_second_difference_matrix, create_monotonicity_matrix
+from .utils import create_bounds_second_difference_matrix, create_monotonicity_matrix
 
 
 def compute_delta_sd_upperbound_m(

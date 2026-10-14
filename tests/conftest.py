@@ -22,7 +22,6 @@ def pytest_configure(config):
         # Third-party warnings we cannot control
         "ignore:Perfect separation.*:statsmodels.tools.sm_exceptions.PerfectSeparationWarning",
         "ignore:Solution may be inaccurate.*:UserWarning",
-        "ignore:np.dot.*is faster on contiguous arrays.*:numba.core.errors.NumbaPerformanceWarning",
         "ignore:.*pl.count.*is deprecated.*:DeprecationWarning",
     ]
     for f in filters:

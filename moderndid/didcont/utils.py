@@ -2,13 +2,9 @@
 
 import numpy as np
 
-from moderndid.cupy.backend import get_backend
+from moderndid.cupy.backend import _array_module, get_backend
 
 from .container import FullRankCheckResult
-from .numba import (
-    check_full_rank_crossprod,
-    matrix_sqrt_eigendecomp,
-)
 
 
 def is_full_rank(x, tol=None):
@@ -49,11 +45,33 @@ def is_full_rank(x, tol=None):
             max_eigenvalue=max_val**2,
         )
 
-    is_full, cond_num, min_eig, max_eig = check_full_rank_crossprod(x, tol)
+    is_full, cond_num, min_eig, max_eig = _check_full_rank_crossprod(x, tol)
 
     return FullRankCheckResult(
         is_full_rank=bool(is_full), condition_number=cond_num, min_eigenvalue=min_eig, max_eigenvalue=max_eig
     )
+
+
+def _check_full_rank_crossprod(x, tol=None):
+    """Check if :math:`X'X` has full rank using eigenvalue decomposition."""
+    xp = _array_module(x)
+    x = xp.asarray(x, dtype=xp.float64)
+    eigenvalues = xp.linalg.eigvalsh(x.T @ x)
+
+    n, p = x.shape
+    max_dim = max(n, p)
+
+    min_eig = eigenvalues[0]
+    max_eig = eigenvalues[-1]
+
+    if tol is None:
+        max_sqrt_eig = float(xp.sqrt(xp.max(xp.abs(eigenvalues))))
+        tol = max_dim * max_sqrt_eig * np.finfo(float).eps
+
+    is_full_rank = bool(max_eig > 0) and bool(xp.abs(min_eig / max_eig) > tol)
+    condition_number = float(xp.abs(max_eig / min_eig)) if float(min_eig) != 0 else np.inf
+
+    return is_full_rank, condition_number, float(min_eig), float(max_eig)
 
 
 def matrix_sqrt(x):
@@ -83,7 +101,10 @@ def matrix_sqrt(x):
     if x.shape[0] != x.shape[1]:
         raise ValueError("Input must be a square matrix")
 
-    return matrix_sqrt_eigendecomp(x)
+    eigenvalues, eigenvectors = np.linalg.eigh(np.asarray(x, dtype=np.float64))
+    sqrt_eigenvalues = np.sqrt(np.maximum(eigenvalues, 0))
+
+    return eigenvectors @ np.diag(sqrt_eigenvalues) @ eigenvectors.T
 
 
 def avoid_zero_division(a, eps=None):

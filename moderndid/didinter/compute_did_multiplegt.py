@@ -989,6 +989,11 @@ def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
     else:
         sum_by_unit = sum_by_unit.with_columns(pl.lit(1.0).alias("weight_gt"))
 
+    # Since polars does not fix the order of groups, unique rows, or join output, sorting the units makes both sums
+    # below add them in the same order on every run.
+    if not sum_by_unit[gname].is_sorted():
+        sum_by_unit = sum_by_unit.sort(gname)
+
     sum_by_unit = sum_by_unit.filter(pl.col(".sum_treat").is_not_null())
     if len(sum_by_unit) == 0:
         return None

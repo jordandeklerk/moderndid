@@ -8,9 +8,9 @@ from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...delta.rm.rm import _check_relative_magnitudes_pre_periods, _create_relative_magnitudes_constraint_matrix
-from ...numba import find_rows_with_post_period_values
 from ...utils import (
     basis_vector,
+    find_rows_with_post_period_values,
     identified_set_bounds,
     relative_magnitudes_grid_bounds,
     union_of_identified_sets,

@@ -16,7 +16,7 @@ pl = importorskip("polars")
 np = importorskip("numpy")
 
 from moderndid import aggte, att_gt, load_mpdta, mboot
-from moderndid.core.numba_utils import multiplier_bootstrap
+from moderndid.core.bootstrap import multiplier_bootstrap
 
 
 def _run_r_script(r_script, result_path, timeout=120):

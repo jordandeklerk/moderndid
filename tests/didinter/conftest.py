@@ -289,6 +289,30 @@ def switcher_data():
 
 
 @pytest.fixture
+def uneven_weight_panel(rng):
+    """Panel of 120 groups with uneven weights where 40 raise their treatment and 40 lower it at period 2 or 3."""
+    n_groups, n_periods = 120, 5
+    ids = np.arange(n_groups)
+    direction = np.where(ids < 40, 1, np.where(ids < 80, -1, 0))
+    first = np.where(direction != 0, 2 + ids % 2, n_periods + 1)
+    baseline = np.where(direction < 0, 6.0, 0.0)
+    periods = np.arange(1, n_periods + 1)
+    step = rng.uniform(0.5, 2.5, n_groups)
+    change = np.where(periods >= first[:, None], step[:, None] + 0.3 * (periods - first[:, None]), 0.0)
+    return pl.DataFrame(
+        {
+            "id": np.repeat(ids, n_periods),
+            "time": np.tile(periods, n_groups),
+            "d": (baseline[:, None] + direction[:, None] * change).ravel(),
+            "d_sq": np.repeat(baseline, n_periods),
+            "F_g": np.repeat(np.where(direction != 0, first, np.inf), n_periods),
+            "S_g": np.repeat(direction, n_periods),
+            "weight_gt": rng.uniform(0.5, 2.0, n_groups * n_periods),
+        }
+    )
+
+
+@pytest.fixture
 def ate_variance_inputs(rng):
     """Function that builds the influence functions of 100 groups and the cell counts for a number of horizons."""
 
