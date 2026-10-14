@@ -6,8 +6,9 @@ from typing import NamedTuple
 
 import numpy as np
 
+from moderndid.core.bootstrap import multiplier_bootstrap
+
 from ..nuisance import compute_all_did, compute_all_nuisances
-from ..numba import multiplier_bootstrap
 
 
 class MbootResult(NamedTuple):

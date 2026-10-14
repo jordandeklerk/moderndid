@@ -360,3 +360,35 @@ def test_in_identified_set_lf_hybrid_adds_bound_back():
     assert arp_no_nuisance.test_in_identified_set_lf_hybrid(
         y_below, sigma, A, d, alpha=0.05, hybrid_kappa=0.005, lf_cv=50.0
     )
+
+
+def test_test_over_theta_grid_matches_testing_each_value_separately(event_study_data, constraint_matrices):
+    beta_hat, sigma, n_pre, _ = event_study_data
+    a_matrix, d = constraint_matrices
+    theta_grid = np.linspace(-2, 3, 40)
+
+    grid = arp_no_nuisance._test_over_theta_grid(
+        beta_hat,
+        sigma,
+        a_matrix,
+        d,
+        theta_grid,
+        n_pre,
+        1,
+        0.05,
+        test_fn=arp_no_nuisance.test_in_identified_set,
+    )
+
+    post_period_vec = np.zeros(len(beta_hat))
+    post_period_vec[n_pre] = 1.0
+    accepted = [
+        float(
+            arp_no_nuisance.test_in_identified_set(
+                y=beta_hat - theta * post_period_vec, sigma=sigma, A=a_matrix, d=d, alpha=0.05
+            )
+        )
+        for theta in theta_grid
+    ]
+    np.testing.assert_array_equal(grid[:, 0], theta_grid)
+    np.testing.assert_array_equal(grid[:, 1], accepted)
+    assert 0 < sum(accepted) < len(theta_grid)

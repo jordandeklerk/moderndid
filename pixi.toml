@@ -45,7 +45,6 @@ OPENBLAS_NUM_THREADS = "1"
 MKL_NUM_THREADS = "1"
 VECLIB_MAXIMUM_THREADS = "1"
 NUMEXPR_NUM_THREADS = "1"
-NUMBA_NUM_THREADS = "1"
 POLARS_MAX_THREADS = "1"
 
 [feature.benchmark.tasks]
@@ -103,6 +102,9 @@ gfortran_osx-arm64 = "*"
 setup-r = "bash .github/scripts/setup-r.sh"
 
 # Mirrors the etwfe extra in pyproject.toml, since pyfixest imports these without declaring them.
+[feature.etwfe.dependencies]
+numba = ">=0.59.0"
+
 [feature.etwfe.pypi-dependencies]
 pyfixest = ">=0.40.0,<0.50.0"
 tabulate = ">=0.9.0"
@@ -129,9 +131,6 @@ scikit-learn = ">=1.7"
 
 [feature.plots.pypi-dependencies]
 plotnine = ">=0.14.0"
-
-[feature.numba.dependencies]
-numba = ">=0.57.0"
 
 [feature.gpu]
 platforms = ["linux-64"]
@@ -185,11 +184,11 @@ didhonest = "pytest tests/validation/test_r_didhonest.py -vv"
 npiv = "pytest tests/validation/test_r_npiv.py -vv"
 
 [environments]
-benchmark = { features = ["benchmark", "build", "didcont", "numba", "validation"], solve-group = "benchmark" }
-dev = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
-docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
-docs-r = ["docs", "docs-r", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
+benchmark = { features = ["benchmark", "build", "didcont", "validation"], solve-group = "benchmark" }
+dev = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots"]
+docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots"]
+docs-r = ["docs", "docs-r", "build", "etwfe", "didcont", "didhonest", "didml", "plots"]
 check = ["lint"]
 build = ["build"]
 gpu = ["gpu"]
-validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "diddynamic", "plots", "numba"]
+validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "diddynamic", "plots"]

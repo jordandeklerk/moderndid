@@ -48,6 +48,26 @@ def test_is_full_rank_custom_tolerance(simple_matrix, tol):
     assert isinstance(result.is_full_rank, bool)
 
 
+def test_is_full_rank_reports_the_eigenvalues_of_the_crossproduct(simple_matrix):
+    singular_values = np.linalg.svd(simple_matrix, compute_uv=False)
+
+    result = is_full_rank(simple_matrix)
+
+    np.testing.assert_allclose(result.min_eigenvalue, singular_values[-1] ** 2, rtol=1e-10)
+    np.testing.assert_allclose(result.max_eigenvalue, singular_values[0] ** 2, rtol=1e-10)
+    np.testing.assert_allclose(result.condition_number, (singular_values[0] / singular_values[-1]) ** 2, rtol=1e-10)
+
+
+def test_is_full_rank_tolerance_decides_the_rank_of_a_nearly_singular_matrix():
+    nearly_singular = np.diag([1.0, 1e-3])
+
+    default = is_full_rank(nearly_singular)
+    strict = is_full_rank(nearly_singular, tol=1e-3)
+
+    assert default.is_full_rank is True
+    assert strict.is_full_rank is False
+
+
 def test_matrix_sqrt_identity():
     identity = np.eye(3)
     sqrt_identity = matrix_sqrt(identity)
@@ -75,6 +95,22 @@ def test_matrix_sqrt_invalid_input():
 
     with pytest.raises(ValueError, match="square matrix"):
         matrix_sqrt(np.ones((3, 4)))
+
+
+def test_matrix_sqrt_sets_negative_eigenvalues_to_zero():
+    matrix = np.diag([4.0, -1.0])
+
+    result = matrix_sqrt(matrix)
+
+    np.testing.assert_allclose(result, np.diag([2.0, 0.0]), atol=1e-12)
+
+
+def test_matrix_sqrt_accepts_integer_input():
+    matrix = np.array([[4, 0], [0, 9]])
+
+    result = matrix_sqrt(matrix)
+
+    np.testing.assert_allclose(result, np.diag([2.0, 3.0]), atol=1e-12)
 
 
 def test_avoid_zero_division_basic():

@@ -22,7 +22,6 @@ THREAD_VARIABLES = (
     "MKL_NUM_THREADS",
     "VECLIB_MAXIMUM_THREADS",
     "NUMEXPR_NUM_THREADS",
-    "NUMBA_NUM_THREADS",
     "POLARS_MAX_THREADS",
     "R_DATATABLE_NUM_THREADS",
 )
@@ -103,8 +102,6 @@ def capture_environment(estimators, root=None):
         "polars",
         "scipy",
         "statsmodels",
-        "numba",
-        "llvmlite",
         "pyarrow",
         "narwhals",
         "formulaic",

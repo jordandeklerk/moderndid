@@ -521,3 +521,17 @@ def cont_did_panel_in_years():
         (pl.col("time_period") + 2000).alias("time_period"),
         pl.when(pl.col("G") > 0).then(pl.col("G") + 2000).otherwise(0).alias("G"),
     )
+
+
+@pytest.fixture
+def bootstrap_data():
+    """Influence function matrix of 100 units and five columns for the multiplier bootstrap."""
+    rng = np.random.default_rng(42)
+    return rng.standard_normal((100, 5))
+
+
+@pytest.fixture
+def cluster_data():
+    """Influence function matrix of 100 units and their cluster ids for ten clusters of ten units each."""
+    rng = np.random.default_rng(42)
+    return rng.standard_normal((100, 5)), np.repeat(np.arange(10), 10)

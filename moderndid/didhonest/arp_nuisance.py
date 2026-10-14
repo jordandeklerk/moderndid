@@ -11,8 +11,7 @@ from scipy import stats
 from scipy.sparse import csc_array
 
 from .conditional import _norminvp_generalized
-from .numba import compute_hybrid_dbar, prepare_theta_grid_y_values
-from .utils import basis_vector
+from .utils import basis_vector, compute_hybrid_dbar, prepare_theta_grid_y_values
 
 
 class ARPNuisanceCIResult(NamedTuple):
@@ -156,8 +155,8 @@ def compute_arp_nuisance_ci(
     # Transform constraint matrix A using Gamma^(-1) to work in theta-space
     # Extract columns corresponding to post-treatment periods and transform
     a_gamma_inv = a_matrix[:, num_pre_periods : num_pre_periods + num_post_periods] @ np.linalg.inv(gamma)
-    # First column corresponds to theta, remaining columns to nuisance parameters. Since the compiled dot product
-    # in the FLCI hybrid warns and slows down on a strided column, the theta column gets a contiguous copy.
+    # First column corresponds to theta, remaining columns to nuisance parameters. Since a dot product with a strided
+    # column can round differently from one with a contiguous column, the theta column gets a contiguous copy.
     a_gamma_inv_one = np.ascontiguousarray(a_gamma_inv[:, 0])
     a_gamma_inv_minus_one = a_gamma_inv[:, 1:]
 

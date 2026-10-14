@@ -231,7 +231,6 @@ foundational software.
   across DataFrame libraries
 - `PyArrow <https://arrow.apache.org/docs/python/>`_ for Apache Arrow in Python
 - `statsmodels <https://www.statsmodels.org/>`_ for statistical models
-- `Numba <https://numba.pydata.org/>`_ for JIT compilation of numerical code
 - `scikit-learn <https://scikit-learn.org/>`_ for machine learning, such as
   LASSO and ridge regression
 - `CuPy <https://cupy.dev/>`_ for GPU array computing

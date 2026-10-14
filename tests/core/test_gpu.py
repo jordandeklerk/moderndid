@@ -8,7 +8,7 @@ import pytest
 
 import moderndid
 import moderndid.cupy.backend as _backend_mod
-from moderndid.core.numba_utils import aggregate_by_cluster, compute_column_std, multiplier_bootstrap
+from moderndid.core.bootstrap import compute_column_std, multiplier_bootstrap
 from moderndid.cupy.backend import _init_rmm_pool, get_backend, set_backend, to_device, to_numpy, use_backend
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 from moderndid.did.mboot import mboot
@@ -282,43 +282,6 @@ def test_cupy_vs_cpu_mboot_clustered():
     np.testing.assert_allclose(
         gpu_result["bres"].mean(axis=0), cpu_result["bres"].mean(axis=0), atol=0.15 * n_units / n_clusters
     )
-    set_backend("numpy")
-
-
-def test_cpu_aggregate():
-    set_backend("numpy")
-    rng = np.random.default_rng(42)
-    n, k = 100, 3
-    inf_func = rng.standard_normal((n, k))
-    cluster = np.repeat(np.arange(10), 10)
-
-    result, n_clusters = aggregate_by_cluster(inf_func, cluster)
-    assert result.shape == (10, k)
-    assert n_clusters == 10
-    np.testing.assert_allclose(result, inf_func.reshape(10, 10, k).sum(axis=1))
-
-
-@requires_gpu
-@pytest.mark.parametrize(
-    "cluster_array,n,k",
-    [
-        (np.repeat(np.arange(20), 10), 200, 5),
-        (np.concatenate([np.zeros(50), np.ones(30), np.full(20, 2)]), 100, 2),
-    ],
-    ids=["equal_clusters", "unequal_clusters"],
-)
-def test_cupy_vs_cpu_aggregate(cluster_array, n, k):
-    rng = np.random.default_rng(42)
-    inf_func = rng.standard_normal((n, k))
-
-    set_backend("numpy")
-    cpu_result, cpu_n = aggregate_by_cluster(inf_func, cluster_array)
-
-    set_backend("cupy")
-    gpu_result, gpu_n = aggregate_by_cluster(inf_func, cluster_array)
-
-    assert cpu_n == gpu_n
-    np.testing.assert_allclose(gpu_result, cpu_result, rtol=1e-5)
     set_backend("numpy")
 
 

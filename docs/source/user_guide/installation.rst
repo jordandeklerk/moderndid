@@ -50,7 +50,7 @@ Choose optional dependencies
 Each extra listed below adds the dependencies of an optional estimator,
 plotting, or faster computation to the base installation. If you expect to
 work through several treatment designs, ``moderndid[all]`` includes every
-estimator extra, plotting, and Numba.
+estimator extra and plotting.
 
 .. admonition:: Install GPU dependencies separately
    :class: important
@@ -91,12 +91,10 @@ estimator extra, plotting, and Numba.
            - Use it for
          * - ``plots``
            - The package's plotnine figures and plotting themes.
-         * - ``numba``
-           - Compiled CPU routines used by bootstrap and aggregation calculations.
          * - ``gpu``
            - CuPy computation on supported NVIDIA hardware.
          * - ``all``
-           - All estimator, plotting, and Numba dependencies, without GPU dependencies.
+           - All estimator and plotting dependencies, without GPU dependencies.
 
 For example, either of the commands below installs continuous DiD and
 plotting together. Replace the extras inside the brackets to match your

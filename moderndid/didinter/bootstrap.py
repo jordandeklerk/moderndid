@@ -6,6 +6,7 @@ from dataclasses import replace
 import numpy as np
 import polars as pl
 
+from moderndid.core.bootstrap import compute_column_std, gather_bootstrap_indices
 from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess.constants import WEIGHTS_COLUMN
 from moderndid.core.preprocess.transformers import (
@@ -17,7 +18,6 @@ from moderndid.core.preprocess.transformers import (
 from moderndid.core.preprocess.utils import nonfinite_to_null
 
 from .container import BootstrapResult
-from .numba import compute_column_std, gather_bootstrap_indices
 
 
 def cluster_bootstrap(

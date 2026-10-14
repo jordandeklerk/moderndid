@@ -95,11 +95,6 @@ from .honest_did import (
     HonestDiDResult,
     honest_did,
 )
-from .numba import (
-    compute_bounds,
-    lee_coefficient,
-    selection_matrix,
-)
 from .sensitivity import (
     OriginalCSResult,
     SensitivityResult,
@@ -110,7 +105,10 @@ from .sensitivity import (
 from .utils import (
     basis_vector,
     bin_factor,
+    compute_bounds,
     create_interactions,
+    lee_coefficient,
+    selection_matrix,
     validate_conformable,
     validate_symmetric_psd,
 )

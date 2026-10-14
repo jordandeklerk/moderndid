@@ -44,7 +44,7 @@ from moderndid.didhonest import (
 from moderndid.didhonest.arp_nuisance import _construct_gamma, _test_delta_lp
 from moderndid.didhonest.conditional import _norminvp_generalized
 from moderndid.didhonest.delta.rm.rmb import _create_relative_magnitudes_bias_constraint_matrix
-from moderndid.didhonest.numba import find_rows_with_post_period_values
+from moderndid.didhonest.utils import find_rows_with_post_period_values
 
 
 def _run_r_script(r_script, result_path, timeout=300):

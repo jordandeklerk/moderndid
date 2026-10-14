@@ -596,41 +596,44 @@ Choosing how numerical work runs
 
 Once an estimator is correct, profiling can show whether its time goes to
 sample preparation, nuisance fits, array operations, or repeated inference.
-We'll look at compiled CPU kernels, parallel tasks, and GPU arrays
+We'll look at the shared bootstrap helpers, parallel tasks, and GPU arrays
 separately because they affect different parts of the calculation. The
 :doc:`benchmarking` guide explains how to measure a change on a specified
 workload.
 
-Compiled CPU kernels
-^^^^^^^^^^^^^^^^^^^^
+Shared bootstrap helpers
+^^^^^^^^^^^^^^^^^^^^^^^^
 
-``core/numba_utils.py`` defines NumPy implementations and conditionally
-replaces selected kernels when Numba is installed. Those kernels handle
-operations such as cluster sums, the row gathers of the cluster bootstrap,
-and column standard deviations. Numerical loops use arrays and scalars so
-compilation doesn't have to handle data selection, result objects, or
-formulas.
+The bootstrap and variance helpers in ``core/bootstrap.py`` are plain NumPy
+functions. On the CPU, ``multiplier_bootstrap`` runs the multiplier bootstrap
+of ``att_gt``, ``aggte``, ``cont_did``, and ``ddd``. It draws the Rademacher
+weights in blocks and multiplies each block by the influence function matrix.
+NumPy passes each of those products to BLAS. A loop over the draws would read
+the whole influence function matrix once per draw and run far slower than the
+matrix product on large samples. Before writing a new calculation as a loop,
+time it against an array version on a large sample.
 
-.. admonition:: Keep both kernel paths consistent
+Three more helpers in the module serve the inference of ``did_multiplegt``.
+For its clustered variance, ``compute_cluster_sums`` adds up the influence
+functions within each cluster. The cluster bootstrap gathers each draw's rows
+with ``gather_bootstrap_indices`` and turns the draws into standard errors
+with ``compute_column_std``.
+
+.. admonition:: Change both branches together
    :class: important
 
-   The NumPy fallback and the compiled path must agree numerically when you
-   change a shared kernel.
-
-The CPU multiplier bootstrap has no compiled kernel. It draws the Rademacher
-weights in blocks and multiplies each block by the influence function
-matrix. NumPy passes each of those products to BLAS. Since a compiled loop
-reads the whole influence function matrix once per draw, it runs far slower
-than the matrix product on large samples. Because an array operation can
-beat a compiled loop like this, time the workload before compiling a new
-calculation.
+   Where a helper in ``core/bootstrap.py`` has a CuPy branch, that branch runs
+   the calculation on the GPU when the active backend is CuPy. A change to
+   what the NumPy code computes needs the same change in that branch.
 
 Group-time tasks on threads
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 When group-time comparisons can be fitted separately, ``parallel_map`` in
-``core/parallel.py`` handles their execution. The default ``n_jobs=1`` runs
-them one after another in the calling thread. A worker count above one, or
+``core/parallel.py`` handles their execution. It also runs the bootstrap draws
+of ``did_multiplegt`` and the fits that ``dyn_balancing`` makes for several
+history lengths or final periods. The default ``n_jobs=1`` runs the tasks one
+after another in the calling thread. A worker count above one, or
 ``n_jobs=-1`` for one worker per reported CPU, runs them on a
 ``ThreadPoolExecutor``.
 

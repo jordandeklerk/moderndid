@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 from scipy import special
 
-from .numba import compute_bounds, create_second_differences_matrix, selection_matrix
+from .utils import compute_bounds, create_second_differences_matrix, selection_matrix
 
 
 def test_in_identified_set_max(

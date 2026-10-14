@@ -28,7 +28,7 @@ Reviews of this repository keep finding the same problems, so check every new or
 ## Package layout
 
 - An estimator family is a folder under `moderndid/`. In `did`, `att_gt.py` is the public entry point. It checks the arguments, builds the config, runs the preprocessing builder, and returns the result through the `mp()` factory. `compute_att_gt.py` holds the numerical work as plain functions of arrays, `container.py` the NamedTuple results and their factories, `format.py` the printed reports, and `README.md` a short overview that the docs link to. Larger families split the work into subfolders such as `didtriple/estimators/` and `didtriple/bootstrap/`.
-- Shared code lives in `moderndid/core/`. `core/preprocess/` checks and prepares data (`validators.py`, `config.py`, `builders.py`, `transformers.py`), `core/format.py` holds the report helpers, `core/converters.py` the `to_df` converters, `core/maketables.py` the publication-table builders, `core/parallel.py` the `parallel_map` that runs group-time cells, `core/numba_utils.py` the compiled kernels, and `core/data.py` the `load_*` datasets and `gen_*` simulators. Plots live in `moderndid/plots/` and the GPU backend in `moderndid/cupy/`. `moderndid/dev/` holds placeholders for planned families.
+- Shared code lives in `moderndid/core/`. `core/preprocess/` checks and prepares data (`validators.py`, `config.py`, `builders.py`, `transformers.py`), `core/format.py` holds the report helpers, `core/converters.py` the `to_df` converters, `core/maketables.py` the publication-table builders, `core/parallel.py` the `parallel_map` that runs group-time cells and other independent tasks, `core/bootstrap.py` the bootstrap and variance helpers, and `core/data.py` the `load_*` datasets and `gen_*` simulators. Plots live in `moderndid/plots/` and the GPU backend in `moderndid/cupy/`. `moderndid/dev/` holds placeholders for planned families.
 - Some families predate this layout. drdid defines a result beside each estimator in `drdid/estimators/`, didhonest keeps its results in the modules that compute them, and neither didhonest nor npiv has a `format.py`. Don't copy those layouts. Move an old type only in a change of its own, since a move changes import paths, `_lazy_imports`, and the API pages.
 
 ## Signatures and arguments
@@ -77,8 +77,8 @@ Most families leave their formatters and converters out of both `__all__` lists,
 
 ## Numerics
 
-- Group-time cells run through `parallel_map` in `core/parallel.py`, which takes `n_jobs`.
-- A compiled kernel follows `core/numba_utils.py`, with a NumPy `_impl` function first, a `@nb.njit(cache=True)` version under `if HAS_NUMBA:`, and a public wrapper that sends CuPy arrays to the GPU path when `get_backend()` isn't NumPy.
+- Group-time cells, the bootstrap draws of `did_multiplegt`, and the separate fits of `dyn_balancing` run through `parallel_map` in `core/parallel.py`, which takes `n_jobs`.
+- Bootstrap helpers in `core/bootstrap.py` are plain NumPy functions that branch to a CuPy version, where one exists, when `get_backend()` isn't NumPy.
 - A fit that can fail on a cell, such as a propensity score reaching one, names the cell in a warning and leaves the cell out or NaN, as `att_gt` does, rather than clipping the value silently.
 
 ## Comments
