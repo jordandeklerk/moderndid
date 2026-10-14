@@ -606,9 +606,10 @@ Compiled CPU kernels
 
 ``core/numba_utils.py`` defines NumPy implementations and conditionally
 replaces selected kernels when Numba is installed. Those kernels handle
-operations such as cluster sums, multiplier draws, and column standard
-deviations. Numerical loops use arrays and scalars so compilation doesn't
-have to handle data selection, result objects, or formulas.
+operations such as cluster sums, the row gathers of the cluster bootstrap,
+and column standard deviations. Numerical loops use arrays and scalars so
+compilation doesn't have to handle data selection, result objects, or
+formulas.
 
 .. admonition:: Keep both kernel paths consistent
    :class: important
@@ -616,10 +617,13 @@ have to handle data selection, result objects, or formulas.
    The NumPy fallback and the compiled path must agree numerically when you
    change a shared kernel.
 
-Random draws for the CPU multiplier bootstrap are generated outside the
-compiled loop and supplied to the kernel. This separates control of the
-random draws from the kernel's numerical accumulation. Measuring the
-workload helps establish whether compilation improves that calculation.
+The CPU multiplier bootstrap has no compiled kernel. It draws the Rademacher
+weights in blocks and multiplies each block by the influence function
+matrix. NumPy passes each of those products to BLAS. Since a compiled loop
+reads the whole influence function matrix once per draw, it runs far slower
+than the matrix product on large samples. Because an array operation can
+beat a compiled loop like this, time the workload before compiling a new
+calculation.
 
 Group-time tasks on threads
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^

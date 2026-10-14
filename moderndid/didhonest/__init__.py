@@ -2,9 +2,13 @@
 
 try:
     import cvxpy
+    import highspy
+
+    if not hasattr(highspy.Highs, "changeRowsBounds"):
+        raise ImportError("highspy.Highs has no changeRowsBounds.")
 except ImportError as e:
     raise ImportError(
-        "The 'didhonest' module requires additional dependencies. "
+        "The 'didhonest' module requires cvxpy and highspy 1.13.0 or later. "
         "Install them with uv add 'moderndid[didhonest]' or pip install 'moderndid[didhonest]'"
     ) from e
 

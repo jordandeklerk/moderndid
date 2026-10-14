@@ -120,12 +120,13 @@ Inspect the compiled CPU path
 
 Some numerical helpers have Numba implementations that compile on first use.
 To step through their Python bodies, set ``NUMBA_DISABLE_JIT`` before starting
-the interpreter. We'll use a multiplier-bootstrap test here because it
-reaches the numerical helper that an analytical fit can bypass.
+the interpreter. We'll use a cluster aggregation test here because it calls the
+compiled ``_aggregate_by_cluster_impl`` helper directly.
 
 .. code-block:: console
 
-   NUMBA_DISABLE_JIT=1 pixi run -e dev pytest tests/did/test_mboot.py::test_basic_functionality -vv -x
+   NUMBA_DISABLE_JIT=1 pixi run -e dev pytest \
+       tests/didtriple/test_numba.py::test_aggregate_by_cluster_correctness -vv -x
 
 With compilation disabled, you can use ordinary breakpoints to inspect the
 decorated functions as Python code. Keep in mind that this need not be the
@@ -148,7 +149,7 @@ or the development environment.
 .. code-block:: console
 
    NUMBA_CACHE_DIR=/tmp/moderndid-numba-debug pixi run -e dev pytest \
-       tests/did/test_mboot.py::test_basic_functionality -vv -x
+       tests/didtriple/test_numba.py::test_aggregate_by_cluster_correctness -vv -x
 
 Use a new directory when repeating this probe so the comparison actually
 starts without a previous compiled cache. After the diagnosis, rerun the

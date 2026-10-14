@@ -5,7 +5,7 @@ from importlib import import_module
 import numpy as np
 import pytest
 
-from moderndid.core.numba_utils import _aggregate_by_cluster_impl, _multiplier_bootstrap_impl
+from moderndid.core.numba_utils import _aggregate_by_cluster_impl
 from moderndid.didtriple import numba
 
 
@@ -36,7 +36,6 @@ def _aggregate_by_cluster_py(inf_func, cluster):
     return cluster_sums, n_clusters
 
 
-@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_multiplier_bootstrap_consistency(bootstrap_data):
     inf_func = bootstrap_data
     biters = 100
@@ -77,7 +76,6 @@ def test_aggregate_by_cluster_string_clusters():
     np.testing.assert_allclose(result_numba, expected, rtol=1e-10)
 
 
-@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_multiplier_bootstrap_single_column():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
@@ -133,19 +131,6 @@ def test_aggregate_by_cluster_gpu_branch_sums_within_sorted_clusters(monkeypatch
 
     assert n_clusters == 2
     np.testing.assert_allclose(result, [[2.0, -1.0], [8.0, 2.5]])
-
-
-def test_multiplier_bootstrap_rademacher_weights():
-    rng = np.random.default_rng(42)
-    inf_func = rng.standard_normal((50, 3)).astype(np.float64)
-    weights_matrix = rng.binomial(1, 0.5, size=(20, 50)).astype(np.int8)
-
-    result = _multiplier_bootstrap_impl(np.ascontiguousarray(inf_func), weights_matrix)
-
-    for b in range(20):
-        v = np.where(weights_matrix[b] == 1, 1.0, -1.0)
-        expected = np.mean(inf_func * v[:, np.newaxis], axis=0)
-        np.testing.assert_allclose(result[b], expected, rtol=1e-10)
 
 
 def test_aggregate_by_cluster_correctness():

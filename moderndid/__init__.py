@@ -16,7 +16,7 @@ __all__ = [
     "HAS_CUPY",
     # did module
     "AGGTEResult",
-    # Optional: didhonest (requires cvxpy)
+    # Optional: didhonest (requires cvxpy and highspy)
     "APRCIResult",
     "ARPNuisanceCIResult",
     "ATTgtResult",
@@ -435,7 +435,7 @@ _optional_imports = {
     "setup_pte_cont": ("moderndid.didcont", "didcont"),
     "BSpline": ("moderndid.didcont.spline", "didcont"),
     "SplineBase": ("moderndid.didcont.spline", "didcont"),
-    # didhonest (requires cvxpy)
+    # didhonest (requires cvxpy and highspy)
     "APRCIResult": ("moderndid.didhonest", "didhonest"),
     "ARPNuisanceCIResult": ("moderndid.didhonest", "didhonest"),
     "DeltaRMBResult": ("moderndid.didhonest", "didhonest"),

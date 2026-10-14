@@ -9,7 +9,7 @@ from scipy.linalg import lapack
 from moderndid.core.preprocess.utils import get_covariate_names_from_formula
 
 
-def compute_control_coefficients(df, config, n_groups):
+def compute_control_coefficients(df, config, n_groups, point_only=False):
     r"""Estimate the control coefficients for each baseline treatment.
 
     The coefficients come from a regression of the outcome's first differences on the
@@ -21,7 +21,7 @@ def compute_control_coefficients(df, config, n_groups):
     The returned data carry one influence column per control with each group's
     contribution to the coefficients of its baseline treatment.
     :func:`compute_variance_adjustment` turns these columns into the variance term of
-    every horizon.
+    every horizon. Since point estimates never read them, ``point_only`` leaves them out.
 
     The controls are the covariates of ``xformla``. With a continuous treatment they also
     include the interactions of period indicators with powers of the baseline treatment that
@@ -36,11 +36,13 @@ def compute_control_coefficients(df, config, n_groups):
         Configuration object.
     n_groups : int
         Number of groups :math:`G`.
+    point_only : bool, default=False
+        Whether to leave out the influence columns.
 
     Returns
     -------
     df : pl.DataFrame
-        Data with the influence columns ``.ctrl_influence_{j}``.
+        Data with the influence columns ``.ctrl_influence_{j}`` unless ``point_only`` is set.
     coefficients : dict
         Mapping from the rank ``d_sq_int`` of each baseline treatment to its coefficients:
 
@@ -149,6 +151,8 @@ def compute_control_coefficients(df, config, n_groups):
             collinear.append(level)
         inv_denom = inverse * rows["weight_gt"].sum() * n_groups
         coefficients[level] = {"theta": inverse @ (x.T @ y), "inv_denom": inv_denom, "useful": True}
+        if point_only:
+            continue
 
         n_control = df.filter(is_level & not_yet_switched)["weight_gt"].sum()
         scores = _control_scores(rows, config, first_diffs, centered) / n_control
@@ -181,6 +185,8 @@ def compute_control_coefficients(df, config, n_groups):
         )
 
     df = df.drop(first_diff_y, *first_diffs, *centered, ".ctrl_raw_weight", ".ctrl_sample", ".ctrl_period_count")
+    if point_only:
+        return df, coefficients
     if influence_frames:
         df = df.join(pl.concat(influence_frames), on=gname, how="left")
     else:

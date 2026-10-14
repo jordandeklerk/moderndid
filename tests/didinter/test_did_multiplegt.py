@@ -1,6 +1,7 @@
 """Tests for the did_multiplegt main entry point."""
 
 import re
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -10,8 +11,10 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+import moderndid.didinter.bootstrap as bootstrap_module
 import moderndid.didinter.compute_did_multiplegt as compute_module
 from moderndid import did_multiplegt
+from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.didinter import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
 from moderndid.didinter.bootstrap import cluster_bootstrap
@@ -834,20 +837,19 @@ def test_bootstrap_draw_estimates_the_horizons_its_switchers_reach(
 
 def test_cluster_bootstrap_gives_each_cluster_copy_new_group_ids(clustered_panel_data, fixed_draws, draw_recorder):
     config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", cluster="cluster")
+    draw = [0, 0, 2, 3, 3]
+    copies = pl.concat([clustered_panel_data.filter(pl.col("cluster") == c) for c in draw])
+    first_cluster = clustered_panel_data.filter(pl.col("cluster") == 0)["y"].to_list()
 
-    result = cluster_bootstrap(
-        clustered_panel_data, config, draw_recorder, biters=1, random_state=fixed_draws([[0, 0, 2, 3, 3]])
-    )
+    result = cluster_bootstrap(clustered_panel_data, config, draw_recorder, biters=1, random_state=fixed_draws([draw]))
     drawn = draw_recorder.frames[0]
-    first_cluster = clustered_panel_data.filter(pl.col("cluster") == 0)["y"].to_numpy()
 
     assert isinstance(result, BootstrapResult)
+    assert "F_g" in drawn.columns
     assert drawn.height == 300
     assert drawn["id"].n_unique() == 50
-    assert drawn.group_by("cluster").agg(pl.col("id").n_unique()).sort("cluster")["id"].to_list() == [20, 10, 20]
-    np.testing.assert_array_equal(
-        np.sort(drawn.filter(pl.col("cluster") == 0)["y"].to_numpy()), np.sort(np.tile(first_cluster, 2))
-    )
+    assert drawn.filter(pl.col("y").is_in(first_cluster))["id"].n_unique() == 20
+    np.testing.assert_array_equal(np.sort(drawn["y"].to_numpy()), np.sort(copies["y"].to_numpy()))
 
 
 def test_rows_with_a_missing_cluster_are_dropped_with_a_warning(clustered_panel_data):
@@ -896,9 +898,12 @@ def test_cluster_bootstrap_leaves_out_rows_without_a_cluster(clustered_panel_dat
     cluster_bootstrap(data, config, draw_recorder, biters=1, random_state=fixed_draws([[0, 1, 2, 3, 4]]))
     drawn = draw_recorder.frames[0]
 
+    assert "F_g" in drawn.columns
     assert drawn.height == 291
-    assert drawn["cluster"].null_count() == 0
     assert drawn["id"].n_unique() == 49
+    np.testing.assert_array_equal(
+        np.sort(drawn["y"].to_numpy()), np.sort(clustered_panel_data.filter(~missing)["y"].to_numpy())
+    )
 
 
 def test_cluster_bootstrap_keeps_a_cluster_without_usable_rows_in_the_pool(
@@ -913,6 +918,7 @@ def test_cluster_bootstrap_keeps_a_cluster_without_usable_rows_in_the_pool(
     cluster_bootstrap(data, config, draw_recorder, biters=2, random_state=fixed_draws(draws))
 
     assert [frame.height for frame in draw_recorder.frames] == [0, 240]
+    assert ["F_g" in frame.columns for frame in draw_recorder.frames] == [False, True]
 
 
 def test_bootstrap_warns_once_about_the_rows_it_drops(panel_with_controls):
@@ -1327,6 +1333,200 @@ def test_seeded_bootstrap_with_a_zero_weight_draw_gives_known_standard_errors(ze
     np.testing.assert_allclose(result.effects.std_errors, [0.4562282558172498, 0.3962547382974173], rtol=1e-10)
     np.testing.assert_allclose(result.placebos.std_errors, [0.6528766325260316], rtol=1e-10)
     np.testing.assert_allclose(result.ate.std_error, 0.4042719986527167, rtol=1e-10)
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+@pytest.mark.filterwarnings("ignore:Keeping bidirectional switchers:UserWarning")
+@pytest.mark.filterwarnings("ignore:When continuous > 0:UserWarning")
+@pytest.mark.parametrize(
+    ("data_fixture", "options", "draws"),
+    [
+        (
+            "every_option_panel",
+            {
+                "xformla": "~ x1 + x2",
+                "cluster": "cl",
+                "predict_het": (["het"], [-1]),
+                "same_switchers": True,
+                "less_conservative_se": True,
+            },
+            [[0, 1, 2, 4, 5, 6, 7, 8, 9, 9], [0, 0, 3, 3, 5, 6, 6, 8, 9, 2], [1, 2, 4, 4, 5, 7, 7, 8, 8, 9]],
+        ),
+        (
+            "two_way_panel_data",
+            {"cluster": "cluster", "switchers": "out", "normalized": True},
+            [[4, 5, 8, 9, 9, 6, 0, 2, 7, 8], [5, 5, 8, 8, 9, 7, 1, 3, 4, 6], [4, 6, 9, 9, 8, 0, 0, 2, 5, 5]],
+        ),
+        (
+            "continuous_option_panel",
+            {"cluster": "cl", "continuous": 1},
+            [[0, 1, 2, 4, 5, 6, 7, 8, 9, 9], [0, 0, 3, 3, 5, 6, 6, 8, 9, 2], [1, 2, 4, 4, 5, 7, 7, 8, 8, 9]],
+        ),
+        (
+            "bidirectional_cluster_panel",
+            {"idname": "g", "tname": "t", "cluster": "cl", "keep_bidirectional_switchers": True},
+            [
+                [0, 2, 2, 3, 5, 5, 6, 7, 9, 10, 11, 11, 12, 14, 15, 16, 16, 17, 18, 19],
+                [1, 1, 3, 4, 4, 6, 7, 8, 8, 9, 10, 12, 13, 13, 14, 15, 17, 18, 19, 19],
+                [0, 1, 3, 3, 4, 5, 6, 8, 9, 10, 11, 12, 12, 13, 14, 15, 16, 17, 18, 18],
+            ],
+        ),
+        (
+            "missing_preswitch_panel",
+            {"cluster": "cluster", "drop_missing_preswitch": True},
+            [[0, 1, 2, 3, 4], [0, 0, 2, 3, 4], [1, 2, 2, 3, 3]],
+        ),
+    ],
+    ids=["controls", "switchers_out_normalized", "continuous", "bidirectional", "missing_preswitch"],
+)
+def test_bootstrap_matches_fits_on_relabelled_cluster_copies_under_each_option(
+    request, fixed_draws, relabel_cluster_copies, data_fixture, options, draws
+):
+    data = request.getfixturevalue(data_fixture)
+    spec = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1} | options
+
+    result = did_multiplegt(data, **spec, boot=True, biters=len(draws), random_state=fixed_draws(draws))
+    fits = [
+        did_multiplegt(relabel_cluster_copies(data, draw, spec["cluster"], spec["idname"]), **spec) for draw in draws
+    ]
+
+    np.testing.assert_allclose(
+        result.effects.std_errors, np.std([fit.effects.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(
+        result.placebos.std_errors, np.std([fit.placebos.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(result.ate.std_error, np.std([fit.ate.estimate for fit in fits], ddof=1), rtol=1e-10)
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+def test_bootstrap_with_linear_trends_matches_fits_on_relabelled_groups(
+    trends_panel_data, fixed_draws, relabel_cluster_copies
+):
+    generator = np.random.default_rng(3)
+    draws = [generator.integers(0, 90, size=90) for _ in range(3)]
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1}
+
+    result = did_multiplegt(
+        trends_panel_data, **kwargs, trends_lin=True, boot=True, biters=3, random_state=fixed_draws(draws)
+    )
+    fits = [
+        did_multiplegt(relabel_cluster_copies(trends_panel_data, draw, "id", "id"), **kwargs, trends_lin=True)
+        for draw in draws
+    ]
+
+    assert result.ate is None
+    np.testing.assert_allclose(
+        result.effects.std_errors, np.std([fit.effects.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(
+        result.placebos.std_errors, np.std([fit.placebos.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+
+
+def test_cluster_bootstrap_draws_the_clusters_of_a_fresh_generator_in_order(clustered_panel_data, draw_recorder):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", cluster="cluster")
+    generator = np.random.default_rng(7)
+    draws = [generator.integers(0, 5, size=5).tolist() for _ in range(6)]
+
+    cluster_bootstrap(clustered_panel_data, config, draw_recorder, biters=6, random_state=7)
+    used = [
+        frame.select((pl.col("id") // 50).alias("copy"), (pl.col("id") % 50 // 10).alias("cluster"))
+        .unique()
+        .sort("copy")["cluster"]
+        .to_list()
+        for frame in draw_recorder.frames
+    ]
+
+    assert used == draws
+
+
+def test_cluster_bootstrap_hands_over_raw_rows_only_for_a_draw_that_misses_a_period(
+    rare_period_panel, fixed_draws, draw_recorder
+):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", cluster="cluster")
+
+    cluster_bootstrap(
+        rare_period_panel, config, draw_recorder, biters=2, random_state=fixed_draws([[1, 2, 3, 3, 4], [0, 1, 2, 3, 4]])
+    )
+
+    assert ["F_g" in frame.columns for frame in draw_recorder.frames] == [False, True]
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_in_chunks_of_three_draws_matches_one_chunk(rare_period_panel, monkeypatch):
+    spec = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "effects": 2,
+        "placebo": 1,
+        "cluster": "cluster",
+        "boot": True,
+        "biters": 8,
+        "random_state": 18,
+    }
+    chunked_map = Mock(wraps=parallel_map)
+
+    whole = did_multiplegt(rare_period_panel, **spec)
+    monkeypatch.setattr(bootstrap_module, "_draws_per_chunk", lambda n_clusters, n_jobs: 3)
+    monkeypatch.setattr(bootstrap_module, "parallel_map", chunked_map)
+    chunked = did_multiplegt(rare_period_panel, **spec)
+
+    assert [len(call.args[1]) for call in chunked_map.call_args_list] == [3, 3, 2]
+    assert np.all(np.isfinite(whole.effects.std_errors))
+    np.testing.assert_array_equal(chunked.effects.std_errors, whole.effects.std_errors)
+    np.testing.assert_array_equal(chunked.placebos.std_errors, whole.placebos.std_errors)
+    assert chunked.ate.std_error == whole.ate.std_error
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_draws_that_miss_a_period_match_fits_on_their_clusters(
+    rare_period_panel, fixed_draws, relabel_cluster_copies
+):
+    draws = [[1, 2, 3, 3, 4], [0, 1, 2, 3, 4], [1, 1, 2, 4, 4], [0, 2, 2, 3, 3]]
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1}
+
+    result = did_multiplegt(
+        rare_period_panel, **kwargs, cluster="cluster", boot=True, biters=4, random_state=fixed_draws(draws)
+    )
+    fits = [
+        did_multiplegt(relabel_cluster_copies(rare_period_panel, draw, "cluster", "id"), **kwargs) for draw in draws
+    ]
+    placebos = np.array([fit.placebos.estimates for fit in fits])
+
+    assert np.isnan(placebos[:, 0]).tolist() == [False, True, False, True]
+    np.testing.assert_allclose(
+        result.effects.std_errors, np.std([fit.effects.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(result.placebos.std_errors, np.nanstd(placebos, axis=0, ddof=1), rtol=1e-10)
+    np.testing.assert_allclose(result.ate.std_error, np.std([fit.ate.estimate for fit in fits], ddof=1), rtol=1e-10)
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_with_two_jobs_matches_one_job(rare_period_panel):
+    spec = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "effects": 2,
+        "placebo": 1,
+        "cluster": "cluster",
+        "boot": True,
+        "biters": 20,
+        "random_state": 18,
+    }
+
+    serial = did_multiplegt(rare_period_panel, **spec, n_jobs=1)
+    threaded = did_multiplegt(rare_period_panel, **spec, n_jobs=2)
+
+    assert np.all(np.isfinite(serial.effects.std_errors))
+    np.testing.assert_array_equal(threaded.effects.std_errors, serial.effects.std_errors)
+    np.testing.assert_array_equal(threaded.placebos.std_errors, serial.placebos.std_errors)
+    assert threaded.ate.std_error == serial.ate.std_error
 
 
 @pytest.mark.parametrize(
