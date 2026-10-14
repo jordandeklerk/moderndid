@@ -146,10 +146,7 @@ functions before adding bootstrap randomness. NumPy arrays in these result
 fields have already returned to the CPU even when the internal fit used CuPy.
 
 If allocation fails on the GPU, start by checking the array sizes and how
-often data move between host and device. Calls to ``set_backend("cupy")``
-and ``use_backend("cupy")`` attempt to configure an allocator when the
-optional RMM dependency is available. They do not supply additional device
-memory or guarantee that RMM was installed. Before reducing the
+often data move between host and device. Before reducing the
 workload, preserve the comparison that causes the failure so you can still
 investigate it in the smaller fit.
 

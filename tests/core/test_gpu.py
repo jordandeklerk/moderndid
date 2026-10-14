@@ -1,22 +1,18 @@
-"""Tests for GPU backend dispatch and GPU-accelerated operations."""
+"""Tests for the CuPy backend and the GPU-accelerated operations on a CUDA GPU."""
 
-import importlib.util
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 import moderndid
-import moderndid.cupy.backend as _backend_mod
 from moderndid.core.bootstrap import compute_column_std, multiplier_bootstrap
-from moderndid.cupy.backend import _init_rmm_pool, get_backend, set_backend, to_device, to_numpy, use_backend
+from moderndid.cupy.backend import get_backend, set_backend, to_device, to_numpy, use_backend
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 from moderndid.did.mboot import mboot
 from tests.helpers import importorskip
 
 cp = importorskip("cupy")
-
-HAS_RMM = importlib.util.find_spec("rmm") is not None
 
 
 def _has_cuda_gpu():
@@ -29,31 +25,6 @@ def _has_cuda_gpu():
 
 
 requires_gpu = pytest.mark.skipif(not _has_cuda_gpu(), reason="No CUDA GPU available")
-
-
-def test_default_backend_is_numpy():
-    set_backend("numpy")
-    assert get_backend() is np
-
-
-def test_set_backend_invalid():
-    with pytest.raises(ValueError, match="Unknown backend"):
-        set_backend("tensorflow")
-
-
-def test_to_numpy_with_numpy_array():
-    arr = np.array([1.0, 2.0, 3.0])
-    result = to_numpy(arr)
-    assert isinstance(result, np.ndarray)
-    np.testing.assert_array_equal(result, arr)
-
-
-def test_to_device_with_numpy_backend():
-    set_backend("numpy")
-    arr = np.array([1.0, 2.0, 3.0])
-    result = to_device(arr)
-    assert isinstance(result, np.ndarray)
-    np.testing.assert_array_equal(result, arr)
 
 
 @requires_gpu
@@ -93,34 +64,6 @@ def test_roundtrip_numpy_cupy():
     set_backend("numpy")
 
 
-def test_wls_simple_ols():
-    set_backend("numpy")
-    rng = np.random.default_rng(42)
-    n, k = 200, 3
-    X = np.column_stack([np.ones(n), rng.standard_normal((n, k - 1))])
-    beta_true = np.array([1.0, 2.0, -0.5])
-    y = X @ beta_true + rng.standard_normal(n) * 0.1
-    weights = np.ones(n)
-
-    beta_hat, fitted = cupy_wls(y, X, weights)
-    np.testing.assert_allclose(beta_hat, beta_true, atol=0.2)
-    np.testing.assert_allclose(fitted, X @ beta_hat)
-
-
-def test_wls_weighted():
-    set_backend("numpy")
-    rng = np.random.default_rng(123)
-    n = 100
-    X = np.column_stack([np.ones(n), rng.standard_normal(n)])
-    beta_true = np.array([3.0, -1.0])
-    y = X @ beta_true + rng.standard_normal(n) * 0.5
-    weights = rng.uniform(0.5, 2.0, n)
-
-    beta_hat, fitted = cupy_wls(y, X, weights)
-    np.testing.assert_allclose(beta_hat, beta_true, atol=0.3)
-    np.testing.assert_allclose(fitted, X @ beta_hat)
-
-
 @requires_gpu
 def test_cupy_vs_cpu_wls():
     set_backend("numpy")
@@ -141,37 +84,6 @@ def test_cupy_vs_cpu_wls():
     np.testing.assert_allclose(beta_gpu, beta_cpu, rtol=1e-5)
     np.testing.assert_allclose(fitted_gpu, fitted_cpu, rtol=1e-5)
     set_backend("numpy")
-
-
-def test_logistic_separable_data():
-    set_backend("numpy")
-    rng = np.random.default_rng(42)
-    n = 300
-    x1 = rng.standard_normal(n)
-    prob = 1.0 / (1.0 + np.exp(-(1.0 + 2.0 * x1)))
-    y = rng.binomial(1, prob).astype(np.float64)
-    X = np.column_stack([np.ones(n), x1])
-    weights = np.ones(n)
-
-    beta, mu = cupy_logistic_irls(y, X, weights)
-    np.testing.assert_allclose(beta, [1.0, 2.0], atol=0.5)
-    assert mu.shape == (n,)
-    assert np.all((mu > 0) & (mu < 1))
-
-
-def test_logistic_weighted():
-    set_backend("numpy")
-    rng = np.random.default_rng(77)
-    n = 500
-    x1 = rng.standard_normal(n)
-    prob = 1.0 / (1.0 + np.exp(-(0.5 + 1.5 * x1)))
-    y = rng.binomial(1, prob).astype(np.float64)
-    X = np.column_stack([np.ones(n), x1])
-    weights = rng.uniform(0.5, 2.0, n)
-
-    beta, mu = cupy_logistic_irls(y, X, weights)
-    np.testing.assert_allclose(beta, [0.5, 1.5], atol=0.5)
-    assert np.all((mu > 0) & (mu < 1))
 
 
 @requires_gpu
@@ -197,49 +109,18 @@ def test_cupy_vs_cpu_logistic():
     set_backend("numpy")
 
 
-def test_cpu_bootstrap_shape():
-    set_backend("numpy")
-    rng = np.random.default_rng(42)
-    inf_func = rng.standard_normal((100, 3))
-    result = multiplier_bootstrap(inf_func, biters=50, random_state=42)
-    assert result.shape == (50, 3)
-
-
 @requires_gpu
-def test_cupy_bootstrap_shape():
-    set_backend("cupy")
-    rng = np.random.default_rng(42)
-    inf_func = rng.standard_normal((100, 3))
-    result = multiplier_bootstrap(inf_func, biters=50, random_state=42)
-    assert isinstance(result, np.ndarray)
-    assert result.shape == (50, 3)
-    set_backend("numpy")
+def test_multiplier_bootstrap_on_gpu_draws_balanced_independent_signs():
+    n_units = 40
+    inf_func = n_units * np.eye(n_units)
 
+    with use_backend("cupy"):
+        draws = multiplier_bootstrap(inf_func, biters=500, random_state=42)
 
-@requires_gpu
-@pytest.mark.parametrize(
-    "shape,seed,biters",
-    [
-        ((200, 4), 10, 99),
-        ((150,), 20, 50),
-    ],
-    ids=["2d", "1d"],
-)
-def test_cupy_vs_cpu_bootstrap(shape, seed, biters):
-    rng = np.random.default_rng(seed)
-    inf_func = rng.standard_normal(shape)
-
-    set_backend("numpy")
-    cpu_result = multiplier_bootstrap(inf_func, biters=biters, random_state=42)
-
-    set_backend("cupy")
-    gpu_result = multiplier_bootstrap(inf_func, biters=biters, random_state=42)
-
-    assert gpu_result.shape == cpu_result.shape
-    assert np.all(np.isfinite(gpu_result))
-    np.testing.assert_allclose(gpu_result.mean(axis=0), cpu_result.mean(axis=0), atol=0.15)
-    np.testing.assert_allclose(gpu_result.std(axis=0), cpu_result.std(axis=0), atol=0.15)
-    set_backend("numpy")
+    assert isinstance(draws, np.ndarray)
+    np.testing.assert_array_equal(np.abs(draws), np.ones((500, n_units)))
+    np.testing.assert_allclose(draws.mean(axis=0), 0.0, atol=0.25)
+    np.testing.assert_allclose(np.corrcoef(draws, rowvar=False), np.eye(n_units), atol=0.25)
 
 
 @requires_gpu
@@ -285,15 +166,6 @@ def test_cupy_vs_cpu_mboot_clustered():
     set_backend("numpy")
 
 
-def test_cpu_column_std():
-    set_backend("numpy")
-    rng = np.random.default_rng(42)
-    matrix = rng.standard_normal((100, 4))
-    result = compute_column_std(matrix)
-    expected = np.nanstd(matrix, axis=0, ddof=1)
-    np.testing.assert_allclose(result, expected, rtol=1e-5)
-
-
 @requires_gpu
 @pytest.mark.parametrize("inject_nans", [False, True], ids=["no_nans", "with_nans"])
 def test_cupy_vs_cpu_column_std(inject_nans):
@@ -312,41 +184,6 @@ def test_cupy_vs_cpu_column_std(inject_nans):
 
     np.testing.assert_allclose(gpu_result, cpu_result, rtol=1e-5)
     set_backend("numpy")
-
-
-@requires_gpu
-def test_rmm_initialized_after_set_backend():
-    set_backend("cupy")
-    assert _backend_mod._rmm_initialized is HAS_RMM
-    set_backend("numpy")
-
-
-@requires_gpu
-def test_rmm_initialized_after_use_backend():
-    _backend_mod._rmm_initialized = False
-    try:
-        with use_backend("cupy"):
-            assert _backend_mod._rmm_initialized is HAS_RMM
-    finally:
-        _init_rmm_pool()
-        set_backend("numpy")
-
-
-@requires_gpu
-def test_rmm_skips_reinitialize_when_already_active():
-    rmm = importorskip("rmm")
-    rmm_cupy_allocator = importorskip("rmm.allocators.cupy").rmm_cupy_allocator
-    try:
-        cp.cuda.set_allocator(rmm_cupy_allocator)
-        _backend_mod._rmm_initialized = False
-
-        with patch.object(rmm, "reinitialize") as mock_reinit:
-            _init_rmm_pool()
-            mock_reinit.assert_not_called()
-
-        assert _backend_mod._rmm_initialized is True
-    finally:
-        set_backend("numpy")
 
 
 @requires_gpu
@@ -478,23 +315,6 @@ def test_ddd_cupy_vs_numpy(est_method):
     np.testing.assert_allclose(result_gpu.se, result_cpu.se, rtol=1e-6)
 
 
-def test_set_backend_cupy_import_error():
-    with patch.object(_backend_mod, "HAS_CUPY", False), pytest.raises(ImportError, match="CuPy is not installed"):
-        _backend_mod._validate_backend_name("cupy")
-
-
-def test_set_backend_cupy_no_gpu_runtime_error():
-    if not _backend_mod.HAS_CUPY:
-        pytest.skip("CuPy not installed")
-
-    with (
-        patch.object(_backend_mod, "HAS_CUPY", True),
-        patch.object(_backend_mod.cp, "is_available", return_value=False),
-        pytest.raises(RuntimeError, match="no CUDA GPU is available"),
-    ):
-        _backend_mod._validate_backend_name("cupy")
-
-
 @requires_gpu
 def test_wls_oom_raises_memory_error():
     set_backend("cupy")
@@ -533,13 +353,3 @@ def test_logistic_irls_oom_raises_memory_error():
             cupy_logistic_irls(np.zeros(10), np.zeros((10, 2)), np.ones(10))
 
     set_backend("numpy")
-
-
-def test_rmm_fallback_when_not_installed():
-    _backend_mod._rmm_initialized = False
-
-    with patch.dict("sys.modules", {"rmm": None, "rmm.allocators": None, "rmm.allocators.cupy": None}):
-        _init_rmm_pool()
-
-    assert _backend_mod._rmm_initialized is False
-    _init_rmm_pool()

@@ -81,8 +81,7 @@ plots = [
     "plotnine>=0.14.0",
 ]
 gpu = [
-    "cupy-cuda12x>=13.0",
-    "rmm-cu12>=24.04",
+    "cupy-cuda12x[ctk]>=14.0",
 ]
 all = [
     "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots]",

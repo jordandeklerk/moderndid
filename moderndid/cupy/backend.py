@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import importlib.util
 import re
 import shutil
 import subprocess
@@ -15,9 +16,12 @@ try:
     import cupy as cp
 
     HAS_CUPY = True
-except ImportError:
+    _CUPY_IMPORT_ERROR = None
+except ImportError as err:
     HAS_CUPY = False
     cp = None
+    # Since find_spec locates a package without running it, it tells a broken CuPy install from a missing one.
+    _CUPY_IMPORT_ERROR = err if importlib.util.find_spec("cupy") is not None else None
 
 __all__ = [
     "HAS_CUPY",
@@ -30,7 +34,6 @@ __all__ = [
 ]
 
 _active_backend: ContextVar[str] = ContextVar("moderndid_backend", default="numpy")
-_rmm_initialized = False
 
 
 def set_backend(name):
@@ -42,8 +45,6 @@ def set_backend(name):
         Backend to activate. Setting "cupy" requires CuPy to be installed.
     """
     name = _validate_backend_name(name)
-    if name == "cupy":
-        _init_rmm_pool()
     _active_backend.set(name)
 
 
@@ -75,8 +76,6 @@ def use_backend(name):
         Backend to activate for the duration of the block.
     """
     name = _validate_backend_name(name)
-    if name == "cupy":
-        _init_rmm_pool()
     token = _active_backend.set(name)
     try:
         yield
@@ -163,7 +162,7 @@ def _detect_cuda_version():
             if "CUDA Version" in line:
                 part = line.split("CUDA Version:")[-1].strip().rstrip("|").strip()
                 return int(part.split(".")[0])
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         pass
 
     if shutil.which("nvcc") is not None:
@@ -177,7 +176,7 @@ def _detect_cuda_version():
             m = re.search(r"release (\d+)\.", out)
             if m:
                 return int(m.group(1))
-        except (OSError, ValueError):
+        except (OSError, ValueError, subprocess.SubprocessError):
             pass
 
     return None
@@ -185,20 +184,24 @@ def _detect_cuda_version():
 
 def _cupy_install_message():
     """Build an actionable CuPy install error message."""
+    if _CUPY_IMPORT_ERROR is not None:
+        return (
+            f"CuPy is installed but failed to import: {_CUPY_IMPORT_ERROR}\n"
+            "Check that the CuPy wheel matches your CUDA version and that the environment holds only one CuPy package."
+        )
     cuda_ver = _detect_cuda_version()
-    if cuda_ver is not None:
-        wheel = f"cupy-cuda{cuda_ver}x"
+    if cuda_ver in (12, 13):
         return (
             f"CuPy is not installed. Detected CUDA {cuda_ver}.x on this machine.\n"
-            f"Install the matching wheel:\n"
-            f"  uv add {wheel}\n"
+            "Install the matching wheel:\n"
+            f'  uv add "cupy-cuda{cuda_ver}x[ctk]"\n'
             "Use pip install in place of uv add outside a uv project."
         )
     return (
-        "CuPy is not installed. Install the wheel matching your CUDA version "
+        "CuPy is not installed. Install the wheel matching your CUDA version, which must be 12 or later "
         "(run 'nvidia-smi' or 'nvcc --version' to check):\n"
-        "  uv add cupy-cuda11x   # CUDA 11.x\n"
-        "  uv add cupy-cuda12x   # CUDA 12.x\n"
+        '  uv add "cupy-cuda12x[ctk]"   # CUDA 12.x\n'
+        '  uv add "cupy-cuda13x[ctk]"   # CUDA 13.x\n'
         "Use pip install in place of uv add outside a uv project."
     )
 
@@ -220,7 +223,7 @@ def _validate_backend_name(name):
     if name not in ("numpy", "cupy"):
         raise ValueError(f"Unknown backend {name!r}. Choose 'numpy' or 'cupy'.")
     if name == "cupy" and not HAS_CUPY:
-        raise ImportError(_cupy_install_message())
+        raise ImportError(_cupy_install_message()) from _CUPY_IMPORT_ERROR
     if name == "cupy":
         _cupy_ok = False
         if hasattr(cp, "is_available"):
@@ -236,34 +239,3 @@ def _validate_backend_name(name):
                 "CuPy is installed but no CUDA GPU is available. Check your CUDA installation or use backend='numpy'."
             )
     return name
-
-
-def _init_rmm_pool():
-    """Activate the RMM memory-pool allocator for CuPy.
-
-    When ``rmm`` is installed, this replaces CuPy's default per-allocation
-    ``cudaMalloc`` calls with a pool allocator that grows on demand. The pool
-    removes the roughly 1 ms overhead per allocation that otherwise dominates
-    bootstrap loops. If ``rmm`` is not installed, this is a silent no-op.
-
-    If CuPy is already using the RMM allocator (for example, because the
-    user configured RMM manually before importing ModernDiD), this function
-    is a no-op and the existing configuration is preserved.
-    """
-    global _rmm_initialized
-    if _rmm_initialized:
-        return
-    try:
-        from rmm.allocators.cupy import rmm_cupy_allocator
-
-        if cp.cuda.get_allocator() == rmm_cupy_allocator:
-            _rmm_initialized = True
-            return
-
-        import rmm
-
-        rmm.reinitialize(pool_allocator=True, initial_pool_size=0)
-        cp.cuda.set_allocator(rmm_cupy_allocator)
-        _rmm_initialized = True
-    except Exception:  # noqa: BLE001
-        pass

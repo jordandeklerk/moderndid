@@ -13,6 +13,7 @@ from moderndid.core.preprocess.utils import (
     nonfinite_to_null,
 )
 from moderndid.core.preprocess.validators import _check_panel_mismatch
+from moderndid.cupy.backend import to_numpy
 
 __all__ = [
     "add_intercept",
@@ -210,3 +211,15 @@ def check_overlap_and_warn(propensity_scores, condition_subgroup, threshold=1e-3
     )
 
     warnings.warn(msg, UserWarning, stacklevel=4)
+
+
+def _logit_cov_params(xp, covariates, weights, ps):
+    """Return the pseudo-inverse of the logit information matrix from the triangular factor of the weighted design."""
+    eps = np.finfo(np.float64).eps
+    clipped = xp.clip(ps, eps, 1 - eps)
+    root = xp.sqrt(weights * clipped * (1 - clipped))
+    triangular = to_numpy(xp.linalg.qr(root[:, None] * covariates, mode="r"))
+    # Since the triangular factor has the singular values of the weighted design, its pseudo-inverse treats a
+    # rank-deficient design as the CPU fit does rather than inverting rounding noise.
+    inverse = np.linalg.pinv(triangular)
+    return xp.asarray(inverse @ inverse.T)

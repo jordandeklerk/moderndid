@@ -110,25 +110,27 @@ def reg_did_rc(
     .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020), "Doubly Robust Difference-in-Differences Estimators."
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    y, post, d, int_cov, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
+    xp = get_backend()
+    y, post, d, int_cov, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
     _check_rc_cells(post, d, int_cov, i_weights, regressions=("comparison",))
 
-    out_y_pre, out_y_post = _fit_outcome_regressions(y, post, d, int_cov, i_weights)
+    out_y_pre, out_y_post = _fit_outcome_regressions(xp, y, post, d, int_cov, i_weights)
     weights = _compute_weights(d, post, i_weights)
 
     reg_att_treat_pre = weights["w_treat_pre"] * y
     reg_att_treat_post = weights["w_treat_post"] * y
     reg_att_cont = weights["w_cont"] * (out_y_post - out_y_pre)
 
-    eta_treat_pre = np.mean(reg_att_treat_pre) / np.mean(weights["w_treat_pre"])
-    eta_treat_post = np.mean(reg_att_treat_post) / np.mean(weights["w_treat_post"])
-    eta_cont = np.mean(reg_att_cont) / np.mean(weights["w_cont"])
+    eta_treat_pre = xp.mean(reg_att_treat_pre) / xp.mean(weights["w_treat_pre"])
+    eta_treat_post = xp.mean(reg_att_treat_post) / xp.mean(weights["w_treat_post"])
+    eta_cont = xp.mean(reg_att_cont) / xp.mean(weights["w_cont"])
 
     reg_att = (eta_treat_post - eta_treat_pre) - eta_cont
 
-    influence_quantities = _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weights, n_units)
+    influence_quantities = _get_influence_quantities(xp, y, post, d, int_cov, out_y_pre, out_y_post, i_weights, n_units)
 
     reg_att_inf_func = _compute_influence_function(
+        xp,
         reg_att_treat_pre,
         reg_att_treat_post,
         reg_att_cont,
@@ -139,6 +141,9 @@ def reg_did_rc(
         int_cov,
         influence_quantities,
     )
+
+    reg_att_inf_func = to_numpy(reg_att_inf_func)
+    reg_att = float(reg_att)
 
     # Inference
     if not boot:
@@ -182,35 +187,34 @@ def reg_did_rc(
     )
 
 
-def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
+def _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights):
     """Validate and preprocess input arrays."""
-    d = np.asarray(d).flatten()
-    post = np.asarray(post).flatten()
-    y = np.asarray(y).flatten()
+    d = xp.asarray(d).flatten()
+    post = xp.asarray(post).flatten()
+    y = xp.asarray(y).flatten()
 
     n_units = len(d)
 
     if covariates is None:
-        int_cov = np.ones((n_units, 1))
+        int_cov = xp.ones((n_units, 1))
     else:
-        int_cov = np.asarray(covariates)
+        int_cov = xp.asarray(covariates)
         if int_cov.ndim == 1:
             int_cov = int_cov.reshape(-1, 1)
 
     if i_weights is None:
-        i_weights = np.ones(n_units)
+        i_weights = xp.ones(n_units)
     else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
+        i_weights = xp.asarray(i_weights).flatten()
+        if xp.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
-    i_weights = i_weights / np.mean(i_weights)
+    i_weights = i_weights / xp.mean(i_weights)
 
     return y, post, d, int_cov, i_weights, n_units
 
 
-def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
+def _fit_outcome_regressions(xp, y, post, d, int_cov, i_weights):
     """Fit outcome regression models for control units in pre and post periods."""
-    xp = get_backend()
     scaled = _scaled_columns(int_cov)
 
     # Pre-treatment period
@@ -247,7 +251,7 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
             "Multicollinearity of covariates is probably the reason for it."
         )
 
-    out_y_pre = scaled @ reg_coeff_pre
+    out_y_pre = scaled @ xp.asarray(reg_coeff_pre)
 
     # Post-treatment period
     post_filter = (d == 0) & (post == 1)
@@ -283,7 +287,7 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
             "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
         )
 
-    out_y_post = scaled @ reg_coeff_post
+    out_y_post = scaled @ xp.asarray(reg_coeff_post)
 
     return out_y_pre, out_y_post
 
@@ -301,12 +305,12 @@ def _compute_weights(d, post, i_weights):
     }
 
 
-def _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weights, n_units):
+def _get_influence_quantities(xp, y, post, d, int_cov, out_y_pre, out_y_post, i_weights, n_units):
     """Compute quantities needed for influence function."""
     # Asymptotic linear representation of OLS parameters in pre-period
     weights_ols_pre = i_weights * (1 - d) * (1 - post)
-    weighted_x_pre = weights_ols_pre[:, np.newaxis] * int_cov
-    weighted_resid_x_pre = weights_ols_pre[:, np.newaxis] * (y - out_y_pre)[:, np.newaxis] * int_cov
+    weighted_x_pre = weights_ols_pre[:, xp.newaxis] * int_cov
+    weighted_resid_x_pre = weights_ols_pre[:, xp.newaxis] * (y - out_y_pre)[:, xp.newaxis] * int_cov
     gram_pre = weighted_x_pre.T @ int_cov / n_units
 
     gram_inv_pre = _scaled_inverse(gram_pre, _singular_cell_message(_cell_name(True, False), False))
@@ -314,8 +318,8 @@ def _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weig
 
     # Asymptotic linear representation of OLS parameters in post-period
     weights_ols_post = i_weights * (1 - d) * post
-    weighted_x_post = weights_ols_post[:, np.newaxis] * int_cov
-    weighted_resid_x_post = weights_ols_post[:, np.newaxis] * (y - out_y_post)[:, np.newaxis] * int_cov
+    weighted_x_post = weights_ols_post[:, xp.newaxis] * int_cov
+    weighted_resid_x_post = weights_ols_post[:, xp.newaxis] * (y - out_y_post)[:, xp.newaxis] * int_cov
     gram_post = weighted_x_post.T @ int_cov / n_units
 
     gram_inv_post = _scaled_inverse(gram_post, _singular_cell_message(_cell_name(False, False), False))
@@ -328,6 +332,7 @@ def _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weig
 
 
 def _compute_influence_function(
+    xp,
     reg_att_treat_pre,
     reg_att_treat_post,
     reg_att_cont,
@@ -348,8 +353,8 @@ def _compute_influence_function(
 
     # Influence function of the "treat" component
     # Leading term of the influence function
-    inf_treat_pre = (reg_att_treat_pre - w_treat_pre * eta_treat_pre) / np.mean(w_treat_pre)
-    inf_treat_post = (reg_att_treat_post - w_treat_post * eta_treat_post) / np.mean(w_treat_post)
+    inf_treat_pre = (reg_att_treat_pre - w_treat_pre * eta_treat_pre) / xp.mean(w_treat_pre)
+    inf_treat_post = (reg_att_treat_post - w_treat_post * eta_treat_post) / xp.mean(w_treat_post)
     inf_treat = inf_treat_post - inf_treat_pre
 
     # Influence function of control component
@@ -357,13 +362,13 @@ def _compute_influence_function(
     inf_cont_1 = reg_att_cont - w_cont * eta_cont
     # Estimation effect from beta hat (OLS using only controls)
     # Derivative matrix (k x 1 vector)
-    control_ols_derivative = np.mean(w_cont[:, np.newaxis] * int_cov, axis=0)
+    control_ols_derivative = xp.mean(w_cont[:, xp.newaxis] * int_cov, axis=0)
     # Now get the influence function related to the estimation effect related to beta's in post-treatment
     inf_cont_2_post = asy_lin_rep_ols_post @ control_ols_derivative
     # Now get the influence function related to the estimation effect related to beta's in pre-treatment
     inf_cont_2_pre = asy_lin_rep_ols_pre @ control_ols_derivative
     # Influence function for the control component
-    inf_control = (inf_cont_1 + inf_cont_2_post - inf_cont_2_pre) / np.mean(w_cont)
+    inf_control = (inf_cont_1 + inf_cont_2_post - inf_cont_2_pre) / xp.mean(w_cont)
 
     # Get the influence function of the OR estimator (put all pieces together)
     reg_att_inf_func = inf_treat - inf_control

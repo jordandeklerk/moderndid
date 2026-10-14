@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from moderndid import mboot_did
+from moderndid.cupy.backend import use_backend
 
 pytestmark = pytest.mark.slow
 
@@ -128,3 +129,14 @@ def test_mboot_did_gpu_branch_draws_the_same_mammen_weights(numpy_as_gpu_backend
     boots = mboot_did(linrep, biters=20, random_state=random_state)
 
     np.testing.assert_allclose(boots, expected, rtol=1e-12)
+
+
+def test_mboot_did_on_strict_cupy_draws_mammen_weights(strict_cupy):
+    sqrt5 = np.sqrt(5)
+
+    with use_backend("cupy"):
+        boots = mboot_did(strict_cupy.asarray([1.0]), biters=100000, random_state=3)
+
+    assert isinstance(boots, np.ndarray)
+    assert set(np.unique(boots)) == {(1 - sqrt5) / 2, (1 + sqrt5) / 2}
+    np.testing.assert_allclose(np.mean(boots < 0), (1 + sqrt5) / (2 * sqrt5), atol=0.005)

@@ -5,8 +5,7 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from moderndid.cupy.backend import get_backend, to_numpy
-from moderndid.cupy.regression import cupy_logistic_irls
+from moderndid.cupy.backend import to_numpy, use_backend
 
 from ..utils import _scaled_columns, _validate_inputs
 
@@ -68,85 +67,79 @@ def wboot_std_ipw_rc(
         "i_weights": i_weights,
     }
     n_units = _validate_inputs(arrays_dict, x, biters, trim_level)
+    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
 
     rng = np.random.default_rng(random_state)
     bootstrap_estimates = np.zeros(biters)
 
     scaled_x = _scaled_columns(x)
-    for b in range(biters):
-        v = rng.exponential(scale=1.0, size=n_units)
-        b_weights = i_weights * v
+    with use_backend("numpy"):
+        for b in range(biters):
+            v = rng.exponential(scale=1.0, size=n_units)
+            b_weights = i_weights * v
 
-        try:
-            xp = get_backend()
-            if xp is not np:
-                _, ps_b = cupy_logistic_irls(
-                    xp.asarray(d, dtype=xp.float64),
-                    xp.asarray(scaled_x, dtype=xp.float64),
-                    xp.asarray(b_weights, dtype=xp.float64),
-                )
-                ps_b = to_numpy(ps_b)
-            else:
+            try:
                 logit_model = sm.GLM(d, scaled_x, family=sm.families.Binomial(), freq_weights=b_weights)
                 logit_results = logit_model.fit()
                 ps_b = logit_results.predict(scaled_x)
-            ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
-        except (ValueError, np.linalg.LinAlgError) as e:
-            warnings.warn(
-                f"Bootstrap iteration {b}: Propensity score estimation failed: {e}",
-                UserWarning,
-            )
-            bootstrap_estimates[b] = np.nan
-            continue
-
-        trim_ps_mask = np.ones_like(ps_b, dtype=bool)
-        control_mask = d == 0
-        trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
-
-        b_weights_trimmed = b_weights.copy()
-        b_weights_trimmed[~trim_ps_mask] = 0
-
-        try:
-            w_treat_pre = b_weights_trimmed * d * (1 - post)
-            w_treat_post = b_weights_trimmed * d * post
-            w_cont_pre = b_weights_trimmed * ps_b * (1 - d) * (1 - post) / (1 - ps_b)
-            w_cont_post = b_weights_trimmed * ps_b * (1 - d) * post / (1 - ps_b)
-
-            w_cont_pre[~trim_ps_mask] = 0
-            w_cont_post[~trim_ps_mask] = 0
-
-            denom_treat_pre = np.sum(w_treat_pre)
-            denom_treat_post = np.sum(w_treat_post)
-            denom_cont_pre = np.sum(w_cont_pre)
-            denom_cont_post = np.sum(w_cont_post)
-
-            if denom_treat_pre == 0 or denom_treat_post == 0 or denom_cont_pre == 0 or denom_cont_post == 0:
+                ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+            except (ValueError, np.linalg.LinAlgError) as e:
                 warnings.warn(
-                    f"Bootstrap iteration {b}: Zero weight sum in one or more groups.",
+                    f"Bootstrap iteration {b}: Propensity score estimation failed: {e}",
                     UserWarning,
                 )
                 bootstrap_estimates[b] = np.nan
                 continue
 
-            ipw_treat = np.sum(w_treat_post * y) / denom_treat_post - np.sum(w_treat_pre * y) / denom_treat_pre
-            ipw_control = np.sum(w_cont_post * y) / denom_cont_post - np.sum(w_cont_pre * y) / denom_cont_pre
+            trim_ps_mask = np.ones_like(ps_b, dtype=bool)
+            control_mask = d == 0
+            trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
 
-            bootstrap_estimates[b] = ipw_treat - ipw_control
+            b_weights_trimmed = b_weights.copy()
+            b_weights_trimmed[~trim_ps_mask] = 0
 
-        except (ValueError, ZeroDivisionError) as e:
-            warnings.warn(
-                f"Bootstrap iteration {b}: IPW computation failed: {e}",
-                UserWarning,
-            )
-            bootstrap_estimates[b] = np.nan
-            continue
-        except RuntimeWarning:
-            warnings.warn(
-                f"Bootstrap iteration {b}: Numerical warning in IPW computation.",
-                UserWarning,
-            )
-            bootstrap_estimates[b] = np.nan
-            continue
+            try:
+                w_treat_pre = b_weights_trimmed * d * (1 - post)
+                w_treat_post = b_weights_trimmed * d * post
+                w_cont_pre = b_weights_trimmed * ps_b * (1 - d) * (1 - post) / (1 - ps_b)
+                w_cont_post = b_weights_trimmed * ps_b * (1 - d) * post / (1 - ps_b)
+
+                w_cont_pre[~trim_ps_mask] = 0
+                w_cont_post[~trim_ps_mask] = 0
+
+                denom_treat_pre = np.sum(w_treat_pre)
+                denom_treat_post = np.sum(w_treat_post)
+                denom_cont_pre = np.sum(w_cont_pre)
+                denom_cont_post = np.sum(w_cont_post)
+
+                if denom_treat_pre == 0 or denom_treat_post == 0 or denom_cont_pre == 0 or denom_cont_post == 0:
+                    warnings.warn(
+                        f"Bootstrap iteration {b}: Zero weight sum in one or more groups.",
+                        UserWarning,
+                    )
+                    bootstrap_estimates[b] = np.nan
+                    continue
+
+                ipw_treat = np.sum(w_treat_post * y) / denom_treat_post - np.sum(w_treat_pre * y) / denom_treat_pre
+                ipw_control = np.sum(w_cont_post * y) / denom_cont_post - np.sum(w_cont_pre * y) / denom_cont_pre
+
+                bootstrap_estimates[b] = ipw_treat - ipw_control
+
+            except (ValueError, ZeroDivisionError) as e:
+                warnings.warn(
+                    f"Bootstrap iteration {b}: IPW computation failed: {e}",
+                    UserWarning,
+                )
+                bootstrap_estimates[b] = np.nan
+                continue
+            except RuntimeWarning:
+                warnings.warn(
+                    f"Bootstrap iteration {b}: Numerical warning in IPW computation.",
+                    UserWarning,
+                )
+                bootstrap_estimates[b] = np.nan
+                continue
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:

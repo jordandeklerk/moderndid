@@ -136,7 +136,7 @@ plotnine = ">=0.14.0"
 platforms = ["linux-64"]
 
 [feature.gpu.pypi-dependencies]
-cupy-cuda12x = ">=13.0"
+cupy-cuda12x = { version = ">=14.0", extras = ["ctk"] }
 
 [feature.lint.dependencies]
 pre-commit = ">=3.0.0"
@@ -190,5 +190,5 @@ docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots"]
 docs-r = ["docs", "docs-r", "build", "etwfe", "didcont", "didhonest", "didml", "plots"]
 check = ["lint"]
 build = ["build"]
-gpu = ["gpu"]
+gpu = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "gpu"]
 validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "diddynamic", "plots"]

@@ -11,7 +11,7 @@ import statsmodels.api as sm
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 
-from .utils import check_overlap_and_warn, get_comparison_description
+from .utils import _logit_cov_params, check_overlap_and_warn, get_comparison_description
 
 
 class PScoreResult(NamedTuple):
@@ -411,20 +411,21 @@ def _compute_inf_func(
 
         or_x = (sub_weights * pa_comp)[:, None] * sub_covariates
         or_ex = (sub_weights * pa_comp * (delta_y - or_delta))[:, None] * sub_covariates
-        xpx = or_x.T @ sub_covariates / n_sub
+        # Since NumPy inverts the small matrix on the host, a GPU run warns and falls back exactly as a CPU run does.
+        xpx = to_numpy(or_x.T @ sub_covariates / n_sub)
 
-        s = xp.linalg.svd(xpx, compute_uv=False)
+        s = np.linalg.svd(xpx, compute_uv=False)
         cond_num = s[0] / s[-1] if s[-1] > 0 else float("inf")
-        if cond_num > 1 / xp.finfo(float).eps:
+        if cond_num > 1 / np.finfo(float).eps:
             warnings.warn(
                 "Outcome regression design matrix is nearly singular. Consider removing collinear covariates.",
                 UserWarning,
             )
-            xpx_inv = xp.linalg.pinv(xpx)
+            xpx_inv = np.linalg.pinv(xpx)
         else:
-            xpx_inv = xp.linalg.solve(xpx, xp.eye(xpx.shape[0]))
+            xpx_inv = np.linalg.solve(xpx, np.eye(xpx.shape[0]))
 
-        asy_linear_or = or_ex @ xpx_inv
+        asy_linear_or = or_ex @ xp.asarray(xpx_inv)
 
         inf_treat_or = -asy_linear_or @ m1
         inf_cont_or = -asy_linear_or @ m3
@@ -474,11 +475,20 @@ def _compute_pscore(xp, subgroup, covariates, weights, comparison_subgroup, trim
 
     if xp is not np:
         try:
-            beta, ps_fit = cupy_logistic_irls(
+            beta, ps_fit, converged = cupy_logistic_irls(
                 xp.asarray(pa4, dtype=xp.float64),
                 xp.asarray(sub_covariates, dtype=xp.float64),
                 xp.asarray(sub_weights, dtype=xp.float64),
+                return_converged=True,
             )
+            if not converged:
+                comparison_desc = get_comparison_description(comparison_subgroup)
+                warnings.warn(
+                    f"Propensity score model did not converge.\n"
+                    f"  Comparison: {comparison_desc} units.\n"
+                    f"  Consider using fewer covariates or checking for separation issues.",
+                    UserWarning,
+                )
             if xp.any(xp.isnan(beta)):
                 comparison_desc = get_comparison_description(comparison_subgroup)
                 raise ValueError(
@@ -486,7 +496,9 @@ def _compute_pscore(xp, subgroup, covariates, weights, comparison_subgroup, trim
                     f"  Comparison: {comparison_desc} units.\n"
                     f"  This is likely due to multicollinearity among covariates."
                 )
-        except (np.linalg.LinAlgError, RuntimeError) as e:
+            n_sub = len(sub_weights)
+            hessian_matrix = _logit_cov_params(xp, sub_covariates, sub_weights, ps_fit) * n_sub
+        except np.linalg.LinAlgError as e:
             raise ValueError(
                 f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
             ) from e
@@ -496,11 +508,6 @@ def _compute_pscore(xp, subgroup, covariates, weights, comparison_subgroup, trim
 
         keep_ps = xp.ones(len(pa4), dtype=bool)
         keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
-
-        n_sub = len(sub_weights)
-        W = sub_weights * ps_fit * (1 - ps_fit)
-        info_matrix = sub_covariates.T @ (W[:, None] * sub_covariates)
-        hessian_matrix = xp.linalg.inv(info_matrix) * n_sub
 
         return PScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
@@ -630,7 +637,7 @@ def _compute_outcome_regression(xp, y1, y0, subgroup, covariates, weights, compa
                     f"  This is likely due to multicollinearity among covariates."
                 )
             or_delta = xp.asarray(sub_covariates, dtype=xp.float64) @ reg_coeff
-        except (np.linalg.LinAlgError, RuntimeError) as e:
+        except np.linalg.LinAlgError as e:
             raise ValueError(
                 f"Failed to estimate outcome regression for subgroup {comparison_subgroup}. "
                 f"Subgroup may have insufficient data."

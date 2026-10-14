@@ -8,8 +8,7 @@ import scipy.optimize
 import scipy.special
 import statsmodels.api as sm
 
-from moderndid.cupy.backend import get_backend, to_numpy
-from moderndid.cupy.regression import cupy_logistic_irls
+from moderndid.cupy.backend import to_numpy, use_backend
 
 from ..utils import _scaled_columns
 
@@ -40,6 +39,8 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
     function, and :math:`w_i` are the observation weights. This property ensures that the
     weighted average of covariates in the control group matches the weighted
     average in the treated group, which is a key condition for identifying the ATT.
+
+    Since the fit relies on SciPy's optimizer, it runs on the CPU under every backend and returns a NumPy array.
 
     Parameters
     ----------
@@ -94,6 +95,12 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
         Missing Data," Journal of the American Statistical Association, 115(530), 1542-1552.
         https://doi.org/10.1080/01621459.2019.1635520
     """
+    with use_backend("numpy"):
+        return _fit_pscore_ipt(to_numpy(D), to_numpy(X), to_numpy(iw), quantiles)
+
+
+def _fit_pscore_ipt(D, X, iw, quantiles):
+    """Fit the IPT propensity score on host arrays."""
     if np.all(iw == 0):
         warnings.warn(
             "All individual weights are zero. Propensity scores will be uninformative.",
@@ -269,18 +276,6 @@ def _loss_ps_ipt(gamma, D, X, iw, n_obs):
 
 def _get_initial_gamma(D, X, iw, k_features):
     """Get initial gamma values for optimization."""
-    xp = get_backend()
-    if xp is not np:
-        try:
-            beta, _ = cupy_logistic_irls(
-                xp.asarray(D, dtype=xp.float64),
-                xp.asarray(X, dtype=xp.float64),
-                xp.asarray(iw, dtype=xp.float64),
-            )
-            return to_numpy(beta)
-        except (RuntimeError, np.linalg.LinAlgError):
-            return np.zeros(k_features)
-
     try:
         logit_model = sm.GLM(D, X, family=sm.families.Binomial(), freq_weights=iw)
         logit_results = logit_model.fit(maxiter=100)

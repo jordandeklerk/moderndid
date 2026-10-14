@@ -316,3 +316,41 @@ def array_module_without_cond(monkeypatch):
     module.linalg = linalg
     monkeypatch.setattr(importlib.import_module("moderndid.drdid.utils"), "_array_module", lambda *arrays: module)
     return module
+
+
+@pytest.fixture(scope="module")
+def two_period_specs(two_covariate_design):
+    """Arguments of the two-period estimators for the panel and repeated cross-section layouts of one design."""
+    n = len(two_covariate_design["d"])
+    shared = {
+        "d": two_covariate_design["d"],
+        "covariates": np.column_stack([np.ones(n), two_covariate_design["z"]]),
+        "i_weights": np.random.default_rng(2).uniform(0.5, 1.5, size=n),
+    }
+    return {
+        "panel": {"y1": two_covariate_design["y1"], "y0": two_covariate_design["y0"], **shared},
+        "repeated_cross_sections": {"y": two_covariate_design["y"], "post": two_covariate_design["post"], **shared},
+    }
+
+
+@pytest.fixture(scope="module")
+def regression_specs(two_period_specs):
+    """Arguments of the four comparison-group regressions keyed by function name."""
+    panel = two_period_specs["panel"]
+    cross_sections = two_period_specs["repeated_cross_sections"]
+    ps = 1 / (1 + np.exp(-0.5 * panel["covariates"][:, 1]))
+    shared = {"d": panel["d"], "x": panel["covariates"], "i_weights": panel["i_weights"]}
+    panel_spec = {"delta_y": panel["y1"] - panel["y0"], **shared}
+    cross_section_spec = {
+        "y": cross_sections["y"],
+        "post": cross_sections["post"],
+        "pre": True,
+        "treat": False,
+        **shared,
+    }
+    return {
+        "ols_panel": panel_spec,
+        "wols_panel": {**panel_spec, "ps": ps},
+        "ols_rc": cross_section_spec,
+        "wols_rc": {**cross_section_spec, "ps": ps},
+    }

@@ -4,6 +4,8 @@ import warnings
 
 import numpy as np
 
+from moderndid.cupy.backend import to_numpy, use_backend
+
 from ..estimators.wols import wols_rc
 from ..propensity.aipw_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2
 from ..propensity.pscore_ipt import calculate_pscore_ipt
@@ -52,63 +54,68 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, biters=1000, trim_level=0.995,
     n_units = _validate_inputs(
         {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level, check_intercept=True
     )
+    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)
     bootstrap_estimates = np.zeros(biters)
 
-    for b in range(biters):
-        v = rng.exponential(scale=1.0, size=n_units)
-        b_weights = i_weights * v
+    with use_backend("numpy"):
+        for b in range(biters):
+            v = rng.exponential(scale=1.0, size=n_units)
+            b_weights = i_weights * v
 
-        try:
-            ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
-        except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
-            warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
-            continue
+            try:
+                ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
+            except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
+                warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
+                continue
 
-        ps_b = np.clip(ps_b, 1e-6, 1.0 - 1e-6)
+            ps_b = np.clip(ps_b, 1e-6, 1.0 - 1e-6)
 
-        trim_ps_mask = np.ones_like(ps_b, dtype=bool)
-        control_mask = d == 0
-        trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
+            trim_ps_mask = np.ones_like(ps_b, dtype=bool)
+            control_mask = d == 0
+            trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
 
-        b_weights_trimmed = b_weights.copy()
-        b_weights_trimmed[~trim_ps_mask] = 0.0
+            b_weights_trimmed = b_weights.copy()
+            b_weights_trimmed[~trim_ps_mask] = 0.0
 
-        try:
-            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
-            out_y_cont_pre_b = control_pre_results.out_reg
+            try:
+                control_pre_results = wols_rc(
+                    y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False
+                )
+                out_y_cont_pre_b = control_pre_results.out_reg
 
-            control_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
-            )
-            out_y_cont_post_b = control_post_results.out_reg
+                control_post_results = wols_rc(
+                    y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
+                )
+                out_y_cont_post_b = control_post_results.out_reg
 
-            out_y_b = post * out_y_cont_post_b + (1 - post) * out_y_cont_pre_b
+                out_y_b = post * out_y_cont_post_b + (1 - post) * out_y_cont_pre_b
 
-        except (ValueError, np.linalg.LinAlgError, KeyError) as e:
-            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
-            continue
+            except (ValueError, np.linalg.LinAlgError, KeyError) as e:
+                warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
+                continue
 
-        try:
-            att_b = aipw_did_rc_imp1(
-                y=y,
-                post=post,
-                d=d,
-                ps=ps_b,
-                out_reg=out_y_b,
-                i_weights=b_weights_trimmed,
-            )
-            bootstrap_estimates[b] = att_b
-        except (
-            ValueError,
-            ZeroDivisionError,
-            RuntimeWarning,
-        ) as e:
-            warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
+            try:
+                att_b = aipw_did_rc_imp1(
+                    y=y,
+                    post=post,
+                    d=d,
+                    ps=ps_b,
+                    out_reg=out_y_b,
+                    i_weights=b_weights_trimmed,
+                )
+                bootstrap_estimates[b] = att_b
+            except (
+                ValueError,
+                ZeroDivisionError,
+                RuntimeWarning,
+            ) as e:
+                warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:
@@ -165,64 +172,73 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, biters=1000, trim_level=0.995,
     n_units = _validate_inputs(
         {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level, check_intercept=True
     )
+    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)
     bootstrap_estimates = np.zeros(biters)
 
-    for b in range(biters):
-        v = rng.exponential(scale=1.0, size=n_units)
-        b_weights = i_weights * v
+    with use_backend("numpy"):
+        for b in range(biters):
+            v = rng.exponential(scale=1.0, size=n_units)
+            b_weights = i_weights * v
 
-        try:
-            ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
-        except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
-            warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
-            continue
+            try:
+                ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
+            except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
+                warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
+                continue
 
-        ps_b = np.clip(ps_b, 1e-6, 1.0 - 1e-6)
+            ps_b = np.clip(ps_b, 1e-6, 1.0 - 1e-6)
 
-        trim_ps_mask = np.ones_like(ps_b, dtype=bool)
-        control_mask = d == 0
-        trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
+            trim_ps_mask = np.ones_like(ps_b, dtype=bool)
+            control_mask = d == 0
+            trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
 
-        b_weights_trimmed = b_weights.copy()
-        b_weights_trimmed[~trim_ps_mask] = 0.0
+            b_weights_trimmed = b_weights.copy()
+            b_weights_trimmed[~trim_ps_mask] = 0.0
 
-        try:
-            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
-            out_y_cont_pre_b = control_pre_results.out_reg
-            control_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
-            )
-            out_y_cont_post_b = control_post_results.out_reg
+            try:
+                control_pre_results = wols_rc(
+                    y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False
+                )
+                out_y_cont_pre_b = control_pre_results.out_reg
+                control_post_results = wols_rc(
+                    y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
+                )
+                out_y_cont_post_b = control_post_results.out_reg
 
-            treat_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True)
-            out_y_treat_pre_b = treat_pre_results.out_reg
-            treat_post_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True)
-            out_y_treat_post_b = treat_post_results.out_reg
+                treat_pre_results = wols_rc(
+                    y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True
+                )
+                out_y_treat_pre_b = treat_pre_results.out_reg
+                treat_post_results = wols_rc(
+                    y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True
+                )
+                out_y_treat_post_b = treat_post_results.out_reg
 
-        except (ValueError, np.linalg.LinAlgError, KeyError) as e:
-            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
-            continue
+            except (ValueError, np.linalg.LinAlgError, KeyError) as e:
+                warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
+                continue
 
-        try:
-            att_b = aipw_did_rc_imp2(
-                y=y,
-                post=post,
-                d=d,
-                ps=ps_b,
-                out_y_treat_post=out_y_treat_post_b,
-                out_y_treat_pre=out_y_treat_pre_b,
-                out_y_cont_post=out_y_cont_post_b,
-                out_y_cont_pre=out_y_cont_pre_b,
-                i_weights=b_weights_trimmed,
-            )
-            bootstrap_estimates[b] = att_b
-        except (ValueError, ZeroDivisionError, RuntimeWarning) as e:
-            warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
+            try:
+                att_b = aipw_did_rc_imp2(
+                    y=y,
+                    post=post,
+                    d=d,
+                    ps=ps_b,
+                    out_y_treat_post=out_y_treat_post_b,
+                    out_y_treat_pre=out_y_treat_pre_b,
+                    out_y_cont_post=out_y_cont_post_b,
+                    out_y_cont_pre=out_y_cont_pre_b,
+                    i_weights=b_weights_trimmed,
+                )
+                bootstrap_estimates[b] = att_b
+            except (ValueError, ZeroDivisionError, RuntimeWarning) as e:
+                warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:

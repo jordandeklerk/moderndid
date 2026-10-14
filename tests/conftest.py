@@ -1,10 +1,17 @@
 """Root test warnings configuration and shared fixtures."""
 
+import importlib
 import sys
 
 import numpy as np
 import polars as pl
 import pytest
+
+from moderndid import cupy as moderndid_cupy
+from moderndid.cupy import backend as cupy_backend
+from moderndid.drdid import utils as drdid_utils
+from tests.strict_cupy import MODULES, BSpline
+from tests.strict_cupy import cupy as stand_in_cupy
 
 
 # Only numerical RuntimeWarnings and third-party warnings are suppressed globally.
@@ -173,3 +180,20 @@ def did_offsetting_cohort_data():
                     y += (0.4 if unit == 250 else -0.4) * time
                 records.append({"id": unit, "t": time, "y": y, "g": cohort})
     return pl.DataFrame(records)
+
+
+@pytest.fixture
+def strict_cupy(monkeypatch):
+    """Put the strict CuPy stand-in where moderndid finds CuPy and restore every patched name afterwards."""
+    for name in ("moderndid.npiv.gsl_bspline", "moderndid.didcont.spline.bspline"):
+        module = importlib.import_module(name)
+        monkeypatch.setattr(module, "CupyBSpline", BSpline)
+        monkeypatch.setattr(module, "_HAS_CUPY_SPLINE", True)
+    for name, module in MODULES.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(cupy_backend, "cp", stand_in_cupy)
+    monkeypatch.setattr(cupy_backend, "HAS_CUPY", True)
+    monkeypatch.setattr(moderndid_cupy, "HAS_CUPY", True)
+    monkeypatch.setattr(drdid_utils, "HAS_CUPY", True)
+    yield stand_in_cupy
+    cupy_backend.set_backend("numpy")

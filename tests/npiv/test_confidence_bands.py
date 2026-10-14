@@ -321,6 +321,24 @@ def test_higher_order_derivatives(simple_data):
     assert result.h_upper_deriv is not None
 
 
+def test_zero_outcome_falls_back_to_unstudentized_bands_that_collapse_onto_the_estimate(simple_data):
+    _, x, w = simple_data
+    y = np.zeros(len(x))
+
+    with (
+        pytest.warns(UserWarning, match="unstudentized confidence bands for function estimates"),
+        pytest.warns(UserWarning, match="unstudentized confidence bands for derivative estimates"),
+    ):
+        result = compute_ucb(y=y, x=x, w=w, biters=20, seed=1)
+
+    assert result.cv == 0
+    assert result.cv_deriv == 0
+    np.testing.assert_array_equal(
+        np.vstack([result.h, result.h_lower, result.h_upper, result.deriv, result.h_lower_deriv, result.h_upper_deriv]),
+        0.0,
+    )
+
+
 @pytest.mark.parametrize(
     "q,expected",
     [

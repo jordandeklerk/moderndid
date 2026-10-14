@@ -131,6 +131,9 @@ def drdid_trad_rc(
         y, post, out_y, covariates, weights, influence_components, influence_quantities
     )
 
+    dr_att_inf_func = to_numpy(dr_att_inf_func)
+    dr_att = float(dr_att)
+
     # Inference
     if not boot:
         se_dr_att = np.std(dr_att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
@@ -213,13 +216,15 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
     scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
-            beta, ps_fit = cupy_logistic_irls(
+            beta, ps_fit, converged = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
                 xp.asarray(scaled, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
+                return_converged=True,
             )
-            ps_fit = to_numpy(ps_fit)
-            if np.any(np.isnan(to_numpy(beta))):
+            if not converged:
+                warnings.warn("GLM algorithm did not converge.", UserWarning)
+            if xp.any(xp.isnan(beta)):
                 raise ValueError(
                     "Propensity score model coefficients have NA components. \n"
                     "Multicollinearity (or lack of variation) of covariates is a likely reason."
@@ -242,7 +247,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
         except np.linalg.LinAlgError as e:
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
-    ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
+    ps_fit = xp.clip(ps_fit, 1e-6, 1 - 1e-6)
     ps_weights = ps_fit * (1 - ps_fit) * i_weights
 
     return ps_fit, ps_weights
