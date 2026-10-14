@@ -8,7 +8,7 @@ import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
-from moderndid.core.preprocess.transformers import DataTransformerPipeline, DIDInterConfigUpdater
+from moderndid.core.preprocess.transformers import DIDInterConfigUpdater
 
 from .bootstrap import cluster_bootstrap
 from .container import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
@@ -27,7 +27,7 @@ from .variance import (
 )
 
 
-def compute_did_multiplegt(preprocessed, data):
+def compute_did_multiplegt(preprocessed, data, n_jobs=1):
     """Compute treatment effects.
 
     Parameters
@@ -36,6 +36,8 @@ def compute_did_multiplegt(preprocessed, data):
         Preprocessed data.
     data : DataFrame
         The panel before preprocessing that the bootstrap resamples.
+    n_jobs : int, default=1
+        Number of threads for the bootstrap draws. -1 uses all cores.
 
     Returns
     -------
@@ -101,6 +103,7 @@ def compute_did_multiplegt(preprocessed, data):
             compute_func=_compute_bootstrap_estimates,
             biters=config.biters,
             random_state=config.random_state,
+            n_jobs=n_jobs,
         )
         effects_results["std_errors"] = boot_result.effects_se
 
@@ -200,20 +203,16 @@ def compute_did_multiplegt(preprocessed, data):
     )
 
 
-def _compute_bootstrap_estimates(df, config):
-    """Preprocess one bootstrap draw and compute its point estimates."""
+def _compute_bootstrap_estimates(df, config, steps):
+    """Finish preprocessing one bootstrap draw with the given steps and compute its point estimates."""
     nan_result = {"effects": np.full(config.effects, np.nan)}
     if config.placebo > 0:
         nan_result["placebos"] = np.full(config.placebo, np.nan)
 
-    # Since the full sample passed the weight check, a draw can fail it only when none of its weights is positive.
-    # Like a draw without switchers, such a draw has no estimates and drops out of the standard errors.
-    if config.weightsname is not None and not (df[config.weightsname].cast(pl.Float64) > 0).any():
-        return nan_result
-
-    # Since point estimates never use the cluster, the draws skip the clustered variance computations.
+    # Since point estimates never use the cluster, a draw leaves it out. Preprocessing records the draw's periods in
+    # this copy rather than in a configuration that other draws share.
     config = replace(config, cluster=None)
-    for step in DataTransformerPipeline.get_didinter_pipeline().transformers:
+    for step in steps:
         if df.is_empty():
             return nan_result
         df = step.transform(df, config)
@@ -227,7 +226,7 @@ def _compute_bootstrap_estimates(df, config):
     config = replace(config, effects=min(config.effects, max_effects), placebo=min(config.placebo, max_placebo))
     n_groups = df[config.gname].n_unique()
 
-    df, coefficients = compute_control_coefficients(df, config, n_groups)
+    df, coefficients = compute_control_coefficients(df, config, n_groups, point_only=True)
 
     effects_results = _compute_did_effects(
         df=df,
@@ -237,6 +236,7 @@ def _compute_bootstrap_estimates(df, config):
         t_max=t_max,
         horizon_type="effect",
         coefficients=coefficients,
+        point_only=True,
     )
 
     result = {"effects": effects_results["estimates"]}
@@ -250,19 +250,20 @@ def _compute_bootstrap_estimates(df, config):
             t_max=t_max,
             horizon_type="placebo",
             coefficients=coefficients,
+            point_only=True,
         )
         result["placebos"] = placebos_results["estimates"]
 
     if not config.trends_lin:
         z_crit = stats.norm.ppf(1 - config.alpha / 2)
-        ate_result = _compute_ate(effects_results, z_crit, n_groups)
+        ate_result = _compute_ate(effects_results, z_crit, n_groups, point_only=True)
         if ate_result is not None:
             result["ate"] = ate_result.estimate
 
     return result
 
 
-def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, coefficients):
+def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, coefficients, point_only=False):
     r"""Compute effects at multiple horizons.
 
     Switchers whose treatment rises and switchers whose treatment falls are estimated in separate
@@ -274,6 +275,10 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
     effects. With ``same_switchers_pl`` the placebos also need all the requested placebos. With
     ``trends_lin`` the estimate at horizon :math:`\ell` sums the estimates of horizons 1 to
     :math:`\ell`. All of them come from the switchers that reach horizon :math:`\ell`.
+
+    Since a bootstrap draw discards the standard errors, switcher counts, sample sizes, and influence
+    functions, ``point_only`` leaves them out. Its result holds only the horizons, the estimates, and
+    the inputs of the average total effect.
     """
     gname = config.gname
     tname = config.tname
@@ -310,11 +315,11 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
         if config.trends_lin:
             df = _compute_same_switchers_mask(df, config, abs_h, abs_h if use_placebo_mask else 0, t_max)
             df, passes = _estimate_cumulated_horizon(
-                df, config, abs_h, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
+                df, config, abs_h, horizon_type, directions, n_groups, t_max, coefficients, same_switchers, point_only
             )
         else:
             df, passes = _estimate_horizon(
-                df, config, abs_h, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
+                df, config, abs_h, horizon_type, directions, n_groups, t_max, coefficients, same_switchers, point_only
             )
 
         if not passes:
@@ -329,7 +334,6 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
         n_switchers_weighted = sum(result["n_weighted"] for result in passes)
         shares = [result["n_weighted"] / n_switchers_weighted for result in passes]
         did_estimate = sum(s * result["sign"] * result["estimate"] for s, result in zip(shares, passes, strict=True))
-        inf_func = sum(s * result["sign"] * result["influence"] for s, result in zip(shares, passes, strict=True))
         deltas = [s * result["delta"] for s, result in zip(shares, passes, strict=True) if result["delta"] is not None]
         delta_d = sum(deltas) if deltas else None
 
@@ -343,7 +347,10 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
             did_estimate = did_estimate / delta_d
 
         estimates[idx] = did_estimate
+        if point_only:
+            continue
 
+        inf_func = sum(s * result["sign"] * result["influence"] for s, result in zip(shares, passes, strict=True))
         if config.cluster:
             observed = unit_clusters.is_not_null()
             std_error = compute_clustered_variance(
@@ -362,6 +369,15 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
         std_errors[idx] = std_error
         n_switchers_arr[idx] = sum(result["n_switchers"] for result in passes)
         n_obs_arr[idx] = df.select(pl.col(f".count_{abs_h}").sum()).item()
+
+    if point_only:
+        return {
+            "horizons": horizons.astype(float),
+            "estimates": estimates,
+            "estimates_unnorm": estimates_unnorm,
+            "n_switchers_weighted": n_switchers_weighted_arr,
+            "ate_delta": ate_delta_arr,
+        }
 
     # The covariances use the same uncentered cluster sums as the standard errors on the diagonal.
     vcov = None
@@ -386,7 +402,9 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
     }
 
 
-def _estimate_horizon(df, config, horizon, horizon_type, directions, n_groups, t_max, coefficients, same_switchers):
+def _estimate_horizon(
+    df, config, horizon, horizon_type, directions, n_groups, t_max, coefficients, same_switchers, point_only=False
+):
     """Estimate one horizon direction by direction.
 
     Parameters
@@ -410,6 +428,8 @@ def _estimate_horizon(df, config, horizon, horizon_type, directions, n_groups, t
         Coefficients of the control variables for each baseline treatment, empty without controls.
     same_switchers : polars.Expr or None
         Flags the switchers that the horizon may use. None lets every switcher in.
+    point_only : bool, default=False
+        Whether to compute only the point estimates.
 
     Returns
     -------
@@ -430,7 +450,9 @@ def _estimate_horizon(df, config, horizon, horizon_type, directions, n_groups, t
             (pl.col(yname).shift(2 * horizon).over(gname) - pl.col(yname).shift(horizon).over(gname)).alias(diff_col)
         )
 
-    df = build_treatment_paths(df, horizon, config)
+    # Since the treatment paths only set the cohorts of the variance, point estimates skip them.
+    if not point_only:
+        df = build_treatment_paths(df, horizon, config)
 
     never_col = f".never_change_{horizon}"
     df = df.with_columns(
@@ -456,11 +478,12 @@ def _estimate_horizon(df, config, horizon, horizon_type, directions, n_groups, t
     if coefficients:
         df = apply_control_adjustment(df, config, horizon, coefficients, horizon_type)
 
-    df = df.with_columns(pl.lit(0, dtype=pl.Int32).alias(f".count_{horizon}"))
+    if not point_only:
+        df = df.with_columns(pl.lit(0, dtype=pl.Int32).alias(f".count_{horizon}"))
     passes = []
     for direction in directions:
         df, result = _compute_direction_pass(
-            df, config, horizon, horizon_type, direction, n_groups, coefficients, same_switchers
+            df, config, horizon, horizon_type, direction, n_groups, coefficients, same_switchers, point_only
         )
         if result is not None:
             passes.append(result)
@@ -469,7 +492,7 @@ def _estimate_horizon(df, config, horizon, horizon_type, directions, n_groups, t
 
 
 def _estimate_cumulated_horizon(
-    df, config, horizon, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
+    df, config, horizon, horizon_type, directions, n_groups, t_max, coefficients, same_switchers, point_only=False
 ):
     """Sum the estimates of the horizons up to one horizon for each direction.
 
@@ -497,6 +520,8 @@ def _estimate_cumulated_horizon(
         Coefficients of the control variables for each baseline treatment, empty without controls.
     same_switchers : polars.Expr
         Flags the switchers that reach the last horizon.
+    point_only : bool, default=False
+        Whether to compute only the point estimates.
 
     Returns
     -------
@@ -509,12 +534,15 @@ def _estimate_cumulated_horizon(
     sums = {}
     for step in range(1, horizon + 1):
         df, passes = _estimate_horizon(
-            df, config, step, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
+            df, config, step, horizon_type, directions, n_groups, t_max, coefficients, same_switchers, point_only
         )
         for result in passes:
-            total = sums.setdefault(result["sign"], {"estimate": 0.0, "influence": 0.0, "steps": 0})
+            total = sums.setdefault(
+                result["sign"], {"estimate": 0.0, "influence": None if point_only else 0.0, "steps": 0}
+            )
             total["estimate"] += result["estimate"]
-            total["influence"] = total["influence"] + result["influence"]
+            if not point_only:
+                total["influence"] = total["influence"] + result["influence"]
             total["steps"] += 1
             if step == horizon:
                 total.update({key: result[key] for key in ("sign", "n_switchers", "n_weighted", "delta", "ate_delta")})
@@ -522,10 +550,13 @@ def _estimate_cumulated_horizon(
     return df, [sums[d] for d in directions if d in sums and sums[d]["steps"] == horizon]
 
 
-def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_groups, coefficients, same_switchers=None):
+def _compute_direction_pass(
+    df, config, horizon, horizon_type, direction, n_groups, coefficients, same_switchers=None, point_only=False
+):
     """Estimate one horizon from the switchers whose treatment moves in one direction.
 
-    The pass also marks the cells it uses in the horizon's count column.
+    The pass also marks the cells it uses in the horizon's count column. Since a bootstrap draw
+    discards the rest, ``point_only`` stops the pass after the estimate and the treatment changes.
 
     Parameters
     ----------
@@ -546,6 +577,8 @@ def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_grou
         Coefficients of the control variables for each baseline treatment, empty without controls.
     same_switchers : polars.Expr, optional
         Flags the switchers that the pass may use. None lets every switcher in.
+    point_only : bool, default=False
+        Whether to compute only the estimate and the treatment changes.
 
     Returns
     -------
@@ -555,11 +588,12 @@ def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_grou
         None when no switcher in this direction reaches the horizon. Otherwise a dict with
 
         - **sign**: The direction of the pass
-        - **n_switchers**: Number of switchers
+        - **n_switchers**: Number of switchers, or None with ``point_only``
         - **n_weighted**: Weighted number of switchers
         - **estimate**: Estimate from the switchers of this pass
-        - **influence**: Influence function of the estimate, one entry per group
-        - **delta**: Average treatment change that normalizes the estimate, or None
+        - **influence**: Influence function of the estimate, one entry per group, or None with ``point_only``
+        - **delta**: Average treatment change that normalizes the estimate, or None. With ``point_only`` it is
+          None unless ``config.normalized`` is set
         - **ate_delta**: Average treatment change at the horizon for the average total effect, or None
           for a placebo
     """
@@ -606,13 +640,19 @@ def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_grou
     df = df.with_columns(pl.col(dist_w_col).sum().over(group_vars).alias(n_treated_col))
 
     switcher_filter = (pl.col(dist_col) == 1.0) & pl.col(diff_col).is_not_null() & switcher_mask
-    n_switchers_unweighted = df.filter(switcher_filter)[gname].n_unique()
+    # Since a point estimate only needs to know whether the pass has switchers, it skips counting them.
+    if point_only:
+        n_switchers_unweighted = None
+        has_switchers = df.select(switcher_filter.any()).item()
+    else:
+        n_switchers_unweighted = df.filter(switcher_filter)[gname].n_unique()
+        has_switchers = n_switchers_unweighted > 0
 
     n_switchers_weighted = df.select(pl.col(dist_w_col).sum()).item()
     if n_switchers_weighted is None or n_switchers_weighted == 0:
         n_switchers_weighted = 0.0
 
-    if n_switchers_unweighted == 0:
+    if not has_switchers:
         return df, None
 
     inf_temp_col = f".inf_func_{horizon}_temp"
@@ -633,7 +673,10 @@ def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_grou
     df = df.with_columns((pl.col(inf_temp_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_col))
 
     did_estimate = df.select(pl.col(inf_col).sum()).item() / n_groups
-    delta_d = _compute_delta_d(df, config, horizon, horizon_type, dist_col)
+    # Since only normalized effects divide by the treatment change, a point estimate skips it otherwise.
+    delta_d = None
+    if config.normalized or not point_only:
+        delta_d = _compute_delta_d(df, config, horizon, horizon_type, dist_col)
 
     # The average total effect measures each switch by its treatment change at the horizon. S_g makes it positive.
     ate_delta = None
@@ -641,6 +684,18 @@ def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_grou
         treat_col, base_col = (".d_orig", ".d_sq_orig") if config.continuous > 0 else (dname, "d_sq")
         dose_change = pl.col("S_g") * (pl.col(treat_col) - pl.col(base_col))
         ate_delta = df.select((pl.col(dist_w_col) * dose_change).sum()).item() / safe_n_switchers
+
+    result = {
+        "sign": direction,
+        "n_switchers": n_switchers_unweighted,
+        "n_weighted": safe_n_switchers,
+        "estimate": did_estimate,
+        "influence": None,
+        "delta": delta_d,
+        "ate_delta": ate_delta,
+    }
+    if point_only:
+        return df, result
 
     if coefficients:
         df = compute_variance_adjustment(df, config, horizon, coefficients, safe_n_switchers, dist_col)
@@ -708,15 +763,8 @@ def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_grou
     # A cell that serves the switchers of both directions counts once.
     df = df.with_columns(pl.max_horizontal(pl.col(count_col), counted.then(1).otherwise(0)).alias(count_col))
 
-    return df, {
-        "sign": direction,
-        "n_switchers": n_switchers_unweighted,
-        "n_weighted": safe_n_switchers,
-        "estimate": did_estimate,
-        "influence": inf_func,
-        "delta": delta_d,
-        "ate_delta": ate_delta,
-    }
+    result["influence"] = inf_func
+    return df, result
 
 
 def _run_het_regression(het_sample, covariates, horizon, config):
@@ -961,16 +1009,18 @@ def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
     return delta_d
 
 
-def _compute_ate(effects_results, z_crit, n_groups):
+def _compute_ate(effects_results, z_crit, n_groups, point_only=False):
     r"""Compute average total effect.
 
     The effects are averaged with weights proportional to their weighted numbers of switchers. The
     average is divided by the same weighted average of the treatment changes. The change at horizon
     :math:`\ell` averages :math:`S_g (D_{g,F_g-1+\ell} - D_{g,1})` over the switchers of that horizon.
     Here :math:`S_g` is 1 for a rise and -1 for a fall.
+
+    With ``point_only`` the standard error, the interval, and the sample sizes are NaN.
     """
-    estimates = effects_results.get("estimates_unnorm", effects_results["estimates"])
-    n_sw = effects_results.get("n_switchers_weighted", effects_results["n_switchers"])
+    estimates = effects_results["estimates_unnorm"]
+    n_sw = effects_results["n_switchers_weighted"]
     ate_delta = effects_results["ate_delta"]
 
     valid_mask = ~np.isnan(estimates) & (n_sw > 0)
@@ -986,6 +1036,15 @@ def _compute_ate(effects_results, z_crit, n_groups):
     if ate_denom == 0:
         return None
     ate_estimate = weighted_mean_effect / ate_denom
+    if point_only:
+        return ATEResult(
+            estimate=ate_estimate,
+            std_error=np.nan,
+            ci_lower=np.nan,
+            ci_upper=np.nan,
+            n_observations=np.nan,
+            n_switchers=np.nan,
+        )
 
     # Since a horizon that no switcher reaches keeps a zero influence column, the columns line up with the horizons.
     inf_func_unnorm = effects_results["influence_func_unnorm"]

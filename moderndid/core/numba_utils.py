@@ -28,18 +28,6 @@ def _compute_cluster_sums_impl(influence_func, cluster_codes, n_clusters):
     return np.bincount(cluster_codes, weights=influence_func, minlength=n_clusters)
 
 
-def _multiplier_bootstrap_impl(inf_func, weights_matrix):
-    biters = weights_matrix.shape[0]
-    k = inf_func.shape[1]
-    bres = np.zeros((biters, k))
-
-    for b in range(biters):
-        v = np.where(weights_matrix[b] == 1, 1.0, -1.0)
-        bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
-
-    return bres
-
-
 def _aggregate_by_cluster_impl(inf_func, cluster_codes, n_clusters):
     cluster_sums = np.zeros((n_clusters, inf_func.shape[1]))
     np.add.at(cluster_sums, cluster_codes, inf_func)
@@ -100,22 +88,6 @@ if HAS_NUMBA:
         for i in range(len(influence_func)):
             cluster_sums[cluster_codes[i]] += influence_func[i]
         return cluster_sums
-
-    @nb.njit(cache=True, parallel=True)
-    def _multiplier_bootstrap_impl(inf_func, weights_matrix):
-        biters, n = weights_matrix.shape
-        k = inf_func.shape[1]
-        bres = np.zeros((biters, k))
-
-        for b in nb.prange(biters):
-            for j in range(k):
-                total = 0.0
-                for i in range(n):
-                    v = 1.0 if weights_matrix[b, i] == 1 else -1.0
-                    total += inf_func[i, j] * v
-                bres[b, j] = total / n
-
-        return bres
 
     @nb.njit(cache=True)
     def _aggregate_by_cluster_impl(inf_func, cluster_codes, n_clusters):
@@ -251,24 +223,17 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
         return _multiplier_bootstrap_cupy(inf_func, biters, random_state)
 
     n = inf_func.shape[0]
-    k = inf_func.shape[1]
     rng = np.random.default_rng(random_state)
-    max_batch_bytes = 1 << 30
-    batch_size = max(1, max_batch_bytes // n)
-    batch_size = min(batch_size, biters)
+    # Since a block's float64 uniforms and the previous signs coexist, 2**24 signs per block keep the peak near 300 MB.
+    block = max(1, min((1 << 24) // n, biters))
 
-    inf_c = np.ascontiguousarray(inf_func)
-
-    if batch_size >= biters:
-        weights_matrix = rng.binomial(1, 0.5, size=(biters, n)).astype(np.int8)
-        return _multiplier_bootstrap_impl(inf_c, weights_matrix)
-
-    bres = np.empty((biters, k), dtype=np.float64)
-    for start in range(0, biters, batch_size):
-        end = min(start + batch_size, biters)
-        b = end - start
-        weights_batch = rng.binomial(1, 0.5, size=(b, n)).astype(np.int8)
-        bres[start:end] = _multiplier_bootstrap_impl(inf_c, weights_batch)
+    bres = np.empty((biters, inf_func.shape[1]))
+    for start in range(0, biters, block):
+        stop = min(start + block, biters)
+        # Since binomial(1, 0.5) returns one exactly when its uniform draw exceeds one half, comparing
+        # the same uniforms reproduces every seeded draw at a fraction of the cost.
+        signs = np.where(rng.random((stop - start, n)) > 0.5, 1.0, -1.0)
+        bres[start:stop] = signs @ inf_func / n
     return bres
 
 

@@ -10,16 +10,22 @@ from moderndid.didhonest.arp_nuisance import (
     ARPNuisanceCIResult,
     _check_if_solution,
     _compute_flci_vlo_vup,
+    _compute_least_favorable_cv,
     _construct_gamma,
+    _eta_program_model,
+    _is_near_degenerate,
     _lp_dual_wrapper,
     _round_eps,
     _solve_max_program,
+    _solve_with_costs,
+    _solve_with_row_upper,
     _test_delta_lp,
     compute_arp_nuisance_ci,
     compute_least_favorable_cv,
     compute_vlo_vup_dual,
     lp_conditional_test,
 )
+from moderndid.didhonest.delta.rm.rm import _create_relative_magnitudes_constraint_matrix
 from moderndid.didhonest.delta.rm.rmb import _create_relative_magnitudes_bias_constraint_matrix
 from moderndid.didhonest.numba import find_rows_with_post_period_values
 
@@ -695,7 +701,7 @@ def test_compute_arp_nuisance_ci_tests_every_grid_point(rm_cases):
 
 
 def test_compute_arp_nuisance_ci_seed_reaches_least_favorable_cv(rm_cases, monkeypatch):
-    monkeypatch.setattr(arp_nuisance, "compute_least_favorable_cv", partial(compute_least_favorable_cv, sims=50))
+    monkeypatch.setattr(arp_nuisance, "_compute_least_favorable_cv", partial(_compute_least_favorable_cv, sims=50))
     a_matrix = _create_relative_magnitudes_bias_constraint_matrix(
         num_pre_periods=3, num_post_periods=2, m_bar=0.5, s=-2, max_positive=False, bias_direction="positive"
     )
@@ -743,3 +749,109 @@ def test_lp_conditional_test_accepts_nonpositive_statistic_without_dual_bounds(m
 
     assert not result["reject"]
     assert result["eta"] == pytest.approx(-1.0)
+
+
+def test_compute_arp_nuisance_ci_reused_models_accept_the_same_grid_points_as_fresh_solves(rm_cases, monkeypatch):
+    a_matrix = _create_relative_magnitudes_constraint_matrix(
+        num_pre_periods=3, num_post_periods=2, m_bar=1.0, s=0, max_positive=True
+    )
+    spec = {
+        "betahat": rm_cases["A"],
+        "sigma": rm_cases["sigma"],
+        "l_vec": np.array([1.0, 0.0]),
+        "a_matrix": a_matrix,
+        "d_vec": np.zeros(a_matrix.shape[0]),
+        "num_pre_periods": 3,
+        "num_post_periods": 2,
+        "hybrid_flag": "LF",
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+        "grid_points": 40,
+        "rows_for_arp": find_rows_with_post_period_values(a_matrix, [3, 4]),
+    }
+    reused_solves = []
+
+    def record_row_solve(model, row_upper):
+        reused_solves.append("rows")
+        return _solve_with_row_upper(model, row_upper)
+
+    def record_cost_solve(model, cost):
+        reused_solves.append("costs")
+        return _solve_with_costs(model, cost)
+
+    monkeypatch.setattr(arp_nuisance, "_compute_least_favorable_cv", partial(_compute_least_favorable_cv, sims=50))
+    monkeypatch.setattr(arp_nuisance, "_solve_with_row_upper", record_row_solve)
+    monkeypatch.setattr(arp_nuisance, "_solve_with_costs", record_cost_solve)
+
+    reused = compute_arp_nuisance_ci(**spec, hybrid_list={"hybrid_kappa": 0.005})
+    solves_with_models = len(reused_solves)
+    monkeypatch.setattr(arp_nuisance, "_eta_program_model", lambda w_t: None)
+    monkeypatch.setattr(arp_nuisance, "_max_program_model", lambda w_t: None)
+    fresh = compute_arp_nuisance_ci(**spec, hybrid_list={"hybrid_kappa": 0.005})
+
+    assert set(reused_solves) == {"rows", "costs"}
+    assert len(reused_solves) == solves_with_models
+    assert 0 < reused.accept_grid[:, 1].sum() < spec["grid_points"]
+    np.testing.assert_array_equal(reused.accept_grid, fresh.accept_grid)
+    np.testing.assert_array_equal([reused.ci_lb, reused.ci_ub], [fresh.ci_lb, fresh.ci_ub])
+
+
+@pytest.mark.parametrize("gap", [3e-9, 1e-8, 3e-8])
+def test_test_delta_lp_with_a_reused_model_matches_a_fresh_solve_near_a_tie(gap, monkeypatch):
+    x_t = np.array([[1.0], [-1.0], [0.0]])
+    sigma = np.eye(3)
+    model = _eta_program_model(np.column_stack([np.ones(3), x_t]))
+    near = []
+
+    def record_near_degeneracy(*args):
+        near.append(_is_near_degenerate(*args))
+        return near[-1]
+
+    monkeypatch.setattr(arp_nuisance, "_is_near_degenerate", record_near_degeneracy)
+
+    _test_delta_lp(np.array([1.0, 0.4, 0.2]), x_t, sigma, model=model)
+    reused = _test_delta_lp(np.array([1.0, 0.4, 0.7 - gap]), x_t, sigma, model=model)
+    fresh = _test_delta_lp(np.array([1.0, 0.4, 0.7 - gap]), x_t, sigma)
+
+    assert near[-1]
+    np.testing.assert_allclose(reused["lambda"], fresh["lambda"], rtol=0, atol=1e-10)
+
+
+def test_compute_arp_nuisance_ci_reads_fresh_solve_multipliers_where_optima_tie(linear_trend_event_study, monkeypatch):
+    a_matrix = _create_relative_magnitudes_constraint_matrix(
+        num_pre_periods=3, num_post_periods=4, m_bar=1.0, s=0, max_positive=True
+    )
+    read = []
+    fresh = []
+    degenerate = []
+
+    def record_degeneracy(*args):
+        degenerate.append(_is_near_degenerate(*args))
+        return degenerate[-1]
+
+    def record_multipliers(y_t, x_t, sigma, model=None):
+        result = _test_delta_lp(y_t, x_t, sigma, model=model)
+        read.append(result["lambda"])
+        fresh.append(_test_delta_lp(y_t, x_t, sigma)["lambda"])
+        return result
+
+    monkeypatch.setattr(arp_nuisance, "_is_near_degenerate", record_degeneracy)
+    monkeypatch.setattr(arp_nuisance, "_test_delta_lp", record_multipliers)
+
+    compute_arp_nuisance_ci(
+        betahat=linear_trend_event_study["betahat"],
+        sigma=linear_trend_event_study["sigma"],
+        l_vec=np.array([1.0, 0.0, 0.0, 0.0]),
+        a_matrix=a_matrix,
+        d_vec=np.zeros(a_matrix.shape[0]),
+        num_pre_periods=3,
+        num_post_periods=4,
+        grid_lb=-0.08,
+        grid_ub=0.28,
+        grid_points=50,
+        rows_for_arp=find_rows_with_post_period_values(a_matrix, [3, 4, 5, 6]),
+    )
+
+    assert len(read) == 50
+    assert any(degenerate)
+    np.testing.assert_allclose(np.array(read), np.array(fresh), rtol=0, atol=1e-10)

@@ -4,9 +4,11 @@ import warnings
 from functools import partial
 from typing import NamedTuple
 
+import highspy
 import numpy as np
 import scipy.optimize as opt
 from scipy import stats
+from scipy.sparse import csc_array
 
 from .conditional import _norminvp_generalized
 from .numba import compute_hybrid_dbar, prepare_theta_grid_y_values
@@ -162,14 +164,23 @@ def compute_arp_nuisance_ci(
     y = a_matrix @ betahat - d_vec
     sigma_y = a_matrix @ sigma @ a_matrix.T
 
+    # Since every linear program in this call shares W, each kind of program keeps one HiGHS model re-solved from
+    # its last basis with new right-hand sides or costs. A non-finite W gets no model so that linprog raises its error.
+    rows = np.arange(len(y)) if rows_for_arp is None else rows_for_arp
+    variances = np.diag(sigma_y[np.ix_(rows, rows)])
+    x_arp = a_gamma_inv_minus_one[rows]
+    reuse = np.isfinite(variances).all() and (variances >= 0).all() and np.isfinite(x_arp).all()
+    w_t = np.column_stack([np.sqrt(variances), x_arp]) if reuse else None
+
     # Least favorable CV if needed
     if hybrid_flag == "LF":
-        hybrid_list["lf_cv"] = compute_least_favorable_cv(
+        hybrid_list["lf_cv"] = _compute_least_favorable_cv(
             a_gamma_inv_minus_one,
             sigma_y,
             hybrid_list["hybrid_kappa"],
             rows_for_arp=rows_for_arp,
             seed=seed,
+            model=_eta_program_model(w_t) if reuse else None,
         )
 
     y_t_matrix = prepare_theta_grid_y_values(y, a_gamma_inv_one, theta_grid)
@@ -186,6 +197,8 @@ def compute_arp_nuisance_ci(
         sigma_y=sigma_y,
         alpha=alpha,
         rows_for_arp=rows_for_arp,
+        test_model=_eta_program_model(w_t) if reuse else None,
+        max_model=_max_program_model(w_t) if reuse else None,
     )
 
     # Since the accepted set need not be an interval, every grid point is tested.
@@ -314,6 +327,21 @@ def lp_conditional_test(
     Under LICQ, the LF-hybrid test's local asymptotic power is at least as good as the
     power of the optimal size-:math:`(\alpha-\kappa)/(1-\kappa)` test.
     """
+    return _lp_conditional_test(y_t, x_t, sigma, alpha, hybrid_flag, hybrid_list, rows_for_arp)
+
+
+def _lp_conditional_test(
+    y_t,
+    x_t=None,
+    sigma=None,
+    alpha=0.05,
+    hybrid_flag="ARP",
+    hybrid_list=None,
+    rows_for_arp=None,
+    test_model=None,
+    max_model=None,
+):
+    """Run the test of :func:`lp_conditional_test` with optional HiGHS models of its two programs."""
     if hybrid_list is None:
         hybrid_list = {}
 
@@ -355,7 +383,7 @@ def lp_conditional_test(
         }
 
     # Compute eta and argmin delta
-    lin_soln = _test_delta_lp(y_t_arp, x_t_arp, sigma_arp)
+    lin_soln = _test_delta_lp(y_t_arp, x_t_arp, sigma_arp, model=test_model)
 
     if not lin_soln["success"]:
         return {
@@ -438,7 +466,9 @@ def lp_conditional_test(
             }
 
         # Work with Lagrange multipliers directly
-        lp_dual_soln = _lp_dual_wrapper(y_t_arp, x_t_arp, lin_soln["eta_star"], lin_soln["lambda"], sigma_arp)
+        lp_dual_soln = _lp_dual_wrapper(
+            y_t_arp, x_t_arp, lin_soln["eta_star"], lin_soln["lambda"], sigma_arp, model=max_model
+        )
 
         sigma_b_dual = np.sqrt(sigma_b_dual2)
         maxstat = lp_dual_soln["eta"] / sigma_b_dual
@@ -627,6 +657,11 @@ def compute_vlo_vup_dual(
     first standard basis vector. The value :math:`v` where this maximum equals :math:`v`
     itself determines the boundary of the support.
     """
+    return _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t)
+
+
+def _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t, model=None):
+    """Compute the bounds of :func:`compute_vlo_vup_dual` with an optional HiGHS model of the max program."""
     tol_c = 1e-6
     tol_equality = 1e-6
     sigma_b = np.sqrt(float(gamma_tilde.T @ sigma @ gamma_tilde))
@@ -635,12 +670,12 @@ def compute_vlo_vup_dual(
     max_iters = 10000
     switch_iters = 10
 
-    _, is_solution = _check_if_solution(eta, tol_equality, s_t, gamma_tilde, sigma, w_t)
+    _, is_solution = _check_if_solution(eta, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
     if not is_solution:
         return {"vlo": eta, "vup": np.inf}
 
     # Upper bound for the test stat support
-    result, is_solution = _check_if_solution(high_initial, tol_equality, s_t, gamma_tilde, sigma, w_t)
+    result, is_solution = _check_if_solution(high_initial, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
     if is_solution:
         vup = np.inf
     else:
@@ -655,7 +690,7 @@ def compute_vlo_vup_dual(
 
         # Iterate shortcut method for a few steps
         while iters < switch_iters:
-            result, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t)
+            result, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
             if is_solution:
                 break
             iters += 1
@@ -672,7 +707,7 @@ def compute_vlo_vup_dual(
         while diff > tol_c and iters < max_iters:
             iters += 1
             mid = (high + low) / 2
-            _, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t)
+            _, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
 
             if is_solution:
                 low = mid
@@ -683,7 +718,7 @@ def compute_vlo_vup_dual(
         vup = mid
 
     # Compute vlo using bisection method
-    result, is_solution = _check_if_solution(low_initial, tol_equality, s_t, gamma_tilde, sigma, w_t)
+    result, is_solution = _check_if_solution(low_initial, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
     if is_solution:
         vlo = -np.inf
     else:
@@ -695,7 +730,7 @@ def compute_vlo_vup_dual(
         mid = _round_eps(float(result.x @ s_t)) / (1 - float(result.x @ b)) if result.success else low_initial
 
         while iters < switch_iters:
-            result, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t)
+            result, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
             if is_solution:
                 break
             iters += 1
@@ -711,7 +746,7 @@ def compute_vlo_vup_dual(
         while diff > tol_c and iters < max_iters:
             iters += 1
             mid = (low + high) / 2
-            _, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t)
+            _, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
 
             if is_solution:
                 high = mid
@@ -777,6 +812,19 @@ def compute_least_favorable_cv(
     are the standardized moments. With nuisance parameters, each simulation
     requires solving the linear program to account for optimization over :math:`\xi`.
     """
+    return _compute_least_favorable_cv(x_t, sigma, hybrid_kappa, sims, rows_for_arp, seed)
+
+
+def _compute_least_favorable_cv(
+    x_t=None,
+    sigma=None,
+    hybrid_kappa=0.05,
+    sims=1000,
+    rows_for_arp=None,
+    seed=0,
+    model=None,
+):
+    """Compute the value of :func:`compute_least_favorable_cv` with an optional HiGHS model of its linear program."""
     rng = np.random.default_rng(seed)
 
     if rows_for_arp is not None:
@@ -806,6 +854,12 @@ def compute_least_favorable_cv(
 
     eta_vec = []
     for xi in xi_draws:
+        # Since only the optimal value is read, any optimal basis of the reused model gives the same draw.
+        solution = None if model is None else _solve_with_row_upper(model, -xi)
+        if solution is not None:
+            eta_vec.append(solution.col_value[0])
+            continue
+
         # Dual simplex
         result = opt.linprog(
             c=c,
@@ -823,7 +877,7 @@ def compute_least_favorable_cv(
     return float(np.quantile(eta_vec, 1 - hybrid_kappa))
 
 
-def _test_delta_lp(y_t, x_t, sigma):
+def _test_delta_lp(y_t, x_t, sigma, model=None):
     r"""Solve linear program for delta test.
 
     Solves the primal optimization problem
@@ -850,6 +904,9 @@ def _test_delta_lp(y_t, x_t, sigma):
     correspond to basic feasible solutions of the dual program, and conditioning on :math:`\gamma_* \in \hat{V}_n`
     ensures correct coverage.
 
+    A reused model starts from the basis of its last solve. When a basic row sits at or near its bound, a fresh
+    solve could return other multipliers. The program is then solved afresh.
+
     Parameters
     ----------
     y_t : ndarray
@@ -858,6 +915,8 @@ def _test_delta_lp(y_t, x_t, sigma):
         Covariate matrix :math:`X_T` corresponding to nuisance parameters.
     sigma : ndarray
         Covariance matrix :math:`\Sigma_Y` of y_t.
+    model : highspy.Highs, optional
+        HiGHS model of this program on x_t and sigma.
 
     Returns
     -------
@@ -876,6 +935,13 @@ def _test_delta_lp(y_t, x_t, sigma):
     :math:`\eta^*` can be interpreted as the maximum standardized violation of the
     moment inequalities under the least favorable choice of :math:`\xi`.
     """
+    b_ub = -y_t
+    if model is not None:
+        solution = _solve_with_row_upper(model, b_ub)
+        if solution is not None and not _is_near_degenerate(model, solution, b_ub):
+            x = np.array(solution.col_value)
+            return {"eta_star": x[0], "delta_star": x[1:], "lambda": -np.array(solution.row_dual), "success": True}
+
     if x_t.ndim == 1:
         x_t = x_t.reshape(-1, 1)
 
@@ -887,7 +953,6 @@ def _test_delta_lp(y_t, x_t, sigma):
 
     # Constraints are -sd_vec*eta - X_T*delta <= -y_T (y_T = a_matrix @ betahat - d_vec)
     A_ub = -np.column_stack([sd_vec, x_t])
-    b_ub = -y_t
 
     # Bounds: eta and delta unbounded
     bounds = [(None, None) for _ in range(len(c))]
@@ -925,6 +990,7 @@ def _lp_dual_wrapper(
     eta,
     gamma_tilde,
     sigma,
+    model=None,
 ):
     r"""Wrap vlo and vup computation using bisection approach.
 
@@ -951,6 +1017,8 @@ def _lp_dual_wrapper(
         Normalized Lagrange multipliers :math:`\tilde{\gamma} = \lambda / \sum_i \lambda_i`.
     sigma : ndarray
         Covariance matrix :math:`\Sigma_Y` of y_t.
+    model : highspy.Highs, optional
+        HiGHS model of the linear program for the truncation bounds on x_t and sigma.
 
     Returns
     -------
@@ -992,7 +1060,7 @@ def _lp_dual_wrapper(
     # Projection matrix is I - (sigma * gamma * gamma') / (gamma' * sigma * gamma)
     s_t = (np.eye(len(y_t)) - (sigma @ np.outer(gamma_tilde, gamma_tilde)) / gamma_sigma_gamma) @ y_t
 
-    v_dict = compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t)
+    v_dict = _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t, model=model)
 
     return {
         "vlo": v_dict["vlo"],
@@ -1008,6 +1076,7 @@ def _solve_max_program(
     sigma,
     w_t,
     c,
+    model=None,
 ):
     r"""Solve linear program for maximum.
 
@@ -1025,6 +1094,8 @@ def _solve_max_program(
         Constraint matrix.
     c : float
         Scalar parameter.
+    model : highspy.Highs, optional
+        HiGHS model of this program on w_t.
 
     Returns
     -------
@@ -1036,6 +1107,11 @@ def _solve_max_program(
         raise ValueError("gamma'*sigma*gamma must be positive")
 
     f = s_t + (sigma @ gamma_tilde) * c / sigma_gamma
+
+    solution = None if model is None else _solve_with_costs(model, -f)
+    if solution is not None:
+        fun = model.getObjectiveValue()
+        return opt.OptimizeResult(x=np.array(solution.col_value), fun=fun, success=True, objective_value=-fun)
 
     A_eq = w_t.T
     b_eq = np.zeros(A_eq.shape[0])
@@ -1060,6 +1136,7 @@ def _check_if_solution(
     gamma_tilde,
     sigma,
     w_t,
+    model=None,
 ):
     """Check if :math:`c` is a solution to the dual problem.
 
@@ -1077,6 +1154,8 @@ def _check_if_solution(
         Covariance matrix.
     w_t : ndarray
         Constraint matrix.
+    model : highspy.Highs, optional
+        HiGHS model of the program :func:`_solve_max_program` solves on w_t.
 
     Returns
     -------
@@ -1085,9 +1164,91 @@ def _check_if_solution(
     is_solution : bool
         Whether c is a solution.
     """
-    result = _solve_max_program(s_t, gamma_tilde, sigma, w_t, c)
+    result = _solve_max_program(s_t, gamma_tilde, sigma, w_t, c, model=model)
     is_solution = result.success and abs(c - result.objective_value) <= tol
     return result, is_solution
+
+
+def _eta_program_model(w_t):
+    """Build a HiGHS model of the linear program for eta on w_t whose right-hand side each solve sets."""
+    num_rows, num_cols = w_t.shape
+    cost = np.zeros(num_cols)
+    cost[0] = 1.0
+    return _highs_model(
+        cost,
+        -w_t,
+        np.full(num_rows, -np.inf),
+        np.zeros(num_rows),
+        np.full(num_cols, -np.inf),
+        np.full(num_cols, np.inf),
+    )
+
+
+def _max_program_model(w_t):
+    """Build a HiGHS model of max f'x subject to W'x = e1 and x >= 0 whose f each solve sets."""
+    num_rows, num_cols = w_t.shape
+    e1 = np.zeros(num_cols)
+    e1[0] = 1.0
+    return _highs_model(np.zeros(num_rows), w_t.T, e1, e1, np.zeros(num_rows), np.full(num_rows, np.inf))
+
+
+def _highs_model(cost, a_matrix, row_lower, row_upper, col_lower, col_upper):
+    """Build a silent HiGHS simplex model of min cost'x subject to row and column bounds."""
+    matrix = csc_array(a_matrix)
+    lp = highspy.HighsLp()
+    lp.num_row_, lp.num_col_ = a_matrix.shape
+    lp.col_cost_ = cost
+    lp.col_lower_ = col_lower
+    lp.col_upper_ = col_upper
+    lp.row_lower_ = row_lower
+    lp.row_upper_ = row_upper
+    lp.a_matrix_.format_ = highspy.MatrixFormat.kColwise
+    lp.a_matrix_.num_row_, lp.a_matrix_.num_col_ = a_matrix.shape
+    lp.a_matrix_.start_ = matrix.indptr
+    lp.a_matrix_.index_ = matrix.indices
+    lp.a_matrix_.value_ = matrix.data
+    model = highspy.Highs()
+    model.setOptionValue("output_flag", False)
+    model.setOptionValue("solver", "simplex")
+    model.passModel(lp)
+    return model
+
+
+def _solve_with_row_upper(model, row_upper):
+    """Re-solve a reused model with new row upper bounds and return its solution if HiGHS finds an optimum."""
+    # Since linprog rejects a non-finite right-hand side with its own error, such a solve is left to linprog.
+    if not np.isfinite(row_upper).all():
+        return None
+    num_rows = row_upper.size
+    model.changeRowsBounds(num_rows, np.arange(num_rows, dtype=np.int32), np.full(num_rows, -np.inf), row_upper)
+    model.run()
+    if model.getModelStatus() != highspy.HighsModelStatus.kOptimal:
+        return None
+    return model.getSolution()
+
+
+def _solve_with_costs(model, cost):
+    """Re-solve a reused model with new column costs and return its solution if HiGHS finds an optimum."""
+    # Since milp rejects non-finite costs with its own error, such a solve is left to milp.
+    if not np.isfinite(cost).all():
+        return None
+    model.changeColsCost(cost.size, np.arange(cost.size, dtype=np.int32), cost)
+    model.run()
+    if model.getModelStatus() != highspy.HighsModelStatus.kOptimal:
+        return None
+    return model.getSolution()
+
+
+def _is_near_degenerate(model, solution, row_upper):
+    """Return whether a basic row of the solved eta program sits at or near its upper bound."""
+    # Since the columns are free, only a basic row can be degenerate. A basic row within a hundred times HiGHS's 1e-7
+    # feasibility tolerance of its bound, relative to 1 + |bound|, may let a fresh solve return other multipliers.
+    basis = model.getBasis()
+    if not basis.valid:
+        return True
+    basic = highspy.HighsBasisStatus.kBasic.value
+    rows = zip(basis.row_status, row_upper.tolist(), solution.row_value, strict=True)
+    return any(status.value == basic and upper - value <= 1e-5 * (1 + abs(upper)) for status, upper, value in rows)
 
 
 def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):
@@ -1228,6 +1389,8 @@ def _test_theta_accepted(
     sigma_y,
     alpha,
     rows_for_arp,
+    test_model=None,
+    max_model=None,
 ):
     """Test whether theta_grid[i] is accepted.
 
@@ -1255,6 +1418,10 @@ def _test_theta_accepted(
         Significance level.
     rows_for_arp : ndarray or None
         Subset of rows for ARP test.
+    test_model : highspy.Highs, optional
+        HiGHS model of the linear program for the test statistic on the moments in rows_for_arp.
+    max_model : highspy.Highs, optional
+        HiGHS model of the linear program for the dual truncation bounds on the moments in rows_for_arp.
 
     Returns
     -------
@@ -1270,7 +1437,7 @@ def _test_theta_accepted(
             a_gamma_inv_one,
             theta_grid[i],
         )
-    result = lp_conditional_test(
+    result = _lp_conditional_test(
         y_t=y_t,
         x_t=a_gamma_inv_minus_one,
         sigma=sigma_y,
@@ -1278,5 +1445,7 @@ def _test_theta_accepted(
         hybrid_flag=hybrid_flag,
         hybrid_list=hybrid_list,
         rows_for_arp=rows_for_arp,
+        test_model=test_model,
+        max_model=max_model,
     )
     return not result["reject"]

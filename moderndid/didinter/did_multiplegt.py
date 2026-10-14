@@ -39,6 +39,7 @@ def did_multiplegt(
     boot=False,
     biters=1000,
     random_state=None,
+    n_jobs=1,
 ):
     r"""Estimate event-study effects of a treatment whose level changes over time.
 
@@ -133,6 +134,9 @@ def did_multiplegt(
         The number of bootstrap draws. Only applicable if ``boot=True``.
     random_state : int, Generator, optional
         Seed or generator for the bootstrap draws.
+    n_jobs : int, default=1
+        The number of parallel jobs for the bootstrap draws. Pass -1 to use all cores.
+        Only applicable if ``boot=True``.
 
     Returns
     -------
@@ -259,6 +263,8 @@ def did_multiplegt(
         raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
     if not isinstance(biters, int) or biters < 1:
         raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
+        raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
     if predict_het is not None:
         if not isinstance(predict_het, tuple) or len(predict_het) != 2:
             raise ValueError("predict_het must be a tuple of (covariate_names, horizons).")
@@ -353,4 +359,4 @@ def did_multiplegt(
     builder = PreprocessDataBuilder()
     preprocessed = builder.with_data(data).with_config(config).validate().transform().build()
 
-    return compute_did_multiplegt(preprocessed, data)
+    return compute_did_multiplegt(preprocessed, data, n_jobs=n_jobs)

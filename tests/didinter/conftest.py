@@ -442,10 +442,10 @@ def fake_bootstrap():
 
 @pytest.fixture
 def draw_recorder():
-    """Bootstrap estimate function that records each drawn panel."""
+    """Bootstrap estimate function that records the rows of each draw."""
     frames = []
 
-    def record(df, config):
+    def record(df, config, steps):
         frames.append(df)
         return {"effects": np.full(config.effects, np.nan)}
 
@@ -462,6 +462,20 @@ def relabel_cluster_copies():
         return pl.concat(copies)
 
     return stack
+
+
+@pytest.fixture
+def rare_period_panel(clustered_panel_data):
+    """Clustered panel in which only the groups of cluster 0 observe period 2."""
+    return clustered_panel_data.filter((pl.col("time") != 2) | (pl.col("cluster") == 0))
+
+
+@pytest.fixture
+def missing_preswitch_panel(clustered_panel_data):
+    """Clustered panel whose treatment is missing in period 2 for every fourth group."""
+    return clustered_panel_data.with_columns(
+        pl.when((pl.col("time") == 2) & (pl.col("id") % 4 == 0)).then(None).otherwise(pl.col("d")).alias("d")
+    )
 
 
 @pytest.fixture
@@ -712,6 +726,12 @@ def baseline_shift_panels():
     df = pl.DataFrame(rows, schema=["g", "t", "change", "y", "x", "cl"], orient="row")
     df = df.filter(~(pl.Series(rng.random(df.height) < 0.08) & (df["t"] > 1)))
     return [df.with_columns((pl.col("change") + base).alias("d")).drop("change") for base in (0.1, 0.125)]
+
+
+@pytest.fixture
+def bidirectional_cluster_panel(baseline_shift_panels):
+    """Unbalanced panel with ten-group clusters numbered from 0 in which some switchers fall below their baseline."""
+    return baseline_shift_panels[0].with_columns(pl.col("cl") - 1)
 
 
 @pytest.fixture

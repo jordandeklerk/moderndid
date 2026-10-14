@@ -673,8 +673,8 @@ python -m pip install "moderndid[didcont]"
 
 On one machine, `n_jobs=-1` lets {func}`~moderndid.att_gt` and
 {func}`~moderndid.ddd` estimate the group-time cells in parallel without
-changing the results. Since the multiplier bootstrap is often the slowest step,
-the `numba` extra and a smaller `biters` both help. With an NVIDIA GPU and the
+changing the results. Since the multiplier bootstrap can take a large share of
+the time on a large panel, a smaller `biters` helps. With an NVIDIA GPU and the
 `gpu` extra, `backend="cupy"` runs `att_gt`, `ddd`, and
 {func}`~moderndid.cont_did` through supported GPU calculations.
 {ref}`GPU acceleration <gpu>` explains how to benchmark the full call,

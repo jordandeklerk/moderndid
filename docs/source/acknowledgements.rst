@@ -237,6 +237,7 @@ foundational software.
 - `CuPy <https://cupy.dev/>`_ for GPU array computing
 - `plotnine <https://plotnine.org/>`_ for grammar of graphics plotting
 - `CVXPY <https://www.cvxpy.org/>`_ for convex optimization
+- `HiGHS <https://highs.dev/>`_ for linear programming
 - `formulaic <https://matthewwardrop.github.io/formulaic/>`_ for formula parsing
 - `PrettyTable <https://github.com/jazzband/prettytable>`_ for table formatting
 
