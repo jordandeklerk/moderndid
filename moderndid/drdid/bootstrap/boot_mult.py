@@ -51,12 +51,14 @@ def mboot_did(
     rng = xp.random.default_rng(random_state)
 
     sqrt5 = np.sqrt(5)
+    # Since CuPy's Generator.binomial rejects a NumPy scalar probability, the probability is a Python float.
+    probability = float((1 + sqrt5) / (2 * sqrt5))
     bootstrap_estimates = np.empty(biters)
     # Batches of about 16 million weights bound the memory a large sample needs.
     batch_size = max(1, min(biters, (1 << 24) // max(n_units, 1)))
     for start in range(0, biters, batch_size):
         end = min(start + batch_size, biters)
-        draws = rng.binomial(1, (1 + sqrt5) / (2 * sqrt5), size=(end - start, n_units))
+        draws = rng.binomial(1, probability, size=(end - start, n_units))
         weights = xp.where(draws == 1, (1 - sqrt5) / 2, (1 + sqrt5) / 2)
         bootstrap_estimates[start:end] = to_numpy(weights @ linrep) / n_units
     return bootstrap_estimates

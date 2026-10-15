@@ -1,11 +1,16 @@
 """Tests for the DDD repeated cross-section estimator."""
 
+import functools
 import warnings
+from importlib import import_module
 
 import numpy as np
 import polars as pl
 import pytest
+import statsmodels.api as sm
 
+from moderndid.cupy.backend import use_backend
+from moderndid.cupy.regression import cupy_logistic_irls
 from moderndid.didtriple.estimators.ddd_rc import _ddd_rc_2period, _validate_inputs_rc, ddd_rc
 
 
@@ -397,3 +402,47 @@ def test_validate_inputs_rc_weight_normalization():
 
     _, _, _, _, normalized_weights, _ = _validate_inputs_rc(np, y, post, subgroup, None, weights)
     np.testing.assert_allclose(np.mean(normalized_weights), 1.0)
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("est_method", ["dr", "ipw"])
+def test_ddd_rc_on_gpu_matches_cpu_when_a_covariate_is_zero_in_the_treated_state(
+    rcs_treated_state_zero_covariate_arrays, est_method
+):
+    spec = {**rcs_treated_state_zero_covariate_arrays, "est_method": est_method}
+
+    with warnings.catch_warnings(record=True) as cpu_warnings:
+        warnings.simplefilter("always")
+        cpu = ddd_rc(**spec)
+    with use_backend("cupy"), warnings.catch_warnings(record=True) as gpu_warnings:
+        warnings.simplefilter("always")
+        gpu = ddd_rc(**spec)
+
+    cpu_messages = [str(w.message) for w in cpu_warnings if issubclass(w.category, UserWarning)]
+    gpu_messages = [str(w.message) for w in gpu_warnings if issubclass(w.category, UserWarning)]
+    assert np.isfinite(cpu.se)
+    assert gpu_messages == cpu_messages
+    np.testing.assert_allclose(gpu.att, cpu.att, rtol=1e-8)
+    np.testing.assert_allclose(gpu.se, cpu.se, rtol=1e-6)
+
+
+@pytest.mark.gpu
+def test_ddd_rc_on_gpu_warns_like_cpu_when_the_propensity_fit_does_not_converge(monkeypatch, two_period_rcs_arrays):
+    monkeypatch.setattr(sm.GLM, "fit", functools.partialmethod(sm.GLM.fit, maxiter=1))
+    monkeypatch.setattr(
+        import_module("moderndid.didtriple.nuisance_rc"),
+        "cupy_logistic_irls",
+        functools.partial(cupy_logistic_irls, max_iter=1),
+    )
+
+    with warnings.catch_warnings(record=True) as cpu_warnings:
+        warnings.simplefilter("always")
+        ddd_rc(**two_period_rcs_arrays)
+    with use_backend("cupy"), warnings.catch_warnings(record=True) as gpu_warnings:
+        warnings.simplefilter("always")
+        ddd_rc(**two_period_rcs_arrays)
+
+    cpu_messages = [str(w.message) for w in cpu_warnings if issubclass(w.category, UserWarning)]
+    gpu_messages = [str(w.message) for w in gpu_warnings if issubclass(w.category, UserWarning)]
+    assert sum(message.startswith("Propensity score model did not converge.") for message in cpu_messages) == 3
+    assert gpu_messages == cpu_messages

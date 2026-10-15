@@ -48,8 +48,7 @@ def _validate_inputs(arrays_dict, x, biters, trim_level, check_intercept=False):
     if not 0 < trim_level < 1:
         raise ValueError("trim_level must be between 0 and 1.")
 
-    xp = get_backend()
-    if check_intercept and not xp.all(x[:, 0] == 1.0):
+    if check_intercept and not _array_module(x).all(x[:, 0] == 1.0):
         warnings.warn(
             "The first column of the covariate matrix 'x' does not appear to be an intercept (all ones). "
             "IPT propensity score estimation typically requires an intercept.",
@@ -87,7 +86,7 @@ def _validate_wols_arrays(arrays_dict, x, function_name="wols"):
 
 def _check_extreme_weights(weights, threshold=1e6):
     """Check for extreme weight ratios and warn if found."""
-    xp = get_backend()
+    xp = _array_module(weights)
     if len(weights) > 1:
         positive_mask = weights > 0
         if xp.any(positive_mask):
@@ -97,23 +96,19 @@ def _check_extreme_weights(weights, threshold=1e6):
                 warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
 
 
-def _check_wls_condition_number(results, threshold_error=1e15, threshold_warn=1e10):
-    """Check condition number of WLS results and handle accordingly."""
-    try:
-        condition_number = results.condition_number
-        if condition_number > threshold_error:
-            raise ValueError(
-                f"Failed to solve linear system: The covariate matrix may be singular or ill-conditioned "
-                f"(condition number: {condition_number:.2e})."
-            )
-        if condition_number > threshold_warn:
-            warnings.warn(
-                f"Potential multicollinearity detected (condition number: {condition_number:.2e}). "
-                "Consider removing or combining covariates.",
-                UserWarning,
-            )
-    except AttributeError:
-        pass
+def _check_wls_condition_number(condition_number, threshold_error=1e15, threshold_warn=1e10):
+    """Raise for a singular weighted design and warn for an ill-conditioned one."""
+    if condition_number > threshold_error:
+        raise ValueError(
+            f"Failed to solve linear system: The covariate matrix may be singular or ill-conditioned "
+            f"(condition number: {condition_number:.2e})."
+        )
+    if condition_number > threshold_warn:
+        warnings.warn(
+            f"Potential multicollinearity detected (condition number: {condition_number:.2e}). "
+            "Consider removing or combining covariates.",
+            UserWarning,
+        )
 
 
 def _check_coefficients_validity(coefficients):

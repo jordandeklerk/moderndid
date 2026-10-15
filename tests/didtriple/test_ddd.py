@@ -940,6 +940,32 @@ def test_ddd_2period_unbalanced_panel_weighted_bootstrap_draws_one_weight_per_un
     np.testing.assert_allclose(result.boots, expected, rtol=1e-10)
 
 
+@pytest.mark.gpu
+def test_ddd_2period_unbalanced_panel_weighted_bootstrap_on_gpu_matches_cpu(two_period_unbalanced_df):
+    spec = {
+        "data": two_period_unbalanced_df,
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "state",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2",
+        "allow_unbalanced_panel": True,
+        "boot": True,
+        "boot_type": "weighted",
+        "biters": 20,
+        "random_state": 3,
+    }
+
+    cpu = ddd(**spec)
+    gpu = ddd(**spec, backend="cupy")
+
+    assert np.ptp(cpu.boots) > 0
+    np.testing.assert_allclose(gpu.boots, cpu.boots, rtol=1e-10)
+    np.testing.assert_allclose(gpu.att, cpu.att, rtol=1e-8)
+    np.testing.assert_allclose(gpu.se, cpu.se, rtol=1e-10)
+
+
 def test_ddd_2period_bootstrap_does_not_warn_about_cband(two_period_df):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

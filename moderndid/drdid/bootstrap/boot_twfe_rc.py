@@ -5,8 +5,7 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from moderndid.cupy.backend import get_backend, to_numpy
-from moderndid.cupy.regression import cupy_wls
+from moderndid.cupy.backend import to_numpy, use_backend
 
 from ..utils import _column_scales, _validate_inputs
 
@@ -48,6 +47,8 @@ def wboot_twfe_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
     wboot_reg_rc : Regression-based bootstrap for repeated cross-sections.
     """
     n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level=0.5)
+    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
     n_treated_post = np.sum((d == 1) & (post == 1))
     n_treated_pre = np.sum((d == 1) & (post == 0))
 
@@ -59,38 +60,30 @@ def wboot_twfe_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
     rng = np.random.RandomState(random_state)
     bootstrap_estimates = np.zeros(biters)
 
-    for b in range(biters):
-        v = rng.exponential(scale=1.0, size=n_units)
-        b_weights = i_weights * v
+    with use_backend("numpy"):
+        for b in range(biters):
+            v = rng.exponential(scale=1.0, size=n_units)
+            b_weights = i_weights * v
 
-        has_intercept = np.all(x[:, 0] == 1.0) if x.shape[1] > 0 else False
+            has_intercept = np.all(x[:, 0] == 1.0) if x.shape[1] > 0 else False
 
-        if has_intercept:
-            design_matrix = np.column_stack([x, d, post, d * post])
-            interaction_idx = x.shape[1] + 2
-        else:
-            design_matrix = np.column_stack([np.ones(n_units), d, post, d * post, x])
-            interaction_idx = 3
-
-        scale = _column_scales(design_matrix)
-        try:
-            xp = get_backend()
-            if xp is not np:
-                beta, _ = cupy_wls(
-                    xp.asarray(y, dtype=xp.float64),
-                    xp.asarray(design_matrix / scale, dtype=xp.float64),
-                    xp.asarray(b_weights, dtype=xp.float64),
-                )
-                att_b = float(to_numpy(beta)[interaction_idx]) / scale[interaction_idx]
+            if has_intercept:
+                design_matrix = np.column_stack([x, d, post, d * post])
+                interaction_idx = x.shape[1] + 2
             else:
+                design_matrix = np.column_stack([np.ones(n_units), d, post, d * post, x])
+                interaction_idx = 3
+
+            scale = _column_scales(design_matrix)
+            try:
                 wls_model = sm.WLS(y, design_matrix / scale, weights=b_weights)
                 wls_results = wls_model.fit()
                 att_b = wls_results.params[interaction_idx] / scale[interaction_idx]
-            bootstrap_estimates[b] = att_b
+                bootstrap_estimates[b] = att_b
 
-        except (np.linalg.LinAlgError, ValueError) as e:
-            warnings.warn(f"TWFE regression failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
+            except (np.linalg.LinAlgError, ValueError) as e:
+                warnings.warn(f"TWFE regression failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > 0:

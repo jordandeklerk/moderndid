@@ -221,11 +221,14 @@ def _compute_propensity_score(d, covariates, i_weights):
     scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
-            beta, ps_fit = cupy_logistic_irls(
+            beta, ps_fit, converged = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
                 xp.asarray(scaled, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
+                return_converged=True,
             )
+            if not converged:
+                warnings.warn("Propensity score estimation did not converge.", UserWarning)
             ps_fit = to_numpy(ps_fit)
             if np.any(np.isnan(to_numpy(beta))):
                 raise ValueError(

@@ -295,7 +295,7 @@ def compute_ucb(
             margin_h = cv_h * main_result.asy_se
         else:
             warnings.warn("Using unstudentized confidence bands for function estimates", UserWarning)
-            margin_h = cv_h * np.ones(n_eval)
+            margin_h = cv_h * xp.ones(n_eval)
 
         h_lower = main_result.h - margin_h
         h_upper = main_result.h + margin_h
@@ -305,7 +305,7 @@ def compute_ucb(
             margin_deriv = cv_deriv * main_result.deriv_asy_se
         else:
             warnings.warn("Using unstudentized confidence bands for derivative estimates", UserWarning)
-            margin_deriv = cv_deriv * np.ones(n_eval)
+            margin_deriv = cv_deriv * xp.ones(n_eval)
 
         h_lower_deriv = main_result.deriv - margin_deriv
         h_upper_deriv = main_result.deriv + margin_deriv

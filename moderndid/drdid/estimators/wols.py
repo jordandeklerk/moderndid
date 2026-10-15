@@ -7,7 +7,7 @@ import numpy as np
 import statsmodels.api as sm
 from statsmodels.tools.sm_exceptions import MissingDataError
 
-from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.backend import _array_module, get_backend, to_numpy
 from moderndid.cupy.regression import cupy_wls
 
 from ..utils import (
@@ -79,7 +79,7 @@ def ols_panel(delta_y, d, x, i_weights):
     --------
     wols_panel : Weighted OLS for improved DR-DiD estimators (includes propensity score weighting).
     """
-    xp = get_backend()
+    xp = _array_module(x)
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, "ols_panel")
 
     control_filter = _check_panel_group(d, x, i_weights, treat=False, regressed=True)
@@ -98,7 +98,7 @@ def ols_panel(delta_y, d, x, i_weights):
         raise ValueError(_singular_comparison_message())
 
     try:
-        coefficients, sm_results = _fit_wls(control_y, control_x, control_weights)
+        coefficients, condition_number = _fit_wls(control_y, control_x, control_weights)
     except np.linalg.LinAlgError as e:
         raise ValueError(
             "Failed to solve linear system. The covariate matrix may be singular or ill-conditioned."
@@ -106,8 +106,7 @@ def ols_panel(delta_y, d, x, i_weights):
     except Exception as e:
         raise ValueError(f"Failed to fit weighted least squares model: {e}") from e
 
-    if sm_results is not None:
-        _check_wls_condition_number(sm_results)
+    _check_wls_condition_number(condition_number)
     _check_coefficients_validity(coefficients)
 
     fitted_values = x @ xp.asarray(coefficients)
@@ -165,7 +164,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     --------
     wols_rc : Weighted OLS for repeated cross-section data.
     """
-    xp = get_backend()
+    xp = _array_module(x)
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "ps": ps, "i_weights": i_weights}, x, "wols_panel")
 
     control_filter = _check_panel_group(d, x, i_weights, treat=False, regressed=True)
@@ -191,7 +190,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
         raise ValueError(_singular_comparison_message())
 
     try:
-        coefficients, sm_results = _fit_wls(control_y, control_x, control_weights)
+        coefficients, condition_number = _fit_wls(control_y, control_x, control_weights)
     except np.linalg.LinAlgError as e:
         raise ValueError(
             "Failed to solve linear system. The covariate matrix may be singular or ill-conditioned."
@@ -199,8 +198,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     except Exception as e:
         raise ValueError(f"Failed to fit weighted least squares model: {e}") from e
 
-    if sm_results is not None:
-        _check_wls_condition_number(sm_results)
+    _check_wls_condition_number(condition_number)
     _check_coefficients_validity(coefficients)
 
     fitted_values = x @ xp.asarray(coefficients)
@@ -277,6 +275,7 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     --------
     wols_panel : Weighted OLS for panel data.
     """
+    xp = _array_module(x)
     _validate_wols_arrays({"y": y, "post": post, "d": d, "ps": ps, "i_weights": i_weights}, x, "wols_rc")
 
     if pre is None:
@@ -291,7 +290,7 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
     sub_ps = ps[subs]
     problematic_ps = sub_ps == 1.0
-    if np.any(problematic_ps):
+    if xp.any(problematic_ps):
         raise ValueError("Propensity score is 1 for some units in subset. Weights would be undefined.")
 
     sub_x = x[subs]
@@ -309,10 +308,9 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
         raise ValueError(_singular_cell_message(cell, treat))
 
     try:
-        coefficients, sm_results = _fit_wls(sub_y, sub_x, sub_weights)
+        coefficients, condition_number = _fit_wls(sub_y, sub_x, sub_weights)
 
-        if sm_results is not None:
-            _check_wls_condition_number(sm_results, threshold_error=1e15, threshold_warn=1e10)
+        _check_wls_condition_number(condition_number, threshold_error=1e15, threshold_warn=1e10)
         _check_coefficients_validity(coefficients)
 
     except (np.linalg.LinAlgError, MissingDataError, ValueError, RuntimeError) as e:
@@ -321,7 +319,7 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
             "group and period."
         ) from e
 
-    return WOLSResult(out_reg=x @ coefficients, coefficients=coefficients)
+    return WOLSResult(out_reg=x @ xp.asarray(coefficients), coefficients=coefficients)
 
 
 def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
@@ -381,6 +379,7 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
     wols_rc : Weighted OLS for improved DR-DiD estimators (includes propensity score weighting).
     wols_panel : Weighted OLS for panel data.
     """
+    xp = _array_module(x)
     _validate_wols_arrays({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, "ols_rc")
 
     if pre is None:
@@ -403,10 +402,9 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
         raise ValueError(_singular_cell_message(cell, treat))
 
     try:
-        coefficients, sm_results = _fit_wls(sub_y, sub_x, sub_weights)
+        coefficients, condition_number = _fit_wls(sub_y, sub_x, sub_weights)
 
-        if sm_results is not None:
-            _check_wls_condition_number(sm_results, threshold_error=1e15, threshold_warn=1e10)
+        _check_wls_condition_number(condition_number, threshold_error=1e15, threshold_warn=1e10)
         _check_coefficients_validity(coefficients)
 
     except (np.linalg.LinAlgError, MissingDataError, ValueError, RuntimeError) as e:
@@ -415,7 +413,7 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
             "group and period."
         ) from e
 
-    return WOLSResult(out_reg=x @ coefficients, coefficients=coefficients)
+    return WOLSResult(out_reg=x @ xp.asarray(coefficients), coefficients=coefficients)
 
 
 def _fit_wls(y, X, weights):
@@ -424,11 +422,13 @@ def _fit_wls(y, X, weights):
     if xp is not np:
         design = xp.asarray(X)
         scale = _column_scales(design)
-        beta, _ = cupy_wls(xp.asarray(y), design / scale, xp.asarray(weights))
-        return to_numpy(beta / scale), None
+        beta, _, condition_number = cupy_wls(
+            xp.asarray(y), design / scale, xp.asarray(weights), return_condition_number=True
+        )
+        return to_numpy(beta / scale), condition_number
     scale = _column_scales(X)
     results = sm.WLS(y, X / scale, weights=weights).fit()
-    return results.params / scale, results
+    return results.params / scale, results.condition_number
 
 
 def _has_collinear_columns(x, weights):

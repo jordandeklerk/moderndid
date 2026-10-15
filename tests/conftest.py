@@ -6,6 +6,13 @@ import numpy as np
 import polars as pl
 import pytest
 
+from moderndid.cupy.backend import get_backend, use_backend
+
+try:
+    import cupy
+except ImportError:
+    cupy = None
+
 
 # Only numerical RuntimeWarnings and third-party warnings are suppressed globally.
 # Library UserWarnings are intentionally NOT suppressed so they remain visible
@@ -26,6 +33,16 @@ def pytest_configure(config):
     ]
     for f in filters:
         config.addinivalue_line("filterwarnings", f)
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip the tests marked gpu unless CuPy can run on a CUDA GPU."""
+    if cupy is not None and cupy.is_available():
+        return
+    skip_gpu = pytest.mark.skip(reason="needs CuPy and a CUDA GPU")
+    for item in items:
+        if item.get_closest_marker("gpu"):
+            item.add_marker(skip_gpu)
 
 
 class FixedDraws(np.random.Generator):
@@ -173,3 +190,16 @@ def did_offsetting_cohort_data():
                     y += (0.4 if unit == 250 else -0.4) * time
                 records.append({"id": unit, "t": time, "y": y, "g": cohort})
     return pl.DataFrame(records)
+
+
+@pytest.fixture(params=["numpy", pytest.param("cupy", marks=pytest.mark.gpu)])
+def xp(request):
+    """Run a test under the NumPy and CuPy backends and return the active array module."""
+    with use_backend(request.param):
+        yield get_backend()
+
+
+@pytest.fixture
+def cp():
+    """Return CuPy for a test marked gpu."""
+    return cupy

@@ -1,5 +1,13 @@
 """Shared fixtures for core tests."""
 
+import contextlib
+import importlib.util
+import shutil
+import subprocess
+import sys
+import warnings
+from unittest.mock import Mock
+
 import numpy as np
 import polars as pl
 import pytest
@@ -20,6 +28,7 @@ from moderndid import (
     load_mpdta,
 )
 from moderndid.core.preprocess.builders import PreprocessDataBuilder
+from moderndid.cupy import backend as cupy_backend
 from moderndid.did.container import AGGTEResult
 from moderndid.diddynamic.container import DynBalancingHistoryResult, DynBalancingResult
 from moderndid.drdid.drdid import drdid
@@ -535,3 +544,167 @@ def cluster_data():
     """Influence function matrix of 100 units and their cluster ids for ten clusters of ten units each."""
     rng = np.random.default_rng(42)
     return rng.standard_normal((100, 5)), np.repeat(np.arange(10), 10)
+
+
+@pytest.fixture
+def cuda_probes(monkeypatch):
+    """Report CuPy as missing and answer the nvidia-smi and nvcc probes from a mock that fails by default."""
+    probes = Mock(side_effect=FileNotFoundError("nvidia-smi"))
+    monkeypatch.setattr(cupy_backend, "HAS_CUPY", False)
+    monkeypatch.setattr(cupy_backend, "_CUPY_IMPORT_ERROR", None)
+    monkeypatch.setattr(subprocess, "check_output", probes)
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/local/cuda/bin/{name}")
+    cupy_backend._detect_cuda_version.cache_clear()
+    yield probes
+    cupy_backend._detect_cuda_version.cache_clear()
+
+
+@pytest.fixture
+def broken_cupy(tmp_path, monkeypatch):
+    """Put a CuPy package that fails to import first on the import path and return its error message."""
+    message = "libcudart.so.12: cannot open shared object file: No such file or directory"
+    package = tmp_path / "cupy"
+    package.mkdir()
+    (package / "__init__.py").write_text(f"raise ImportError({message!r})\n")
+    monkeypatch.delitem(sys.modules, "cupy", raising=False)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    return message
+
+
+@pytest.fixture
+def load_backend():
+    """Return a loader that runs a fresh copy of the backend module and its CuPy import."""
+
+    def load():
+        spec = importlib.util.spec_from_file_location("fresh_backend", cupy_backend.__file__)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    return load
+
+
+@pytest.fixture
+def recorded_warnings():
+    """Record the category name and message of every user warning raised in a block."""
+
+    @contextlib.contextmanager
+    def record():
+        found = set()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            try:
+                yield found
+            finally:
+                found.update(
+                    (w.category.__name__, str(w.message)) for w in caught if issubclass(w.category, UserWarning)
+                )
+
+    return record
+
+
+@pytest.fixture(scope="session")
+def mpdta_unbalanced(mpdta):
+    """mpdta without the 2005 rows of every seventh county."""
+    return mpdta.filter(~((pl.col("countyreal") % 7 == 0) & (pl.col("year") == 2005)))
+
+
+@pytest.fixture
+def weighted_bootstrap_inputs():
+    """Two-period arrays of 200 units with an intercept and one covariate laid out as each bootstrap takes them."""
+    rng = np.random.default_rng(12)
+    n = 200
+    x = rng.normal(size=n)
+    d = (rng.uniform(size=n) < 1 / (1 + np.exp(-0.5 * x))).astype(float)
+    y0 = 1 + x + rng.normal(size=n)
+    y1 = y0 + 0.5 + 0.5 * d + rng.normal(size=n)
+    weights = rng.uniform(0.5, 1.5, size=n)
+    covariates = np.column_stack([np.ones(n), x])
+    post = (np.arange(n) % 2).astype(float)
+    return {
+        "panel": {"delta_y": y1 - y0, "d": d, "x": covariates, "i_weights": weights},
+        "stacked_panel": {
+            "y": np.column_stack([y0, y1]).ravel(),
+            "d": np.repeat(d, 2),
+            "post": np.tile([0.0, 1.0], n),
+            "x": np.repeat(covariates, 2, axis=0),
+            "i_weights": np.repeat(weights, 2),
+        },
+        "repeated_cross_sections": {
+            "y": np.where(post == 1, y1, y0),
+            "post": post,
+            "d": d,
+            "x": covariates,
+            "i_weights": weights,
+        },
+    }
+
+
+@pytest.fixture(scope="session")
+def ddd_two_period_data():
+    """Two-period triple-difference panel of 500 units with four covariates."""
+    return gen_ddd_2periods(n=500, dgp_type=1, random_state=42)["data"]
+
+
+@pytest.fixture(scope="session")
+def iv_data():
+    """Outcome that is a sine of x and an instrument w that shifts x for 500 units."""
+    rng = np.random.default_rng(7)
+    n = 500
+    w = rng.uniform(size=n)
+    x = 0.7 * w + 0.3 * rng.uniform(size=n)
+    return {"y": np.sin(2 * x) + 0.2 * rng.normal(size=n), "x": x, "w": w}
+
+
+@pytest.fixture(scope="session")
+def cont_did_four_periods():
+    """Continuous treatment panel of 200 units over four periods with pre-treatment cells."""
+    return gen_cont_did_data(n=200, num_time_periods=4, seed=42)
+
+
+@pytest.fixture(scope="session")
+def two_period_covariate_panel():
+    """Build a two-period panel of 400 units from a treatment rule and a rule for the second covariate."""
+
+    def build(treatment, second_covariate):
+        rng = np.random.default_rng(42)
+        n = 400
+        x = rng.normal(size=n)
+        d = treatment(x, rng)
+        y0 = 1.0 + 0.5 * x + rng.normal(0, 0.5, n)
+        y1 = y0 + 0.3 * d + rng.normal(0, 0.5, n)
+        return pl.DataFrame(
+            {
+                "id": np.repeat(np.arange(n), 2),
+                "year": np.tile([2000, 2001], n),
+                "y": np.concatenate([y0, y1]),
+                "treat": np.repeat(d, 2),
+                "x": np.repeat(x, 2),
+                "x2": np.repeat(second_covariate(x, rng), 2),
+            }
+        )
+
+    return build
+
+
+@pytest.fixture(scope="session")
+def collinear_covariate_panel(two_period_covariate_panel):
+    """Two-period panel whose second covariate is twice the first."""
+    return two_period_covariate_panel(lambda x, rng: rng.binomial(1, 0.5, x.size), lambda x, rng: 2 * x)
+
+
+@pytest.fixture(scope="session")
+def separated_treatment_panel(two_period_covariate_panel):
+    """Two-period panel whose treated units are exactly those with the first covariate above 0.8."""
+    return two_period_covariate_panel(lambda x, rng: (x > 0.8).astype(int), lambda x, rng: rng.normal(size=x.size))
+
+
+@pytest.fixture
+def tiny_gpu_memory_pool(cp):
+    """Cap CuPy's default memory pool at one kilobyte and restore its limit afterwards."""
+    pool = cp.get_default_memory_pool()
+    limit = pool.get_limit()
+    pool.free_all_blocks()
+    pool.set_limit(size=1024)
+    yield
+    pool.set_limit(size=limit)

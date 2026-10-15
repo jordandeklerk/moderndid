@@ -16,7 +16,7 @@ from moderndid.core.preprocess.validators import (
     _ddd_subgroup_error,
     _duplicate_unit_period_error,
 )
-from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.backend import get_backend, to_numpy, use_backend
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from ..container import DDDRCResult
@@ -642,45 +642,48 @@ def _wboot_ddd_rc(
     ndarray
         Bootstrap estimates of shape (biters,).
     """
+    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    y, post, subgroup, covariates, i_weights = map(to_numpy, (y, post, subgroup, covariates, i_weights))
     rng = np.random.default_rng(random_state)
     n = len(y)
     boot_estimates = np.zeros(biters)
 
-    for b in range(biters):
-        if unit_idx is None:
-            boot_weights = rng.exponential(scale=1.0, size=n)
-        else:
-            boot_weights = rng.exponential(scale=1.0, size=unit_idx.max() + 1)[unit_idx]
-        boot_weights = boot_weights * i_weights
-        boot_weights = boot_weights / np.mean(boot_weights)
+    with use_backend("numpy"):
+        for b in range(biters):
+            if unit_idx is None:
+                boot_weights = rng.exponential(scale=1.0, size=n)
+            else:
+                boot_weights = rng.exponential(scale=1.0, size=unit_idx.max() + 1)[unit_idx]
+            boot_weights = boot_weights * i_weights
+            boot_weights = boot_weights / np.mean(boot_weights)
 
-        try:
-            pscores, or_results = compute_all_nuisances_rc(
-                y=y,
-                post=post,
-                subgroup=subgroup,
-                covariates=covariates,
-                weights=boot_weights,
-                est_method=est_method,
-                trim_level=trim_level,
-            )
+            try:
+                pscores, or_results = compute_all_nuisances_rc(
+                    y=y,
+                    post=post,
+                    subgroup=subgroup,
+                    covariates=covariates,
+                    weights=boot_weights,
+                    est_method=est_method,
+                    trim_level=trim_level,
+                )
 
-            _, ddd_att, _ = compute_all_did_rc(
-                y=y,
-                post=post,
-                subgroup=subgroup,
-                covariates=covariates,
-                weights=boot_weights,
-                pscores=pscores,
-                or_results=or_results,
-                est_method=est_method,
-                n_total=n,
-            )
+                _, ddd_att, _ = compute_all_did_rc(
+                    y=y,
+                    post=post,
+                    subgroup=subgroup,
+                    covariates=covariates,
+                    weights=boot_weights,
+                    pscores=pscores,
+                    or_results=or_results,
+                    est_method=est_method,
+                    n_total=n,
+                )
 
-            boot_estimates[b] = ddd_att
+                boot_estimates[b] = ddd_att
 
-        except (ValueError, np.linalg.LinAlgError):
-            boot_estimates[b] = np.nan
+            except (ValueError, np.linalg.LinAlgError):
+                boot_estimates[b] = np.nan
 
     return boot_estimates
 

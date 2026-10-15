@@ -5,6 +5,7 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
+from moderndid.cupy.backend import to_numpy
 from moderndid.didcont import (
     _quantile_basis,
     avoid_zero_division,
@@ -111,6 +112,18 @@ def test_matrix_sqrt_accepts_integer_input():
     result = matrix_sqrt(matrix)
 
     np.testing.assert_allclose(result, np.diag([2.0, 3.0]), atol=1e-12)
+
+
+def test_matrix_sqrt_returns_a_symmetric_root_in_the_array_module_of_its_input(xp):
+    a = np.random.default_rng(0).normal(size=(6, 8))
+    matrix = a @ a.T
+
+    result = matrix_sqrt(xp.asarray(matrix))
+    root = to_numpy(result)
+
+    assert isinstance(result, xp.ndarray)
+    np.testing.assert_allclose(root, root.T, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(root @ root, matrix, rtol=1e-10)
 
 
 def test_avoid_zero_division_basic():

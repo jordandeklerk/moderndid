@@ -5,8 +5,7 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from moderndid.cupy.backend import get_backend, to_numpy
-from moderndid.cupy.regression import cupy_logistic_irls
+from moderndid.cupy.backend import to_numpy, use_backend
 
 from ..propensity.ipw_estimators import ipw_rc
 from ..utils import _scaled_columns, _validate_inputs
@@ -52,52 +51,46 @@ def wboot_ipw_rc(y, post, d, x, i_weights, biters=1000, trim_level=0.995, random
     wboot_drdid_rc1 : Bootstrap for doubly robust DiD with repeated cross-sections.
     """
     n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level)
+    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)
     bootstrap_estimates = np.zeros(biters)
 
     scaled_x = _scaled_columns(x)
-    for b in range(biters):
-        v = rng.exponential(scale=1.0, size=n_units)
-        b_weights = i_weights * v
+    with use_backend("numpy"):
+        for b in range(biters):
+            v = rng.exponential(scale=1.0, size=n_units)
+            b_weights = i_weights * v
 
-        try:
-            xp = get_backend()
-            if xp is not np:
-                _, ps_b = cupy_logistic_irls(
-                    xp.asarray(d, dtype=xp.float64),
-                    xp.asarray(scaled_x, dtype=xp.float64),
-                    xp.asarray(b_weights, dtype=xp.float64),
-                )
-                ps_b = to_numpy(ps_b)
-            else:
+            try:
                 logit_model = sm.GLM(d, scaled_x, family=sm.families.Binomial(), freq_weights=b_weights)
                 logit_results = logit_model.fit()
                 ps_b = logit_results.predict(scaled_x)
-        except (ValueError, np.linalg.LinAlgError) as e:
-            warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
-            continue
+            except (ValueError, np.linalg.LinAlgError) as e:
+                warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
+                continue
 
-        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+            ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
 
-        trim_ps = np.ones_like(ps_b, dtype=bool)
-        control_mask = d == 0
-        trim_ps[control_mask] = ps_b[control_mask] < trim_level
+            trim_ps = np.ones_like(ps_b, dtype=bool)
+            control_mask = d == 0
+            trim_ps[control_mask] = ps_b[control_mask] < trim_level
 
-        try:
-            att_b = ipw_rc(
-                y=y,
-                post=post,
-                d=d,
-                ps=ps_b,
-                i_weights=b_weights,
-                trim_ps=trim_ps,
-            )
-            bootstrap_estimates[b] = att_b
-        except (ValueError, ZeroDivisionError) as e:
-            warnings.warn(f"IPW computation failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
+            try:
+                att_b = ipw_rc(
+                    y=y,
+                    post=post,
+                    d=d,
+                    ps=ps_b,
+                    i_weights=b_weights,
+                    trim_ps=trim_ps,
+                )
+                bootstrap_estimates[b] = att_b
+            except (ValueError, ZeroDivisionError) as e:
+                warnings.warn(f"IPW computation failed in bootstrap {b}: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > biters * 0.1:

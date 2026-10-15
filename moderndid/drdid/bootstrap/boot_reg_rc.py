@@ -5,8 +5,7 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from moderndid.cupy.backend import get_backend, to_numpy
-from moderndid.cupy.regression import cupy_wls
+from moderndid.cupy.backend import to_numpy, use_backend
 
 from ..estimators.wols import _check_rc_cells
 from ..utils import _scaled_columns, _validate_inputs
@@ -51,6 +50,8 @@ def wboot_reg_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
     wboot_ipw_rc : IPW bootstrap for repeated cross-sections.
     """
     n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level=0.5)
+    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
     bootstrap_estimates = np.full(biters, np.nan)
 
     # Since every draw keeps the same rows with positive weight, a group too small for the estimator fails them all.
@@ -63,24 +64,16 @@ def wboot_reg_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
     control_pre = (d == 0) & (post == 0)
     control_post = (d == 0) & (post == 1)
     scaled_x = _scaled_columns(x)
-    xp = get_backend()
     rng = np.random.RandomState(random_state)
 
-    for b in range(biters):
-        v = rng.exponential(scale=1.0, size=n_units)
-        b_weights = i_weights * v
+    with use_backend("numpy"):
+        for b in range(biters):
+            v = rng.exponential(scale=1.0, size=n_units)
+            b_weights = i_weights * v
 
-        try:
-            coefficients = []
-            for rows in (control_pre, control_post):
-                if xp is not np:
-                    beta, _ = cupy_wls(
-                        xp.asarray(y[rows], dtype=xp.float64),
-                        xp.asarray(scaled_x[rows], dtype=xp.float64),
-                        xp.asarray(b_weights[rows], dtype=xp.float64),
-                    )
-                    coefficients.append(to_numpy(beta))
-                else:
+            try:
+                coefficients = []
+                for rows in (control_pre, control_post):
                     glm = sm.GLM(
                         y[rows],
                         scaled_x[rows],
@@ -88,17 +81,17 @@ def wboot_reg_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
                         var_weights=b_weights[rows],
                     )
                     coefficients.append(glm.fit().params)
-        except (np.linalg.LinAlgError, ValueError):
-            continue
+            except (np.linalg.LinAlgError, ValueError):
+                continue
 
-        out_reg_pre_b = scaled_x @ coefficients[0]
-        out_reg_post_b = scaled_x @ coefficients[1]
+            out_reg_pre_b = scaled_x @ coefficients[0]
+            out_reg_post_b = scaled_x @ coefficients[1]
 
-        bootstrap_estimates[b] = (
-            np.sum(b_weights * d * post * y) / np.sum(b_weights * d * post)
-            - np.sum(b_weights * d * (1 - post) * y) / np.sum(b_weights * d * (1 - post))
-            - np.sum(b_weights * d * (out_reg_post_b - out_reg_pre_b)) / np.sum(b_weights * d)
-        )
+            bootstrap_estimates[b] = (
+                np.sum(b_weights * d * post * y) / np.sum(b_weights * d * post)
+                - np.sum(b_weights * d * (1 - post) * y) / np.sum(b_weights * d * (1 - post))
+                - np.sum(b_weights * d * (out_reg_post_b - out_reg_pre_b)) / np.sum(b_weights * d)
+            )
 
     n_failed = int(np.sum(np.isnan(bootstrap_estimates)))
     if n_failed > 0:

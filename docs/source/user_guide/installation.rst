@@ -55,10 +55,11 @@ estimator extra and plotting.
 .. admonition:: Install GPU dependencies separately
    :class: important
 
-   The ``gpu`` extra installs the CUDA 12 packages ``cupy-cuda12x`` and
-   ``rmm-cu12``. It needs a compatible NVIDIA CUDA environment and cannot
-   provide GPU acceleration on macOS. Follow the :doc:`GPU guide <gpu>` for
-   the hardware and installation checks before adding this extra.
+   The ``gpu`` extra installs ``cupy-cuda12x[ctk]``, the CUDA 12 build of
+   CuPy along with the CUDA libraries it needs. It requires an NVIDIA driver
+   that supports CUDA 12 or later and cannot provide GPU acceleration on
+   macOS. Follow the :doc:`GPU guide <gpu>` for the hardware and installation
+   checks before adding this extra.
 
 .. tab-set::
 

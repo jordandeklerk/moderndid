@@ -94,17 +94,18 @@ def matrix_sqrt(x):
     ndarray
         Matrix square root such that :math:`result @ result.T ≈ x`.
     """
-    x = np.asarray(x)
+    xp = _array_module(x)
+    x = xp.asarray(x)
 
     if x.ndim != 2:
         raise ValueError("Input must be a 2D array")
     if x.shape[0] != x.shape[1]:
         raise ValueError("Input must be a square matrix")
 
-    eigenvalues, eigenvectors = np.linalg.eigh(np.asarray(x, dtype=np.float64))
-    sqrt_eigenvalues = np.sqrt(np.maximum(eigenvalues, 0))
+    eigenvalues, eigenvectors = xp.linalg.eigh(xp.asarray(x, dtype=xp.float64))
+    sqrt_eigenvalues = xp.sqrt(xp.maximum(eigenvalues, 0))
 
-    return eigenvectors @ np.diag(sqrt_eigenvalues) @ eigenvectors.T
+    return eigenvectors @ xp.diag(sqrt_eigenvalues) @ eigenvectors.T
 
 
 def avoid_zero_division(a, eps=None):

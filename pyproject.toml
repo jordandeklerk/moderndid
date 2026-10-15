@@ -81,8 +81,7 @@ plots = [
     "plotnine>=0.14.0",
 ]
 gpu = [
-    "cupy-cuda12x>=13.0",
-    "rmm-cu12>=24.04",
+    "cupy-cuda12x[ctk]>=14.0",
 ]
 all = [
     "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots]",
@@ -202,6 +201,7 @@ testpaths = [
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "benchmark: marks benchmark tests",
+    "gpu: marks tests that need CuPy and a CUDA GPU (select with '-m gpu')",
 ]
 
 [tool.coverage.run]

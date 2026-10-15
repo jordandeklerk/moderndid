@@ -25,6 +25,11 @@ needs.
    changes since the previous tag affect. You can trigger the weekly full-suite
    workflow manually when its latest run doesn't cover the candidate.
 
+GPU code needs a check of its own because no pull request runs the GPU tests
+workflow. If the changes since the previous tag touch the CuPy backend, an
+estimator's GPU route, or the ``gpu`` extra, start that workflow on ``main``
+and wait for it to pass before tagging.
+
 Build and read the documentation using the scratch procedure in :doc:`guide`.
 If an example uses a stored result, confirm that it was recomputed after any
 change to the call, estimator, or result structure. A cached output is not

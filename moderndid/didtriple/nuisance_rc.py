@@ -12,7 +12,7 @@ from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 from moderndid.drdid.utils import _divide_by_complement
 
-from .utils import check_overlap_and_warn, get_comparison_description
+from .utils import _logit_cov_params, check_overlap_and_warn, get_comparison_description
 
 
 class PScoreRCResult(NamedTuple):
@@ -487,21 +487,13 @@ def _compute_inf_func_rc(
         wols_x_pre = weights_ols_pre[:, None] * sub_covariates
         wols_eX_pre = (weights_ols_pre * (sub_y - out_y_cont_pre))[:, None] * sub_covariates
         XpX_pre = (wols_x_pre.T @ sub_covariates) / n_sub
-
-        s = xp.linalg.svd(XpX_pre, compute_uv=False)
-        cond_pre = s[0] / s[-1] if s[-1] > 0 else float("inf")
-        XpX_inv_pre = xp.linalg.pinv(XpX_pre) if cond_pre > 1 / xp.finfo(float).eps else xp.linalg.inv(XpX_pre)
-        asy_lin_rep_ols_pre = wols_eX_pre @ XpX_inv_pre
+        asy_lin_rep_ols_pre = wols_eX_pre @ _invert_gram(xp, XpX_pre)
 
         weights_ols_post = sub_weights * pa_comp * sub_post
         wols_x_post = weights_ols_post[:, None] * sub_covariates
         wols_eX_post = (weights_ols_post * (sub_y - out_y_cont_post))[:, None] * sub_covariates
         XpX_post = (wols_x_post.T @ sub_covariates) / n_sub
-
-        s = xp.linalg.svd(XpX_post, compute_uv=False)
-        cond_post = s[0] / s[-1] if s[-1] > 0 else float("inf")
-        XpX_inv_post = xp.linalg.pinv(XpX_post) if cond_post > 1 / xp.finfo(float).eps else xp.linalg.inv(XpX_post)
-        asy_lin_rep_ols_post = wols_eX_post @ XpX_inv_post
+        asy_lin_rep_ols_post = wols_eX_post @ _invert_gram(xp, XpX_post)
 
         inf_control_1 = reg_att_control - w_reg_control * eta_reg_control
         M1 = xp.mean((w_reg_control)[:, None] * sub_covariates, axis=0)
@@ -542,21 +534,13 @@ def _compute_inf_func_rc(
         weighted_x_pre = weights_ols_pre[:, None] * sub_covariates
         weighted_resid_x_pre = (weights_ols_pre * (sub_y - out_y_cont_pre))[:, None] * sub_covariates
         gram_pre = (weighted_x_pre.T @ sub_covariates) / n_sub
-
-        s = xp.linalg.svd(gram_pre, compute_uv=False)
-        cond_pre = s[0] / s[-1] if s[-1] > 0 else float("inf")
-        gram_inv_pre = xp.linalg.pinv(gram_pre) if cond_pre > 1 / xp.finfo(float).eps else xp.linalg.inv(gram_pre)
-        asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
+        asy_lin_rep_ols_pre = weighted_resid_x_pre @ _invert_gram(xp, gram_pre)
 
         weights_ols_post = sub_weights * pa_comp * sub_post
         weighted_x_post = weights_ols_post[:, None] * sub_covariates
         weighted_resid_x_post = (weights_ols_post * (sub_y - out_y_cont_post))[:, None] * sub_covariates
         gram_post = (weighted_x_post.T @ sub_covariates) / n_sub
-
-        s = xp.linalg.svd(gram_post, compute_uv=False)
-        cond_post = s[0] / s[-1] if s[-1] > 0 else float("inf")
-        gram_inv_post = xp.linalg.pinv(gram_post) if cond_post > 1 / xp.finfo(float).eps else xp.linalg.inv(gram_post)
-        asy_lin_rep_ols_post = weighted_resid_x_post @ gram_inv_post
+        asy_lin_rep_ols_post = weighted_resid_x_post @ _invert_gram(xp, gram_post)
 
         weights_ols_pre_treat = sub_weights * pa4 * (1 - sub_post)
         weighted_x_pre_treat = weights_ols_pre_treat[:, None] * sub_covariates
@@ -565,13 +549,7 @@ def _compute_inf_func_rc(
         sum_pre_treat = xp.sum(weights_ols_pre_treat)
         if sum_pre_treat > 0:
             gram_pre_treat = (weighted_x_pre_treat.T @ sub_covariates) / n_sub
-            s = xp.linalg.svd(gram_pre_treat, compute_uv=False)
-            cond_pre_treat = s[0] / s[-1] if s[-1] > 0 else float("inf")
-            if cond_pre_treat > 1 / xp.finfo(float).eps:
-                gram_inv_pre_treat = xp.linalg.pinv(gram_pre_treat)
-            else:
-                gram_inv_pre_treat = xp.linalg.inv(gram_pre_treat)
-            asy_lin_rep_ols_pre_treat = weighted_resid_x_pre_treat @ gram_inv_pre_treat
+            asy_lin_rep_ols_pre_treat = weighted_resid_x_pre_treat @ _invert_gram(xp, gram_pre_treat)
         else:
             asy_lin_rep_ols_pre_treat = xp.zeros((n_sub, sub_covariates.shape[1]))
 
@@ -582,13 +560,7 @@ def _compute_inf_func_rc(
         sum_post_treat = xp.sum(weights_ols_post_treat)
         if sum_post_treat > 0:
             gram_post_treat = (weighted_x_post_treat.T @ sub_covariates) / n_sub
-            s = xp.linalg.svd(gram_post_treat, compute_uv=False)
-            cond_post_treat = s[0] / s[-1] if s[-1] > 0 else float("inf")
-            if cond_post_treat > 1 / xp.finfo(float).eps:
-                gram_inv_post_treat = xp.linalg.pinv(gram_post_treat)
-            else:
-                gram_inv_post_treat = xp.linalg.inv(gram_post_treat)
-            asy_lin_rep_ols_post_treat = weighted_resid_x_post_treat @ gram_inv_post_treat
+            asy_lin_rep_ols_post_treat = weighted_resid_x_post_treat @ _invert_gram(xp, gram_post_treat)
         else:
             asy_lin_rep_ols_post_treat = xp.zeros((n_sub, sub_covariates.shape[1]))
 
@@ -629,6 +601,15 @@ def _compute_inf_func_rc(
     return inf_func
 
 
+def _invert_gram(xp, gram):
+    """Invert a small Gram matrix on the host and take the pseudo-inverse when it is nearly singular."""
+    # Since NumPy decides and inverts on the host, a GPU run takes the branch and values of a CPU run.
+    gram = to_numpy(gram)
+    s = np.linalg.svd(gram, compute_uv=False)
+    cond = s[0] / s[-1] if s[-1] > 0 else float("inf")
+    return xp.asarray(np.linalg.pinv(gram) if cond > 1 / np.finfo(float).eps else np.linalg.inv(gram))
+
+
 def _compute_pscore_rc(xp, subgroup, _post, covariates, weights, comparison_subgroup, trim_level=0.995):
     """Compute propensity scores for a subgroup comparison with RCS."""
     if comparison_subgroup not in [1, 2, 3]:
@@ -643,11 +624,20 @@ def _compute_pscore_rc(xp, subgroup, _post, covariates, weights, comparison_subg
 
     if xp is not np:
         try:
-            beta, ps_fit = cupy_logistic_irls(
+            beta, ps_fit, converged = cupy_logistic_irls(
                 xp.asarray(pa4, dtype=xp.float64),
                 xp.asarray(sub_covariates, dtype=xp.float64),
                 xp.asarray(sub_weights, dtype=xp.float64),
+                return_converged=True,
             )
+            if not converged:
+                comparison_desc = get_comparison_description(comparison_subgroup)
+                warnings.warn(
+                    f"Propensity score model did not converge.\n"
+                    f"  Comparison: {comparison_desc} units.\n"
+                    f"  Consider using fewer covariates or checking for separation issues.",
+                    UserWarning,
+                )
             if xp.any(xp.isnan(beta)):
                 comparison_desc = get_comparison_description(comparison_subgroup)
                 raise ValueError(
@@ -655,7 +645,9 @@ def _compute_pscore_rc(xp, subgroup, _post, covariates, weights, comparison_subg
                     f"  Comparison: {comparison_desc} units.\n"
                     f"  This is likely due to multicollinearity among covariates."
                 )
-        except (np.linalg.LinAlgError, RuntimeError) as e:
+            n_sub = len(sub_weights)
+            hessian_matrix = _logit_cov_params(xp, sub_covariates, sub_weights, ps_fit) * n_sub
+        except np.linalg.LinAlgError as e:
             raise ValueError(
                 f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
             ) from e
@@ -665,11 +657,6 @@ def _compute_pscore_rc(xp, subgroup, _post, covariates, weights, comparison_subg
         keep_ps = xp.ones(len(pa4), dtype=bool)
         keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
         ps_fit = xp.minimum(ps_fit, 1 - 1e-6)
-
-        n_sub = len(sub_weights)
-        W = sub_weights * ps_fit * (1 - ps_fit)
-        hessian_ps = sub_covariates.T @ (W[:, None] * sub_covariates)
-        hessian_matrix = xp.linalg.inv(hessian_ps) * n_sub
 
         return PScoreRCResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 

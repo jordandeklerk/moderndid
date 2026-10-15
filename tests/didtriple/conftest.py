@@ -641,3 +641,40 @@ def two_period_one_missing_df(request, two_period_df):
     """Two-period panel with a missing value in the column request.param of the period-2 row of unit 11."""
     row = (pl.col("id") == 11) & (pl.col("time") == 2)
     return two_period_df.with_columns(pl.when(row).then(None).otherwise(pl.col(request.param)).alias(request.param))
+
+
+@pytest.fixture
+def two_period_panel_arrays(ddd_data_with_covariates):
+    """Two-period panel DDD arrays with an intercept and four covariates."""
+    ddd_data, covariates = ddd_data_with_covariates
+    return {"y1": ddd_data.y1, "y0": ddd_data.y0, "subgroup": ddd_data.subgroup, "covariates": covariates}
+
+
+@pytest.fixture
+def panel_treated_state_zero_covariate_arrays(two_period_panel_arrays):
+    """Panel arrays with a fifth covariate that is zero for every unit of the treated state."""
+    subgroup = two_period_panel_arrays["subgroup"]
+    noise = np.random.default_rng(0).normal(size=len(subgroup))
+    covariates = np.column_stack([two_period_panel_arrays["covariates"], np.where(subgroup >= 3, 0.0, noise)])
+    return two_period_panel_arrays | {"covariates": covariates}
+
+
+@pytest.fixture
+def two_period_rcs_arrays():
+    """Two-period repeated cross-section DDD arrays with an intercept and four covariates."""
+    data = gen_ddd_2periods(n=1000, dgp_type=1, panel=False, random_state=42)["data"]
+    return {
+        "y": data["y"].to_numpy(),
+        "post": (data["time"] == 2).cast(pl.Int64).to_numpy(),
+        "subgroup": 1 + data["partition"].to_numpy() + 2 * data["state"].to_numpy(),
+        "covariates": np.column_stack([np.ones(data.height), data.select("cov1", "cov2", "cov3", "cov4").to_numpy()]),
+    }
+
+
+@pytest.fixture
+def rcs_treated_state_zero_covariate_arrays(two_period_rcs_arrays):
+    """Repeated cross-section arrays with a fifth covariate that is zero for every observation of the treated state."""
+    subgroup = two_period_rcs_arrays["subgroup"]
+    noise = np.random.default_rng(0).normal(size=len(subgroup))
+    covariates = np.column_stack([two_period_rcs_arrays["covariates"], np.where(subgroup >= 3, 0.0, noise)])
+    return two_period_rcs_arrays | {"covariates": covariates}

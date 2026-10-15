@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from moderndid import mboot_did
+from moderndid.cupy.backend import use_backend
 
 pytestmark = pytest.mark.slow
 
@@ -116,15 +117,17 @@ def test_mboot_did_draws_mammen_weights():
     np.testing.assert_allclose([np.mean(boots), np.var(boots), np.mean(boots**3)], [0.0, 1.0, 1.0], atol=0.03)
 
 
-@pytest.mark.parametrize("seed_with_generator", [False, True], ids=["int_seed", "generator_seed"])
-def test_mboot_did_gpu_branch_draws_the_same_mammen_weights(numpy_as_gpu_backend, seed_with_generator):
+@pytest.mark.gpu
+@pytest.mark.parametrize("seed_type", [int, np.random.default_rng], ids=["int_seed", "generator_seed"])
+def test_mboot_did_on_gpu_draws_mammen_weights(cp, seed_type):
     sqrt5 = np.sqrt(5)
-    linrep = np.random.default_rng(0).normal(size=50)
-    seed = np.random.default_rng(1).integers(np.iinfo(np.int64).max) if seed_with_generator else 42
-    draws = np.random.default_rng(seed).binomial(1, (1 + sqrt5) / (2 * sqrt5), size=(20, 50))
-    expected = np.where(draws == 1, (1 - sqrt5) / 2, (1 + sqrt5) / 2) @ linrep / 50
+    linrep = cp.asarray([1.0])
 
-    random_state = np.random.default_rng(1) if seed_with_generator else 42
-    boots = mboot_did(linrep, biters=20, random_state=random_state)
+    with use_backend("cupy"):
+        boots = mboot_did(linrep, biters=100000, random_state=seed_type(3))
+        repeated = mboot_did(linrep, biters=100000, random_state=seed_type(3))
 
-    np.testing.assert_allclose(boots, expected, rtol=1e-12)
+    assert isinstance(boots, np.ndarray)
+    assert set(np.unique(boots)) == {(1 - sqrt5) / 2, (1 + sqrt5) / 2}
+    np.testing.assert_allclose(np.mean(boots < 0), (1 + sqrt5) / (2 * sqrt5), atol=0.007)
+    np.testing.assert_array_equal(repeated, boots)

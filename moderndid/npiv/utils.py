@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from moderndid.cupy.backend import get_backend
+from moderndid.cupy.backend import _array_module, get_backend
 
 from .container import FullRankCheckResult
 
@@ -95,14 +95,14 @@ def matrix_sqrt(x):
     ndarray
         Matrix square root such that :math:`result @ result.T ≈ x`.
     """
-    x = np.asarray(x)
+    xp = _array_module(x)
+    x = xp.asarray(x)
 
     if x.ndim != 2:
         raise ValueError("Input must be a 2D array")
     if x.shape[0] != x.shape[1]:
         raise ValueError("Input must be a square matrix")
 
-    xp = get_backend()
     eigenvalues, eigenvectors = xp.linalg.eigh(x)
     sqrt_eigenvalues = xp.sqrt(xp.maximum(eigenvalues, 0))
 

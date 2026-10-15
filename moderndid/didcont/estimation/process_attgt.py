@@ -7,7 +7,7 @@ import scipy.stats
 
 from moderndid.did.mboot import _mboot
 
-from ...cupy.backend import get_backend, to_numpy
+from ...cupy.backend import to_numpy
 from ..container import GroupTimeATTResult
 
 
@@ -91,11 +91,10 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
         warnings.warn("Not returning pre-test Wald statistic due to singular covariance matrix", UserWarning)
     else:
         try:
-            xp = get_backend()
-            wald_stat = float(n_units * pre_att.T @ xp.linalg.solve(pre_vcov, pre_att))
+            wald_stat = float(n_units * pre_att.T @ np.linalg.solve(to_numpy(pre_vcov), pre_att))
             n_restrictions = len(pre_indices)
             wald_pvalue = 1 - scipy.stats.chi2.cdf(wald_stat, n_restrictions)
-        except (np.linalg.LinAlgError, Exception):  # noqa: BLE001
+        except np.linalg.LinAlgError:
             warnings.warn("Could not compute Wald statistic due to numerical issues", UserWarning)
 
     time_map = _period_labels(pte_params)
