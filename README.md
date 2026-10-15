@@ -6,6 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-315bc4.svg)](https://github.com/jordandeklerk/moderndid/blob/main/LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/moderndid.svg?color=315bc4)](https://pypi.org/project/moderndid/)
+[![Python versions](https://img.shields.io/pypi/pyversions/moderndid.svg?color=315bc4)](https://pypi.org/project/moderndid/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Code coverage](https://codecov.io/gh/jordandeklerk/moderndid/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/moderndid)
 [![Build status](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml)
