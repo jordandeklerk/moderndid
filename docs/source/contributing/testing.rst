@@ -182,8 +182,8 @@ problems in the calculation you're trying to check.
 Tests that require an optional dependency can use
 ``tests.helpers.importorskip`` at module level. Since a missing dependency
 normally skips that file, keep those tests separate from checks that should run
-with the base package. GPU tests also need a usable device and runtime because
-importing the backend alone does not establish that a computation can run.
+with the base package. GPU tests are the exception because they reach CuPy
+through :ref:`fixtures of their own <testing-gpu>`.
 
 Setting the ``MODERNDID_REQUIRE_ALL_DEPS`` environment variable makes
 ``importorskip`` raise the import error instead of skipping. Because a skipped
@@ -203,6 +203,113 @@ the reason.
    An expected failure should point to an unresolved issue and use
    ``strict=True``. An unexpected pass then calls attention to a marker that
    may no longer belong there.
+
+.. _testing-gpu:
+
+Testing on a GPU
+================
+
+Although most machines that run the test suite have no GPU, the CuPy backend
+and the estimators' GPU routes need tests that run on a real one. We write each
+GPU test once so that it skips on those machines and runs on your own NVIDIA
+GPU or on a cloud GPU from Modal.
+
+Writing a GPU test
+------------------
+
+``pyproject.toml`` registers the ``gpu`` marker for tests that need a GPU.
+Unless CuPy is installed and ``cupy.is_available()`` finds a CUDA GPU,
+``tests/conftest.py`` skips each marked test and reports the reason
+``needs CuPy and a CUDA GPU``. Neither the development environment nor the pull
+request checks install CuPy. A test module therefore never imports it and takes
+it from a fixture instead.
+
+A check against an independent reference, such as statsmodels, NumPy's linear
+algebra, or a closed form, takes the ``xp`` fixture. With only its CuPy case
+marked, a test that takes the fixture runs under NumPy on every machine and
+under CuPy only where CuPy can reach a GPU. The fixture activates the backend
+for the whole test and yields its array module.
+
+The test below builds its inputs with ``xp.asarray`` and compares the
+coefficients that ``cupy_wls`` fits with those from statsmodels. Because the
+function should return arrays of the active backend, the test asserts the type
+of its coefficients before ``to_numpy`` from ``moderndid.cupy.backend`` moves
+them to the host for the comparison.
+
+.. code-block:: python
+
+   import numpy as np
+   import statsmodels.api as sm
+
+   from moderndid.cupy.backend import to_numpy
+   from moderndid.cupy.regression import cupy_wls
+
+
+   def test_cupy_wls_matches_statsmodels(xp):
+       rng = np.random.default_rng(42)
+       design = np.column_stack([np.ones(200), rng.normal(size=200)])
+       outcome = design @ np.array([1.0, 2.0]) + rng.normal(size=200)
+       weights = rng.uniform(0.5, 2.0, size=200)
+
+       beta, _ = cupy_wls(
+           xp.asarray(outcome), xp.asarray(design), xp.asarray(weights)
+       )
+       expected = sm.WLS(outcome, design, weights=weights).fit().params
+
+       assert isinstance(beta, xp.ndarray)
+       np.testing.assert_allclose(to_numpy(beta), expected, rtol=1e-10)
+
+A test that compares a GPU run with the CPU run of the same call carries the
+marker alone. It runs the call under the default NumPy backend and again inside
+``use_backend("cupy")``, or with ``backend="cupy"`` where the function takes
+that argument. Estimators, bootstraps, and the warnings a fit raises are
+usually checked this way. The ``cp`` fixture supplies CuPy for device inputs
+and type checks. Giving such a test the ``xp`` fixture would only add a NumPy
+case that compares NumPy with itself.
+
+Allowing for rounding and random draws
+--------------------------------------
+
+Results on a GPU differ from the CPU's in their last bits because cuBLAS,
+cuSOLVER, and CuPy's reductions round differently from LAPACK and NumPy. Every
+tolerance in a GPU test should leave room for that difference. Inputs also
+need a clear margin from any threshold the code applies, such as the cutoff
+that decides whether a design counts as singular.
+
+Since CuPy's random generator draws different numbers from NumPy's for the
+same seed, a bootstrap on the GPU can't match the CPU draw for draw. Its test
+compares the distribution of the draws through summaries such as their
+support, their mean, or a standard error checked with a loose tolerance. A
+step that runs on the CPU by design, such as a weighted bootstrap, can still
+match the NumPy run exactly when a test calls it directly.
+
+Running GPU tests
+-----------------
+
+On Linux with an NVIDIA GPU, you can run the marked tests in the ``gpu`` Pixi
+environment. It adds CuPy to the development environment and exists only for
+``linux-64``. Because a run in which every GPU test skipped proves nothing about
+the GPU code, the command below passes ``-ra`` to list each skipped test with
+its reason.
+
+.. code-block:: bash
+
+   pixi run -e gpu pytest -m gpu -ra
+
+Without a GPU of your own, you can run the same tests on a T4 GPU through
+Modal. The commands below install its command line client, sign you in, and
+start the run from the repository root.
+
+.. code-block:: bash
+
+   uv tool install modal
+   modal setup
+   modal run .github/scripts/gpu_tests.py
+
+Modal bills the run's GPU time to your own account. The script builds the test
+environment from ``uv.lock`` and mounts ``moderndid/``, ``tests/``, and
+``pyproject.toml`` from your checkout. Before running ``pytest -m gpu``, it
+checks that CuPy can see the GPU and fails when CuPy can't.
 
 Understanding automated checks
 ==============================
@@ -227,6 +334,15 @@ despite its ``nightly`` name. It selects ``tox -e nightly`` to test against
 nightly and prerelease builds of scientific Python dependencies. You can run the
 same command locally wherever Tox is installed. CodeQL scans Python on pull
 requests, pushes to ``main``, and its weekly schedule.
+
+The GPU tests workflow in ``.github/workflows/gpu.yml`` runs the Modal script
+from a GitHub runner on Sunday at 04:00 UTC and can also be started manually.
+It reads the Modal token from the ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET``
+secrets of a GitHub environment named ``gpu``. That environment's deployment
+branch rule allows only ``main`` to use them. A maintainer also sets a monthly
+budget for the Modal workspace in Modal's settings. Because pull requests don't
+run this workflow, a reviewer runs ``modal run`` on any branch that changes GPU
+code.
 
 A failed job gives the command and environment you need to reproduce it.
 Include that evidence and your focused local checks in the pull request so a

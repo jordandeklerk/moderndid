@@ -201,6 +201,7 @@ testpaths = [
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "benchmark: marks benchmark tests",
+    "gpu: marks tests that need CuPy and a CUDA GPU (select with '-m gpu')",
 ]
 
 [tool.coverage.run]

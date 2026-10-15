@@ -1,355 +1,368 @@
-"""Tests for the CuPy backend and the GPU-accelerated operations on a CUDA GPU."""
+"""Tests for the estimators on a CUDA GPU against the same calls on the CPU."""
 
-from unittest.mock import patch
+import re
 
 import numpy as np
 import pytest
 
-import moderndid
-from moderndid.core.bootstrap import compute_column_std, multiplier_bootstrap
-from moderndid.cupy.backend import get_backend, set_backend, to_device, to_numpy, use_backend
-from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
-from moderndid.did.mboot import mboot
-from tests.helpers import importorskip
+from moderndid import (
+    att_gt,
+    cont_did,
+    ddd,
+    drdid,
+    ipwdid,
+    mboot,
+    npiv,
+    ordid,
+    wboot_dr_tr_panel,
+    wboot_drdid_imp_panel,
+    wboot_drdid_ipt_rc1,
+    wboot_drdid_ipt_rc2,
+    wboot_drdid_rc1,
+    wboot_drdid_rc2,
+    wboot_ipw_panel,
+    wboot_ipw_rc,
+    wboot_reg_panel,
+    wboot_reg_rc,
+    wboot_std_ipw_panel,
+    wboot_std_ipw_rc,
+    wboot_twfe_panel,
+    wboot_twfe_rc,
+)
+from moderndid.cupy.backend import get_backend, use_backend
 
-cp = importorskip("cupy")
-
-
-def _has_cuda_gpu():
-    try:
-        set_backend("cupy")
-        set_backend("numpy")
-        return True
-    except RuntimeError:
-        return False
-
-
-requires_gpu = pytest.mark.skipif(not _has_cuda_gpu(), reason="No CUDA GPU available")
-
-
-@requires_gpu
-def test_set_cupy_backend():
-    set_backend("cupy")
-    assert get_backend() is cp
-    set_backend("numpy")
-
-
-@requires_gpu
-def test_to_device_cupy():
-    set_backend("cupy")
-    arr = np.array([1.0, 2.0, 3.0])
-    result = to_device(arr)
-    assert isinstance(result, cp.ndarray)
-    np.testing.assert_array_equal(cp.asnumpy(result), arr)
-    set_backend("numpy")
+pytestmark = pytest.mark.gpu
 
 
-@requires_gpu
-def test_to_numpy_cupy():
-    gpu_arr = cp.array([1.0, 2.0, 3.0])
-    result = to_numpy(gpu_arr)
-    assert isinstance(result, np.ndarray)
-    np.testing.assert_array_equal(result, [1.0, 2.0, 3.0])
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+@pytest.mark.parametrize(
+    "data_fixture,layout",
+    [
+        ("mpdta", {}),
+        ("mpdta", {"panel": False}),
+        ("mpdta_unbalanced", {"allow_unbalanced_panel": True}),
+    ],
+    ids=["balanced_panel", "repeated_cross_sections", "unbalanced_panel"],
+)
+def test_att_gt_on_gpu_matches_cpu(request, data_fixture, layout, est_method):
+    spec = {
+        "data": request.getfixturevalue(data_fixture),
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~ lpop",
+        "est_method": est_method,
+        "boot": False,
+        "cband": False,
+        **layout,
+    }
+
+    cpu = att_gt(**spec)
+    gpu = att_gt(**spec, backend="cupy")
+
+    assert get_backend() is np
+    assert np.all(np.isfinite(cpu.se_gt))
+    np.testing.assert_allclose(gpu.att_gt, cpu.att_gt, rtol=1e-8)
+    np.testing.assert_allclose(gpu.se_gt, cpu.se_gt, rtol=1e-6)
 
 
-@requires_gpu
-def test_roundtrip_numpy_cupy():
-    set_backend("cupy")
-    arr = np.array([[1.0, 2.0], [3.0, 4.0]])
-    on_gpu = to_device(arr)
-    assert isinstance(on_gpu, cp.ndarray)
-    back_cpu = to_numpy(on_gpu)
-    assert isinstance(back_cpu, np.ndarray)
-    np.testing.assert_array_equal(back_cpu, arr)
-    set_backend("numpy")
+def test_att_gt_repeated_cross_sections_multiplier_bootstrap_on_gpu_matches_cpu_loosely(mpdta):
+    spec = {
+        "data": mpdta,
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~ lpop",
+        "est_method": "dr",
+        "panel": False,
+        "boot": True,
+        "biters": 999,
+        "random_state": 7,
+    }
+
+    cpu = att_gt(**spec)
+    gpu = att_gt(**spec, backend="cupy")
+
+    assert np.all(np.isfinite(cpu.se_gt))
+    np.testing.assert_allclose(gpu.att_gt, cpu.att_gt, rtol=1e-8)
+    np.testing.assert_allclose(gpu.se_gt, cpu.se_gt, rtol=0.3)
 
 
-@requires_gpu
-def test_cupy_vs_cpu_wls():
-    set_backend("numpy")
-    rng = np.random.default_rng(99)
-    n, k = 500, 4
-    X = np.column_stack([np.ones(n), rng.standard_normal((n, k - 1))])
-    beta_true = np.array([1.0, -2.0, 0.5, 3.0])
-    y = X @ beta_true + rng.standard_normal(n) * 0.3
-    weights = rng.uniform(0.1, 3.0, n)
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+@pytest.mark.parametrize("panel", [True, False], ids=["panel", "repeated_cross_sections"])
+def test_drdid_on_gpu_matches_cpu(drdid_panel_data, panel, est_method):
+    spec = {
+        "data": drdid_panel_data,
+        "yname": "y",
+        "tname": "year",
+        "idname": "id",
+        "treatname": "treat",
+        "xformla": "~ x",
+        "panel": panel,
+        "est_method": est_method,
+    }
 
-    beta_cpu, fitted_cpu = cupy_wls(y, X, weights)
+    cpu = drdid(**spec)
+    with use_backend("cupy"):
+        gpu = drdid(**spec)
 
-    set_backend("cupy")
-    beta_gpu, fitted_gpu = cupy_wls(cp.asarray(y), cp.asarray(X), cp.asarray(weights))
-    beta_gpu = to_numpy(beta_gpu)
-    fitted_gpu = to_numpy(fitted_gpu)
-
-    np.testing.assert_allclose(beta_gpu, beta_cpu, rtol=1e-5)
-    np.testing.assert_allclose(fitted_gpu, fitted_cpu, rtol=1e-5)
-    set_backend("numpy")
-
-
-@requires_gpu
-def test_cupy_vs_cpu_logistic():
-    set_backend("numpy")
-    rng = np.random.default_rng(55)
-    n = 400
-    x1 = rng.standard_normal(n)
-    prob = 1.0 / (1.0 + np.exp(-(1.0 + 1.0 * x1)))
-    y = rng.binomial(1, prob).astype(np.float64)
-    X = np.column_stack([np.ones(n), x1])
-    weights = np.ones(n)
-
-    beta_cpu, mu_cpu = cupy_logistic_irls(y, X, weights)
-
-    set_backend("cupy")
-    beta_gpu, mu_gpu = cupy_logistic_irls(cp.asarray(y), cp.asarray(X), cp.asarray(weights))
-    beta_gpu = to_numpy(beta_gpu)
-    mu_gpu = to_numpy(mu_gpu)
-
-    np.testing.assert_allclose(beta_gpu, beta_cpu, rtol=1e-4)
-    np.testing.assert_allclose(mu_gpu, mu_cpu, rtol=1e-4)
-    set_backend("numpy")
+    assert np.isfinite(cpu.se)
+    np.testing.assert_allclose(gpu.att, cpu.att, rtol=1e-8)
+    np.testing.assert_allclose(gpu.se, cpu.se, rtol=1e-6)
 
 
-@requires_gpu
-def test_multiplier_bootstrap_on_gpu_draws_balanced_independent_signs():
-    n_units = 40
-    inf_func = n_units * np.eye(n_units)
+@pytest.mark.parametrize("transfer", ["asarray", "asnumpy"], ids=["device_inputs", "host_inputs"])
+@pytest.mark.parametrize(
+    "bootstrap,layout",
+    [
+        pytest.param(wboot_drdid_imp_panel, "panel", id="drdid_imp_panel"),
+        pytest.param(wboot_dr_tr_panel, "panel", id="dr_tr_panel"),
+        pytest.param(wboot_ipw_panel, "panel", id="ipw_panel"),
+        pytest.param(wboot_std_ipw_panel, "panel", id="std_ipw_panel"),
+        pytest.param(wboot_reg_panel, "panel", id="reg_panel"),
+        pytest.param(wboot_twfe_panel, "stacked_panel", id="twfe_panel"),
+        pytest.param(wboot_drdid_rc1, "repeated_cross_sections", id="drdid_rc1"),
+        pytest.param(wboot_drdid_rc2, "repeated_cross_sections", id="drdid_rc2"),
+        pytest.param(wboot_drdid_ipt_rc1, "repeated_cross_sections", id="drdid_ipt_rc1"),
+        pytest.param(wboot_drdid_ipt_rc2, "repeated_cross_sections", id="drdid_ipt_rc2"),
+        pytest.param(wboot_ipw_rc, "repeated_cross_sections", id="ipw_rc"),
+        pytest.param(wboot_std_ipw_rc, "repeated_cross_sections", id="std_ipw_rc"),
+        pytest.param(wboot_reg_rc, "repeated_cross_sections", id="reg_rc"),
+        pytest.param(wboot_twfe_rc, "repeated_cross_sections", id="twfe_rc"),
+    ],
+)
+def test_weighted_bootstrap_on_gpu_matches_cpu_exactly(cp, weighted_bootstrap_inputs, bootstrap, layout, transfer):
+    inputs = weighted_bootstrap_inputs[layout]
+    gpu_inputs = {name: getattr(cp, transfer)(value) for name, value in inputs.items()}
+
+    cpu = bootstrap(**inputs, biters=20, random_state=3)
+    with use_backend("cupy"):
+        gpu = bootstrap(**gpu_inputs, biters=20, random_state=3)
+
+    assert np.all(np.isfinite(cpu))
+    assert np.ptp(cpu) > 0
+    np.testing.assert_array_equal(cp.asnumpy(gpu), cpu)
+
+
+@pytest.mark.parametrize("estimator", [drdid, ipwdid, ordid], ids=["drdid", "ipwdid", "ordid"])
+@pytest.mark.parametrize("panel", [True, False], ids=["panel", "repeated_cross_sections"])
+def test_two_period_weighted_bootstrap_on_gpu_returns_finite_standard_error(drdid_panel_data, estimator, panel):
+    spec = {
+        "data": drdid_panel_data,
+        "yname": "y",
+        "tname": "year",
+        "idname": "id",
+        "treatname": "treat",
+        "xformla": "~ x",
+        "panel": panel,
+        "boot": True,
+        "boot_type": "weighted",
+        "biters": 20,
+    }
 
     with use_backend("cupy"):
-        draws = multiplier_bootstrap(inf_func, biters=500, random_state=42)
+        result = estimator(**spec)
 
-    assert isinstance(draws, np.ndarray)
-    np.testing.assert_array_equal(np.abs(draws), np.ones((500, n_units)))
-    np.testing.assert_allclose(draws.mean(axis=0), 0.0, atol=0.25)
-    np.testing.assert_allclose(np.corrcoef(draws, rowvar=False), np.eye(n_units), atol=0.25)
+    assert np.isfinite(result.se)
+    assert result.se > 0
 
 
-@requires_gpu
-def test_cupy_vs_cpu_mboot():
-    set_backend("numpy")
-    rng = np.random.default_rng(42)
-    n = 200
-    k = 3
-    inf_func = rng.standard_normal((n, k))
-
-    cpu_result = mboot(inf_func, n_units=n, biters=999, random_state=42)
-
-    set_backend("cupy")
-    gpu_result = mboot(inf_func, n_units=n, biters=999, random_state=42)
-
-    assert gpu_result["bres"].shape == cpu_result["bres"].shape
-    assert np.all(np.isfinite(gpu_result["se"][~np.isnan(cpu_result["se"])]))
-    np.testing.assert_allclose(gpu_result["se"], cpu_result["se"], rtol=0.3)
-    np.testing.assert_allclose(gpu_result["bres"].mean(axis=0), cpu_result["bres"].mean(axis=0), atol=0.3)
-    set_backend("numpy")
-
-
-@requires_gpu
-def test_cupy_vs_cpu_mboot_clustered():
-    set_backend("numpy")
-    rng = np.random.default_rng(42)
-    n_units = 120
-    n_clusters = 20
-    cluster = np.repeat(np.arange(n_clusters), n_units // n_clusters)
-    inf_func = rng.standard_normal(n_units)
-
-    cpu_result = mboot(inf_func, n_units=n_units, biters=99, cluster=cluster, random_state=42)
-
-    set_backend("cupy")
-    gpu_result = mboot(inf_func, n_units=n_units, biters=99, cluster=cluster, random_state=42)
-
-    assert gpu_result["bres"].shape == cpu_result["bres"].shape
-    assert np.all(np.isfinite(gpu_result["se"][~np.isnan(cpu_result["se"])]))
-    np.testing.assert_allclose(gpu_result["se"], cpu_result["se"], rtol=0.3)
-    np.testing.assert_allclose(
-        gpu_result["bres"].mean(axis=0), cpu_result["bres"].mean(axis=0), atol=0.15 * n_units / n_clusters
-    )
-    set_backend("numpy")
-
-
-@requires_gpu
-@pytest.mark.parametrize("inject_nans", [False, True], ids=["no_nans", "with_nans"])
-def test_cupy_vs_cpu_column_std(inject_nans):
-    rng = np.random.default_rng(42)
-    matrix = rng.standard_normal((200, 5)) if not inject_nans else rng.standard_normal((100, 3))
-
-    if inject_nans:
-        matrix[10:20, 0] = np.nan
-        matrix[50:60, 2] = np.nan
-
-    set_backend("numpy")
-    cpu_result = compute_column_std(matrix)
-
-    set_backend("cupy")
-    gpu_result = compute_column_std(matrix)
-
-    np.testing.assert_allclose(gpu_result, cpu_result, rtol=1e-5)
-    set_backend("numpy")
-
-
-@requires_gpu
-def test_cont_did_cupy_runs():
-    data = moderndid.gen_cont_did_data(n=200, seed=42)
-    result = moderndid.cont_did(
-        data=data,
-        yname="Y",
-        tname="time_period",
-        idname="id",
-        gname="G",
-        dname="D",
-        target_parameter="level",
-        aggregation="dose",
-        degree=3,
-        biters=20,
-        random_state=42,
-        backend="cupy",
-    )
-    assert result.att_d is not None
-    assert np.all(np.isfinite(result.att_d))
-    set_backend("numpy")
-
-
-@requires_gpu
-def test_att_gt_cupy_end_to_end():
-    df = moderndid.load_mpdta()
-    assert get_backend() is np
-
-    result = moderndid.att_gt(
-        data=df,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        est_method="dr",
-        boot=False,
-        backend="cupy",
-    )
-
-    assert get_backend() is np
-    assert result is not None
-    assert len(result.att_gt) > 0
-    assert np.all(np.isfinite(result.att_gt))
-
-
-@requires_gpu
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
-def test_att_gt_cupy_vs_numpy(est_method):
-    df = moderndid.load_mpdta()
+def test_ddd_on_gpu_matches_cpu(ddd_two_period_data, est_method):
+    spec = {
+        "data": ddd_two_period_data,
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "state",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2 + cov3 + cov4",
+        "est_method": est_method,
+    }
 
-    result_cpu = moderndid.att_gt(
-        data=df,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        est_method=est_method,
-        boot=False,
-        backend="numpy",
-    )
-
-    result_gpu = moderndid.att_gt(
-        data=df,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        est_method=est_method,
-        boot=False,
-        backend="cupy",
-    )
-
-    np.testing.assert_allclose(result_gpu.att_gt, result_cpu.att_gt, rtol=1e-8)
-    np.testing.assert_allclose(result_gpu.se_gt, result_cpu.se_gt, rtol=1e-6)
-
-
-@requires_gpu
-def test_ddd_cupy_end_to_end():
-    dgp = moderndid.gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
-
-    result = moderndid.ddd(
-        data=dgp["data"],
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="state",
-        pname="partition",
-        xformla="~ cov1 + cov2 + cov3 + cov4",
-        est_method="dr",
-        backend="cupy",
-    )
+    cpu = ddd(**spec)
+    gpu = ddd(**spec, backend="cupy")
 
     assert get_backend() is np
-    assert result is not None
-    assert np.isfinite(result.att)
+    assert np.isfinite(cpu.se)
+    np.testing.assert_allclose(gpu.att, cpu.att, rtol=1e-8)
+    np.testing.assert_allclose(gpu.se, cpu.se, rtol=1e-6)
 
 
-@requires_gpu
-@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
-def test_ddd_cupy_vs_numpy(est_method):
-    dgp = moderndid.gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
+@pytest.mark.parametrize("panel", [True, False], ids=["panel", "repeated_cross_sections"])
+def test_ddd_weighted_bootstrap_on_gpu_matches_cpu(cp, ddd_two_period_data, panel):
+    spec = {
+        "data": ddd_two_period_data,
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "state",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2 + cov3 + cov4",
+        "panel": panel,
+        "boot": True,
+        "boot_type": "weighted",
+        "biters": 49,
+        "random_state": 5,
+    }
 
-    result_cpu = moderndid.ddd(
-        data=dgp["data"],
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="state",
-        pname="partition",
-        xformla="~ cov1 + cov2 + cov3 + cov4",
-        est_method=est_method,
-        backend="numpy",
-    )
+    cpu = ddd(**spec)
+    gpu = ddd(**spec, backend="cupy")
 
-    result_gpu = moderndid.ddd(
-        data=dgp["data"],
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="state",
-        pname="partition",
-        xformla="~ cov1 + cov2 + cov3 + cov4",
-        est_method=est_method,
-        backend="cupy",
-    )
-
-    np.testing.assert_allclose(result_gpu.att, result_cpu.att, rtol=1e-8)
-    np.testing.assert_allclose(result_gpu.se, result_cpu.se, rtol=1e-6)
+    assert np.ptp(cpu.boots) > 0
+    np.testing.assert_allclose(gpu.att, cpu.att, rtol=1e-8)
+    np.testing.assert_allclose(cp.asnumpy(gpu.boots), cpu.boots, rtol=1e-10)
+    np.testing.assert_allclose(gpu.se, cpu.se, rtol=1e-6)
 
 
-@requires_gpu
-def test_wls_oom_raises_memory_error():
-    set_backend("cupy")
+@pytest.mark.parametrize("panel", [True, False], ids=["panel", "repeated_cross_sections"])
+def test_ddd_multiplier_bootstrap_on_gpu_matches_cpu_loosely(ddd_two_period_data, panel):
+    spec = {
+        "data": ddd_two_period_data,
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "state",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2 + cov3 + cov4",
+        "panel": panel,
+        "boot": True,
+        "boot_type": "multiplier",
+        "biters": 999,
+        "random_state": 5,
+    }
 
-    class FakeOOM(Exception):
-        pass
+    cpu = ddd(**spec)
+    gpu = ddd(**spec, backend="cupy")
 
-    FakeOOM.__name__ = "OutOfMemoryError"
-
-    with patch("moderndid.cupy.regression.get_backend") as mock_be:
-        mock_xp = type("FakeXP", (), {"float64": np.float64})()
-        mock_xp.asarray = lambda *a, **kw: (_ for _ in ()).throw(FakeOOM("fake OOM"))
-        mock_be.return_value = mock_xp
-
-        with pytest.raises(MemoryError, match="GPU out of memory during WLS"):
-            cupy_wls(np.zeros(10), np.zeros((10, 2)), np.ones(10))
-
-    set_backend("numpy")
+    assert np.isfinite(cpu.se)
+    np.testing.assert_allclose(gpu.att, cpu.att, rtol=1e-8)
+    np.testing.assert_allclose(gpu.se, cpu.se, rtol=0.3)
 
 
-@requires_gpu
-def test_logistic_irls_oom_raises_memory_error():
-    set_backend("cupy")
+def test_mboot_on_gpu_matches_cpu_loosely():
+    inf_func = np.random.default_rng(42).standard_normal((200, 3))
 
-    class FakeOOM(Exception):
-        pass
+    cpu = mboot(inf_func, n_units=200, biters=999, random_state=42)
+    with use_backend("cupy"):
+        gpu = mboot(inf_func, n_units=200, biters=999, random_state=42)
 
-    FakeOOM.__name__ = "OutOfMemoryError"
+    assert gpu["bres"].shape == cpu["bres"].shape
+    assert np.all(np.isfinite(cpu["se"]))
+    np.testing.assert_allclose(gpu["se"], cpu["se"], rtol=0.3)
+    np.testing.assert_allclose(gpu["bres"].mean(axis=0), cpu["bres"].mean(axis=0), atol=0.3)
 
-    with patch("moderndid.cupy.regression.get_backend") as mock_be:
-        mock_xp = type("FakeXP", (), {"float64": np.float64})()
-        mock_xp.zeros = lambda *a, **kw: (_ for _ in ()).throw(FakeOOM("fake OOM"))
-        mock_be.return_value = mock_xp
 
-        with pytest.raises(MemoryError, match="GPU out of memory during logistic IRLS"):
-            cupy_logistic_irls(np.zeros(10), np.zeros((10, 2)), np.ones(10))
+def test_clustered_mboot_on_gpu_matches_cpu_loosely():
+    inf_func = np.random.default_rng(42).standard_normal(120)
+    cluster = np.repeat(np.arange(20), 6)
 
-    set_backend("numpy")
+    cpu = mboot(inf_func, n_units=120, biters=999, cluster=cluster, random_state=42)
+    with use_backend("cupy"):
+        gpu = mboot(inf_func, n_units=120, biters=999, cluster=cluster, random_state=42)
+
+    assert gpu["bres"].shape == cpu["bres"].shape
+    assert np.all(np.isfinite(cpu["se"]))
+    np.testing.assert_allclose(gpu["se"], cpu["se"], rtol=0.3)
+    np.testing.assert_allclose(gpu["bres"].mean(axis=0), cpu["bres"].mean(axis=0), atol=0.9)
+
+
+@pytest.mark.parametrize("instrument", ["w", "x"], ids=["instrument_differs_from_x", "instrument_is_x"])
+def test_npiv_with_selected_dimension_on_gpu_matches_cpu(cp, iv_data, instrument):
+    spec = {"y": iv_data["y"], "x": iv_data["x"], "w": iv_data[instrument], "j_x_segments": None, "seed": 3}
+
+    cpu = npiv(**spec)
+    with use_backend("cupy"):
+        gpu = npiv(**spec)
+
+    assert np.isfinite(cpu.cv)
+    assert gpu.j_x_segments == cpu.j_x_segments
+    assert gpu.k_w_segments == cpu.k_w_segments
+    np.testing.assert_allclose(cp.asnumpy(gpu.h), cpu.h, rtol=1e-8)
+    np.testing.assert_allclose(cp.asnumpy(gpu.deriv), cpu.deriv, rtol=1e-8)
+    np.testing.assert_allclose(cp.asnumpy(gpu.asy_se), cpu.asy_se, rtol=1e-6)
+    np.testing.assert_allclose(cp.asnumpy(gpu.deriv_asy_se), cpu.deriv_asy_se, rtol=1e-6)
+    np.testing.assert_allclose(cp.asnumpy(gpu.cv), cpu.cv, rtol=1e-6)
+    np.testing.assert_allclose(cp.asnumpy(gpu.cv_deriv), cpu.cv_deriv, rtol=1e-6)
+
+
+def test_cont_did_wald_pretest_on_gpu_matches_cpu(cp, cont_did_four_periods):
+    spec = {
+        "data": cont_did_four_periods,
+        "yname": "Y",
+        "tname": "time_period",
+        "idname": "id",
+        "gname": "G",
+        "dname": "D",
+        "dose_est_method": "parametric",
+        "aggregation": "eventstudy",
+        "biters": 20,
+        "random_state": 1,
+    }
+
+    cpu = cont_did(**spec)
+    gpu = cont_did(**spec, backend="cupy")
+
+    assert cpu.att_gt.wald_stat is not None
+    np.testing.assert_allclose(cp.asnumpy(gpu.att_gt.att), cpu.att_gt.att, rtol=1e-8)
+    assert gpu.att_gt.wald_stat == pytest.approx(cpu.att_gt.wald_stat, rel=1e-6)
+
+
+@pytest.mark.parametrize("panel", [True, False], ids=["panel", "repeated_cross_sections"])
+def test_drdid_collinear_covariate_on_gpu_raises_like_cpu(collinear_covariate_panel, panel):
+    spec = {
+        "data": collinear_covariate_panel,
+        "yname": "y",
+        "tname": "year",
+        "idname": "id",
+        "treatname": "treat",
+        "xformla": "~ x + x2",
+        "est_method": "trad",
+        "panel": panel,
+    }
+
+    with pytest.raises(ValueError, match="regression design matrix of the comparison group") as cpu_error:
+        drdid(**spec)
+
+    with use_backend("cupy"), pytest.raises(ValueError, match=re.escape(str(cpu_error.value))):
+        drdid(**spec)
+
+
+@pytest.mark.parametrize("panel", [True, False], ids=["panel", "repeated_cross_sections"])
+def test_ipwdid_separation_warnings_on_gpu_match_cpu(recorded_warnings, separated_treatment_panel, panel):
+    spec = {
+        "data": separated_treatment_panel,
+        "yname": "y",
+        "tname": "year",
+        "idname": "id",
+        "treatname": "treat",
+        "xformla": "~ x + x2",
+        "panel": panel,
+    }
+
+    with recorded_warnings() as cpu_warnings:
+        ipwdid(**spec)
+    with use_backend("cupy"), recorded_warnings() as gpu_warnings:
+        ipwdid(**spec)
+
+    assert cpu_warnings
+    assert gpu_warnings == cpu_warnings
+
+
+def test_npiv_bands_without_variance_on_gpu_match_cpu(cp, iv_data, recorded_warnings):
+    spec = {"y": np.zeros_like(iv_data["y"]), "x": iv_data["x"], "w": iv_data["w"], "j_x_segments": 4, "seed": 3}
+
+    with recorded_warnings() as cpu_warnings:
+        cpu = npiv(**spec)
+    with use_backend("cupy"), recorded_warnings() as gpu_warnings:
+        gpu = npiv(**spec)
+
+    assert ("UserWarning", "Using unstudentized confidence bands for function estimates") in cpu_warnings
+    assert ("UserWarning", "Using unstudentized confidence bands for derivative estimates") in cpu_warnings
+    assert gpu_warnings == cpu_warnings
+    np.testing.assert_array_equal(cp.asnumpy(gpu.h_lower), cpu.h_lower)
+    np.testing.assert_array_equal(cp.asnumpy(gpu.h_upper), cpu.h_upper)
+    np.testing.assert_array_equal(cp.asnumpy(gpu.h_lower_deriv), cpu.h_lower_deriv)
+    np.testing.assert_array_equal(cp.asnumpy(gpu.h_upper_deriv), cpu.h_upper_deriv)

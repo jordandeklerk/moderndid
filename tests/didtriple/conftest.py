@@ -644,29 +644,19 @@ def two_period_one_missing_df(request, two_period_df):
 
 
 @pytest.fixture
-def panel_treated_state_zero_covariate_arrays(ddd_data_with_covariates):
-    """Panel arrays with a fifth covariate that is zero for every unit of the treated state."""
+def two_period_panel_arrays(ddd_data_with_covariates):
+    """Two-period panel DDD arrays with an intercept and four covariates."""
     ddd_data, covariates = ddd_data_with_covariates
-    noise = np.random.default_rng(0).normal(size=ddd_data.n_units)
-    return {
-        "y1": ddd_data.y1,
-        "y0": ddd_data.y0,
-        "subgroup": ddd_data.subgroup,
-        "covariates": np.column_stack([covariates, np.where(ddd_data.subgroup >= 3, 0.0, noise)]),
-    }
+    return {"y1": ddd_data.y1, "y0": ddd_data.y0, "subgroup": ddd_data.subgroup, "covariates": covariates}
 
 
 @pytest.fixture
-def panel_near_collinear_covariate_arrays(ddd_data_with_covariates):
-    """Panel arrays with a fifth covariate that departs from cov1 by noise of scale 1e-13."""
-    ddd_data, covariates = ddd_data_with_covariates
-    noise = np.random.default_rng(0).normal(size=ddd_data.n_units)
-    return {
-        "y1": ddd_data.y1,
-        "y0": ddd_data.y0,
-        "subgroup": ddd_data.subgroup,
-        "covariates": np.column_stack([covariates, covariates[:, 1] + 1e-13 * noise]),
-    }
+def panel_treated_state_zero_covariate_arrays(two_period_panel_arrays):
+    """Panel arrays with a fifth covariate that is zero for every unit of the treated state."""
+    subgroup = two_period_panel_arrays["subgroup"]
+    noise = np.random.default_rng(0).normal(size=len(subgroup))
+    covariates = np.column_stack([two_period_panel_arrays["covariates"], np.where(subgroup >= 3, 0.0, noise)])
+    return two_period_panel_arrays | {"covariates": covariates}
 
 
 @pytest.fixture
@@ -688,11 +678,3 @@ def rcs_treated_state_zero_covariate_arrays(two_period_rcs_arrays):
     noise = np.random.default_rng(0).normal(size=len(subgroup))
     covariates = np.column_stack([two_period_rcs_arrays["covariates"], np.where(subgroup >= 3, 0.0, noise)])
     return two_period_rcs_arrays | {"covariates": covariates}
-
-
-@pytest.fixture
-def rcs_near_collinear_covariate_arrays(two_period_rcs_arrays):
-    """Repeated cross-section arrays with a fifth covariate that departs from cov1 by noise of scale 1e-13."""
-    covariates = two_period_rcs_arrays["covariates"]
-    noise = np.random.default_rng(0).normal(size=len(covariates))
-    return two_period_rcs_arrays | {"covariates": np.column_stack([covariates, covariates[:, 1] + 1e-13 * noise])}

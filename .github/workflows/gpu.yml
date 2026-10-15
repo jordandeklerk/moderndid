@@ -1,0 +1,34 @@
+name: GPU tests
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpu:
+    name: CuPy on a Modal T4 GPU (Python 3.12)
+    # Forks have no Modal token.
+    if: github.repository == 'jordandeklerk/moderndid'
+    runs-on: ubuntu-latest
+    # The Modal function stops at 30 minutes. The job leaves time for an image build on top.
+    timeout-minutes: 60
+    # The gpu environment holds the Modal token. Its settings let only main use it.
+    environment: gpu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Modal
+        run: python -m pip install "modal==1.6.1"
+      - name: Run the GPU tests on Modal
+        run: modal run .github/scripts/gpu_tests.py
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

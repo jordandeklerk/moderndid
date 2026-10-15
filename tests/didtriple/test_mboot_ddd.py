@@ -353,8 +353,9 @@ def test_wboot_ddd_different_seeds(ddd_data_no_covariates):
     assert not np.allclose(boots1, boots2, equal_nan=True)
 
 
+@pytest.mark.gpu
 @pytest.mark.parametrize("transfer", ["asarray", "asnumpy"], ids=["device_inputs", "host_inputs"])
-def test_wboot_ddd_under_the_cupy_backend_matches_cpu_exactly(strict_cupy, ddd_data_with_covariates, transfer):
+def test_wboot_ddd_under_the_cupy_backend_matches_cpu_exactly(cp, ddd_data_with_covariates, transfer):
     ddd_data, covariates = ddd_data_with_covariates
     inputs = {
         "y1": ddd_data.y1,
@@ -363,7 +364,7 @@ def test_wboot_ddd_under_the_cupy_backend_matches_cpu_exactly(strict_cupy, ddd_d
         "covariates": covariates,
         "i_weights": np.random.default_rng(1).uniform(0.5, 1.5, ddd_data.n_units),
     }
-    gpu_inputs = {name: getattr(strict_cupy, transfer)(value) for name, value in inputs.items()}
+    gpu_inputs = {name: getattr(cp, transfer)(value) for name, value in inputs.items()}
 
     cpu = wboot_ddd(**inputs, est_method="dr", biters=20, random_state=3)
     with use_backend("cupy"):

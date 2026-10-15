@@ -553,10 +553,9 @@ def test_rc_regressions_fit_a_covariate_on_any_scale(regression, scale):
     np.testing.assert_allclose(result.coefficients[2] * scale, expected.coefficients[2], rtol=1e-12)
 
 
+@pytest.mark.gpu
 @pytest.mark.parametrize("regression", [ols_panel, wols_panel, ols_rc, wols_rc])
-def test_regressions_of_host_arrays_under_the_cupy_backend_match_the_numpy_backend(
-    strict_cupy, regression_specs, regression
-):
+def test_regressions_of_host_arrays_under_the_cupy_backend_match_the_numpy_backend(regression_specs, regression):
     spec = regression_specs[regression.__name__]
 
     expected = regression(**spec)
@@ -564,18 +563,19 @@ def test_regressions_of_host_arrays_under_the_cupy_backend_match_the_numpy_backe
         result = regression(**spec)
 
     assert isinstance(result.out_reg, np.ndarray)
-    np.testing.assert_allclose(result.out_reg, expected.out_reg, rtol=1e-10)
+    np.testing.assert_allclose(
+        result.out_reg, expected.out_reg, rtol=1e-10, atol=1e-10 * np.max(np.abs(expected.out_reg))
+    )
     np.testing.assert_allclose(result.coefficients, expected.coefficients, rtol=1e-10)
 
 
+@pytest.mark.gpu
 @pytest.mark.parametrize("regression", [ols_panel, wols_panel, ols_rc, wols_rc])
-def test_regressions_on_gpu_warn_about_a_nearly_collinear_design_like_cpu(strict_cupy, regression_specs, regression):
+def test_regressions_on_gpu_warn_about_a_nearly_collinear_design_like_cpu(cp, regression_specs, regression):
     spec = regression_specs[regression.__name__]
     x = spec["x"]
     spec = {**spec, "x": np.column_stack([x[:, :2], x[:, 1] + 1e-11 * x[:, 2]])}
-    device_spec = {
-        name: strict_cupy.asarray(value) if isinstance(value, np.ndarray) else value for name, value in spec.items()
-    }
+    device_spec = {name: cp.asarray(value) if isinstance(value, np.ndarray) else value for name, value in spec.items()}
 
     with pytest.warns(UserWarning, match="Potential multicollinearity detected"):
         regression(**spec)

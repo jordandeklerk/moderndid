@@ -1,7 +1,5 @@
 """Shared fixtures for drdid tests."""
 
-import importlib
-import types
 from collections import namedtuple
 
 import numpy as np
@@ -12,7 +10,6 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import gen_did_scalable, load_nsw
-from moderndid.drdid.bootstrap import boot_mult
 
 
 @pytest.fixture(scope="module")
@@ -100,17 +97,6 @@ def unit_bootstrap_weights(monkeypatch):
             return np.ones(size)
 
     monkeypatch.setattr(np.random, "RandomState", UnitWeights)
-
-
-@pytest.fixture
-def numpy_as_gpu_backend(monkeypatch):
-    """Send the multiplier bootstrap down its GPU branch with numpy standing in for CuPy."""
-
-    class NumpyAsGpu:
-        def __getattr__(self, name):
-            return getattr(np, name)
-
-    monkeypatch.setattr(boot_mult, "get_backend", NumpyAsGpu)
 
 
 @pytest.fixture(scope="module")
@@ -306,16 +292,6 @@ def two_covariate_design():
     y0 = z @ np.array([1.0, -1.0]) + rng.normal(size=n)
     y1 = y0 + 0.5 + d + 0.5 * z[:, 1] + rng.normal(size=n)
     return {"post": post, "d": d, "y": np.where(post == 1, y1, y0), "y1": y1, "y0": y0, "z": z}
-
-
-@pytest.fixture
-def array_module_without_cond(monkeypatch):
-    """Make drdid's helpers use NumPy without linalg.cond like CuPy 13."""
-    linalg = types.SimpleNamespace(**{name: getattr(np.linalg, name) for name in dir(np.linalg) if name != "cond"})
-    module = types.SimpleNamespace(**{name: getattr(np, name) for name in dir(np) if not name.startswith("__")})
-    module.linalg = linalg
-    monkeypatch.setattr(importlib.import_module("moderndid.drdid.utils"), "_array_module", lambda *arrays: module)
-    return module
 
 
 @pytest.fixture(scope="module")

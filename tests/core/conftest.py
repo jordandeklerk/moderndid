@@ -694,14 +694,17 @@ def collinear_covariate_panel(two_period_covariate_panel):
 
 
 @pytest.fixture(scope="session")
-def near_collinear_covariate_panel(two_period_covariate_panel):
-    """Two-period panel whose second covariate departs from the first by noise of scale 1e-11."""
-    return two_period_covariate_panel(
-        lambda x, rng: rng.binomial(1, 0.5, x.size), lambda x, rng: x + 1e-11 * rng.normal(size=x.size)
-    )
-
-
-@pytest.fixture(scope="session")
 def separated_treatment_panel(two_period_covariate_panel):
     """Two-period panel whose treated units are exactly those with the first covariate above 0.8."""
     return two_period_covariate_panel(lambda x, rng: (x > 0.8).astype(int), lambda x, rng: rng.normal(size=x.size))
+
+
+@pytest.fixture
+def tiny_gpu_memory_pool(cp):
+    """Cap CuPy's default memory pool at one kilobyte and restore its limit afterwards."""
+    pool = cp.get_default_memory_pool()
+    limit = pool.get_limit()
+    pool.free_all_blocks()
+    pool.set_limit(size=1024)
+    yield
+    pool.set_limit(size=limit)

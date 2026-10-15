@@ -1,6 +1,7 @@
-"""Tests for the array backend and its CuPy routes that run without a GPU."""
+"""Tests for the NumPy and CuPy array backends."""
 
 import contextvars
+import os
 import re
 import subprocess
 import sys
@@ -38,6 +39,26 @@ def test_to_device_under_the_numpy_backend_keeps_a_numpy_array():
 
     assert isinstance(result, np.ndarray)
     np.testing.assert_array_equal(result, arr)
+
+
+@pytest.mark.gpu
+def test_use_backend_activates_cupy_and_restores_numpy(cp):
+    with use_backend("cupy"):
+        active = get_backend()
+
+    assert active is cp
+    assert get_backend() is np
+
+
+def test_to_device_moves_an_array_to_the_active_backend_and_to_numpy_brings_it_back(xp):
+    arr = np.array([[1.0, 2.0], [3.0, 4.0]])
+
+    on_device = to_device(arr)
+    on_host = to_numpy(on_device)
+
+    assert isinstance(on_device, xp.ndarray)
+    assert isinstance(on_host, np.ndarray)
+    np.testing.assert_array_equal(on_host, arr)
 
 
 @pytest.mark.parametrize(
@@ -107,19 +128,21 @@ def test_set_backend_reports_a_missing_cupy_as_not_installed(monkeypatch, cuda_p
     assert raised.value.__cause__ is None
 
 
-def test_set_backend_without_a_cuda_device_raises(strict_cupy, monkeypatch):
-    monkeypatch.setattr(strict_cupy, "is_available", lambda: False)
+@pytest.mark.gpu
+def test_set_backend_without_a_cuda_device_raises():
+    command = [sys.executable, "-c", "from moderndid.cupy.backend import set_backend; set_backend('cupy')"]
 
-    with pytest.raises(RuntimeError, match="no CUDA GPU is available"):
-        set_backend("cupy")
+    result = subprocess.run(command, env={**os.environ, "CUDA_VISIBLE_DEVICES": ""}, capture_output=True, text=True)
+
+    assert result.returncode != 0
+    assert "no CUDA GPU is available" in result.stderr
 
 
-def test_multiplier_bootstrap_on_gpu_draws_balanced_independent_signs(strict_cupy):
+def test_multiplier_bootstrap_draws_balanced_independent_signs(xp):
     n_units = 40
     inf_func = n_units * np.eye(n_units)
 
-    with use_backend("cupy"):
-        draws = multiplier_bootstrap(inf_func, biters=500, random_state=42)
+    draws = multiplier_bootstrap(inf_func, biters=500, random_state=42)
 
     assert isinstance(draws, np.ndarray)
     np.testing.assert_array_equal(np.abs(draws), np.ones((500, n_units)))
@@ -127,13 +150,12 @@ def test_multiplier_bootstrap_on_gpu_draws_balanced_independent_signs(strict_cup
     np.testing.assert_allclose(np.corrcoef(draws, rowvar=False), np.eye(n_units), atol=0.25)
 
 
-@pytest.mark.parametrize("backend", ["numpy", "cupy"])
-def test_compute_column_std_skips_missing_values_on_each_backend(strict_cupy, backend):
+def test_compute_column_std_skips_missing_values_on_each_backend(xp):
     rng = np.random.default_rng(42)
     matrix = rng.standard_normal((100, 3))
     matrix[10:20, 0] = np.nan
 
-    with use_backend(backend):
-        result = compute_column_std(matrix)
+    result = compute_column_std(matrix)
 
+    assert isinstance(result, np.ndarray)
     np.testing.assert_allclose(result, np.nanstd(matrix, axis=0, ddof=1), rtol=1e-12)
