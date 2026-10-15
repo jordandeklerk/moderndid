@@ -1,9 +1,4 @@
-"""Run the tests marked gpu on a Modal T4 GPU.
-
-From the repository root, ``modal run .github/scripts/gpu_tests.py`` builds the image from ``uv.lock``, mounts the
-package and its tests, and runs ``pytest -m gpu``. Sign in first with ``modal setup`` or set ``MODAL_TOKEN_ID`` and
-``MODAL_TOKEN_SECRET`` as the GPU workflow does.
-"""
+"""Run the tests marked gpu on a Modal GPU."""
 
 import subprocess
 from pathlib import Path
