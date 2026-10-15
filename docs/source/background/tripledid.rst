@@ -389,6 +389,8 @@ The weights sum to one but can be negative when combining these estimates of the
 cohort treatment effects. The optimality claim concerns linear combinations of these valid
 comparison-specific estimators rather than efficiency over all possible DDD estimators.
 
+.. _background-tripledid-inference:
+
 Sampling uncertainty and first-step estimation
 ----------------------------------------------
 
@@ -396,7 +398,9 @@ Consistency of the DR score does not by itself provide valid standard
 errors. These must account for sampling uncertainty from the fitted
 propensity scores, fitted outcome models, and estimated weight
 normalizations. The paper's influence function accounts for those
-contributions under the following parametric estimation conditions.
+contributions under the following parametric estimation conditions. The
+:ref:`influence functions background <background-influence-functions-fitted>`
+shows where such contributions come from in general.
 
 .. admonition:: Assumption WM Working models
    :class: assumption

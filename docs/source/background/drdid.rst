@@ -215,6 +215,8 @@ comparison group's mean change. An IPW estimator instead needs a correct model o
 score. Since neither requirement implies the other, choosing either approach leaves the estimate
 dependent on that modeling choice.
 
+.. _background-drdid-combining:
+
 Combining the two models
 ------------------------
 
@@ -342,6 +344,8 @@ regressions because errors in their levels can cancel in that difference. Requir
 each level model to be correct is therefore sufficient and stronger than the identification
 result needs.
 
+.. _background-drdid-efficiency:
+
 How much information the design contains
 ----------------------------------------
 
@@ -349,7 +353,9 @@ Once identification settles which population quantity the score recovers, effici
 precisely a regular estimator can recover it from a given sample. An influence function
 describes the first-order contribution of one observation to the estimator's sampling error.
 The variance of these contributions determines the limiting variance of
-:math:`\sqrt{n}(\hat\tau-\tau)`.
+:math:`\sqrt{n}(\hat\tau-\tau)`. The :ref:`influence functions background
+<background-influence-functions-efficiency>` explains what regularity requires and why the
+efficient influence function sets a lower bound on that variance.
 
 Panel outcomes contain information about within-unit changes that repeated cross-sections cannot
 observe. The efficient influence functions from Sant'Anna and Zhao's Proposition 1 show that
@@ -465,6 +471,8 @@ The second estimator attains the efficiency bound under these conditions. The ga
 positive when the weighted combination inside the variance varies among treated units.
 Since the two level differences can cancel in that combination, heterogeneous conditional
 treatment effects alone do not guarantee a strict gain.
+
+.. _background-drdid-fitting:
 
 Fitting models for reliable inference
 -------------------------------------

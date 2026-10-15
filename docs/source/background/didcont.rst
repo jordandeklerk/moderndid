@@ -736,7 +736,8 @@ To see how the package accounts for this distinction, define
    \qquad
    \widehat u_{i,K}=\Delta Y_i-\widehat m_0-\widehat h_K(D_i).
 
-For a fixed fitted basis, the estimated influence functions at a dose
+For a fixed fitted basis, the estimated
+:ref:`influence functions <background-influence-functions>` at a dose
 :math:`d` are
 
 .. math::
