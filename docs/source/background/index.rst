@@ -4,19 +4,27 @@
 Background
 ##########
 
-Each guide develops the assumptions, identification arguments, and inference
-results behind a ModernDiD estimator. We connect those results to the choices
-you make in the package so you can see what an estimate measures and what
-its interpretation requires. The :doc:`examples <../examples/index>` show those
-choices in complete analyses of real data.
+Each method guide develops the assumptions, identification arguments, and
+inference results behind a ModernDiD estimator. We connect those results to the
+choices you make in the package so you can see what an estimate measures and
+what its interpretation requires. The :doc:`examples <../examples/index>` show
+those choices in complete analyses of real data.
+
+Many of the method guides build their standard errors, aggregations, and
+simultaneous bands from influence functions without stopping to introduce
+them. Since it supplies that introduction, the
+:doc:`influence functions <influence_functions>` guide comes first in the table
+below.
 
 .. list-table::
    :class: section-index-table
    :header-rows: 1
    :widths: 35 65
 
-   * - Method
+   * - Guide
      - Description
+   * - :doc:`influence_functions`
+     - Per-unit error contributions behind the guides' standard errors and bands.
    * - :doc:`did`
      - Group-time effects and aggregation for staggered treatment adoption.
    * - :doc:`drdid`
@@ -40,6 +48,7 @@ choices in complete analyses of real data.
    :maxdepth: 2
    :hidden:
 
+   influence_functions
    did
    drdid
    tripledid

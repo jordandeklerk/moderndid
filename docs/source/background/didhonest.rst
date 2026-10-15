@@ -341,10 +341,10 @@ with known :math:`V_n` supports finite-sample statements in this model.
 With estimated coefficients and covariance, the asymptotic conditions
 below supply the corresponding large-sample justification.
 
-The ``honest_did`` wrapper estimates :math:`V_n` from the influence
-function of the event study rather than carrying over a bootstrap
-covariance. Write :math:`n` for the number of units and
-:math:`\widehat\psi_i` for the influence function of
+The ``honest_did`` wrapper estimates :math:`V_n` from the
+:ref:`influence function <background-influence-functions>` of the event
+study rather than carrying over a bootstrap covariance. Write :math:`n` for
+the number of units and :math:`\widehat\psi_i` for the influence function of
 :math:`\widehat\beta_n` evaluated at unit :math:`i`. When the event study
 was estimated with ``clustervars``, the wrapper allows for dependence within
 each cluster :math:`c` by summing these vectors over its units before forming

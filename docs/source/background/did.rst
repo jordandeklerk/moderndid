@@ -654,9 +654,10 @@ traditional propensity maximum likelihood and
 least-squares regression. It does not use the improved inverse probability
 tilting and weighted regression procedure described in the
 :ref:`doubly robust DiD background <background-drdid>`. Supplying a custom
-estimator also requires a valid influence function for its leading sampling
-error, as the inference section explains. Double robustness alone does not
-justify arbitrary machine learning fits or their standard errors.
+estimator also requires a valid
+:ref:`influence function <background-influence-functions>` for its leading
+sampling error, as the inference section explains. Double robustness alone
+does not justify arbitrary machine learning fits or their standard errors.
 
 When different units are observed in each period
 ------------------------------------------------
@@ -1000,15 +1001,14 @@ The corresponding normalized population score is
    \end{aligned}
 
 An influence function describes a unit's contribution to the leading
-estimation error. An asymptotically linear expansion writes that error
-as an average of these contributions plus a smaller remainder. The
-:math:`\sqrt n` scaling tracks fluctuations at the :math:`n^{-1/2}`
-rate and :math:`o_p(1)` denotes a remainder that converges to zero
-in probability.
+estimation error. The :ref:`influence functions background
+<background-influence-functions>` develops that idea, the asymptotically
+linear expansions the conditions below assume, and the terms that fitted
+nuisance models add.
 
 The following conditions apply to both working models and their fitting
 procedures. They specify the smoothness, moments, and expansions needed
-to carry that reasoning through to the estimator.
+to derive the estimator's influence function below.
 
 .. admonition:: Assumptions 7 and 8 Nuisance conditions
    :class: assumption
@@ -1081,6 +1081,8 @@ These population and large-sample requirements cannot be established by
 checking that a fitted propensity score lies below a numerical threshold. The overlap
 bound on the working model also differs from Assumption 6's bound on the
 true propensity score.
+
+.. _background-did-fitting:
 
 Following the fitting step into the influence function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1203,6 +1205,8 @@ placebo contrasts before :math:`g-\delta`, though not to the
 adjacent-period contrasts that the package's varying base reports inside
 the anticipation window.
 
+.. _background-did-aggregation-weights:
+
 Accounting for estimated aggregation weights
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1247,6 +1251,8 @@ expansion and limit are
 for estimated shares. Averaging the standard
 errors of the group-time effects would miss both their covariance and
 this weight uncertainty.
+
+.. _background-did-bootstrap:
 
 Simultaneous bands and the multiplier bootstrap
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
