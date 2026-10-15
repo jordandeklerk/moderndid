@@ -315,10 +315,10 @@ Understanding automated checks
 ==============================
 
 ``.github/workflows/test.yml`` defines pull request checks and a matrix of
-Python 3.12 and 3.13 on Ubuntu and Windows. Each matrix job runs ``tox`` with
-``TEST_SUITE=core`` to select the fast suite. The ``[gh-actions]`` sections of
-``tox.ini`` map that value and either Python version to the ``core-coverage``
-environment.
+Python 3.12, 3.13, and 3.14 on Ubuntu and Windows. Each matrix job runs ``tox``
+with ``TEST_SUITE=core`` to select the fast suite. The ``[gh-actions]`` sections
+of ``tox.ini`` map that value and the job's Python version to the
+``core-coverage`` environment.
 
 Outside the matrix, ``tox -e check`` gets a job of its own on Ubuntu with
 Python 3.12. That environment runs the pre-commit hooks over every tracked
