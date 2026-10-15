@@ -12,8 +12,8 @@
 [![Build status](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml)
 [![Documentation](https://readthedocs.org/projects/moderndid/badge/?version=latest)](https://moderndid.readthedocs.io/en/latest/)
 
-[**Features**](#features)
-| [**Install guide**](#installation)
+[**Install guide**](#installation)
+| [**Features**](#features)
 | [**Changelog**](https://moderndid.readthedocs.io/en/latest/release/index.html)
 | [**Documentation**](https://moderndid.readthedocs.io/en/latest/)
 
