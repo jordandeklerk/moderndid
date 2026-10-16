@@ -42,6 +42,7 @@ extensions = [
     "matplotlib.sphinxext.plot_directive",
     "sphinx_immaterial",
     "last_updated",
+    "notebook_buttons",
     "semantic_highlighting",
 ]
 

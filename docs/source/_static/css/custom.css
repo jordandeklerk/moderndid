@@ -597,6 +597,40 @@ keep the theme's chevron to show which way it turns.
 }
 
 /*
+A page with a generated notebook opens it in Colab or molab from a row of buttons
+under its title. The buttons copy the show code pill and lead with each service's logo.
+*/
+.md-typeset .mdid-notebook-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  margin: -0.4em 0 1.6em;
+}
+
+.md-typeset .mdid-notebook-buttons a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.25em 0.9em 0.25em 0.7em;
+  border: 0.05rem solid var(--md-accent-fg-color);
+  border-radius: 1em;
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+  font-size: 0.7rem;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.md-typeset .mdid-notebook-buttons a:is(:hover, :focus-visible) {
+  background-color: color-mix(in srgb, var(--md-accent-fg-color) 22%, transparent);
+}
+
+.md-typeset .mdid-notebook-buttons img {
+  width: auto;
+  height: 1.3em;
+}
+
+/*
 MyST-NB keys its dark colors to html[data-theme="dark"], which this theme never sets, and marks code with a green
 margin, so code cells take the theme's colors in both schemes and the accent for their margin.
 */
@@ -620,6 +654,7 @@ body[data-md-color-scheme] {
 
 /* MyST-NB fades in the code a fold opens, so reduced motion stops that along with the pill's color fade. */
 @media (prefers-reduced-motion: reduce) {
+  .md-typeset .mdid-notebook-buttons a,
   .md-typeset div.cell details.hide.above-input > summary {
     transition: none;
   }

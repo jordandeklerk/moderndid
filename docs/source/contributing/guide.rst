@@ -92,6 +92,14 @@ alters a user's inputs, results, or interpretation, update that explanation
 alongside the code. The :doc:`testing` page covers regression tests and
 numerical checks in more detail.
 
+Each example page and each comparison notebook also has a runnable copy in
+``docs/notebooks/`` that the buttons at the top of its page open in Colab or
+molab. The ``make_notebooks.py`` script in that folder writes these copies from
+the pages. Since a pre-commit hook reruns it whenever a page changes, you edit
+the page and never the copy. For a new example page or comparison, add an entry
+to the lists at the top of that script and ``git add`` its new copy like any new
+file.
+
 Checking your work locally
 ==========================
 
