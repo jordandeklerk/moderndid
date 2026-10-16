@@ -15,7 +15,6 @@ from moderndid.core.converters import (
     doseresult_to_polars,
     dynbalancinghistoryresult_to_polars,
     dynbalancingresult_to_polars,
-    honestdid_to_polars,
     mpresult_to_polars,
     pteresult_to_polars,
     to_df,
@@ -83,17 +82,6 @@ class TestPteresultToPolars:
             assert col in df.columns
 
 
-class TestHonestdidToPolars:
-    def test_returns_dataframe(self, honest_did_result):
-        df = honestdid_to_polars(honest_did_result)
-        assert isinstance(df, pl.DataFrame)
-
-    def test_has_expected_columns(self, honest_did_result):
-        df = honestdid_to_polars(honest_did_result)
-        for col in ("param_value", "method", "lb", "ub", "midpoint"):
-            assert col in df.columns
-
-
 class TestDddmpresultToPolars:
     def test_returns_dataframe(self, ddd_mp_result):
         df = dddmpresult_to_polars(ddd_mp_result)
@@ -157,11 +145,6 @@ class TestToDf:
     def test_pteresult(self, cont_did_event):
         df = to_df(cont_did_event)
         expected = pteresult_to_polars(cont_did_event)
-        assert df.equals(expected)
-
-    def test_honestdid(self, honest_did_result):
-        df = to_df(honest_did_result)
-        expected = honestdid_to_polars(honest_did_result)
         assert df.equals(expected)
 
     def test_dddmultiperiod(self, ddd_mp_result):
@@ -281,12 +264,6 @@ def test_to_df_casts_event_times_after_dropping_reference_row(aggte_with_referen
     assert df.schema["event_time"] == pl.Int64
     assert df["event_time"].to_list() == [-2, 0]
     assert df["att"].to_list() == [0.05, 0.3]
-
-
-def test_to_df_keeps_sensitivity_parameter_as_float(honest_did_result):
-    df = to_df(honest_did_result)
-    assert df.schema["param_value"] == pl.Float64
-    assert sorted(df["param_value"].unique().to_list()) == [-1.0, 0.0, 1.0]
 
 
 @pytest.mark.parametrize(

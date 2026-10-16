@@ -6,6 +6,10 @@ import numpy as np
 import polars as pl
 import pytest
 
+from tests.helpers import importorskip
+
+importorskip("sklearn")
+
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
 from moderndid.diddynamic.container import DCBResult, DynBalancingResult
 from moderndid.diddynamic.dyn_balancing import dyn_balancing

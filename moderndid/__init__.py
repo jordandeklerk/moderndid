@@ -578,9 +578,17 @@ def __getattr__(name: str) -> Any:
             module = _importlib.import_module(module_path)
             return getattr(module, name)
         except ImportError as e:
+            # Since the failed import can sit outside the extra, the message names the module that is missing.
+            cause = e if isinstance(e, ModuleNotFoundError) else e.__cause__
+            missing = cause.name if isinstance(cause, ModuleNotFoundError) else None
+            reason = (
+                f"The {missing!r} module that '{name}' needs isn't installed"
+                if missing
+                else f"'{name}' requires extra dependencies"
+            )
             raise ImportError(
-                f"'{name}' requires extra dependencies. Install them with "
-                f"uv add 'moderndid[{extra}]' or pip install 'moderndid[{extra}]'"
+                f"{reason}. Install the {extra} extra with "
+                f"uv add 'moderndid[{extra}]' or pip install 'moderndid[{extra}]'."
             ) from e
 
     # Submodules come last so that specific imports take precedence.

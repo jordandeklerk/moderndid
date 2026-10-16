@@ -5,7 +5,11 @@ import os
 import numpy as np
 import pytest
 
-from moderndid import AGGTEResult
+from tests.helpers import importorskip
+
+importorskip("moderndid.didhonest")
+
+from moderndid import AGGTEResult, aggte, att_gt, honest_did, load_mpdta
 
 _FAST_TEST_CONFIG = {
     "grid_points_small": 6,
@@ -201,6 +205,30 @@ def clustered_event_study():
             "clustervars": ["state"],
             "cluster": np.array([1, 1, 2, 2, 3, 3, 4, 4, 5, 5]),
         },
+    )
+
+
+@pytest.fixture(scope="session")
+def honest_did_result():
+    """Return the relative-magnitude sensitivity of the on-impact effect in the minimum wage data."""
+    universal = att_gt(
+        data=load_mpdta(),
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        est_method="reg",
+        control_group="nevertreated",
+        base_period="universal",
+        boot=False,
+        cband=False,
+    )
+    return honest_did(
+        aggte(universal, type="dynamic", max_e=0),
+        event_time=0,
+        sensitivity_type="relative_magnitude",
+        m_bar_vec=[0.0, 1.0],
+        grid_points=20,
     )
 
 

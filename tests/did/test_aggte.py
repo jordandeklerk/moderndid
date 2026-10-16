@@ -6,15 +6,13 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from scipy import stats
 
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import aggte, att_gt, honest_did
+from moderndid import aggte, att_gt
 from moderndid.did.mboot import mboot as real_mboot
-from moderndid.didhonest.honest_did import _event_study_covariance
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
@@ -234,33 +232,6 @@ def test_aggte_without_the_bootstrap_sums_each_disaggregated_influence_function_
     np.testing.assert_allclose(result.se_by_event, expected, rtol=1e-12)
     np.testing.assert_array_equal(result.att_by_event, plain.att_by_event)
     assert np.max(np.abs(result.se_by_event - plain.se_by_event)) > 1e-3
-
-
-def test_honest_did_covariance_matches_the_clustered_standard_errors_of_an_event_study(mpdta_data):
-    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
-    fit = att_gt(
-        data,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        est_method="reg",
-        base_period="universal",
-        clustervars=["state"],
-    )
-    event_study = aggte(fit, type="dynamic", cband=False)
-
-    estimated = event_study.event_times != -1
-    covariance = _event_study_covariance(event_study.influence_func[:, estimated], event_study.estimation_params)
-    sensitivity = honest_did(event_study, event_time=0, m_vec=np.array([0.0]))
-    on_impact = list(event_study.event_times).index(0)
-
-    np.testing.assert_allclose(np.sqrt(np.diag(covariance)), event_study.se_by_event[estimated], rtol=1e-12)
-    np.testing.assert_allclose(
-        (sensitivity.original_ci.ub - sensitivity.original_ci.lb) / 2,
-        stats.norm.ppf(0.975) * event_study.se_by_event[on_impact],
-        rtol=1e-10,
-    )
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])

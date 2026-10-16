@@ -93,7 +93,6 @@ test = [
     "pytest-cov",
     "pytest-timeout",
     "pytest-xdist>=3.6",
-    "pyfixest>=0.40.0,<0.50.0",
 ]
 doc = [
     "sphinx>=8,<9",

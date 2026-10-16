@@ -469,7 +469,13 @@ def run_etwfe_regression(formula, data, config, vcov=None, backend=None):
         fit_kwargs["demeaner_backend"] = backend
 
     # Since the plots module imports the etwfe containers, this module must load without pyfixest.
-    from pyfixest import feglm, feols, fepois
+    try:
+        from pyfixest import feglm, feols, fepois
+    except ModuleNotFoundError as e:
+        raise ImportError(
+            f"The {e.name!r} module that 'etwfe' needs isn't installed. Install the etwfe extra with "
+            "uv add 'moderndid[etwfe]' or pip install 'moderndid[etwfe]'."
+        ) from e
 
     if family is None or family == "gaussian":
         model = feols(**fit_kwargs)
