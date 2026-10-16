@@ -72,13 +72,20 @@ The release notes under ``docs/source/release/`` should help users understand
 how changes to estimates, inference, input handling, or defaults affect their
 analysis and what they need to do to obtain the corrected behavior. Include
 the new page in that section's table and hidden toctree so readers can find it
-alongside the other releases.
+alongside the other releases. The first sentence of a patch release's notes
+says that it is a patch release.
+
+The list of merged pull requests at the end of each page names only the pull
+requests that people wrote. Updates from Renovate, pre-commit.ci, and the
+changelog workflow stay out of it. The sentence above the list gives the total
+number of merged pull requests and the number the list shows.
 
 Unlike the documentation release notes, ``CHANGELOG.md`` is regenerated from
 GitHub Releases by the changelog workflow after publication. Since that workflow
 doesn't infer the release explanation from a version assignment or commit
 prefix, prepare the GitHub Release description with the same care as the
-documentation page.
+documentation page. ``.github/release.yml`` keeps the same automated pull
+requests out of the description that GitHub generates.
 
 Checking the built distributions
 ================================

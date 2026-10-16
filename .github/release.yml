@@ -1,0 +1,7 @@
+# GitHub's generated release notes, which feed CHANGELOG.md, list only pull requests that people wrote.
+changelog:
+  exclude:
+    authors:
+      - renovate[bot]
+      - pre-commit-ci[bot]
+      - github-actions[bot]

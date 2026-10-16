@@ -1,0 +1,65 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.3.1 release notes
+=============================
+
+ModernDiD 0.3.1 is a patch release that fixes two problems in 0.3.0. Both
+depend on which extras you install. Plotting works again with only the
+``plots`` extra installed. The
+``didhonest`` and ``didml`` extras also install on Python 3.13 and 3.14 without
+compiling a solver. Since :func:`didml` now uses a different solver for its
+weights, its estimates move slightly.
+
+Python 3.12, 3.13, and 3.14 are supported in this release.
+
+
+Fixes
+=====
+
+* With only the ``plots`` extra installed, the first plot or theme function a
+  session used raised an ``ImportError`` that asked you to install
+  ``moderndid[plots]``. The plotting module imports the result types of
+  :func:`~moderndid.diddynamic.dyn_balancing`. Their package loaded
+  scikit-learn on import even though the ``plots`` extra doesn't install it.
+  Since that package now loads scikit-learn only when
+  :func:`~moderndid.diddynamic.dyn_balancing` runs, plotting works with the
+  ``plots`` extra alone.
+
+  (`#379 <https://github.com/jordandeklerk/moderndid/pull/379>`__)
+
+* The ``didhonest`` and ``didml`` extras no longer require ECOS. Since ECOS
+  publishes wheels only up to Python 3.12, installing either extra on Python
+  3.13 or 3.14 built ECOS from source and needed a C compiler. Both extras now
+  require cvxpy 1.4 or later because earlier releases don't install the
+  Clarabel solver.
+
+  (`#379 <https://github.com/jordandeklerk/moderndid/pull/379>`__)
+
+
+Changes to estimates
+====================
+
+* :func:`didml` now solves for its minimax weights with Clarabel instead of
+  ECOS. On the minimum wage data, its group-time effects and their standard
+  errors moved by less than 1e-6. If you install ECOS yourself, you can still
+  pass ``solver="ECOS"`` to :func:`amle_weights`.
+
+  (`#379 <https://github.com/jordandeklerk/moderndid/pull/379>`__)
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull requests merged
+====================
+
+A total of 2 pull requests were merged for this release, of which 1 is a
+feature or fix PR (excluding an automated changelog update).
+
+* `#379 <https://github.com/jordandeklerk/moderndid/pull/379>`__: BUG: load plots without scikit-learn and drop ECOS from the extras

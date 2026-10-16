@@ -55,14 +55,14 @@ comparison states the settings it checks.
    :maxdepth: 1
    :hidden:
 
-   r_staggered
-   r_two_period
-   r_triple
-   r_continuous
-   r_intertemporal
-   r_honest
-   r_etwfe
-   r_npiv
+   Staggered DiD <r_staggered>
+   Two-period DiD <r_two_period>
+   Triple differences <r_triple>
+   Continuous treatment <r_continuous>
+   Intertemporal treatment <r_intertemporal>
+   Sensitivity analysis <r_honest>
+   Extended TWFE <r_etwfe>
+   Nonparametric IV <r_npiv>
 
 .. _r-comparisons-running:
 
