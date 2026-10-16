@@ -19,8 +19,6 @@ from .estimation.inference import (
     compute_variance,
     compute_variance_clustered,
 )
-from .estimation.weights_dcb import compute_dcb_estimator, compute_imbalances
-from .estimation.weights_ipw import compute_ipw_estimator
 
 
 def dyn_balancing(
@@ -218,6 +216,10 @@ def dyn_balancing(
        *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
 
     """
+    # Since the plots module imports the diddynamic containers, this package must load without scikit-learn.
+    from .estimation.weights_dcb import compute_dcb_estimator, compute_imbalances
+    from .estimation.weights_ipw import compute_ipw_estimator
+
     if histories_length is not None and final_periods is not None:
         raise ValueError("histories_length and final_periods are mutually exclusive.")
     if impulse_response and histories_length is None:

@@ -1,5 +1,8 @@
 """Tests for plotnine-based plotting functions."""
 
+import subprocess
+import sys
+
 import pytest
 
 plotnine = pytest.importorskip("plotnine")
@@ -378,3 +381,9 @@ def test_plot_dyn_balancing_coefs_invalid_input_raises():
 def test_plot_dyn_balancing_coefs_empty_raises(dyn_balancing_result):
     with pytest.raises(ValueError, match="No coefficients available"):
         plot_dyn_balancing_coefs(dyn_balancing_result)
+
+
+def test_plots_load_without_scikit_learn():
+    code = "import sys; sys.modules['sklearn'] = None; import moderndid; moderndid.plot_gt; moderndid.theme_moderndid"
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr

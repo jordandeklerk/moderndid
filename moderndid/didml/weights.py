@@ -50,7 +50,7 @@ def amle_weights(
         Non-negative sampling weight of each observation. Defaults to equal
         weights.
     solver : str, optional
-        Name of the cvxpy solver to use. Defaults to ``"ECOS"``.
+        Name of the cvxpy solver to use. Defaults to ``"CLARABEL"``.
     verbose : bool, default=False
         Whether to print solver progress information.
 
@@ -175,7 +175,7 @@ def amle_weights(
     ]
 
     problem = cp.Problem(objective, constraints)
-    chosen_solver = solver or "ECOS"
+    chosen_solver = solver or cp.CLARABEL
 
     try:
         problem.solve(solver=chosen_solver, verbose=verbose)

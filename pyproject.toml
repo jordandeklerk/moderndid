@@ -57,12 +57,12 @@ didcont = [
     "formulaic>=1.1.0",
 ]
 didhonest = [
-    "cvxpy[ECOS]>=1.3.0",
+    "cvxpy>=1.4.0",
     "highspy>=1.13.0",
 ]
 didml = [
     "scikit-learn>=1.7",
-    "cvxpy[ECOS]>=1.3.0",
+    "cvxpy>=1.4.0",
     "econml>=0.17.0",
     "xgboost>=2.0.0",
     "formulaic>=1.1.0",

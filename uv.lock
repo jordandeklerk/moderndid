@@ -589,11 +589,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/02/ca/4648ad361e0060834104672c2ce0d6a96996f374e83615fc69a87b1e3841/cvxpy-1.7.3-cp313-cp313-win_amd64.whl", hash = "sha256:d1def84c970a8a5765849e225732c6308c1bba8900bbfa7d4a17ea955e82ce80", size = 1131760, upload-time = "2025-09-22T18:01:04.595Z" },
 ]
 
-[package.optional-dependencies]
-ecos = [
-    { name = "ecos" },
-]
-
 [[package]]
 name = "cycler"
 version = "0.12.1"
@@ -691,21 +686,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/d5/96/fcde612e5430ad9694992dfa92c9fd49d5689dd127cfe56057a62c17dfa7/econml-0.17.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:110ca11fa8f0fecba514b87747db03b2e4a385e68ca1ffc83e6f27f743824a4e", size = 2434451, upload-time = "2026-07-31T20:56:18.787Z" },
     { url = "https://files.pythonhosted.org/packages/9c/8e/4edd4a2d8b458ddeceed37a712414d3d0d2c336544f1195672509d78f505/econml-0.17.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:34539aa17ed4fec2f35c4f7314925ca670f32a64a8546a59a53a7b9b53856265", size = 5551979, upload-time = "2026-07-31T20:56:20.476Z" },
     { url = "https://files.pythonhosted.org/packages/59/89/f499ab47cbb57465ce3ec8dd7b260200a113f21ab1f36e85f991f1b968be/econml-0.17.0-cp314-cp314t-win_amd64.whl", hash = "sha256:a613a3b9eeb33a9bd860032a5352a3ba327b271d609793b076e277d279937e51", size = 2354549, upload-time = "2026-07-31T20:56:22.493Z" },
-]
-
-[[package]]
-name = "ecos"
-version = "2.0.14"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-    { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/5f/17716c533da95ed110815b159efa22b1064c8c41fd5c862f21aff7a7fec0/ecos-2.0.14.tar.gz", hash = "sha256:64b3201c0e0a7f0129050557c4ac50b00031e80a10534506dba1200c8dc1efe4", size = 142430, upload-time = "2024-06-18T03:48:34.809Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/c3/84e392f2410f51fa557198937cc52a2e80f887c517ef4e3fb6d46e3bb008/ecos-2.0.14-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:4a7e2704a3ef9acfb8146d594deff9942d3a0f0d0399de8fe2e0bd95e8b0855c", size = 92545, upload-time = "2024-06-18T03:47:50.589Z" },
-    { url = "https://files.pythonhosted.org/packages/82/12/42f4d953f9284571726b085f99e13bfa84522bf63bf2e7a81460013b09e6/ecos-2.0.14-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f3cbb1a66ecf10955a1a4bcd6b99db55148000cb79fd176bfac26d98b21a4814", size = 222132, upload-time = "2024-06-18T03:47:47.498Z" },
-    { url = "https://files.pythonhosted.org/packages/56/9a/ca30572f3e3ff3cef6a0ea8aa6cdc12c36f9fefe559f65c7d6265713196a/ecos-2.0.14-cp312-cp312-win_amd64.whl", hash = "sha256:718eb62afb8e45426bcc365ebaf3ca9f610afcbb754de6073ef5f104da8fca1f", size = 72248, upload-time = "2024-06-18T03:48:51.504Z" },
 ]
 
 [[package]]
@@ -1745,7 +1725,7 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "cvxpy", extra = ["ecos"] },
+    { name = "cvxpy" },
     { name = "econml" },
     { name = "formulaic" },
     { name = "great-tables" },
@@ -1780,11 +1760,11 @@ diddynamic = [
     { name = "scikit-learn" },
 ]
 didhonest = [
-    { name = "cvxpy", extra = ["ecos"] },
+    { name = "cvxpy" },
     { name = "highspy" },
 ]
 didml = [
-    { name = "cvxpy", extra = ["ecos"] },
+    { name = "cvxpy" },
     { name = "econml" },
     { name = "formulaic" },
     { name = "scikit-learn" },
@@ -1850,8 +1830,8 @@ requires-dist = [
     { name = "colorama", marker = "extra == 'doc'" },
     { name = "commonmark", marker = "extra == 'doc'" },
     { name = "cupy-cuda12x", extras = ["ctk"], marker = "extra == 'gpu'", specifier = ">=14.0" },
-    { name = "cvxpy", extras = ["ecos"], marker = "extra == 'didhonest'", specifier = ">=1.3.0" },
-    { name = "cvxpy", extras = ["ecos"], marker = "extra == 'didml'", specifier = ">=1.3.0" },
+    { name = "cvxpy", marker = "extra == 'didhonest'", specifier = ">=1.4.0" },
+    { name = "cvxpy", marker = "extra == 'didml'", specifier = ">=1.4.0" },
     { name = "econml", marker = "extra == 'didml'", specifier = ">=0.17.0" },
     { name = "faicons", marker = "extra == 'doc'" },
     { name = "filelock", marker = "extra == 'doc'" },
