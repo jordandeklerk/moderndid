@@ -77,6 +77,10 @@ repository's ``.venv``, a Python 3.12 environment with ModernDiD and its
 ``all`` extra installed in editable mode alongside ``rpy2``, ``nbclient``,
 ``ipykernel``, and ``pandas``.
 
+Each comparison also opens in Colab from the button at the top of its page.
+Since its first code cell installs ModernDiD and the comparison's R packages,
+the notebook runs there without the setup below.
+
 .. tab-set::
 
    .. tab-item:: Validation environment
@@ -84,7 +88,7 @@ repository's ``.venv``, a Python 3.12 environment with ModernDiD and its
       .. code-block:: console
 
          pixi run -e validation setup-r
-         pixi run --frozen -e validation .venv/bin/python docs/run_r_examples.py
+         pixi run --frozen -e validation .venv/bin/python docs/source/r_comparisons/run_r_examples.py
 
       Because pixi puts the validation environment's R first on the path,
       ``rpy2`` loads the R release that pixi locks for your platform. The
@@ -102,7 +106,7 @@ repository's ``.venv``, a Python 3.12 environment with ModernDiD and its
 
          pixi install --frozen -e docs-r
          pixi run -e docs-r setup-r
-         pixi run -e docs-r python docs/run_r_examples.py
+         pixi run -e docs-r python docs/source/r_comparisons/run_r_examples.py
 
       Its ``setup-r`` task installs the R reference packages that conda-forge
       lacks or carries in an older release. Because those packages come from
@@ -110,10 +114,11 @@ repository's ``.venv``, a Python 3.12 environment with ModernDiD and its
       ``pixi.lock``.
 
 To rerun only some of the notebooks, name them after the script, as in
-``docs/run_r_examples.py r_triple r_continuous``. Since the script saves a
-notebook only after every cell succeeds, a failed cell leaves that notebook's
-previous outputs in place. Before you read a difference after a rerun as a
-change in the code, compare the versions table at the end of the notebook.
+``docs/source/r_comparisons/run_r_examples.py r_triple r_continuous``. Since
+the script saves a notebook only after every cell succeeds, a failed cell
+leaves that notebook's previous outputs in place. Before you read a difference
+after a rerun as a change in the code, compare the versions table at the end
+of the notebook.
 
 .. admonition:: The HonestDiD version
    :class: note

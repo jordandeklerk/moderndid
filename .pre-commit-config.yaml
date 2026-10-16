@@ -35,4 +35,16 @@ repos:
   hooks:
     - id: no-print-statements
       # Command-line scripts report progress on stdout.
-      exclude: ^(benchmarks/|docs/run_r_examples\.py$)
+      exclude: ^(benchmarks/|docs/notebooks/(make|run)_notebooks\.py$|docs/source/r_comparisons/run_r_examples\.py$)
+
+- repo: local
+  hooks:
+    - id: make-notebooks
+      name: write the runnable notebooks
+      entry: python docs/notebooks/make_notebooks.py
+      language: python
+      additional_dependencies: [jupytext==1.19.6, nbformat==5.11.1]
+      # Since a page, a label it links to, or the version can change a notebook, any docs source triggers the hook.
+      # Listing docs/notebooks/ covers the script and lets the rerun undo a hand edit to a generated notebook.
+      files: ^(docs/source/|docs/notebooks/|moderndid/_version\.py$)
+      pass_filenames: false

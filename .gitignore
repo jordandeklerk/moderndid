@@ -10,6 +10,8 @@
 *.ipynb
 # Keep the executed Python/R comparisons published in the documentation.
 !docs/source/r_comparisons/r_*.ipynb
+# Keep the notebooks that docs/make_notebooks.py writes for Colab and molab.
+!docs/notebooks/**/*.ipynb
 */.ipynb_checkpoints/*
 .virtual_documents
 
