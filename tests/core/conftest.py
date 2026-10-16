@@ -23,7 +23,6 @@ from moderndid import (
     gen_cont_did_data,
     gen_ddd_2periods,
     gen_ddd_mult_periods,
-    honest_did,
     load_favara_imbs,
     load_mpdta,
 )
@@ -281,29 +280,6 @@ def cont_did_event():
         dname="D",
         target_parameter="level",
         aggregation="eventstudy",
-    )
-
-
-@pytest.fixture(scope="session")
-def honest_did_result(mpdta):
-    universal = att_gt(
-        data=mpdta,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        est_method="reg",
-        control_group="nevertreated",
-        base_period="universal",
-        boot=False,
-        cband=False,
-    )
-    return honest_did(
-        aggte(universal, type="dynamic", max_e=0),
-        event_time=0,
-        sensitivity_type="relative_magnitude",
-        m_bar_vec=[0.0, 1.0],
-        grid_points=20,
     )
 
 

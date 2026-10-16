@@ -14,6 +14,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 np = importorskip("numpy")
+importorskip("moderndid.didhonest")
 
 from moderndid.didhonest import (
     basis_vector,

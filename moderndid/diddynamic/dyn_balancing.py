@@ -217,8 +217,14 @@ def dyn_balancing(
 
     """
     # Since the plots module imports the diddynamic containers, this package must load without scikit-learn.
-    from .estimation.weights_dcb import compute_dcb_estimator, compute_imbalances
-    from .estimation.weights_ipw import compute_ipw_estimator
+    try:
+        from .estimation.weights_dcb import compute_dcb_estimator, compute_imbalances
+        from .estimation.weights_ipw import compute_ipw_estimator
+    except ModuleNotFoundError as e:
+        raise ImportError(
+            f"The {e.name!r} module that 'dyn_balancing' needs isn't installed. Install the diddynamic extra with "
+            "uv add 'moderndid[diddynamic]' or pip install 'moderndid[diddynamic]'."
+        ) from e
 
     if histories_length is not None and final_periods is not None:
         raise ValueError("histories_length and final_periods are mutually exclusive.")

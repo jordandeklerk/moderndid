@@ -446,3 +446,32 @@ def test_honest_did_clusters_an_att_gt_event_study():
     assert len(np.unique(cluster)) == 29
     assert (result.original_ci.ub - result.original_ci.lb) / 2 == pytest.approx(stats.norm.ppf(0.975) * cluster_se)
     assert cluster_se != pytest.approx(unit_se, rel=0.01)
+
+
+def test_honest_did_covariance_matches_the_clustered_standard_errors_of_an_event_study():
+    data = load_mpdta().with_columns((pl.col("countyreal") // 1000).alias("state"))
+    fit = att_gt(
+        data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        est_method="reg",
+        base_period="universal",
+        clustervars=["state"],
+    )
+    event_study = aggte(fit, type="dynamic", cband=False)
+
+    estimated = event_study.event_times != -1
+    covariance = honest_did_module._event_study_covariance(
+        event_study.influence_func[:, estimated], event_study.estimation_params
+    )
+    sensitivity = honest_did(event_study, event_time=0, m_vec=np.array([0.0]))
+    on_impact = list(event_study.event_times).index(0)
+
+    np.testing.assert_allclose(np.sqrt(np.diag(covariance)), event_study.se_by_event[estimated], rtol=1e-12)
+    np.testing.assert_allclose(
+        (sensitivity.original_ci.ub - sensitivity.original_ci.lb) / 2,
+        stats.norm.ppf(0.975) * event_study.se_by_event[on_impact],
+        rtol=1e-10,
+    )

@@ -183,7 +183,11 @@ Tests that require an optional dependency can use
 ``tests.helpers.importorskip`` at module level. Since a missing dependency
 normally skips that file, keep those tests separate from checks that should run
 with the base package. GPU tests are the exception because they reach CuPy
-through :ref:`fixtures of their own <testing-gpu>`.
+through :ref:`fixtures of their own <testing-gpu>`. When the fixtures in a
+folder need an extra, its ``conftest.py`` calls ``importorskip`` at the top. A
+run without that extra then skips the whole folder. Passing that folder to
+pytest by name stops the run with an error instead, because pytest loads its
+``conftest.py`` before collection starts.
 
 Setting the ``MODERNDID_REQUIRE_ALL_DEPS`` environment variable makes
 ``importorskip`` raise the import error instead of skipping. Because a skipped
@@ -327,6 +331,12 @@ file, as ``pixi run lint`` does, before it builds the package. The
 fast suite against the oldest Polars that ``pyproject.toml`` allows. Raising
 that floor means changing the ``polars==1.38.*`` pin in ``tox.ini`` too. A
 separate job runs ``full-coverage`` on Python 3.14 for pushes to ``main``.
+
+Because the other jobs install every extra, two more jobs on Python 3.14 run the
+fast suite with smaller installs. The ``minimal`` environment installs the
+package with its test tools and no extras. The ``minimal-plots`` environment
+adds the ``plots`` extra to that install. In both, every test that needs a
+missing extra skips through ``importorskip``.
 
 The weekly full-suite workflow runs on Sunday at 02:00 UTC and can also be
 started manually. An upstream dependency workflow runs at 03:00 UTC on Sunday

@@ -7,8 +7,6 @@ import pytest
 from moderndid.did.container import AGGTEResult, MPResult
 from moderndid.didcont.container import DoseResult
 from moderndid.diddynamic.container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
-from moderndid.didhonest.honest_did import HonestDiDResult
-from moderndid.didhonest.sensitivity import OriginalCSResult
 from moderndid.didinter.container import DIDInterResult, EffectsResult, PlacebosResult
 from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodResult
 
@@ -106,23 +104,6 @@ def dose_result():
 
 
 @pytest.fixture
-def honest_result():
-    df = pl.DataFrame({"M": [0.5, 1.0, 1.5], "lb": [0.1, 0.0, -0.1], "ub": [0.9, 0.8, 0.7], "method": ["FLCI"] * 3})
-
-    original_ci = OriginalCSResult(
-        lb=0.3,
-        ub=0.7,
-        method="Original",
-    )
-
-    return HonestDiDResult(
-        robust_ci=df,
-        original_ci=original_ci,
-        sensitivity_type="smoothness",
-    )
-
-
-@pytest.fixture
 def pte_result_with_event_study():
     from moderndid.didcont.container import PTEAggteResult, PTEResult
 
@@ -142,23 +123,6 @@ def pte_result_with_event_study():
         event_study=event_study,
         ptep=None,
     )
-
-
-@pytest.fixture
-def sensitivity_robust_results():
-    return pl.DataFrame(
-        {
-            "M": [0.5, 1.0, 1.5, 0.5, 1.0, 1.5],
-            "lb": [0.2, 0.1, 0.0, 0.15, 0.05, -0.05],
-            "ub": [0.8, 0.9, 1.0, 0.75, 0.85, 0.95],
-            "method": ["FLCI", "FLCI", "FLCI", "Conditional", "Conditional", "Conditional"],
-        }
-    )
-
-
-@pytest.fixture
-def sensitivity_original_result():
-    return OriginalCSResult(lb=0.3, ub=0.7, method="Original")
 
 
 @pytest.fixture
