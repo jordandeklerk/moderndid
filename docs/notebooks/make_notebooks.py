@@ -49,14 +49,15 @@ def main():
     version = re.search(r'__version__ = "([^"]+)"', version_file)[1]
     links = Links()
     notebooks = {}
+    install = f'!pip install -q "moderndid[all]=={version}"'
     for name in EXAMPLES:
         page = jupytext.read(SOURCE / "user_guide" / f"{name}.md", fmt="md:myst")
-        cells = example_cells(page, f"user_guide/{name}", links, version)
+        cells = notebook_cells(page, f"user_guide/{name}", links, install)
         notebooks[OUTPUT / f"{name}.ipynb"] = (cells, molab_header(version))
     for name, packages in R_COMPARISONS.items():
         comparison = nbformat.read(SOURCE / "r_comparisons" / f"{name}.ipynb", as_version=4)
         docname = f"r_comparisons/{name}"
-        cells = comparison_cells(comparison, docname, links, version, packages)
+        cells = notebook_cells(comparison, docname, links, colab_setup(version, packages, docname))
         notebooks[OUTPUT / "r_comparisons" / f"{name}.ipynb"] = (cells, None)
     for path, (cells, header) in notebooks.items():
         if write(cells, path, header):
@@ -242,8 +243,8 @@ def with_header(cells, docname, install):
     return [first, nbformat.v4.new_code_cell(install), *cells[1:]]
 
 
-def example_cells(page, docname, links, version):
-    """Turn an example page into the cells of its notebook."""
+def notebook_cells(page, docname, links, install):
+    """Turn a page into the cells of a notebook that shows no output until the reader runs it."""
     cells = []
     for cell in page.cells:
         tags = set(cell.metadata.get("tags", []))
@@ -261,7 +262,7 @@ def example_cells(page, docname, links, version):
             cells.append(nbformat.v4.new_code_cell(catch_error(code_source(cell.source))))
         else:
             cells.append(nbformat.v4.new_code_cell(code_source(cell.source)))
-    return with_header(cells, docname, f'!pip install -q "moderndid[all]=={version}"')
+    return with_header(cells, docname, install)
 
 
 def colab_setup(version, packages, docname):
@@ -279,6 +280,9 @@ def colab_setup(version, packages, docname):
     return (
         "import subprocess\nimport sys\n\n"
         'if "google.colab" in sys.modules:\n'
+        "    # Colab ships rpy2 3.5 as a single package. Uninstalling it first keeps pip from deleting\n"
+        "    # the files it shares with the split rpy2 3.6 packages.\n"
+        '    subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "rpy2"], check=True)\n'
         "    # rpy2 supports Colab's R 4.6 from release 3.6.7 on.\n"
         '    subprocess.run([sys.executable, "-m", "pip", "install", "-q", '
         f'"moderndid[all]=={version}", "rpy2>=3.6.7"], check=True)\n'
@@ -287,40 +291,6 @@ def colab_setup(version, packages, docname):
         "else:\n"
         f'    print("Outside Colab, set up R as {DOCS}r_comparisons/index.html#r-comparisons-running describes.")'
     )
-
-
-def comparison_cells(notebook, docname, links, version, packages):
-    """Turn an R comparison into the cells of its Colab notebook and keep the saved outputs."""
-    cells = []
-    for cell in notebook.cells:
-        tags = set(cell.metadata.get("tags", []))
-        if cell.cell_type == "markdown":
-            if text := markdown(cell.source, docname, links):
-                cells.append(nbformat.v4.new_markdown_cell(text))
-        elif cell.cell_type != "code":
-            raise SystemExit(f"{docname}: no notebook form for a {cell.cell_type} cell")
-        elif "remove-cell" in tags:
-            if source := setup_source(cell.source):
-                cells.append(nbformat.v4.new_code_cell(code_source(source)))
-        elif "raises-exception" in tags:
-            wrapped = nbformat.v4.new_code_cell(catch_error(code_source(cell.source)))
-            wrapped.outputs = [
-                nbformat.v4.new_output("stream", name="stdout", text=f"{output.ename}: {output.evalue}\n")
-                for output in cell.outputs
-                if output.output_type == "error"
-            ]
-            cells.append(wrapped)
-        else:
-            # Saved stderr holds rpy2 noise and local paths that the docs build already removes.
-            outputs = [
-                output for output in cell.outputs if not (output.output_type == "stream" and output.name == "stderr")
-            ]
-            cells.append(
-                nbformat.v4.new_code_cell(
-                    code_source(cell.source), outputs=outputs, execution_count=cell.execution_count
-                )
-            )
-    return with_header(cells, docname, colab_setup(version, packages, docname))
 
 
 def molab_header(version):
