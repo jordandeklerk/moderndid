@@ -1,0 +1,494 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.3.0 release notes
+=============================
+
+ModernDiD 0.3.0 adds three estimators, corrects estimates and standard errors
+across most of the existing ones, and removes the Dask, Spark, and Numba code.
+Since several arguments have new names, code written for 0.2.0 may need small
+changes before it runs. The sections below list those changes first and then
+the results that move when you upgrade.
+
+Python 3.12, 3.13, and 3.14 are supported in this release.
+
+
+Upgrading from 0.2.0
+====================
+
+* ModernDiD now requires Python 3.12 or later and Polars 1.38 or later.
+
+  (`#331 <https://github.com/jordandeklerk/moderndid/pull/331>`__)
+
+* The Dask and Spark backends are removed along with the ``dask_*`` and
+  ``spark_*`` functions, the ``n_partitions`` argument, and the ``dask`` and
+  ``spark`` extras. Estimation runs on one machine, where ``n_jobs`` spreads the
+  work over threads and the CuPy backend moves it to a GPU.
+
+  (`#331 <https://github.com/jordandeklerk/moderndid/pull/331>`__,
+  `#332 <https://github.com/jordandeklerk/moderndid/pull/332>`__)
+
+* Every function that took ``alp`` now takes ``alpha``. The two-period
+  estimators replace ``n_boot``, ``nboot``, and ``n_bootstrap`` with
+  ``biters``. ``did_multiplegt`` replaces its percent ``ci_level`` with
+  ``alpha``, a probability such as 0.05. Code that still passes one of the old
+  names now fails with an error.
+
+  (`#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__,
+  `#334 <https://github.com/jordandeklerk/moderndid/pull/334>`__,
+  `#335 <https://github.com/jordandeklerk/moderndid/pull/335>`__,
+  `#337 <https://github.com/jordandeklerk/moderndid/pull/337>`__,
+  `#340 <https://github.com/jordandeklerk/moderndid/pull/340>`__)
+
+* The deprecated generators ``gen_dgp_2periods``, ``gen_dgp_mult_periods``,
+  ``gen_dgp_scalable``, ``simulate_cont_did_data``, and
+  ``generate_simple_ddd_data`` are removed. Their replacements are
+  ``gen_ddd_2periods``, ``gen_ddd_mult_periods``, ``gen_ddd_scalable``,
+  ``gen_cont_did_data``, and ``gen_simple_ddd_data``.
+
+  (`#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__)
+
+* With repeated cross-sections, ``est_method="imp"`` and ``"trad"`` in
+  ``drdid`` now give the locally efficient estimators of Sant'Anna and Zhao
+  (2020). The ``"imp_local"`` and ``"trad_local"`` values that used to select
+  them are removed.
+
+  (`#335 <https://github.com/jordandeklerk/moderndid/pull/335>`__)
+
+* Since ``cont_did`` no longer takes ``boot`` or extra keyword arguments, a
+  misspelled option now raises an error instead of being ignored. The
+  event-time options ``balance_e``, ``min_e``, and ``max_e`` became named
+  arguments in the same change.
+
+  (`#340 <https://github.com/jordandeklerk/moderndid/pull/340>`__)
+
+* ``npiv`` and its helpers moved from ``moderndid.didcont.npiv`` to the new
+  ``moderndid.npiv`` subpackage. Code that imports ``npiv`` from the top-level
+  ``moderndid`` namespace keeps working.
+
+  (`#249 <https://github.com/jordandeklerk/moderndid/pull/249>`__)
+
+* Since the bootstrap helpers are now plain NumPy code that runs as fast as the
+  compiled kernels did, the ``numba`` extra is removed.
+  ``moderndid.core.numba_utils`` is now ``moderndid.core.bootstrap``.
+
+  (`#372 <https://github.com/jordandeklerk/moderndid/pull/372>`__)
+
+* The ``gpu`` extra now installs ``cupy-cuda12x[ctk]>=14.0`` in place of CuPy 13
+  and RMM. Through CuPy's ``ctk`` extra, pip also installs the CUDA libraries it
+  needs.
+
+  (`#373 <https://github.com/jordandeklerk/moderndid/pull/373>`__)
+
+* The ``didhonest`` extra requires highspy 1.13 or later. If an upgrade leaves
+  an older highspy installed, importing ``moderndid.didhonest`` raises an error
+  that asks you to reinstall the extra.
+
+  (`#371 <https://github.com/jordandeklerk/moderndid/pull/371>`__)
+
+* ``to_df`` now returns the time periods of every result as ``Int64`` columns.
+
+  (`#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__)
+
+
+Changes to estimates and inference
+==================================
+
+Results from 0.2.0 that go through the paths below change when you upgrade.
+Each change brings an estimate or a standard error in line with the method's
+definition.
+
+* Since the multiplier bootstrap in ``att_gt`` and ``aggte`` now sums the
+  influence function within clusters, as in Callaway and Sant'Anna (2021,
+  Remark 10), clustered standard errors and bands change. When you cluster
+  above the unit level, the Wald pre-test is left out because it over-rejects
+  at realistic numbers of clusters. ``att_gt`` screens cells for overlap with
+  the sampling weights. When a cell's estimation fails, ``att_gt`` skips it and
+  warns once. ``aggte`` also fixes its calendar-time rows and its aggregations
+  that keep no cells.
+
+  (`#334 <https://github.com/jordandeklerk/moderndid/pull/334>`__)
+
+* The doubly robust estimators for repeated cross-sections now subtract the
+  estimation effect of the comparison group's pre-period outcome regression
+  from their influence functions, as in Appendix B of Sant'Anna and Zhao
+  (2020). While point estimates don't change, standard errors move for doubly
+  robust fits with covariates in ``drdid``, ``att_gt``, and ``ddd`` with
+  ``panel=False`` or ``allow_unbalanced_panel=True``.
+
+  (`#370 <https://github.com/jordandeklerk/moderndid/pull/370>`__)
+
+* The two-period estimators give the same estimates when you rescale a
+  covariate, on the CPU and on the CuPy backend. The fixes also restore the
+  Mammen bootstrap draws and give treated units with a propensity score of one
+  zero control weight.
+
+  (`#335 <https://github.com/jordandeklerk/moderndid/pull/335>`__)
+
+* ``agg_ddd`` weights cohorts by their eligible treated units, as in
+  Ortiz-Villavicencio and Sant'Anna (2025). Its standard errors now include the
+  term for the estimated cohort weights. Multi-period ``ddd`` fixes its handling
+  of sampling weights and unbalanced panels, the alignment of its influence
+  functions, and its GMM and bootstrap standard errors.
+
+  (`#336 <https://github.com/jordandeklerk/moderndid/pull/336>`__)
+
+* ``did_multiplegt`` rewrites its adjustment for control variables, fixes its
+  variance and bootstrap computations, and warns when it drops rows with
+  missing controls.
+
+  (`#337 <https://github.com/jordandeklerk/moderndid/pull/337>`__)
+
+* With never-treated units coded as ``G = 0`` throughout ``cont_did``,
+  ``setup_pte_cont`` now reproduces its results. The bootstrap's band rule and
+  pointwise floor are corrected. Since the CCK sieve selection and uniform bands
+  now use ``biters`` draws instead of a fixed 999, CCK results shift slightly at
+  the same ``random_state``.
+
+  (`#340 <https://github.com/jordandeklerk/moderndid/pull/340>`__,
+  `#370 <https://github.com/jordandeklerk/moderndid/pull/370>`__)
+
+* The conditional tests in ``honest_did`` now check every grid point, since the
+  accepted set need not be an interval. They also compute truncation bounds that
+  rounding can't upset. The restriction matrices for second differences at the reference
+  period and for event studies with one post-period are fixed. The covariance
+  now comes from influence functions summed within the fit's clusters.
+  Restrictions on second differences need two pre-treatment periods and now say
+  so with a clear error. A test statistic with zero variance no longer divides
+  by zero.
+
+  (`#342 <https://github.com/jordandeklerk/moderndid/pull/342>`__,
+  `#363 <https://github.com/jordandeklerk/moderndid/pull/363>`__)
+
+* Without Numba, 0.2.0 computed NaN truncation bounds in ``honest_did`` for
+  constraints with a negligible coefficient. Those bounds could drop accepted
+  grid points from conditional and hybrid confidence sets under the smoothness
+  restrictions.
+
+  (`#372 <https://github.com/jordandeklerk/moderndid/pull/372>`__)
+
+* ``npiv`` gives the instrument basis the same degree and segments in
+  estimation as in the selection step and treats ``w`` equal to ``x`` as a
+  regression. The fixes also cover the Lepski selection on short or degenerate
+  grids, the boundary terms of the spline expansion, and the derivatives for
+  additive and generalized-product bases. Band variances now come from row sums
+  instead of n-by-n matrices. Memory use on large samples drops as a result.
+
+  (`#345 <https://github.com/jordandeklerk/moderndid/pull/345>`__)
+
+* The CuPy backend no longer crashes or returns silently wrong results for
+  singular and rank-deficient designs. It treats them the way the CPU fits do.
+  Under the CuPy backend, the weighted bootstraps of ``drdid``, ``ipwdid``, ``ordid``,
+  and ``ddd`` run on the CPU because each draw refits small models.
+
+  (`#373 <https://github.com/jordandeklerk/moderndid/pull/373>`__)
+
+
+New features
+============
+
+Extended two-way fixed effects
+------------------------------
+
+* ``etwfe`` estimates the extended two-way fixed effects regression of
+  Wooldridge (2023, 2025) and comes with the ``etwfe`` extra. ``emfx`` aggregates its cohort-by-period effects into
+  overall, group, calendar-time, and event-study summaries with delta-method
+  standard errors. The regression can be linear, Poisson, logit, or probit. It
+  compares treated cohorts with not-yet-treated or never-treated units and can
+  interact treatment with a moderator to study heterogeneous effects.
+
+  (`#250 <https://github.com/jordandeklerk/moderndid/pull/250>`__,
+  `#254 <https://github.com/jordandeklerk/moderndid/pull/254>`__,
+  `#343 <https://github.com/jordandeklerk/moderndid/pull/343>`__)
+
+Dynamic covariate balancing
+---------------------------
+
+* ``dyn_balancing`` comes with the ``diddynamic`` extra and estimates the
+  effects of treatment histories that change over time with the dynamic
+  covariate balancing method of Viviano and Bradic (2026). Units may select into
+  treatment based on their past outcomes and covariates. ``load_acemoglu`` loads
+  the democracy and economic growth panel of 141 countries that its guide
+  analyzes.
+
+  (`#270 <https://github.com/jordandeklerk/moderndid/pull/270>`__,
+  `#341 <https://github.com/jordandeklerk/moderndid/pull/341>`__)
+
+Machine learning DiD
+--------------------
+
+* ``didml`` comes with the ``didml`` extra and estimates group-time effects in
+  staggered designs with the machine learning approach of Hatamyar, Kreif,
+  Rocha, and Huber (2023). ``aggte_didml`` aggregates those effects. By default,
+  a bootstrap that refits every cell 100 times gives the standard errors. Under
+  ``boot=False`` they come from influence functions instead. Setting
+  ``cband=True`` adds a simultaneous band. The ``blp_eventtimes`` and
+  ``clan_ttest`` functions describe how the effects vary with covariates.
+
+  (`#295 <https://github.com/jordandeklerk/moderndid/pull/295>`__,
+  `#346 <https://github.com/jordandeklerk/moderndid/pull/346>`__,
+  `#349 <https://github.com/jordandeklerk/moderndid/pull/349>`__)
+
+Clustered inference
+-------------------
+
+* ``att_gt`` and ``ddd`` give analytic cluster-robust standard errors without
+  the bootstrap. The estimators warn when clustered inference rests on few
+  clusters and name the cluster variable in reports and tables.
+
+  (`#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__,
+  `#334 <https://github.com/jordandeklerk/moderndid/pull/334>`__,
+  `#336 <https://github.com/jordandeklerk/moderndid/pull/336>`__)
+
+Faster bootstraps and sensitivity analysis
+------------------------------------------
+
+* The multiplier bootstrap behind ``att_gt``, ``aggte``, ``ddd``, and
+  ``cont_did`` draws its random signs in blocks and multiplies them by the
+  influence function matrix. At a million rows, 63 columns, and 999 draws, it
+  takes 14 seconds instead of 114.
+
+  (`#371 <https://github.com/jordandeklerk/moderndid/pull/371>`__)
+
+* ``did_multiplegt`` runs the preprocessing that a bootstrap draw can't change
+  only once. Its new ``n_jobs`` argument runs the draws on threads without
+  changing the results. On the Favara and Imbs data, 200 draws take 12 seconds
+  instead of 40, or 2.8 seconds with ``n_jobs=8``.
+
+  (`#371 <https://github.com/jordandeklerk/moderndid/pull/371>`__)
+
+* The conditional tests in ``honest_did`` reuse one HiGHS model per polyhedron
+  and warm-start each solve. The relative magnitudes example in the guide takes
+  11 seconds instead of 108.
+
+  (`#371 <https://github.com/jordandeklerk/moderndid/pull/371>`__)
+
+Data, plots, and Python versions
+--------------------------------
+
+* ``load_fracking`` loads the county employment panel for the fracking
+  application in the continuous treatment guides.
+
+  (`#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__)
+
+* The plot themes ``theme_moderndid``, ``theme_publication``, and
+  ``theme_minimal`` are exported from the top-level namespace.
+
+  (`#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__)
+
+* Python 3.14 is supported and tested on Ubuntu and Windows.
+
+  (`#375 <https://github.com/jordandeklerk/moderndid/pull/375>`__)
+
+
+Documentation
+=============
+
+* The documentation has a new theme and rewritten getting started, user, and
+  example guides. Since each example page runs its code during the build, its
+  outputs always come from the release it documents.
+
+  (`#351 <https://github.com/jordandeklerk/moderndid/pull/351>`__,
+  `#356 <https://github.com/jordandeklerk/moderndid/pull/356>`__,
+  `#357 <https://github.com/jordandeklerk/moderndid/pull/357>`__,
+  `#358 <https://github.com/jordandeklerk/moderndid/pull/358>`__,
+  `#359 <https://github.com/jordandeklerk/moderndid/pull/359>`__,
+  `#369 <https://github.com/jordandeklerk/moderndid/pull/369>`__)
+
+* The background pages are rewritten for every estimator family. A new section
+  explains the influence functions behind the standard errors.
+
+  (`#353 <https://github.com/jordandeklerk/moderndid/pull/353>`__,
+  `#354 <https://github.com/jordandeklerk/moderndid/pull/354>`__,
+  `#355 <https://github.com/jordandeklerk/moderndid/pull/355>`__,
+  `#374 <https://github.com/jordandeklerk/moderndid/pull/374>`__)
+
+* A new :doc:`comparisons section <../r_comparisons/index>` checks each
+  estimator's results against another implementation of its method.
+
+  (`#360 <https://github.com/jordandeklerk/moderndid/pull/360>`__,
+  `#361 <https://github.com/jordandeklerk/moderndid/pull/361>`__)
+
+* The rewrite also covers the contributing and developer pages and shortens
+  the docstrings. A public function that a guide covers links to that guide
+  instead of carrying its own example.
+
+  (`#362 <https://github.com/jordandeklerk/moderndid/pull/362>`__,
+  `#366 <https://github.com/jordandeklerk/moderndid/pull/366>`__,
+  `#367 <https://github.com/jordandeklerk/moderndid/pull/367>`__,
+  `#368 <https://github.com/jordandeklerk/moderndid/pull/368>`__)
+
+
+Infrastructure
+==============
+
+* The test suite runs in parallel and installs its dependencies with uv.
+
+  (`#364 <https://github.com/jordandeklerk/moderndid/pull/364>`__,
+  `#365 <https://github.com/jordandeklerk/moderndid/pull/365>`__)
+
+* Validation tests compare every estimator with a reference implementation of
+  its method at full precision. They skip in CI because they need the
+  reference packages.
+
+  (`#347 <https://github.com/jordandeklerk/moderndid/pull/347>`__,
+  `#348 <https://github.com/jordandeklerk/moderndid/pull/348>`__)
+
+* An asv benchmark suite and a ``spin compare`` command replace the old
+  benchmark scripts.
+
+  (`#350 <https://github.com/jordandeklerk/moderndid/pull/350>`__)
+
+* The GPU tests run on an NVIDIA GPU through Modal every Sunday and on manual
+  dispatch.
+
+  (`#373 <https://github.com/jordandeklerk/moderndid/pull/373>`__)
+
+* Since pyfixest needs Numba, the ``etwfe`` extra still installs it even though
+  ModernDiD's own code no longer uses it.
+
+  (`#372 <https://github.com/jordandeklerk/moderndid/pull/372>`__)
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull requests merged
+====================
+
+A total of 129 pull requests were merged for this release.
+
+* `#377 <https://github.com/jordandeklerk/moderndid/pull/377>`__: MAINT: fix skill
+* `#376 <https://github.com/jordandeklerk/moderndid/pull/376>`__: DOC: fix ordering of links
+* `#375 <https://github.com/jordandeklerk/moderndid/pull/375>`__: REL: get ready for a release
+* `#374 <https://github.com/jordandeklerk/moderndid/pull/374>`__: DOC: add an influence function background section
+* `#373 <https://github.com/jordandeklerk/moderndid/pull/373>`__: BUG: fix the CuPy backend's crashes and test it on a real GPU
+* `#372 <https://github.com/jordandeklerk/moderndid/pull/372>`__: MAINT: remove Numba
+* `#371 <https://github.com/jordandeklerk/moderndid/pull/371>`__: ENH: speed up the bootstraps and honest_did's conditional tests
+* `#370 <https://github.com/jordandeklerk/moderndid/pull/370>`__: BUG: fix repeated cross-section DR standard errors and CCK draws
+* `#369 <https://github.com/jordandeklerk/moderndid/pull/369>`__: DOC: fold and simplify code cells on the comparison and guide pages
+* `#368 <https://github.com/jordandeklerk/moderndid/pull/368>`__: DOC: shorten the honest_did, etwfe, emfx, and npiv docstrings
+* `#367 <https://github.com/jordandeklerk/moderndid/pull/367>`__: DOC: shorten the continuous, intertemporal, balancing, and ML docstrings
+* `#366 <https://github.com/jordandeklerk/moderndid/pull/366>`__: DOC: shorten the did, drdid, and triple-difference docstrings
+* `#365 <https://github.com/jordandeklerk/moderndid/pull/365>`__: TEST: speed up the slowest tests and switch CI coverage to sysmon
+* `#364 <https://github.com/jordandeklerk/moderndid/pull/364>`__: MAINT: run the test suite in parallel and install it with uv
+* `#363 <https://github.com/jordandeklerk/moderndid/pull/363>`__: BUG: handle zero-variance statistics in honest_did's ARP test
+* `#362 <https://github.com/jordandeklerk/moderndid/pull/362>`__: DOC: rewrite the contributing and developer pages
+* `#361 <https://github.com/jordandeklerk/moderndid/pull/361>`__: DOC: add the remaining Comparisons with R notebooks
+* `#360 <https://github.com/jordandeklerk/moderndid/pull/360>`__: DOC: add Comparisons with R and its first four notebooks
+* `#359 <https://github.com/jordandeklerk/moderndid/pull/359>`__: DOC: rewrite the remaining example guides
+* `#358 <https://github.com/jordandeklerk/moderndid/pull/358>`__: DOC: rewrite the staggered, triple, and continuous examples
+* `#357 <https://github.com/jordandeklerk/moderndid/pull/357>`__: DOC: rewrite the data, results, plotting, and tables guides
+* `#356 <https://github.com/jordandeklerk/moderndid/pull/356>`__: DOC: rewrite the getting started and overview guides
+* `#355 <https://github.com/jordandeklerk/moderndid/pull/355>`__: DOC: rewrite the didhonest, etwfe, and npiv background
+* `#354 <https://github.com/jordandeklerk/moderndid/pull/354>`__: DOC: rewrite the didcont, didinter, and diddynamic background
+* `#353 <https://github.com/jordandeklerk/moderndid/pull/353>`__: DOC: rewrite the did, drdid, and triple-difference background
+* `#352 <https://github.com/jordandeklerk/moderndid/pull/352>`__: MAINT: fix logo sizing
+* `#351 <https://github.com/jordandeklerk/moderndid/pull/351>`__: DOC: add the docs theme, configuration, and API pages
+* `#350 <https://github.com/jordandeklerk/moderndid/pull/350>`__: MAINT: replace benchmark/ with an ASV suite and spin compare
+* `#349 <https://github.com/jordandeklerk/moderndid/pull/349>`__: BUG: require scikit-learn 1.7 and pass the lasso grid as alphas
+* `#348 <https://github.com/jordandeklerk/moderndid/pull/348>`__: TEST: compare the other estimators with their reference packages
+* `#347 <https://github.com/jordandeklerk/moderndid/pull/347>`__: TEST: compare did, drdid, and ddd with their reference packages
+* `#346 <https://github.com/jordandeklerk/moderndid/pull/346>`__: ENH: fix the didml estimand and bootstrap its standard errors
+* `#345 <https://github.com/jordandeklerk/moderndid/pull/345>`__: BUG: fix npiv basis matching, dimension selection, and bands
+* `#344 <https://github.com/jordandeklerk/moderndid/pull/344>`__: [pre-commit.ci] pre-commit autoupdate
+* `#343 <https://github.com/jordandeklerk/moderndid/pull/343>`__: BUG: fix etwfe reference cohorts, term order, and input checks
+* `#342 <https://github.com/jordandeklerk/moderndid/pull/342>`__: BUG: fix honest_did confidence sets, restrictions, and clustering
+* `#341 <https://github.com/jordandeklerk/moderndid/pull/341>`__: BUG: fix dyn_balancing variance, weights, and missing data
+* `#340 <https://github.com/jordandeklerk/moderndid/pull/340>`__: ENH: tighten cont_did options, windows, and the pte pipeline
+* `#338 <https://github.com/jordandeklerk/moderndid/pull/338>`__: Update GitHub Actions
+* `#337 <https://github.com/jordandeklerk/moderndid/pull/337>`__: ENH: fix did_multiplegt controls and inference
+* `#336 <https://github.com/jordandeklerk/moderndid/pull/336>`__: ENH: update ddd and agg_ddd and their tests
+* `#335 <https://github.com/jordandeklerk/moderndid/pull/335>`__: ENH: update the two-period estimators and their tests
+* `#334 <https://github.com/jordandeklerk/moderndid/pull/334>`__: ENH: update att_gt and aggte and their tests
+* `#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__: ENH: update core preprocessing, reports, converters, and plots
+* `#332 <https://github.com/jordandeklerk/moderndid/pull/332>`__: MAINT: remove the Spark, Dask, and distributed backends
+* `#331 <https://github.com/jordandeklerk/moderndid/pull/331>`__: MAINT: update tooling, CI, and environment configuration
+* `#330 <https://github.com/jordandeklerk/moderndid/pull/330>`__: [pre-commit.ci] pre-commit autoupdate
+* `#327 <https://github.com/jordandeklerk/moderndid/pull/327>`__: [pre-commit.ci] pre-commit autoupdate
+* `#326 <https://github.com/jordandeklerk/moderndid/pull/326>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.9
+* `#325 <https://github.com/jordandeklerk/moderndid/pull/325>`__: Update github/codeql-action action to v4.38.2
+* `#324 <https://github.com/jordandeklerk/moderndid/pull/324>`__: [pre-commit.ci] pre-commit autoupdate
+* `#323 <https://github.com/jordandeklerk/moderndid/pull/323>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.8
+* `#322 <https://github.com/jordandeklerk/moderndid/pull/322>`__: Update GitHub Actions
+* `#321 <https://github.com/jordandeklerk/moderndid/pull/321>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.7
+* `#320 <https://github.com/jordandeklerk/moderndid/pull/320>`__: Update GitHub Actions
+* `#319 <https://github.com/jordandeklerk/moderndid/pull/319>`__: [pre-commit.ci] pre-commit autoupdate
+* `#318 <https://github.com/jordandeklerk/moderndid/pull/318>`__: [pre-commit.ci] pre-commit autoupdate
+* `#317 <https://github.com/jordandeklerk/moderndid/pull/317>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.5
+* `#316 <https://github.com/jordandeklerk/moderndid/pull/316>`__: Update github/codeql-action action to v4.37.9
+* `#315 <https://github.com/jordandeklerk/moderndid/pull/315>`__: Update GitHub Actions (major)
+* `#314 <https://github.com/jordandeklerk/moderndid/pull/314>`__: Update github/codeql-action action to v4.37.8
+* `#313 <https://github.com/jordandeklerk/moderndid/pull/313>`__: [pre-commit.ci] pre-commit autoupdate
+* `#312 <https://github.com/jordandeklerk/moderndid/pull/312>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.4
+* `#311 <https://github.com/jordandeklerk/moderndid/pull/311>`__: Update github/codeql-action action to v4.37.7
+* `#310 <https://github.com/jordandeklerk/moderndid/pull/310>`__: Update dependency flit_core to v4
+* `#309 <https://github.com/jordandeklerk/moderndid/pull/309>`__: Update GitHub Actions
+* `#308 <https://github.com/jordandeklerk/moderndid/pull/308>`__: [pre-commit.ci] pre-commit autoupdate
+* `#307 <https://github.com/jordandeklerk/moderndid/pull/307>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.2
+* `#306 <https://github.com/jordandeklerk/moderndid/pull/306>`__: Update pypa/gh-action-pypi-publish digest to dc37677
+* `#305 <https://github.com/jordandeklerk/moderndid/pull/305>`__: [pre-commit.ci] pre-commit autoupdate
+* `#304 <https://github.com/jordandeklerk/moderndid/pull/304>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.0
+* `#303 <https://github.com/jordandeklerk/moderndid/pull/303>`__: Update GitHub Actions
+* `#302 <https://github.com/jordandeklerk/moderndid/pull/302>`__: [pre-commit.ci] pre-commit autoupdate
+* `#301 <https://github.com/jordandeklerk/moderndid/pull/301>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.22
+* `#300 <https://github.com/jordandeklerk/moderndid/pull/300>`__: Update pypa/gh-action-pypi-publish digest to ba38be9
+* `#299 <https://github.com/jordandeklerk/moderndid/pull/299>`__: [pre-commit.ci] pre-commit autoupdate
+* `#298 <https://github.com/jordandeklerk/moderndid/pull/298>`__: Update GitHub Actions
+* `#297 <https://github.com/jordandeklerk/moderndid/pull/297>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.21 - autoclosed
+* `#296 <https://github.com/jordandeklerk/moderndid/pull/296>`__: REF: Remove Dask test jobs from CI
+* `#295 <https://github.com/jordandeklerk/moderndid/pull/295>`__: FEAT: initial implementation for MLDiD
+* `#294 <https://github.com/jordandeklerk/moderndid/pull/294>`__: [pre-commit.ci] pre-commit autoupdate
+* `#293 <https://github.com/jordandeklerk/moderndid/pull/293>`__: Update GitHub Actions to v7
+* `#292 <https://github.com/jordandeklerk/moderndid/pull/292>`__: Update GitHub Actions
+* `#291 <https://github.com/jordandeklerk/moderndid/pull/291>`__: [pre-commit.ci] pre-commit autoupdate
+* `#289 <https://github.com/jordandeklerk/moderndid/pull/289>`__: Update pre-commit hooks
+* `#288 <https://github.com/jordandeklerk/moderndid/pull/288>`__: [pre-commit.ci] pre-commit autoupdate
+* `#287 <https://github.com/jordandeklerk/moderndid/pull/287>`__: Update pre-commit hooks to v0.15.16
+* `#286 <https://github.com/jordandeklerk/moderndid/pull/286>`__: Update GitHub Actions
+* `#285 <https://github.com/jordandeklerk/moderndid/pull/285>`__: [pre-commit.ci] pre-commit autoupdate
+* `#284 <https://github.com/jordandeklerk/moderndid/pull/284>`__: [pre-commit.ci] pre-commit autoupdate
+* `#283 <https://github.com/jordandeklerk/moderndid/pull/283>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.14
+* `#282 <https://github.com/jordandeklerk/moderndid/pull/282>`__: Update GitHub Actions
+* `#281 <https://github.com/jordandeklerk/moderndid/pull/281>`__: [pre-commit.ci] pre-commit autoupdate
+* `#280 <https://github.com/jordandeklerk/moderndid/pull/280>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.13
+* `#279 <https://github.com/jordandeklerk/moderndid/pull/279>`__: Update GitHub Actions
+* `#278 <https://github.com/jordandeklerk/moderndid/pull/278>`__: Update GitHub Actions
+* `#277 <https://github.com/jordandeklerk/moderndid/pull/277>`__: [pre-commit.ci] pre-commit autoupdate
+* `#276 <https://github.com/jordandeklerk/moderndid/pull/276>`__: Update codecov/codecov-action action to v6
+* `#275 <https://github.com/jordandeklerk/moderndid/pull/275>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.12
+* `#274 <https://github.com/jordandeklerk/moderndid/pull/274>`__: DOC: update plotting documentation
+* `#273 <https://github.com/jordandeklerk/moderndid/pull/273>`__: [pre-commit.ci] pre-commit autoupdate
+* `#272 <https://github.com/jordandeklerk/moderndid/pull/272>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.11
+* `#271 <https://github.com/jordandeklerk/moderndid/pull/271>`__: Update github/codeql-action action to v4.35.2
+* `#270 <https://github.com/jordandeklerk/moderndid/pull/270>`__: FEAT: add dynamic balancing weights DiD estimator
+* `#269 <https://github.com/jordandeklerk/moderndid/pull/269>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.10
+* `#268 <https://github.com/jordandeklerk/moderndid/pull/268>`__: Update pypa/gh-action-pypi-publish digest to cef2210
+* `#266 <https://github.com/jordandeklerk/moderndid/pull/266>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.9
+* `#265 <https://github.com/jordandeklerk/moderndid/pull/265>`__: [pre-commit.ci] pre-commit autoupdate
+* `#264 <https://github.com/jordandeklerk/moderndid/pull/264>`__: Update GitHub Actions
+* `#263 <https://github.com/jordandeklerk/moderndid/pull/263>`__: Pin pypa/gh-action-pypi-publish action to ed0c539
+* `#262 <https://github.com/jordandeklerk/moderndid/pull/262>`__: DOC: enhancements to background and user guide docs
+* `#261 <https://github.com/jordandeklerk/moderndid/pull/261>`__: DEP: restrict pyfixest version in dependencies
+* `#260 <https://github.com/jordandeklerk/moderndid/pull/260>`__: DOC: better documentation for installation and intro
+* `#259 <https://github.com/jordandeklerk/moderndid/pull/259>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.7
+* `#258 <https://github.com/jordandeklerk/moderndid/pull/258>`__: Update GitHub Actions
+* `#257 <https://github.com/jordandeklerk/moderndid/pull/257>`__: DEP: add more dependencies for etwfe
+* `#256 <https://github.com/jordandeklerk/moderndid/pull/256>`__: DEP: update pyproject.toml to include formulaic dependency for ETWFE
+* `#255 <https://github.com/jordandeklerk/moderndid/pull/255>`__: DOC: add more documentation for ETWFE and related functionalities
+* `#254 <https://github.com/jordandeklerk/moderndid/pull/254>`__: FEAT: add R validation tests for ETWFE
+* `#253 <https://github.com/jordandeklerk/moderndid/pull/253>`__: DOC: update pyproject.toml to include additional dependencies
+* `#252 <https://github.com/jordandeklerk/moderndid/pull/252>`__: MAINT: fix the failing API docs
+* `#251 <https://github.com/jordandeklerk/moderndid/pull/251>`__: CHG: update pyproject.toml to include 'etwfe' in the all dependencies
+* `#250 <https://github.com/jordandeklerk/moderndid/pull/250>`__: FEAT: add the Wooldridge extended two-way fixed effects estimator
+* `#249 <https://github.com/jordandeklerk/moderndid/pull/249>`__: REF: make npiv its own sub-package
+* `#248 <https://github.com/jordandeklerk/moderndid/pull/248>`__: FEAT: enhance att_gt() dask and spark methods
+* `#247 <https://github.com/jordandeklerk/moderndid/pull/247>`__: Update changelog for v0.2.0
+* `#246 <https://github.com/jordandeklerk/moderndid/pull/246>`__: Update changelog for v0.2.0
+* `#245 <https://github.com/jordandeklerk/moderndid/pull/245>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.6
+* `#244 <https://github.com/jordandeklerk/moderndid/pull/244>`__: Update GitHub Actions
