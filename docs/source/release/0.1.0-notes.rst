@@ -532,8 +532,8 @@ A total of 1 person contributed to this release.
 Pull Requests Merged
 ====================
 
-A total of 82 pull requests were merged for this release, of which 65 are
-feature or fix PRs (excluding automated dependency updates).
+A total of 82 pull requests were merged for this release, of which 64 are
+feature or fix PRs (excluding automated dependency and changelog updates).
 
 * `#201 <https://github.com/jordandeklerk/moderndid/pull/201>`__: Refactor READMEs and fix math rendering
 * `#200 <https://github.com/jordandeklerk/moderndid/pull/200>`__: Stop ignoring distributed tests in CI
@@ -599,4 +599,3 @@ feature or fix PRs (excluding automated dependency updates).
 * `#122 <https://github.com/jordandeklerk/moderndid/pull/122>`__: Add DDD tests for coverage
 * `#121 <https://github.com/jordandeklerk/moderndid/pull/121>`__: Rework main function docstrings
 * `#120 <https://github.com/jordandeklerk/moderndid/pull/120>`__: Update ``agg_ddd()`` documentation
-* `#119 <https://github.com/jordandeklerk/moderndid/pull/119>`__: Update changelog for v0.0.3

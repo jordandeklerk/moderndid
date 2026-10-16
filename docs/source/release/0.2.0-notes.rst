@@ -142,7 +142,8 @@ A total of 1 person contributed to this release.
 Pull Requests Merged
 ====================
 
-A total of 27 pull requests were merged for this release.
+A total of 27 pull requests were merged for this release, of which 23 are
+feature or fix PRs (excluding automated dependency updates).
 
 * `#242 <https://github.com/jordandeklerk/moderndid/pull/242>`__: CI: conditionally ignore validation tests on Windows
 * `#241 <https://github.com/jordandeklerk/moderndid/pull/241>`__: ENH: align Wald pre-test, confidence bands, and bootstrap quantiles
@@ -152,8 +153,6 @@ A total of 27 pull requests were merged for this release.
 * `#237 <https://github.com/jordandeklerk/moderndid/pull/237>`__: MAINT: update installation to not include spark by default
 * `#236 <https://github.com/jordandeklerk/moderndid/pull/236>`__: DOC: enhance new estimator guide and architecture docs
 * `#235 <https://github.com/jordandeklerk/moderndid/pull/235>`__: DOC: update installation guide link
-* `#234 <https://github.com/jordandeklerk/moderndid/pull/234>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.5
-* `#233 <https://github.com/jordandeklerk/moderndid/pull/233>`__: Update github/codeql-action action to v4.32.6
 * `#232 <https://github.com/jordandeklerk/moderndid/pull/232>`__: DOC: update README example to match Callaway Sant'Anna example
 * `#231 <https://github.com/jordandeklerk/moderndid/pull/231>`__: DOC: update user guide and README
 * `#230 <https://github.com/jordandeklerk/moderndid/pull/230>`__: BUG: fix docs failing
@@ -166,8 +165,6 @@ A total of 27 pull requests were merged for this release.
 * `#223 <https://github.com/jordandeklerk/moderndid/pull/223>`__: DEV: enhance development documentation and CI
 * `#222 <https://github.com/jordandeklerk/moderndid/pull/222>`__: FEAT: add more treatment effects and Bell-McCaffrey inference for did_multiplegt()
 * `#221 <https://github.com/jordandeklerk/moderndid/pull/221>`__: MAINT: reorganize backend CuPY functionality
-* `#220 <https://github.com/jordandeklerk/moderndid/pull/220>`__: Update actions/download-artifact action to v8
-* `#219 <https://github.com/jordandeklerk/moderndid/pull/219>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.4
 * `#218 <https://github.com/jordandeklerk/moderndid/pull/218>`__: REF: unify synthetic data function names
 * `#217 <https://github.com/jordandeklerk/moderndid/pull/217>`__: REF: update installation guide and add dev directory
 * `#216 <https://github.com/jordandeklerk/moderndid/pull/216>`__: FEAT: add GPU acceleration for cont_did()

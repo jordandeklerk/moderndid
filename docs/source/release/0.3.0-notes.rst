@@ -361,7 +361,8 @@ A total of 1 person contributed to this release.
 Pull requests merged
 ====================
 
-A total of 129 pull requests were merged for this release.
+A total of 129 pull requests were merged for this release, of which 61 are
+feature or fix PRs (excluding automated dependency and changelog updates).
 
 * `#377 <https://github.com/jordandeklerk/moderndid/pull/377>`__: MAINT: fix skill
 * `#376 <https://github.com/jordandeklerk/moderndid/pull/376>`__: DOC: fix ordering of links
@@ -396,12 +397,10 @@ A total of 129 pull requests were merged for this release.
 * `#347 <https://github.com/jordandeklerk/moderndid/pull/347>`__: TEST: compare did, drdid, and ddd with their reference packages
 * `#346 <https://github.com/jordandeklerk/moderndid/pull/346>`__: ENH: fix the didml estimand and bootstrap its standard errors
 * `#345 <https://github.com/jordandeklerk/moderndid/pull/345>`__: BUG: fix npiv basis matching, dimension selection, and bands
-* `#344 <https://github.com/jordandeklerk/moderndid/pull/344>`__: [pre-commit.ci] pre-commit autoupdate
 * `#343 <https://github.com/jordandeklerk/moderndid/pull/343>`__: BUG: fix etwfe reference cohorts, term order, and input checks
 * `#342 <https://github.com/jordandeklerk/moderndid/pull/342>`__: BUG: fix honest_did confidence sets, restrictions, and clustering
 * `#341 <https://github.com/jordandeklerk/moderndid/pull/341>`__: BUG: fix dyn_balancing variance, weights, and missing data
 * `#340 <https://github.com/jordandeklerk/moderndid/pull/340>`__: ENH: tighten cont_did options, windows, and the pte pipeline
-* `#338 <https://github.com/jordandeklerk/moderndid/pull/338>`__: Update GitHub Actions
 * `#337 <https://github.com/jordandeklerk/moderndid/pull/337>`__: ENH: fix did_multiplegt controls and inference
 * `#336 <https://github.com/jordandeklerk/moderndid/pull/336>`__: ENH: update ddd and agg_ddd and their tests
 * `#335 <https://github.com/jordandeklerk/moderndid/pull/335>`__: ENH: update the two-period estimators and their tests
@@ -409,75 +408,13 @@ A total of 129 pull requests were merged for this release.
 * `#333 <https://github.com/jordandeklerk/moderndid/pull/333>`__: ENH: update core preprocessing, reports, converters, and plots
 * `#332 <https://github.com/jordandeklerk/moderndid/pull/332>`__: MAINT: remove the Spark, Dask, and distributed backends
 * `#331 <https://github.com/jordandeklerk/moderndid/pull/331>`__: MAINT: update tooling, CI, and environment configuration
-* `#330 <https://github.com/jordandeklerk/moderndid/pull/330>`__: [pre-commit.ci] pre-commit autoupdate
-* `#327 <https://github.com/jordandeklerk/moderndid/pull/327>`__: [pre-commit.ci] pre-commit autoupdate
-* `#326 <https://github.com/jordandeklerk/moderndid/pull/326>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.9
-* `#325 <https://github.com/jordandeklerk/moderndid/pull/325>`__: Update github/codeql-action action to v4.38.2
-* `#324 <https://github.com/jordandeklerk/moderndid/pull/324>`__: [pre-commit.ci] pre-commit autoupdate
-* `#323 <https://github.com/jordandeklerk/moderndid/pull/323>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.8
-* `#322 <https://github.com/jordandeklerk/moderndid/pull/322>`__: Update GitHub Actions
-* `#321 <https://github.com/jordandeklerk/moderndid/pull/321>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.7
-* `#320 <https://github.com/jordandeklerk/moderndid/pull/320>`__: Update GitHub Actions
-* `#319 <https://github.com/jordandeklerk/moderndid/pull/319>`__: [pre-commit.ci] pre-commit autoupdate
-* `#318 <https://github.com/jordandeklerk/moderndid/pull/318>`__: [pre-commit.ci] pre-commit autoupdate
-* `#317 <https://github.com/jordandeklerk/moderndid/pull/317>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.5
-* `#316 <https://github.com/jordandeklerk/moderndid/pull/316>`__: Update github/codeql-action action to v4.37.9
-* `#315 <https://github.com/jordandeklerk/moderndid/pull/315>`__: Update GitHub Actions (major)
-* `#314 <https://github.com/jordandeklerk/moderndid/pull/314>`__: Update github/codeql-action action to v4.37.8
-* `#313 <https://github.com/jordandeklerk/moderndid/pull/313>`__: [pre-commit.ci] pre-commit autoupdate
-* `#312 <https://github.com/jordandeklerk/moderndid/pull/312>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.4
-* `#311 <https://github.com/jordandeklerk/moderndid/pull/311>`__: Update github/codeql-action action to v4.37.7
-* `#310 <https://github.com/jordandeklerk/moderndid/pull/310>`__: Update dependency flit_core to v4
-* `#309 <https://github.com/jordandeklerk/moderndid/pull/309>`__: Update GitHub Actions
-* `#308 <https://github.com/jordandeklerk/moderndid/pull/308>`__: [pre-commit.ci] pre-commit autoupdate
-* `#307 <https://github.com/jordandeklerk/moderndid/pull/307>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.2
-* `#306 <https://github.com/jordandeklerk/moderndid/pull/306>`__: Update pypa/gh-action-pypi-publish digest to dc37677
-* `#305 <https://github.com/jordandeklerk/moderndid/pull/305>`__: [pre-commit.ci] pre-commit autoupdate
-* `#304 <https://github.com/jordandeklerk/moderndid/pull/304>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.16.0
-* `#303 <https://github.com/jordandeklerk/moderndid/pull/303>`__: Update GitHub Actions
-* `#302 <https://github.com/jordandeklerk/moderndid/pull/302>`__: [pre-commit.ci] pre-commit autoupdate
-* `#301 <https://github.com/jordandeklerk/moderndid/pull/301>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.22
-* `#300 <https://github.com/jordandeklerk/moderndid/pull/300>`__: Update pypa/gh-action-pypi-publish digest to ba38be9
-* `#299 <https://github.com/jordandeklerk/moderndid/pull/299>`__: [pre-commit.ci] pre-commit autoupdate
-* `#298 <https://github.com/jordandeklerk/moderndid/pull/298>`__: Update GitHub Actions
-* `#297 <https://github.com/jordandeklerk/moderndid/pull/297>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.21 - autoclosed
 * `#296 <https://github.com/jordandeklerk/moderndid/pull/296>`__: REF: Remove Dask test jobs from CI
 * `#295 <https://github.com/jordandeklerk/moderndid/pull/295>`__: FEAT: initial implementation for MLDiD
-* `#294 <https://github.com/jordandeklerk/moderndid/pull/294>`__: [pre-commit.ci] pre-commit autoupdate
-* `#293 <https://github.com/jordandeklerk/moderndid/pull/293>`__: Update GitHub Actions to v7
-* `#292 <https://github.com/jordandeklerk/moderndid/pull/292>`__: Update GitHub Actions
-* `#291 <https://github.com/jordandeklerk/moderndid/pull/291>`__: [pre-commit.ci] pre-commit autoupdate
-* `#289 <https://github.com/jordandeklerk/moderndid/pull/289>`__: Update pre-commit hooks
-* `#288 <https://github.com/jordandeklerk/moderndid/pull/288>`__: [pre-commit.ci] pre-commit autoupdate
-* `#287 <https://github.com/jordandeklerk/moderndid/pull/287>`__: Update pre-commit hooks to v0.15.16
-* `#286 <https://github.com/jordandeklerk/moderndid/pull/286>`__: Update GitHub Actions
-* `#285 <https://github.com/jordandeklerk/moderndid/pull/285>`__: [pre-commit.ci] pre-commit autoupdate
-* `#284 <https://github.com/jordandeklerk/moderndid/pull/284>`__: [pre-commit.ci] pre-commit autoupdate
-* `#283 <https://github.com/jordandeklerk/moderndid/pull/283>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.14
-* `#282 <https://github.com/jordandeklerk/moderndid/pull/282>`__: Update GitHub Actions
-* `#281 <https://github.com/jordandeklerk/moderndid/pull/281>`__: [pre-commit.ci] pre-commit autoupdate
-* `#280 <https://github.com/jordandeklerk/moderndid/pull/280>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.13
-* `#279 <https://github.com/jordandeklerk/moderndid/pull/279>`__: Update GitHub Actions
-* `#278 <https://github.com/jordandeklerk/moderndid/pull/278>`__: Update GitHub Actions
-* `#277 <https://github.com/jordandeklerk/moderndid/pull/277>`__: [pre-commit.ci] pre-commit autoupdate
-* `#276 <https://github.com/jordandeklerk/moderndid/pull/276>`__: Update codecov/codecov-action action to v6
-* `#275 <https://github.com/jordandeklerk/moderndid/pull/275>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.12
 * `#274 <https://github.com/jordandeklerk/moderndid/pull/274>`__: DOC: update plotting documentation
-* `#273 <https://github.com/jordandeklerk/moderndid/pull/273>`__: [pre-commit.ci] pre-commit autoupdate
-* `#272 <https://github.com/jordandeklerk/moderndid/pull/272>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.11
-* `#271 <https://github.com/jordandeklerk/moderndid/pull/271>`__: Update github/codeql-action action to v4.35.2
 * `#270 <https://github.com/jordandeklerk/moderndid/pull/270>`__: FEAT: add dynamic balancing weights DiD estimator
-* `#269 <https://github.com/jordandeklerk/moderndid/pull/269>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.10
-* `#268 <https://github.com/jordandeklerk/moderndid/pull/268>`__: Update pypa/gh-action-pypi-publish digest to cef2210
-* `#266 <https://github.com/jordandeklerk/moderndid/pull/266>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.9
-* `#265 <https://github.com/jordandeklerk/moderndid/pull/265>`__: [pre-commit.ci] pre-commit autoupdate
-* `#264 <https://github.com/jordandeklerk/moderndid/pull/264>`__: Update GitHub Actions
-* `#263 <https://github.com/jordandeklerk/moderndid/pull/263>`__: Pin pypa/gh-action-pypi-publish action to ed0c539
 * `#262 <https://github.com/jordandeklerk/moderndid/pull/262>`__: DOC: enhancements to background and user guide docs
 * `#261 <https://github.com/jordandeklerk/moderndid/pull/261>`__: DEP: restrict pyfixest version in dependencies
 * `#260 <https://github.com/jordandeklerk/moderndid/pull/260>`__: DOC: better documentation for installation and intro
-* `#259 <https://github.com/jordandeklerk/moderndid/pull/259>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.7
-* `#258 <https://github.com/jordandeklerk/moderndid/pull/258>`__: Update GitHub Actions
 * `#257 <https://github.com/jordandeklerk/moderndid/pull/257>`__: DEP: add more dependencies for etwfe
 * `#256 <https://github.com/jordandeklerk/moderndid/pull/256>`__: DEP: update pyproject.toml to include formulaic dependency for ETWFE
 * `#255 <https://github.com/jordandeklerk/moderndid/pull/255>`__: DOC: add more documentation for ETWFE and related functionalities
@@ -488,7 +425,3 @@ A total of 129 pull requests were merged for this release.
 * `#250 <https://github.com/jordandeklerk/moderndid/pull/250>`__: FEAT: add the Wooldridge extended two-way fixed effects estimator
 * `#249 <https://github.com/jordandeklerk/moderndid/pull/249>`__: REF: make npiv its own sub-package
 * `#248 <https://github.com/jordandeklerk/moderndid/pull/248>`__: FEAT: enhance att_gt() dask and spark methods
-* `#247 <https://github.com/jordandeklerk/moderndid/pull/247>`__: Update changelog for v0.2.0
-* `#246 <https://github.com/jordandeklerk/moderndid/pull/246>`__: Update changelog for v0.2.0
-* `#245 <https://github.com/jordandeklerk/moderndid/pull/245>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.6
-* `#244 <https://github.com/jordandeklerk/moderndid/pull/244>`__: Update GitHub Actions

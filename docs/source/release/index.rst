@@ -13,6 +13,8 @@ This page lists what changed in each ModernDiD release.
 
    * - Release
      - Notes
+   * - 0.3.1
+     - :doc:`0.3.1-notes`
    * - 0.3.0
      - :doc:`0.3.0-notes`
    * - 0.2.0
@@ -32,6 +34,7 @@ This page lists what changed in each ModernDiD release.
    :maxdepth: 2
    :hidden:
 
+   0.3.1-notes
    0.3.0-notes
    0.2.0-notes
    0.1.1-notes
