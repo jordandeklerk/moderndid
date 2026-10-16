@@ -45,7 +45,7 @@ jobs:
       - name: Set up Python 3.13
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.15"
       # The installed checkout already satisfies each notebook's pinned install.
       # That holds for a version PyPI doesn't have yet.
       - name: Install the package and the notebook runners
