@@ -1,3 +1,24 @@
+<a id="v0.3.1"></a>
+# [v0.3.1](https://github.com/jordandeklerk/moderndid/releases/tag/v0.3.1) - 2026-10-16
+
+<!-- Release notes generated using configuration in .github/release.yml at v0.3.1 -->
+
+
+
+**Full Changelog**: https://github.com/jordandeklerk/moderndid/compare/v0.3.1...v0.3.1
+
+<!-- Release notes generated using configuration in .github/release.yml at v0.3.1 -->
+
+## What's Changed
+* BUG: load plots without scikit-learn and drop ECOS from the extras by [@jordandeklerk](https://github.com/jordandeklerk) in [#379](https://github.com/jordandeklerk/moderndid/pull/379)
+* REL: prepare release v0.3.1 by [@jordandeklerk](https://github.com/jordandeklerk) in [#380](https://github.com/jordandeklerk/moderndid/pull/380)
+
+
+**Full Changelog**: https://github.com/jordandeklerk/moderndid/compare/v0.3.0...v0.3.1
+
+[Changes][v0.3.1]
+
+
 <a id="v0.3.0"></a>
 # [v0.3.0](https://github.com/jordandeklerk/moderndid/releases/tag/v0.3.0) - 2026-10-16
 
@@ -406,6 +427,7 @@
 [Changes][v0.0.1]
 
 
+[v0.3.1]: https://github.com/jordandeklerk/moderndid/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/jordandeklerk/moderndid/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/jordandeklerk/moderndid/compare/v0.1.1...v0.2.0
 [v0.1.1]: https://github.com/jordandeklerk/moderndid/compare/v0.1.0...v0.1.1
