@@ -17,7 +17,7 @@ use each method.
 
    * - Example
      - Description
-   * - :doc:`Staggered adoption <../user_guide/example_staggered_did>`
+   * - :doc:`Staggered DiD <../user_guide/example_staggered_did>`
      - Estimate group-time effects and aggregate them into an event study and an overall effect.
    * - :doc:`Triple differences <../user_guide/example_triple_did>`
      - Add a third comparison to a difference-in-differences design.
@@ -40,15 +40,15 @@ use each method.
    :hidden:
    :maxdepth: 1
 
-   ../user_guide/example_staggered_did
-   ../user_guide/example_triple_did
-   ../user_guide/example_inter_did
-   ../user_guide/example_cont_did
-   ../user_guide/example_cont_did_replication
-   ../user_guide/example_dyn_balancing
-   ../user_guide/example_honest_did
-   ../user_guide/example_etwfe
-   ../user_guide/example_npiv
+   Staggered DiD <../user_guide/example_staggered_did>
+   Triple differences <../user_guide/example_triple_did>
+   Intertemporal treatment <../user_guide/example_inter_did>
+   Continuous treatment <../user_guide/example_cont_did>
+   Fracking paper replication <../user_guide/example_cont_did_replication>
+   Dynamic covariate balancing <../user_guide/example_dyn_balancing>
+   Sensitivity analysis <../user_guide/example_honest_did>
+   Extended TWFE <../user_guide/example_etwfe>
+   Nonparametric IV <../user_guide/example_npiv>
 
 .. raw:: html
 
