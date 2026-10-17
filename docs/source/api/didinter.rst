@@ -40,13 +40,20 @@ Inference
 Result objects
 --------------
 
-.. currentmodule:: moderndid.didinter.container
+.. currentmodule:: moderndid
 
 .. autosummary::
    :toctree: generated/didinter/
    :nosignatures:
 
    DIDInterResult
+
+.. currentmodule:: moderndid.didinter.container
+
+.. autosummary::
+   :toctree: generated/didinter/
+   :nosignatures:
+
    EffectsResult
    PlacebosResult
    ATEResult
