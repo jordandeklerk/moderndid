@@ -1,31 +1,14 @@
-{% extends "!autosummary/class.rst" %}
+{{ fullname | escape | underline}}
 
-{% block methods %}
-{% if methods %}
-   .. rubric:: {{ _('Methods') }}
+.. currentmodule:: {{ module }}
 
-   .. autosummary::
-      :toctree:
-   {% for item in all_methods %}
-      {%- if not item.startswith('_') or item in ['__call__'] %}
-      ~{{ name }}.{{ item }}
-      {%- endif -%}
-   {%- endfor %}
+.. autoclass:: {{ objname }}
+   :members:
+   :inherited-members:
+   :exclude-members: count, index
+{%- if '__call__' in all_methods %}
+   :special-members: __call__
+{%- endif %}
 
-{% endif %}
-{% endblock %}
-
-{% block attributes %}
-{% if attributes %}
-   .. rubric:: {{ _('Attributes') }}
-
-   .. autosummary::
-      :toctree:
-   {% for item in all_attributes %}
-      {%- if not item.startswith('_') %}
-      ~{{ name }}.{{ item }}
-      {%- endif -%}
-   {%- endfor %}
-
-{% endif %}
-{% endblock %}
+{# Inherited members such as the accessors that BSpline gets from SplineBase stay on the page.
+Since count and index come from the tuple behind each NamedTuple result, the page leaves them out. #}
