@@ -1,7 +1,7 @@
 .. _api-didinter:
 
-Intertemporal DiD
-=================
+Intertemporal treatment
+=======================
 
 When treatment can switch on and off or change in intensity, a unit's past
 exposure may still affect its current outcome. :func:`~moderndid.did_multiplegt`
