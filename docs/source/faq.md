@@ -9,25 +9,17 @@ kernelspec:
 
 # FAQ
 
-These answers work through questions that arise when preparing data, choosing
-a comparison, reading the results, and installing the package or scaling an
-analysis. We use the bundled panel of 500 counties observed from 2003 through
-2007 so you can see how each choice changes the same employment analysis.
-
 (faq-example-setup)=
 
-Run the shared setup below before trying an answer's code. Since each answer
-starts from these data and settings, you can go directly to the question
-you're working on. Unless an answer changes a setting, the estimates use no
-covariates and analytical standard errors. Bootstrap examples specify their
-inference options and use an integer seed to reproduce their uncertainty.
+The code in these answers runs on the county panel that
+{func}`~moderndid.load_mpdta` loads and starts from the specification below.
+Unless an answer changes a setting, the estimates use no covariates and
+analytical standard errors.
 
 ```{code-cell} ipython3
 import moderndid as did
-import numpy as np
-import polars as pl
 
-# The county panel and the specification that every answer below starts from.
+# The county panel and the specification that the code in these answers starts from.
 data = did.load_mpdta()
 spec = dict(
     yname="lemp",
@@ -48,166 +40,59 @@ spec = dict(
 ### How should I code units that are never treated?
 
 `gname` holds the period in which each unit is first treated, on the same scale
-as `tname`. Give never-treated units a 0 there, as `first.treat` does in
-[the staggered example](user_guide/example_staggered_did.md#the-data).
-{func}`~moderndid.att_gt` also reads `np.inf` or any period after the last one
-in your data as never treated. Since units treated in or before the first period
-have no untreated year to compare against, `att_gt` drops them with a warning.
-
-:::{admonition} A missing code removes the never-treated units
-:class: warning
-
-If never-treated units carry a null or `NaN` in `gname`, `att_gt` drops their
-rows as missing data before it reads any codes. On mpdta the sample then shrinks
-from 500 counties to 191 as the last cohort stands in for the comparison group.
-Only replace missing codes when you know those units are never treated.
-:::
-
-For a floating-point timing column, `pl.col("g").fill_null(0)` leaves `NaN`
-values unchanged. After the {ref}`shared setup <faq-example-setup>`, you can
-run this example to replace both kinds of missing code when they mean never
-treated.
-
-```{code-cell} ipython3
-# A timing column with a null, a NaN, and two adoption years.
-timing = pl.DataFrame({"g": [None, float("nan"), 2004.0, 2007.0]})
-
-# Replace both kinds of missing code with 0, the never-treated code.
-timing = timing.with_columns(pl.col("g").fill_nan(0).fill_null(0))
-timing
-```
+as `tname`. {func}`~moderndid.att_gt` reads a 0, `np.inf`, or any period after
+the last one in your data as never treated. Since a null or `NaN` in `gname`
+drops the unit's rows as missing data, never-treated units coded that way leave
+the sample. When a missing code does mean never treated, replace both kinds with
+`pl.col("g").fill_nan(0).fill_null(0)`. The data guide's
+[Record treatment timing consistently](user_guide/data.md#record-treatment-timing-consistently)
+covers the other requirements for `gname`.
 
 ### How do I turn a 0/1 treatment dummy into treatment timing?
 
 {func}`~moderndid.core.panel.get_group` reads a 0/1 treatment indicator and adds
 a `G` column holding the period each unit is first treated, or 0 if it never is.
-
-In the county data, `treat` labels counties that ever receive treatment rather
-than the years when treatment is active. We construct a period-specific dummy
-from the recorded adoption dates to demonstrate the conversion.
-
-```{code-cell} ipython3
-# A dummy that switches on in each county's adoption year and stays on.
-treated = (pl.col("first.treat") > 0) & (pl.col("year") >= pl.col("first.treat"))
-with_dummy = data.with_columns(treated.cast(pl.Int64).alias("treated_now"))
-
-# Recover the adoption year from the dummy and show one county of the 2004 cohort.
-with_timing = did.get_group(
-    with_dummy, idname="countyreal", tname="year", treatname="treated_now"
-)
-county = with_timing.filter(pl.col("first.treat") == 2004)["countyreal"][0]
-(
-    with_timing.filter(pl.col("countyreal") == county)
-    .select("year", "treated_now", "G")
-    .sort("year")
-)
-```
-
-Although the dummy switches on in 2004, `G` records that adoption year on every
-row for the county. You would then pass `gname="G"` to `att_gt` rather than
-using `treated_now` as the cohort column.
-
-If your dummy marks treated units in every period, pass the known start date as
-`treat_period` so that `get_group` doesn't read the first period as the start.
-{func}`~moderndid.did_multiplegt` handles a treatment that can switch off again
-and takes the dummy itself as `dname`.
+You then pass `gname="G"` to `att_gt` in place of the dummy. If your dummy marks
+treated units in every period, pass the known start date as `treat_period`. For
+a treatment that can switch off again, {func}`~moderndid.did_multiplegt` takes
+the dummy itself as `dname`.
 {ref}`Recording the first treatment period <panel-utilities-group-timing>`
 walks through the conversion on a county panel.
 
 ### Which DataFrames and column types does ModernDiD accept?
 
 ModernDiD accepts DataFrames from libraries that implement the Arrow PyCapsule
-interface. {ref}`The data guide <data-formats>` shows how to prepare Polars,
-pandas, and pyarrow inputs. Collect a Polars LazyFrame with `.collect()`
-before passing it to an estimator. If a pandas DataFrame keeps the unit or
-period in its index, call `reset_index()` first, since only columns survive
-the conversion.
-
-The unit identifier, time, outcome, and timing columns must all be numeric.
-Map text identifiers to integers with `pl.col("id").rank("dense")` across
-the whole dataset and turn dates into integer periods such as
-`pl.col("date").dt.year()`.
-
-Because the county panel stores its unit and period in columns, a pandas copy
-goes into the estimator without any other change.
-
-```{code-cell} ipython3
-# The county panel as a pandas DataFrame, passed straight to att_gt.
-pandas_data = data.to_pandas()
-pandas_fit = did.att_gt(pandas_data, **spec)
-pandas_overall = did.aggte(pandas_fit, type="simple", cband=False)
-print(f"Simple average from pandas input: {pandas_overall.overall_att:.4f}")
-```
-
-The pandas input gives the same simple average of −0.0400 that the Polars data
-gives in the answers below.
+interface. If a pandas DataFrame keeps the unit or period in its index, call
+`reset_index()` first, since only columns survive the conversion. The unit
+identifier, time, outcome, and timing columns must all be numeric. Map text
+identifiers to integers with `pl.col("id").rank("dense")` across the whole
+dataset and turn dates into integer periods such as `pl.col("date").dt.year()`.
+The {ref}`data guide <data-formats>` shows how to prepare Polars, pandas, and
+pyarrow inputs and what to do with a lazy table.
 
 ### What happens to an unbalanced panel or rows with missing values?
 
 By default {func}`~moderndid.att_gt` keeps only the units observed in every
 period. Since it first drops every row with a missing value in a column the
-model uses, one missing outcome removes a whole unit. Pass
-`allow_unbalanced_panel=True` to keep the incomplete units, as
+model uses, one missing outcome removes a whole unit. With
+`allow_unbalanced_panel=True` it keeps the incomplete units and estimates from
+the repeated cross-section form of the estimator, as
 [the data guide](user_guide/data.md#check-what-will-remain-in-the-sample)
-explains. The estimates then come from the repeated cross-section form of the
-estimator rather than paired outcome changes.
-
-Before you estimate, {func}`~moderndid.core.panel.diagnose_panel` counts the gaps,
-the rows that repeat a unit-year pair, and the rows with a null or `NaN` in any
-column. {ref}`Preparing panel data <panel-utilities>` shows how to fill, drop, or
-deduplicate those rows yourself.
-
-To see how a gap affects the sample, we remove one county's 2005 observation
-from a copy of {ref}`the setup data <faq-example-setup>` and inspect the
-diagnostic counts.
-
-```{code-cell} ipython3
-# Drop one county's 2005 row and run the panel diagnostics on the copy.
-county = data["countyreal"][0]
-incomplete = data.filter(
-    ~((pl.col("countyreal") == county) & (pl.col("year") == 2005))
-)
-diagnostics = did.diagnose_panel(incomplete, idname="countyreal", tname="year")
-print(diagnostics)
-
-# Count the counties each panel setting keeps in the estimation.
-for allow in [False, True]:
-    fit = did.att_gt(incomplete, **(spec | {"allow_unbalanced_panel": allow}))
-    print(f"allow_unbalanced_panel={allow}: {fit.n_units} counties retained")
-```
-
-Under the default, the county with the missing year leaves the estimation
-sample. Allowing an unbalanced panel retains it for comparisons with the
-observations it has. Keeping a county does not supply an outcome for its
-missing year.
+explains. {ref}`Preparing panel data <panel-utilities>` shows how to find those
+rows with {func}`~moderndid.core.panel.diagnose_panel` and how to fill, drop,
+or deduplicate them.
 
 ### How do I estimate with repeated cross sections instead of a panel?
 
 For repeated cross sections, set `panel=False` and leave `idname` out of the
 call. The estimator then treats each row as its own observation and compares
 cohort means across periods instead of changes within units. Don't switch to
-`panel=False` just to get past an error on panel data. On mpdta that throws away
-the pairing within counties and makes the standard error of the overall effect
-about 13.5 times as large under the specification used here. The
-{doc}`data guide <user_guide/data>` explains which sampling designs call for
-`panel=False`.
-
-Applying `panel=False` to the county panel lets you see how discarding the
-pairing changes the reported standard error of the simple average.
-
-```{code-cell} ipython3
-# Treat every county-year as its own observation.
-rc_spec = {key: value for key, value in spec.items() if key != "idname"}
-rc_fit = did.att_gt(data, panel=False, **rc_spec)
-rc_overall = did.aggte(rc_fit, type="simple", cband=False)
-print(rc_overall)
-
-# Compare its standard error with the paired panel fit of the same specification.
-panel_fit = did.att_gt(data, **spec)
-panel_overall = did.aggte(panel_fit, type="simple", cband=False)
-print(f"Panel standard error: {panel_overall.overall_se:.4f}")
-print(f"Cross-section standard error: {rc_overall.overall_se:.4f}")
-```
+`panel=False` just to get past an error on panel data, since that throws away
+the pairing within units. Under the {ref}`shared specification <faq-example-setup>`,
+the switch makes the standard error of the simple average on the county data
+about 13.5 times as large.
+[The data guide](user_guide/data.md#check-what-will-remain-in-the-sample)
+explains which sampling designs call for `panel=False`.
 
 ## Choosing an estimator and its settings
 
