@@ -18,23 +18,36 @@ use each method.
    * - Example
      - Description
    * - :doc:`Staggered DiD <../user_guide/example_staggered_did>`
-     - Estimate group-time effects and aggregate them into an event study and an overall effect.
+     - ``att_gt`` and ``aggte`` estimate how staggered state minimum wage
+       increases changed teen employment across US counties.
    * - :doc:`Triple differences <../user_guide/example_triple_did>`
-     - Add a third comparison to a difference-in-differences design.
+     - ``ddd`` and ``agg_ddd`` estimate how weather insurance changed the share
+       of savings that tobacco farmers kept in checking accounts.
    * - :doc:`Intertemporal treatment <../user_guide/example_inter_did>`
-     - Study treatments that change over time and their dynamic effects.
+     - ``did_multiplegt`` estimates how lifting state banking restrictions in
+       steps changed county mortgage lending over the following years.
    * - :doc:`Continuous treatment <../user_guide/example_cont_did>`
-     - Estimate effects when treatment varies in dose rather than just status.
+     - ``cont_did`` estimates how county employment changed after fracking
+       potential became publicly known and how the change varies with
+       geological prospectivity.
    * - :doc:`Fracking paper replication <../user_guide/example_cont_did_replication>`
-     - Reproduce the published event studies and pooled dose curves for county employment.
+     - ``att_gt``, ``aggte``, and ``BSpline`` reproduce the published event
+       studies and dose curves of county employment after fracking potential
+       became publicly known.
    * - :doc:`Dynamic covariate balancing <../user_guide/example_dyn_balancing>`
-     - Compare treatment histories by balancing past outcomes and covariates.
+     - ``dyn_balancing`` estimates how a stretch of democracy changed GDP per
+       capita when countries can move into and out of democracy.
    * - :doc:`Sensitivity analysis <../user_guide/example_honest_did>`
-     - Assess how departures from parallel trends affect your conclusions.
+     - ``honest_did`` finds how far trends could depart from parallel before the
+       evidence that states raised insurance coverage by expanding Medicaid
+       disappears.
    * - :doc:`Extended TWFE <../user_guide/example_etwfe>`
-     - Fit extended two-way fixed effects and compare event-study estimates.
+     - ``etwfe`` and ``emfx`` estimate how state minimum wage increases changed
+       county teen employment in one regression with an effect for each cohort
+       and year.
    * - :doc:`Nonparametric IV <../user_guide/example_npiv>`
-     - Estimate nonparametric functions with instrumental variables.
+     - ``npiv`` uses earnings as an instrument to estimate how the share of
+       British household budgets spent on food changes with total spending.
 
 .. toctree::
    :hidden:
