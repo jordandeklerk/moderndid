@@ -301,52 +301,24 @@ settings on your function's page in
 
 ### Which extra do I need for a function?
 
-The base install runs the core estimators, such as {func}`~moderndid.att_gt`,
-{func}`~moderndid.ddd`, and {func}`~moderndid.did_multiplegt`, along with
-{func}`~moderndid.npiv` and the panel utilities. Because the `gpu` extra needs
-CUDA, `"moderndid[all]"` leaves it out and adds every other extra. A function
-whose extra is missing raises an `ImportError` that names the extra and the
-commands that install it, such as the `didcont` extra for
-{func}`~moderndid.cont_did`. If {func}`~moderndid.etwfe` or
-{func}`~moderndid.diddynamic.dyn_balancing` raises a plain `ModuleNotFoundError`
-instead, install the `etwfe` or `diddynamic` extra.
-{doc}`Installation <user_guide/installation>` lists every extra along with
-fixes for common install failures.
-
-For continuous treatment, use `uv add` in a uv project or
-`python -m pip install` in your current Python environment.
-
-```bash
-uv add "moderndid[didcont]"
-```
-
-```bash
-python -m pip install "moderndid[didcont]"
-```
+The base install runs {func}`~moderndid.npiv`, the panel utilities, and the core
+estimators, such as {func}`~moderndid.att_gt`, {func}`~moderndid.ddd`, and
+{func}`~moderndid.did_multiplegt`. A function whose extra is missing raises an
+`ImportError` that names the extra and the commands that install it, such as
+the `didcont` extra for {func}`~moderndid.cont_did`. Because the `gpu` extra
+needs CUDA, `"moderndid[all]"` leaves it out and adds every estimator extra and
+plotting. {doc}`Installation <user_guide/installation>` lists every extra along
+with fixes for common install failures.
 
 ### How do I speed up estimation on a large panel?
 
 On one machine, `n_jobs=-1` lets {func}`~moderndid.att_gt` and
 {func}`~moderndid.ddd` estimate the group-time cells in parallel without
-changing the results. Since the multiplier bootstrap can take a large share of
-the time on a large panel, a smaller `biters` helps. With an NVIDIA GPU and the
-`gpu` extra, `backend="cupy"` runs `att_gt`, `ddd`, and
-{func}`~moderndid.cont_did` through supported GPU calculations.
-{ref}`GPU acceleration <gpu>` explains how to benchmark the full call,
-including preparation and transfers, to find out whether it helps your
+changing the results, as the {ref}`scaling guide <scaling>` shows. Since the
+multiplier bootstrap can take a large share of the time on a large panel, a
+smaller `biters` helps as long as you keep enough draws for the inference you
+plan to report. With an NVIDIA GPU and the `gpu` extra, `backend="cupy"` runs
+`att_gt`, `ddd`, and {func}`~moderndid.cont_did` through supported GPU
+calculations. {ref}`GPU acceleration <gpu>` explains how to benchmark the full
+call with its preparation and data transfers to find out whether it helps your
 specification.
-
-To use all available CPU cores for the group-time comparisons, change only
-`n_jobs` in the shared specification. You can verify that parallel execution
-preserves the effect estimates on the county panel.
-
-```{code-cell} ipython3
-# The same specification fitted serially and on all CPU cores.
-serial = did.att_gt(data, **spec)
-parallel = did.att_gt(data, **(spec | {"n_jobs": -1}))
-print(f"Same estimates: {np.allclose(serial.att_gt, parallel.att_gt)}")
-```
-
-Since reducing bootstrap iterations trades precision in the simulated
-uncertainty for speed, keep enough draws for the inference you plan to report.
-The {ref}`scaling guide <scaling>` covers parallel fits and the GPU backend.
