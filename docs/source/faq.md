@@ -198,54 +198,24 @@ period drops out, as Illinois does in
 While point estimates stay fixed, uncertainty calculated by the multiplier
 bootstrap changes between runs unless you seed it. Because
 {func}`~moderndid.aggte` draws a bootstrap for its simultaneous bands even when
-`boot=False`, those bands change between runs too. If you pass `random_state`
-to {func}`~moderndid.att_gt`, every `aggte` call on the result reuses it, as
-[the staggered example](user_guide/example_staggered_did.md#choosing-a-specification)
-does. Since {func}`~moderndid.agg_ddd` doesn't reuse the seed you gave
-{func}`~moderndid.ddd`, give it its own `random_state`.
-{func}`~moderndid.cont_did` always bootstraps its dose-response standard errors
-and needs a seed of its own too.
-
-An integer seed allows repeated aggregations of the same fit to reproduce
-their bootstrap uncertainty. We enable the bootstrap in the
-{ref}`shared specification <faq-example-setup>` and compare the standard
-errors and simultaneous critical values from two aggregation calls.
-
-```{code-cell} ipython3
-# Fit once with the bootstrap and the shared seed and aggregate the result twice.
-seeded = did.att_gt(data, **(spec | {"boot": True, "cband": True, "biters": 999}))
-first = did.aggte(seeded, type="dynamic")
-second = did.aggte(seeded, type="dynamic")
-print(f"Same standard errors: {np.array_equal(first.se_by_event, second.se_by_event)}")
-print(f"Same critical values: {np.array_equal(first.critical_values, second.critical_values)}")
-```
-
-Both checks return `True` because the integer seed restarts the draws for
-each aggregation. Keep the specification and the seed together when saving
-or sharing an analysis.
-
-:::{admonition} Seeding with a NumPy generator
-:class: note
-
-Passing the same NumPy random generator object twice continues its sequence
-of draws instead of restarting it as an integer seed does.
-:::
+`boot=False`, those bands change between runs too. If you pass an integer
+`random_state` to {func}`~moderndid.att_gt`, every `aggte` call on the result
+reuses it and draws the same bootstrap. A NumPy generator object gives different
+draws on each call, since it continues its sequence instead of restarting.
+{func}`~moderndid.agg_ddd` and {func}`~moderndid.cont_did` each need their own
+`random_state`, since `agg_ddd` doesn't reuse the seed you gave
+{func}`~moderndid.ddd` and `cont_did` always bootstraps its dose-response
+standard errors.
+{ref}`Simultaneous bands and the multiplier bootstrap <background-did-bootstrap>`
+explains what the seed controls.
 
 ### How do I cluster standard errors by state?
 
 With `clustervars=["state"]`, both the analytic standard errors of
 {func}`~moderndid.att_gt` and its multiplier bootstrap treat each state as one
-cluster. Besides `idname` you can name one more variable that stays constant
-within each unit. You set the clusters once, since every
-{func}`~moderndid.aggte` call on that result reuses them. Because `aggte` has
-no data of its own, it raises an error for a variable the fit didn't cluster
-on. Since intervals and bands from few clusters can come out too narrow,
-`att_gt` warns when a treated cohort's counties fall in fewer than 5 states or
-all counties in fewer than 30. The state-clustered fit below meets both
-conditions and gets the warning.
-{func}`~moderndid.honest_did` carries the same clusters into the covariance it
-builds for an event study. The other estimators that cluster spell the option
-in their own way.
+cluster. Every {func}`~moderndid.aggte` call on that result reuses the clusters,
+since `aggte` has no data of its own. The other estimators that cluster spell
+the option in their own way.
 
 - {func}`~moderndid.etwfe` takes `vcov={"CRV1": "state"}`.
 - {func}`~moderndid.did_multiplegt` takes `cluster="state"`.
@@ -253,92 +223,36 @@ in their own way.
 
 For now, {func}`~moderndid.cont_did` can't cluster standard errors above the
 level of the unit.
-In the results guide,
-[Match the uncertainty to the comparison](user_guide/results.md#match-the-uncertainty-to-the-comparison)
-explains why a policy set by states calls for state clusters and how they change
-the standard errors. The staggered example's
+{ref}`Simultaneous bands and the multiplier bootstrap <background-did-bootstrap>`
+gives the cluster counts below which {func}`~moderndid.att_gt` warns about too
+few clusters.
 [Clustering by state](user_guide/example_staggered_did.md#clustering-by-state)
-shows why the bands for a lone treated state come out too narrow.
-
-Since the county identifiers are FIPS codes, their leading digits identify the
-state. We use that code to cluster the bootstrap and then print the overall
-average with its resulting uncertainty.
-
-```{code-cell} ipython3
-# Integer division by 1000 keeps the state part of each county FIPS code.
-state_data = data.with_columns((pl.col("countyreal") // 1000).alias("state"))
-
-# Bootstrap with whole states as the clusters and average the effects overall.
-clustered = did.att_gt(
-    state_data,
-    **(spec | {"boot": True, "cband": True, "clustervars": ["state"], "biters": 999}),
-)
-clustered_overall = did.aggte(clustered, type="simple")
-print(clustered_overall)
-```
-
-The interval in this report concerns the overall average across treated
-county-years. It does not establish reliable inference for the longer event
-times that depend on Illinois alone.
+in the staggered example shows how state clusters change the standard errors and
+why the bands for a lone treated state come out too narrow.
 
 ### Why is an estimate significant in the `att_gt` table but not in the event study?
 
-Under the defaults, {func}`~moderndid.att_gt` prints pointwise intervals and
-keeps simultaneous bands for `boot=True`. {func}`~moderndid.aggte` prints
-simultaneous bands built on a bootstrap critical value above 1.96. On mpdta the
-2007 cohort's 2004 estimate of 0.0305 carries a star in the `att_gt` table. At
-event time −3 the same estimate gets a wider simultaneous band and
-loses its star. Since a simultaneous band covers every estimate in a table at
-once at the nominal 95 percent confidence level, it suits scanning a table or
-plot for effects. A pointwise interval suits a single estimate that you picked
-out before looking.
-To use the same interval convention, pass `boot=True` to `att_gt` for
-simultaneous bands or `cband=False` to `aggte` for pointwise intervals.
-Simultaneous critical values can still differ because the group-time table
-and the event study cover different collections of effects. The
-{doc}`results guide <user_guide/results>` explains how to match the interval
-to the comparison you report.
-
-The output below follows the 2007 cohort's 2004 estimate into event time −3.
-The point estimate stays the same while the confidence limits change.
-
-```{code-cell} ipython3
-# Pointwise intervals for the group-time fit and simultaneous bands for its event study.
-fit = did.att_gt(data, **(spec | {"cband": True, "biters": 999}))
-event_study = did.aggte(fit, type="dynamic")
-
-# The 2007 cohort's 2004 estimate in each table.
-cell = did.to_df(fit).filter((pl.col("group") == 2007) & (pl.col("time") == 2004))
-event = did.to_df(event_study).filter(pl.col("event_time") == -3)
-for label, row in [("Pointwise", cell), ("Simultaneous", event)]:
-    estimate, lower, upper = row.select("att", "ci_lower", "ci_upper").row(0)
-    print(f"{label}: {estimate:.4f} [{lower:.4f}, {upper:.4f}]")
-```
+Under the defaults, the event study from {func}`~moderndid.aggte` prints
+simultaneous bands built on a bootstrap critical value above 1.96. Since those
+bands are wider than the pointwise intervals that {func}`~moderndid.att_gt`
+prints, an estimate near the edge can lose its star. To use the same interval
+convention, pass `boot=True` to `att_gt` for simultaneous bands or
+`cband=False` to `aggte` for pointwise intervals.
+{ref}`Simultaneous bands and the multiplier bootstrap <background-did-bootstrap>`
+explains what each kind of interval covers.
 
 ### Why do the simple, group, and dynamic aggregations give different overall effects?
 
 Each `type` in {func}`~moderndid.aggte` weights the same group-time effects in
-a different way. On mpdta the default {func}`~moderndid.att_gt` fit gives −0.0310
-for `"group"`, −0.0400 for `"simple"`, and −0.0772 for `"dynamic"`. `"group"`
-is the default and the usual answer to how large the effect was. It averages
-each cohort's effects after adoption and weights the cohorts by size so that
-every treated unit counts once. Although `"dynamic"` gives the event study, its
-overall number weights event times equally and leans on the cohorts observed
-longest.
-[How much employment fell](user_guide/example_staggered_did.md#how-much-employment-fell)
-works out each type's weights on the county data.
-
-Since all three rows below use one fitted result, their different overall
-effects come from aggregation rather than from refitting the cohort-year
-comparisons.
-
-```{code-cell} ipython3
-# Three overall effects from one fitted result.
-fit = did.att_gt(data, **spec)
-for kind in ["group", "simple", "dynamic"]:
-    average = did.aggte(fit, type=kind, cband=False)
-    print(f"{kind}: {average.overall_att:.4f} log points")
-```
+a different way. `"group"`, the default and the usual answer to how large the
+effect was, averages each cohort's effects after adoption and weights the
+cohorts by size so that every treated unit counts once. Because `"simple"`
+weights every cohort-year effect after adoption by cohort size, cohorts treated
+longer count for more. Although `"dynamic"` gives the event study, its overall
+number weights event times equally and leans on the cohorts observed longest.
+The results guide's
+[Choose the average for your question](user_guide/results.md#choose-the-average-for-your-question)
+compares the weights and the question each type answers.
 
 ### Why are some group-time estimates missing?
 
@@ -347,35 +261,18 @@ cell in a warning such as "Overlap condition violated for 2004 in time period
 2005". Under the default varying base the failed cells drop out of the result.
 Under `base_period="universal"` they stay as `NaN` and make
 {func}`~moderndid.aggte` stop with "Missing values at att_gt found" unless you
-pass `na_rm=True`.
-
-Either way, the averages then cover only the cells that did estimate. A cohort
-or year whose effects after adoption all failed has no row in the group or
-calendar summary. If only cells before adoption are left, the overall effect
-comes back as `NaN` with a warning that names the cause. Although
-{func}`~moderndid.ddd` leaves failed cells out under either base period,
-{func}`~moderndid.agg_ddd` summarizes the rest of a triple-difference fit by
-the same rules.
+pass `na_rm=True`. Although {func}`~moderndid.ddd` leaves failed cells out under
+either base period, {func}`~moderndid.agg_ddd` summarizes the rest of a
+triple-difference fit by the same rules.
 [When some cells fail to estimate](user_guide/results.md#when-some-cells-fail-to-estimate)
-in the results guide shows the county data's averages once a whole cohort drops
-out. To recover the failing cells instead, try fewer covariates for small
-cohorts or `control_group="notyettreated"` for more comparison units.
+in the results guide shows how the averages change once a whole cohort drops
+out and what can recover the failed cells.
 
 ### How do I get results into a DataFrame or a paper table?
 
-Results expose their estimates as attributes whose names depend on the
-estimator. For an `aggte` result, those include `overall_att` and
-`att_by_event`. {func}`~moderndid.to_df` converts supported result types to a
-Polars DataFrame containing estimates and uncertainty. For a `type="simple"`
-aggregation, read `overall_att` and `overall_se` directly because that scalar
-result cannot be converted with `to_df`. The
-{doc}`results guide <user_guide/results>` explains those fields and how to
-choose an aggregation.
-The {ref}`publication tables guide <publication_tables>` shows how to combine
-several results into one table for a paper.
-
-For an event study, the converted data expose event time, the estimate, and
-its confidence limits as named columns.
+{func}`~moderndid.to_df` converts supported result types to a Polars DataFrame
+of estimates and uncertainty. For an event study, the converted data expose
+event time, the estimate, and its confidence limits as named columns.
 
 ```{code-cell} ipython3
 # An event study with pointwise intervals, converted to a Polars DataFrame.
@@ -384,38 +281,21 @@ event_study = did.aggte(fit, type="dynamic", cband=False)
 did.to_df(event_study).select("event_time", "att", "se", "ci_lower", "ci_upper")
 ```
 
-For a formatted table, install `maketables` and pass the result object directly
-to its `ETable` constructor. The rendered table below retains the event study's
-analytical standard errors and pointwise intervals.
-
-```{code-cell} ipython3
-import maketables as mt
-
-# Each event time's estimate above its 95 percent interval, without the reference row.
-table = mt.ETable(
-    [event_study],
-    keep=[r"^Event "],
-    drop=[r"^Event -1$"],
-    coef_fmt="b:.3f \\n [ci95l:.3f, ci95u:.3f]",
-    model_stats=["n_units", "se_type"],
-    model_stats_labels={"n_units": "Counties"},
-    caption="Minimum wage effects on log teen employment",
-)
-table.make("gt")
-```
+Since a `type="simple"` aggregation holds only a scalar effect, read its
+`overall_att` and `overall_se` attributes instead. For a paper table, pass the
+result object to the `ETable` constructor of the `maketables` package, as the
+{ref}`publication tables guide <publication_tables>` shows.
 
 ### How do I know the estimates match the original implementations?
 
-The {ref}`worked comparisons <r-comparisons>` run the staggered,
-two-period, triple-difference, continuous-treatment, intertemporal,
-sensitivity-analysis, extended TWFE, and nonparametric IV estimators on the
-same application data in ModernDiD and in reference implementations of the
-same methods. Each page shows both sets of results side by side and explains
-where and why they differ. Because agreement in one specification doesn't carry
-over to every option, compare the settings on the page for your function with
-the ones you use. Dynamic covariate balancing is checked against its reference
-implementation in the test suite instead. Machine learning DiD has no
-comparison with a reference implementation yet.
+Every estimator except dynamic covariate balancing and machine learning DiD has
+a worked comparison that runs it in ModernDiD and in a reference implementation
+of the same method on the same application data. Dynamic covariate balancing is
+checked against its reference implementation in the test suite instead. Machine
+learning DiD has no comparison with a reference implementation yet. Because
+agreement in one specification doesn't carry over to every option, compare the
+settings on your function's page in
+{ref}`the worked comparisons <r-comparisons>` with the ones you use.
 
 ## Installing and scaling
 
