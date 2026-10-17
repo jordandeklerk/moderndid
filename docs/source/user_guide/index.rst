@@ -16,43 +16,90 @@ Along the way the guides explain how to read the fitted effects and their
 uncertainty, what each method assumes, and which inference options you can
 change for your own study.
 
-.. admonition:: Start with a complete run
-   :class: tip
-
-   If you're new to ModernDiD, the :doc:`Start here <getting_started>` pages
-   cover installation and walk you through a first analysis. When you have a
-   specific question, such as which comparison group to use, the
-   :doc:`FAQ <../faq>` gives a short answer and links to the guide that covers it.
-
-.. toctree::
-   :hidden:
-   :maxdepth: 2
-
-   getting_started
-   fundamentals
-   scaling
-
 .. _whatis-design:
 
-Find the guide you need
------------------------
-
-We've grouped these pages by where you are in an analysis to help you read
-them in order or return to the decision you're working on.
+Getting started
+---------------
 
 .. list-table::
    :class: section-index-table
    :header-rows: 1
    :widths: 30 70
 
-   * - Section
+   * - Guide
      - What you'll work through
-   * - :doc:`getting_started`
-     - Install the package, understand a DiD comparison, and run your first analysis.
-   * - :doc:`fundamentals`
-     - Choose an estimator, prepare data, read results, and produce figures and tables.
-   * - :doc:`scaling`
-     - Choose CPU parallelism or GPU acceleration for the work your estimator does.
+   * - :doc:`Installation <installation>`
+     - Set up Python and install the dependencies your analysis needs.
+   * - :doc:`DiD introduction <causal_inference>`
+     - Understand the untreated comparison, parallel trends, and staggered adoption.
+   * - :doc:`First analysis <quickstart>`
+     - Estimate employment effects, summarize them, and draw an event study.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Installation <installation>
+   DiD introduction <causal_inference>
+   First analysis <quickstart>
+
+.. _fundamentals:
+
+Data and results
+----------------
+
+.. list-table::
+   :class: section-index-table
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Guide
+     - What you'll work through
+   * - :doc:`Choosing an estimator <estimator_overview>`
+     - Match the treatment path and causal question to a supported estimator.
+   * - :doc:`Data for estimation <data>`
+     - Organize identifiers, treatment timing, covariates, and sampling weights.
+   * - :doc:`Working with estimates <results>`
+     - Read result objects, choose an aggregation, and interpret uncertainty.
+   * - :doc:`Plotting <plotting>`
+     - Choose a figure for your result and adjust or save it.
+   * - :doc:`Publication tables <publication_tables>`
+     - Present estimates and sample descriptions in tables for your paper.
+   * - :doc:`Preparing panel data <panel_utilities>`
+     - Inspect duplicate observations, missing periods, and treatment histories.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Choosing an estimator <estimator_overview>
+   Data for estimation <data>
+   Working with estimates <results>
+   Plotting <plotting>
+   Publication tables <publication_tables>
+   Preparing panel data <panel_utilities>
+
+Scaling
+-------
+
+.. list-table::
+   :class: section-index-table
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Guide
+     - What you'll work through
+   * - :doc:`CPU parallelism <scaling>`
+     - Spread comparisons and bootstrap draws over several CPU workers.
+   * - :doc:`GPU acceleration <gpu>`
+     - Set up CuPy, select supported GPU calculations, and measure their running time.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   CPU parallelism <scaling>
+   GPU acceleration <gpu>
 
 .. _whatis-methods:
 
@@ -67,6 +114,9 @@ The :doc:`Background <../background/index>` pages develop the assumptions and
 theoretical results behind each estimator. Once you've chosen a design, the
 :ref:`API Reference <api>` documents each estimator's arguments and result
 fields.
+
+When you have a specific question, such as which comparison group to use, the
+:doc:`FAQ <../faq>` gives a short answer and links to the guide that covers it.
 
 
 .. raw:: html
