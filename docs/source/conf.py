@@ -136,7 +136,7 @@ html_theme_options = {
         "toc.follow",
     ],
     "toc_title": "On this page",
-    "globaltoc_collapse": False,
+    "globaltoc_collapse": True,
     "palette": [
         {
             "media": "(prefers-color-scheme)",
