@@ -68,6 +68,42 @@ header.md-header,
   font-weight: 600;
 }
 
+/*
+Text stops at 28.5rem so full lines run near 85 characters at 1400 px, a median of 75 by the audit's per-paragraph
+count. Callouts take 1.5rem more for their border and padding. Those that hold display math take 34rem so no display
+scrolls on a desktop. A display centers under its text and widens toward the column only when it needs the room.
+*/
+article.md-content__inner > :is(p:not(.mdid-footer-logo), ul, ol, dl:not(.py), h1, h2, h3, h4, h5, h6),
+article.md-content__inner .sd-tab-content > :is(p, ul, ol),
+article.md-content__inner dl.py dd > :is(p, ul, ol, aside.footnote-list) {
+  max-width: 28.5rem;
+}
+
+article.md-content__inner > :is(h1, h2, h3, h4, h5, h6) {
+  text-wrap: balance;
+}
+
+article.md-content__inner > .admonition,
+article.md-content__inner dl.py > dd > .admonition {
+  max-width: 30rem;
+}
+
+article.md-content__inner > :is(.assumption, .theorem, .admonition:has(div.math)),
+article.md-content__inner dl.py > dd > .admonition:has(div.math) {
+  max-width: 34rem;
+}
+
+/* A callout that holds code keeps the full column because code lines don't wrap. */
+article.md-content__inner > .admonition:has(div.highlight),
+article.md-content__inner dl.py > dd > .admonition:has(div.highlight) {
+  max-width: none;
+}
+
+article.md-content__inner > div.math {
+  width: fit-content;
+  min-width: min(28.5rem, 100%);
+}
+
 /* Question markers help readers scan the FAQ without changing its headings. */
 .md-typeset #faq ~ h3 {
   position: relative;
