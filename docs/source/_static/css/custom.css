@@ -444,6 +444,31 @@ The fold MyST-NB makes for hidden input uses the same markup and keeps its size.
   padding-bottom: 0.2rem;
 }
 
+/*
+The theme leaves an equation number alone above its display because it skips Sphinx's basic stylesheet. Here the number
+sits beside the display's middle and moves above it only when a phone needs the whole width for the math. The permalink
+opens to the left of the number because one past the right edge would widen the page.
+*/
+.md-typeset div.math:has(> span.eqno) {
+  display: flex;
+  flex-flow: row-reverse wrap;
+  align-items: center;
+}
+
+.md-typeset div.math:has(> span.eqno) > mjx-container {
+  flex: 1 0 auto;
+}
+
+.md-typeset span.eqno {
+  position: relative;
+}
+
+.md-typeset span.eqno a.headerlink {
+  position: absolute;
+  right: 100%;
+  margin-right: 0.3em;
+}
+
 button.copybtn {
   opacity: 0.4;
 }
