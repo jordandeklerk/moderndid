@@ -234,11 +234,11 @@ def _landing_template(app, pagename, templatename, context, doctree):
 
 
 def _sidebar_sections(app, pagename, templatename, context, doctree):
-    """Display User Guide and API sections as sidebar headings over their pages."""
-    # The theme turns only the sidebar's second level into headings. Since the API index nests its
-    # pages under its own section headings, each page's generated entries stay folded.
+    """Display User Guide, API, and Development sections as sidebar headings over their pages."""
+    # The theme turns only the sidebar's second level into headings. Since these indexes nest their
+    # pages under their own section headings, each page's generated entries stay folded.
     guide_page = pagename.startswith("user_guide/") and not pagename.startswith("user_guide/example_")
-    if guide_page or pagename.startswith("api/"):
+    if guide_page or pagename.startswith(("api/", "dev/", "contributing/")):
         theme = context["config"]["theme"]
         features = [*theme["features"], "navigation.sections"]
         context["config"] = {**context["config"], "theme": {**theme, "features": features}}
@@ -271,7 +271,7 @@ def _panel_diagnostics_signature(app, what, name, obj, options, signature, retur
 
 
 def setup(app):
-    """Register the landing page, grouped guide and API navigation, and API example boxes."""
+    """Register the Sphinx event hooks that customize these docs."""
     app.connect("html-page-context", _landing_template)
     app.connect("html-page-context", _sidebar_sections, priority=600)
     app.connect("doctree-read", _open_examples_boxes)

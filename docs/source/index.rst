@@ -22,6 +22,5 @@ ModernDiD
    Comparisons with R <r_comparisons/index>
    FAQ <faq>
    Development <dev/index>
-   Contributing <contributing/index>
    Changelog <release/index>
    Acknowledgements <acknowledgements>
