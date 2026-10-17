@@ -23,41 +23,47 @@ below.
 
    * - Guide
      - Description
-   * - :doc:`influence_functions`
+   * - :doc:`Influence functions <influence_functions>`
      - Per-unit error contributions behind the guides' standard errors and bands.
-   * - :doc:`did`
+   * - :doc:`Staggered DiD <did>`
      - Group-time effects and aggregation for staggered treatment adoption.
-   * - :doc:`drdid`
+   * - :doc:`Two-period DiD <drdid>`
      - Doubly robust estimation for two-period designs.
-   * - :doc:`tripledid`
+   * - :doc:`Triple differences <tripledid>`
      - Identification and inference with a third comparison group.
-   * - :doc:`didcont`
-     - Treatment effects for continuous treatment doses.
-   * - :doc:`didinter`
-     - Dynamic effects under intertemporal treatment changes.
-   * - :doc:`diddynamic`
-     - Covariate balancing for dynamic treatment effects.
-   * - :doc:`didhonest`
-     - Sensitivity analysis under restrictions on parallel-trends violations.
-   * - :doc:`etwfe`
-     - Extended two-way fixed effects for heterogeneous treatment effects.
-   * - :doc:`npiv`
-     - Nonparametric instrumental variables and uniform inference.
+   * - :doc:`Continuous treatment <didcont>`
+     - Level effects of each dose, the extra assumptions that dose slopes need,
+       and bands over the dose curve.
+   * - :doc:`Intertemporal treatment <didinter>`
+     - Effects of a treatment path relative to the initial treatment level and
+       their normalization by exposure.
+   * - :doc:`Dynamic covariate balancing <diddynamic>`
+     - Identification of a full treatment history's effect and the sequential
+       weights that estimate it.
+   * - :doc:`Sensitivity analysis <didhonest>`
+     - Identified sets and confidence sets under bounds on violations of
+       parallel trends.
+   * - :doc:`Extended TWFE <etwfe>`
+     - Cohort-period effects from a saturated regression, their averages, and
+       nonlinear outcome models.
+   * - :doc:`Nonparametric IV <npiv>`
+     - Sieve estimation of a structural function, data-driven dimension choice,
+       and uniform bands.
 
 .. toctree::
    :maxdepth: 2
    :hidden:
 
-   influence_functions
-   did
-   drdid
-   tripledid
-   didcont
-   didinter
-   diddynamic
-   didhonest
-   etwfe
-   npiv
+   Influence functions <influence_functions>
+   Staggered DiD <did>
+   Two-period DiD <drdid>
+   Triple differences <tripledid>
+   Continuous treatment <didcont>
+   Intertemporal treatment <didinter>
+   Dynamic covariate balancing <diddynamic>
+   Sensitivity analysis <didhonest>
+   Extended TWFE <etwfe>
+   Nonparametric IV <npiv>
 
 Acknowledgements
 ================
