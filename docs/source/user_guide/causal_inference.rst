@@ -48,16 +48,13 @@ untreated potential outcomes in the same post-treatment period :math:`t`,
 
 Although you observe :math:`Y_t(1)` for the treated counties, their
 counterfactual employment under no minimum wage increase, :math:`Y_t(0)`, is
-missing. A before-and-after comparison does not recover it because employment
-might have changed even without the policy.
-
-Comparing treated and untreated counties in the post-treatment year alone
-also leaves a problem. Counties whose states chose to raise their minimum wage
-may have had different employment even if neither group had received treatment.
-With observational data, treatment assignment can reflect characteristics
-that also affect outcomes. DiD uses the earlier outcomes to allow for
-differences between the groups, provided those differences would have
-remained stable on average without treatment.
+missing. Comparing treated and untreated counties in the post-treatment year
+alone cannot recover it. Counties whose states chose to raise their minimum
+wage may have had different employment even if neither group had received
+treatment. With observational data, treatment assignment can reflect
+characteristics that also affect outcomes. DiD uses the earlier outcomes to
+allow for differences between the groups, provided those differences would
+have remained stable on average without treatment.
 
 Use an untreated change to construct the comparison
 ---------------------------------------------------
@@ -68,12 +65,6 @@ outcomes have not already responded to the future policy. We use that
 untreated period as a baseline and subtract the comparison group's outcome
 change from the treated group's change over the same periods.
 
-You can think of that calculation as constructing a missing outcome. Start
-from the treated group's average employment before the policy and add the
-change observed among untreated counties. The result is the treated group's
-counterfactual average employment after the policy if both groups would
-have experienced the same untreated change.
-
 For that subtraction to recover the ATT, the groups must have the same
 average change in outcomes under no treatment. Written in potential outcomes,
 this requirement is the parallel trends assumption,
@@ -82,10 +73,6 @@ this requirement is the parallel trends assumption,
 
    \mathbb{E}[Y_t(0)-Y_{t-1}(0)\mid D=1]
    = \mathbb{E}[Y_t(0)-Y_{t-1}(0)\mid D=0].
-
-Parallel trends allows the groups to have different employment levels
-before treatment because it concerns how those levels would change without
-the policy.
 
 .. admonition:: Similar levels do not establish parallel trends
    :class: warning
@@ -133,8 +120,7 @@ The timing and measurement of the outcome belong in that argument too.
 If employers respond to an announced minimum wage increase before it takes
 effect, the period just before adoption may already contain a policy
 response. You would need an earlier unaffected baseline or a method that
-allows for anticipation. Parallel trends also depends on the scale on which
-you measure the outcome.
+allows for anticipation.
 
 .. admonition:: Parallel trends and the outcome's scale
    :class: note
@@ -188,30 +174,25 @@ In a balanced panel with two periods, one treated group, and no covariates,
 ordinary least squares with unit and period fixed effects gives the same
 estimate as subtracting the two groups' sample mean changes. This numerical
 equivalence helped make two-way fixed effects (TWFE) regressions a common
-way to estimate DiD designs with more periods and adoption dates. Their
-convenience comes from summarizing all those observations in one treatment
-coefficient.
+way to estimate DiD designs with more periods and adoption dates.
 
-Once adoption dates differ across units, the regression coefficient combines
-a broader set of comparisons. When units adopt in different periods and
-remain treated afterward, an earlier adopter is
-already exposed to treatment when a later adopter begins. A conventional
-TWFE regression compares later adopters partly against these already-treated
+Once adoption dates differ across units, an earlier adopter is already
+exposed to treatment when a later adopter begins. A conventional TWFE
+regression compares later adopters partly against these already-treated
 units. If the earlier cohort's effect changes during the comparison, its
 outcome change contains a treatment response that the regression subtracts
-from the later cohort's change. `Goodman-Bacon (2021)
-<https://doi.org/10.1016/j.jeconom.2021.03.014>`_ explains how the coefficient
-combines these two-group, two-period comparisons. Even under parallel
-trends and no anticipation, that combination need not recover the average
-effect you want when effects differ across cohorts or change with exposure.
+from the later cohort's change. Even under parallel trends and no
+anticipation, the coefficient then need not recover the average effect you
+want when effects differ across cohorts or change with exposure.
 
 Following the response over time often involves an event study, where effects
-are indexed by periods before or after adoption. A conventional TWFE
-event-study regression replaces the single treatment indicator with leads
-and lags. When treatment effects vary across adoption cohorts, its lead and lag
-coefficients can mix effects from other event times.
-`Sun and Abraham (2021) <https://doi.org/10.1016/j.jeconom.2020.09.006>`_
-explain this problem for conventional event-study regressions.
+are indexed by periods before or after adoption. When treatment effects vary
+across adoption cohorts, the lead and lag coefficients of a TWFE event-study
+regression can mix effects from other event times. The
+:ref:`staggered DiD background <background-did-twfe>` explains both problems
+through the decompositions of `Goodman-Bacon (2021)
+<https://doi.org/10.1016/j.jeconom.2021.03.014>`_ and `Sun and Abraham (2021)
+<https://doi.org/10.1016/j.jeconom.2020.09.006>`_.
 
 .. admonition:: Pick the estimator before reading pre-trends
    :class: tip
@@ -234,16 +215,9 @@ rather than the binary treatment state used in the two-period notation.
 The target :math:`ATT(2004,2006)` concerns the 2004 cohort's employment in 2006
 relative to its own employment under no minimum wage increase. We use untreated
 comparison counties to learn about that missing outcome through a parallel
-trends assumption.
-
-When :func:`~moderndid.att_gt` estimates these group-time effects, its
-``control_group`` argument chooses whether the comparison units are never
-treated or remain untreated through the periods being compared. Later
-adopters can serve as comparison units without randomly assigned adoption
-dates as long as parallel trends is credible for those comparisons and you
-account for possible anticipation. The :ref:`staggered DiD background
-<background-did-comparison-groups>` states the parallel trends assumption
-that each comparison group requires.
+trends assumption. The :ref:`staggered DiD background
+<background-did-comparison-groups>` states that assumption for each comparison
+group :func:`~moderndid.att_gt` can use.
 
 Decide which average answers your question
 ------------------------------------------
@@ -255,14 +229,6 @@ You can instead summarize one cohort's experience over its observed treated
 periods or average the effects for all cohorts already treated in a
 particular calendar year. Because those averages can describe different
 populations and exposure lengths, they need not give the same answer.
-
-.. admonition:: A changing curve can reflect cohort mix
-   :class: warning
-
-   In an event study, later adopters may contribute to the first-year effect
-   but have no observations several years after treatment. A changing curve
-   can therefore reflect a changing mix of cohorts as well as changing effects
-   within cohorts.
 
 ModernDiD's :func:`~moderndid.aggte` computes each of these summaries from the
 group-time effects in an ``att_gt`` result. The :doc:`results guide <results>`
@@ -293,14 +259,12 @@ requirement to obtain a large p-value. Choosing a specification because it
 passes a pre-treatment test can also change the statistical behavior of the
 reported estimates and intervals, as `Roth (2022)
 <https://www.jonathandroth.com/assets/files/roth_pretrends_testing.pdf>`_
-shows. `Sant'Anna's lecture on pre-tests
-<https://psantanna.com/DiD/10_Pretest.pdf>`_ discusses what earlier outcomes
-can establish and how the conclusion depends on the assumptions being tested.
+shows.
 
-The :ref:`sensitivity analysis example <example_honest_did>` shows another way
-to assess the conclusion. It uses :func:`~moderndid.honest_did` to construct
-confidence intervals under specified bounds on departures from parallel
-trends. You still need to justify those bounds in the context of the study.
+The :ref:`sensitivity analysis example <example_honest_did>` uses
+:func:`~moderndid.honest_did` to construct confidence intervals under
+specified bounds on departures from parallel trends. You still need to
+justify those bounds in the context of the study.
 
 For a longer introduction, `Pedro Sant'Anna's public DiD course
 <https://psantanna.com/did-resources/>`_ works through the foundations and
