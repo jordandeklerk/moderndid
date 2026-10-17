@@ -74,11 +74,28 @@ def test_agg_ddd_eventstudy_min_max_e(mp_ddd_result):
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
-def test_agg_ddd_dropna(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, type=agg_type, dropna=True, boot=False, cband=False)
+def test_agg_ddd_na_rm_drops_missing_cells(mp_ddd_result, agg_type):
+    missing = (mp_ddd_result.groups == 3) & (mp_ddd_result.times == 4)
+    with_nan = mp_ddd_result._replace(att=np.where(missing, np.nan, mp_ddd_result.att))
+    hand_dropped = mp_ddd_result._replace(
+        att=mp_ddd_result.att[~missing],
+        groups=mp_ddd_result.groups[~missing],
+        times=mp_ddd_result.times[~missing],
+        inf_func_mat=mp_ddd_result.inf_func_mat[:, ~missing],
+    )
+
+    result = agg_ddd(with_nan, type=agg_type, na_rm=True, boot=False, cband=False)
+    expected = agg_ddd(hand_dropped, type=agg_type, boot=False, cband=False)
+    complete = agg_ddd(mp_ddd_result, type=agg_type, boot=False, cband=False)
 
     assert result.aggregation_type == agg_type
-    assert isinstance(result.overall_att, float | np.floating)
+    np.testing.assert_allclose(result.overall_att, expected.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_se, expected.overall_se, rtol=1e-12)
+    assert abs(result.overall_att - complete.overall_att) > 1e-3
+    if agg_type != "simple":
+        np.testing.assert_array_equal(result.egt, expected.egt)
+        np.testing.assert_allclose(result.att_egt, expected.att_egt, rtol=1e-12)
+        np.testing.assert_allclose(result.se_egt, expected.se_egt, rtol=1e-12)
 
 
 def test_agg_ddd_influence_function(mp_ddd_result):
@@ -220,7 +237,19 @@ def test_agg_ddd_missing_values_error(mp_ddd_result):
     mp_ddd_result.att[0] = np.nan
 
     with pytest.raises(ValueError, match="Missing values"):
-        agg_ddd(mp_ddd_result, type="simple", dropna=False, boot=False, cband=False)
+        agg_ddd(mp_ddd_result, type="simple", na_rm=False, boot=False, cband=False)
+
+
+def test_agg_ddd_without_na_rm_names_the_argument(mp_ddd_result):
+    with_nan = mp_ddd_result._replace(att=np.where(mp_ddd_result.times == 4, np.nan, mp_ddd_result.att))
+
+    with pytest.raises(ValueError, match=r"na_rm=True"):
+        agg_ddd(with_nan, boot=False, cband=False)
+
+
+def test_agg_ddd_rejects_the_removed_dropna_argument(mp_ddd_result):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'dropna'"):
+        agg_ddd(mp_ddd_result, type="simple", dropna=True, boot=False, cband=False)
 
 
 def test_agg_ddd_eventstudy_no_post(mp_ddd_result):
@@ -336,7 +365,7 @@ def test_agg_ddd_leaves_the_few_clusters_warning_to_ddd(mp_clustered_df):
 def test_agg_ddd_calendar_overall_se_averages_periods_with_cells(mp_ddd_result, boot):
     empty = (mp_ddd_result.groups == 3) & (mp_ddd_result.times == 3)
     gapped = mp_ddd_result._replace(att=np.where(empty, np.nan, mp_ddd_result.att))
-    agg = agg_ddd(gapped, type="calendar", dropna=True, boot=boot, cband=False, biters=199, random_state=3)
+    agg = agg_ddd(gapped, type="calendar", na_rm=True, boot=boot, cband=False, biters=199, random_state=3)
     valid = np.isfinite(agg.att_egt)
     if boot:
         draws = mboot_ddd(agg.inf_func, 199, 0.05, random_state=3).bres[:, valid].mean(axis=1)
@@ -466,9 +495,9 @@ def test_agg_ddd_requires_unit_partition(ddd_mp_result_fixture):
         agg_ddd(ddd_mp_result_fixture, boot=False, cband=False)
 
 
-@pytest.mark.parametrize("dropna", [False, True])
+@pytest.mark.parametrize("na_rm", [False, True])
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
-def test_agg_ddd_without_eligible_cohort_units_raises(ddd_mp_share_result, agg_type, dropna):
+def test_agg_ddd_without_eligible_cohort_units_raises(ddd_mp_share_result, agg_type, na_rm):
     base_periods_only = ddd_mp_share_result._replace(
         att=np.zeros(2),
         groups=np.array([2, 3]),
@@ -478,11 +507,11 @@ def test_agg_ddd_without_eligible_cohort_units_raises(ddd_mp_share_result, agg_t
     )
 
     with pytest.raises(ValueError, match="No cohort in ddd_result has an eligible unit"):
-        agg_ddd(base_periods_only, type=agg_type, dropna=dropna, boot=False, cband=False)
+        agg_ddd(base_periods_only, type=agg_type, na_rm=na_rm, boot=False, cband=False)
 
 
-@pytest.mark.parametrize("dropna", [False, True])
-def test_agg_ddd_group_leaves_out_cohorts_without_post_treatment_effects(ddd_mp_share_result, dropna):
+@pytest.mark.parametrize("na_rm", [False, True])
+def test_agg_ddd_group_leaves_out_cohorts_without_post_treatment_effects(ddd_mp_share_result, na_rm):
     keep = np.array([True, True, True, True, True, False])
     inf_func_mat = np.random.default_rng(0).standard_normal((10, 5))
     gapped = ddd_mp_share_result._replace(
@@ -491,7 +520,7 @@ def test_agg_ddd_group_leaves_out_cohorts_without_post_treatment_effects(ddd_mp_
         times=ddd_mp_share_result.times[keep],
         inf_func_mat=inf_func_mat,
     )
-    group = agg_ddd(gapped, type="group", dropna=dropna, boot=False, cband=False)
+    group = agg_ddd(gapped, type="group", na_rm=na_rm, boot=False, cband=False)
     event_study = agg_ddd(gapped, type="eventstudy", boot=False, cband=False)
     simple = agg_ddd(gapped, type="simple", boot=False, cband=False)
     expected_inf_func = inf_func_mat[:, [1, 2]].mean(axis=1)
@@ -507,10 +536,10 @@ def test_agg_ddd_group_leaves_out_cohorts_without_post_treatment_effects(ddd_mp_
     np.testing.assert_allclose(group.overall_se, event_study.overall_se, rtol=1e-12)
 
 
-@pytest.mark.parametrize("dropna", [False, True])
-def test_agg_ddd_group_overall_without_post_treatment_window_is_nan(mp_ddd_result, dropna):
+@pytest.mark.parametrize("na_rm", [False, True])
+def test_agg_ddd_group_overall_without_post_treatment_window_is_nan(mp_ddd_result, na_rm):
     with pytest.warns(UserWarning, match="^The overall effect is NaN because max_e=-1 leaves out every "):
-        result = agg_ddd(mp_ddd_result, type="group", max_e=-1, dropna=dropna, boot=False, cband=False)
+        result = agg_ddd(mp_ddd_result, type="group", max_e=-1, na_rm=na_rm, boot=False, cband=False)
 
     assert np.isnan(result.overall_att)
     assert np.isnan(result.overall_se)
@@ -601,10 +630,10 @@ def test_agg_ddd_event_study_bootstrap_overall_se_ignores_event_time_without_eli
     np.testing.assert_allclose(agg.overall_se, agg.se_egt[agg.egt == 0][0], rtol=1e-12)
 
 
-@pytest.mark.parametrize("dropna", [False, True])
+@pytest.mark.parametrize("na_rm", [False, True])
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
 def test_agg_ddd_without_post_treatment_effects_warns_and_reports_nan(
-    ddd_mp_share_pre_treatment_result, agg_type, dropna
+    ddd_mp_share_pre_treatment_result, agg_type, na_rm
 ):
     with pytest.warns(
         UserWarning,
@@ -612,7 +641,7 @@ def test_agg_ddd_without_post_treatment_effects_warns_and_reports_nan(
         "warnings name the cells that failed to estimate\\. Fewer covariates or control_group='notyettreated' can "
         "recover them\\.$",
     ):
-        agg = agg_ddd(ddd_mp_share_pre_treatment_result, type=agg_type, dropna=dropna, boot=False, cband=False)
+        agg = agg_ddd(ddd_mp_share_pre_treatment_result, type=agg_type, na_rm=na_rm, boot=False, cband=False)
 
     assert np.isnan(agg.overall_att)
     assert np.isnan(agg.overall_se)
@@ -644,8 +673,8 @@ def test_agg_ddd_max_e_before_treatment_warns_and_reports_nan(ddd_mp_share_resul
         assert len(agg.egt) == 0
 
 
-@pytest.mark.parametrize("dropna", [False, True])
-def test_agg_ddd_group_table_leaves_out_cohorts_without_effects_up_to_max_e(ddd_mp_share_result, dropna):
+@pytest.mark.parametrize("na_rm", [False, True])
+def test_agg_ddd_group_table_leaves_out_cohorts_without_effects_up_to_max_e(ddd_mp_share_result, na_rm):
     keep = np.array([True, False, True, True, True, True])
     late_start = ddd_mp_share_result._replace(
         att=ddd_mp_share_result.att[keep],
@@ -653,7 +682,7 @@ def test_agg_ddd_group_table_leaves_out_cohorts_without_effects_up_to_max_e(ddd_
         times=ddd_mp_share_result.times[keep],
         inf_func_mat=np.random.default_rng(0).standard_normal((10, 5)),
     )
-    agg = agg_ddd(late_start, type="group", max_e=0, dropna=dropna, boot=False, cband=False)
+    agg = agg_ddd(late_start, type="group", max_e=0, na_rm=na_rm, boot=False, cband=False)
 
     np.testing.assert_array_equal(agg.egt, [3])
     np.testing.assert_allclose(agg.att_egt, [4.0], rtol=1e-12)
@@ -661,9 +690,9 @@ def test_agg_ddd_group_table_leaves_out_cohorts_without_effects_up_to_max_e(ddd_
     np.testing.assert_allclose(agg.overall_se, agg.se_egt[0], rtol=1e-12)
 
 
-@pytest.mark.parametrize("dropna", [False, True])
+@pytest.mark.parametrize("na_rm", [False, True])
 def test_agg_ddd_group_max_e_window_matches_other_types_when_a_cohort_adopts_between_observed_periods(
-    ddd_mp_share_result, dropna
+    ddd_mp_share_result, na_rm
 ):
     inf_func_mat = np.random.default_rng(0).standard_normal((10, 6))
     off_grid = ddd_mp_share_result._replace(
@@ -673,9 +702,9 @@ def test_agg_ddd_group_max_e_window_matches_other_types_when_a_cohort_adopts_bet
         tlist=np.array([1, 2, 4, 5]),
         inf_func_mat=inf_func_mat,
     )
-    group = agg_ddd(off_grid, type="group", max_e=1, dropna=dropna, boot=False, cband=False)
-    simple = agg_ddd(off_grid, type="simple", max_e=1, dropna=dropna, boot=False, cband=False)
-    event_study = agg_ddd(off_grid, type="eventstudy", max_e=1, dropna=dropna, boot=False, cband=False)
+    group = agg_ddd(off_grid, type="group", max_e=1, na_rm=na_rm, boot=False, cband=False)
+    simple = agg_ddd(off_grid, type="simple", max_e=1, na_rm=na_rm, boot=False, cband=False)
+    event_study = agg_ddd(off_grid, type="eventstudy", max_e=1, na_rm=na_rm, boot=False, cband=False)
     expected_se = np.sqrt(np.mean(inf_func_mat[:, 1] ** 2) / 10)
 
     np.testing.assert_array_equal(group.egt, [2])
@@ -685,8 +714,8 @@ def test_agg_ddd_group_max_e_window_matches_other_types_when_a_cohort_adopts_bet
     np.testing.assert_allclose([group.overall_se, simple.overall_se, event_study.overall_se], expected_se, rtol=1e-12)
 
 
-@pytest.mark.parametrize("dropna", [False, True])
-def test_agg_ddd_group_table_of_a_fit_leaves_out_a_cohort_whose_post_treatment_cells_failed(mp_ddd_result, dropna):
+@pytest.mark.parametrize("na_rm", [False, True])
+def test_agg_ddd_group_table_of_a_fit_leaves_out_a_cohort_whose_post_treatment_cells_failed(mp_ddd_result, na_rm):
     failed = (mp_ddd_result.groups == 3) & (mp_ddd_result.times >= 3)
     result = mp_ddd_result._replace(
         att=mp_ddd_result.att[~failed],
@@ -694,7 +723,7 @@ def test_agg_ddd_group_table_of_a_fit_leaves_out_a_cohort_whose_post_treatment_c
         times=mp_ddd_result.times[~failed],
         inf_func_mat=mp_ddd_result.inf_func_mat[:, ~failed],
     )
-    agg = agg_ddd(result, type="group", dropna=dropna, boot=False, cband=False)
+    agg = agg_ddd(result, type="group", na_rm=na_rm, boot=False, cband=False)
     complete = agg_ddd(mp_ddd_result, type="group", boot=False, cband=False)
 
     np.testing.assert_array_equal(agg.egt, [4])
@@ -704,8 +733,8 @@ def test_agg_ddd_group_table_of_a_fit_leaves_out_a_cohort_whose_post_treatment_c
     np.testing.assert_allclose(agg.overall_se, agg.se_egt[0], rtol=1e-12)
 
 
-@pytest.mark.parametrize("dropna", [False, True])
-def test_agg_ddd_calendar_leaves_out_periods_without_treated_effects(ddd_mp_share_result, dropna):
+@pytest.mark.parametrize("na_rm", [False, True])
+def test_agg_ddd_calendar_leaves_out_periods_without_treated_effects(ddd_mp_share_result, na_rm):
     keep = (ddd_mp_share_result.groups == 3) | (ddd_mp_share_result.times == 1)
     inf_func_mat = np.random.default_rng(0).standard_normal((10, 4))
     early_gap = ddd_mp_share_result._replace(
@@ -714,7 +743,7 @@ def test_agg_ddd_calendar_leaves_out_periods_without_treated_effects(ddd_mp_shar
         times=ddd_mp_share_result.times[keep],
         inf_func_mat=inf_func_mat,
     )
-    agg = agg_ddd(early_gap, type="calendar", dropna=dropna, boot=False, cband=False)
+    agg = agg_ddd(early_gap, type="calendar", na_rm=na_rm, boot=False, cband=False)
 
     np.testing.assert_array_equal(agg.egt, [3])
     np.testing.assert_allclose(agg.att_egt, [4.0], rtol=1e-12)
@@ -746,7 +775,7 @@ def test_agg_ddd_rejects_result_whose_effects_are_all_nan(ddd_mp_share_result, a
         match="^Every ATT\\(g,t\\) in ddd_result is NaN\\. The ddd warnings name the cells that failed to estimate\\. "
         "Fewer covariates or control_group='notyettreated' can recover them\\.$",
     ):
-        agg_ddd(all_nan, type=agg_type, dropna=True, boot=False, cband=False)
+        agg_ddd(all_nan, type=agg_type, na_rm=True, boot=False, cband=False)
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
