@@ -27,10 +27,12 @@ time to show you which parts of the answer to this natural experiment hold up.
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
+import polars as pl
 from plotnine import options
 
 options.figure_size = (12, 5)
 options.dpi = 100
+pl.Config.set_float_precision(4)
 ```
 
 ## The data
@@ -120,11 +122,8 @@ consistent when either its outcome regression or its propensity score is right.
 
 ## Choosing a specification
 
-With the data and the target in place, there are a handful of choices to make
-before estimating anything. Each one encodes an assumption about how minimum
-wages and teen employment behave. In
-[Pushing on the answer](#pushing-on-the-answer), we'll change them one at a time
-to see whether the answer moves.
+Each choice in the dictionary below encodes an assumption about how minimum
+wages and teen employment behave.
 
 ```{code-cell} ipython3
 # Keep every choice in one dictionary so each check later on can change a single argument.
@@ -188,10 +187,9 @@ with the year right before it.
 :::{admonition} What the base period changes
 :class: note
 
-The base period decides how the estimates before adoption are measured. The
-effects after adoption and their standard errors come out the same under either
-setting, as [The base period](#the-base-period) confirms near the end of the
-guide.
+The base period decides how the estimates before adoption are measured. Whether
+it also moves the effects after adoption is the question that
+[The base period](#the-base-period) answers near the end of the guide.
 :::
 
 The year before adoption only works as a base if employment didn't react before
@@ -383,11 +381,6 @@ by their weights and the question each one answers.
 
 ## Pushing on the answer
 
-So far every number on this page has come from the single specification chosen
-earlier. This section changes one choice at a time and keeps everything else the
-same to show whether the answer moves. The checks follow the same order as the
-choices in [Choosing a specification](#choosing-a-specification).
-
 ### Other control groups and estimators
 
 The first check goes back to the comparison group and the estimator. The cell
@@ -435,19 +428,23 @@ answer.
 
 We chose a universal base period mostly for how the event study reads. To make
 sure it doesn't change the answer, the cell below reruns the specification under
-the default `base_period="varying"`. Each year before adoption is then compared
-with the year just before it.
+the default `base_period="varying"`.
 
 ```{code-cell} ipython3
 # The same specification under the default varying base.
 varying = did.att_gt(data, **(spec | {"base_period": "varying"}))
-print(varying)
+
+# The pre-test and the rows of the 2007 cohort.
+print(f"pre-test p-value {varying.wald_pvalue:.4f}")
+did.to_df(varying).filter(pl.col("group") == 2007)
 ```
 
-The estimates after adoption, their standard errors, and the pre-test p-value
-of 0.2327 don't change at all. The rows before adoption now show one-year changes
-such as the 2007 cohort's −0.0284 from 2005 to 2006. Because the simultaneous
-bands cover those rows too, the bands after adoption widen slightly.
+The pre-test p-value of 0.2327 comes out exactly as it did under the universal
+base. In the 2007 cohort's rows, each year before adoption now holds a one-year
+change, such as the −0.0284 from 2005 to 2006. Like every other effect after
+adoption, the cohort's effect in 2007 keeps its estimate and its standard error.
+Because the simultaneous bands cover the new rows too, the band around that
+effect widens slightly.
 
 ### Anticipation
 
@@ -463,7 +460,10 @@ year back to $g-2$ so the drop counts toward the effect.
 # The same specification with one year of anticipation, so each cohort's base year is g - 2.
 anticipating = did.att_gt(data, **(spec | {"anticipation": 1}))
 anticipating_by_cohort = did.aggte(anticipating, type="group")
-print(anticipating_by_cohort)
+
+# The overall effect and one row for each cohort.
+print(f"overall effect {anticipating_by_cohort.overall_att:.4f}")
+did.to_df(anticipating_by_cohort)
 ```
 
 The 2004 cohort drops out here because it would need 2002 as its base year. One
@@ -513,7 +513,7 @@ study on the clustered estimates.
 ```{code-cell} ipython3
 # The event study from the state-clustered estimates.
 clustered_event_study = did.aggte(clustered, type="dynamic")
-print(clustered_event_study)
+did.to_df(clustered_event_study)
 ```
 
 Every placebo band still covers zero once the bootstrap clusters by state. The
@@ -530,25 +530,9 @@ report. For single event times, read the county-level and state-clustered bands
 side by side. With so few treated states, neither one settles them on its own.
 :::
 
-### Putting the checks together
-
-The checks help distinguish choices that move the employment estimate from
-choices that change how precisely we can measure it. Changing the comparison
-group, the estimator, the covariate, or the base period leaves the overall effect
-between −0.0310 and −0.0329.
-
-The two choices that do matter end up working in quite different ways. Allowing
-one year of anticipation moves the estimate itself to −0.0500 and keeps its
-interval below zero, from −0.0839 to −0.0161. Clustering by state instead leaves
-the estimate at −0.0328 and its interval below zero but widens the band at event
-time 1 until it covers zero. How large the effect is depends on what you're
-willing to assume about the year before adoption. How confident you can be in
-the effect at a single event time depends on how you cluster.
-
-Every number on this page still leans on parallel trends with the never-treated
-counties. If you want to know how far the event study holds up when that
-assumption is only approximately true,
-{ref}`Sensitivity analysis <example_honest_did>` shows how to bound the effects.
-{ref}`Extended TWFE <example_etwfe>` takes the same data in a different
-direction and estimates it with a regression that gives each cohort and year its
-own effect.
+Every check on this page except anticipation keeps the overall effect between
+−0.0310 and −0.0329. Clustering by state leaves the estimate alone and matters
+most for how far you can trust the effect at a single event time. Since every
+number here still leans on parallel trends with the never-treated counties,
+{ref}`Sensitivity analysis <example_honest_did>` shows how far the event study
+holds up when that assumption is only approximately true.
