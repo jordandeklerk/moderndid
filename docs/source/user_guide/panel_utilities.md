@@ -20,8 +20,6 @@ lifted restrictions on interstate bank branching between 1994 and 2005.
 The data record the number of restrictions lifted and the growth of mortgage
 lending in each county. Because some counties have missing years, we can use
 this panel to compare filling gaps with dropping incomplete units.
-The {ref}`intertemporal treatment example <example_inter_did>` takes the same
-data through an analysis of the deregulations' effects on lending.
 
 Since functions that return data preserve your input's DataFrame format, you
 can pass pandas, Polars, or another supported Arrow-compatible object without
@@ -63,9 +61,9 @@ only the house price change in `Dl_hpi`. A specification that leaves out
 
 The time-varying treatment flag is expected for `inter_bra`, since a state
 can lift further restrictions after its first deregulation. That matters for
-choosing an estimator as well as for cleaning the data. A treatment history
-that rises from zero to one and then to two contains more information than a
-single adoption date can represent.
+{ref}`choosing an estimator <estimator-overview>` as well as for cleaning the
+data. A treatment history that rises from zero to one and then to two contains
+more information than a single adoption date can represent.
 
 (panel-utilities-gaps)=
 
@@ -91,7 +89,8 @@ separate imputation procedure.
 :class: warning
 
 {func}`~moderndid.core.panel.fill_panel_gaps` inserts the missing rows without
-estimating the values they should hold. Even an estimator that allows an
+estimating the values they should hold. Treating those missing outcomes as zero
+would change the effect you estimate. Even an estimator that allows an
 unbalanced panel still needs observed outcomes for the comparisons it makes.
 :::
 
@@ -137,12 +136,8 @@ groups = did.get_group(
 print(groups["G"].unique().sort().to_list())
 ```
 
-The six adoption dates and the untreated group describe the timing of the
-first deregulation rather than later increases in the number of restrictions
-a state has lifted.
-For the lending analysis, {func}`~moderndid.did_multiplegt` uses the full
-period-specific dose rather than treating every positive dose as the same
-absorbing policy.
+The six adoption dates and the untreated group record only when each county's
+state first lifted a restriction.
 
 :::{admonition} Supply adoption dates for an ever-treated indicator
 :class: important
@@ -229,8 +224,6 @@ display(wide.head(3))
 long.head(3)
 ```
 
-The year-specific lending columns are gathered back into the single
-`Dl_vloans_b` outcome column.
 Since `state_n` never changes within a county, it stays as a single column
 in wide data and is repeated across that county's years in long data.
 
@@ -266,9 +259,6 @@ unique `rowid` for every observation when you do not track the same units
 over time. {func}`~moderndid.att_gt` still needs `panel=False` for that
 design, because those identifiers label observations without creating a panel.
 
-After these checks, the {ref}`estimator guide <estimator-overview>` helps you
-choose a method that fits the treatment history in your data. The
-{ref}`first analysis <quickstart>` shows how to pass the prepared columns to a
-fit. Once you've estimated those effects, the
-{ref}`results guide <working-with-results>` covers reading the report and
-choosing an aggregation.
+The {ref}`intertemporal treatment example <example_inter_did>` uses
+{func}`~moderndid.did_multiplegt` to take this county panel through an analysis
+of the deregulations' effects on lending.
