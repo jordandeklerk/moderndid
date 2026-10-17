@@ -183,7 +183,7 @@ def aggte(
         balance_e=balance_e,
         min_e=min_e,
         max_e=max_e,
-        dropna=na_rm,
+        na_rm=na_rm,
         bootstrap=boot,
         biters=biters,
         confidence_band=cband,
