@@ -491,6 +491,16 @@ button.copybtn.success {
   padding-right: 2.5rem;
 }
 
+/*
+Since input code scrolls sideways under the copy button on a phone, it gets the room at its end that outputs have.
+Only code in the article gets it, because the landing page styles its own install box.
+*/
+@media screen and (max-width: 44.984375em) {
+  article.md-content__inner div.highlight pre > code {
+    padding-right: 2.5rem;
+  }
+}
+
 :root {
   --sd-fontsize-tabs-label: 0.64rem;
   --sd-fontsize-dropdown-title: 0.64rem;
