@@ -321,6 +321,21 @@ Python, so their token colors are cleared.
   border-left-width: 4px !important;
 }
 
+/*
+Callout text takes the body size, since the theme's smaller size made the most important text on a page its smallest.
+The fold MyST-NB makes for hidden input uses the same markup and keeps its size.
+*/
+.md-typeset .admonition:not(.hide) {
+  font-size: inherit;
+}
+
+/* On a phone, math in a callout keeps the theme's smaller size because more of its displays would scroll at the body size. */
+@media screen and (max-width: 44.984375em) {
+  .md-typeset .admonition div.math {
+    font-size: 0.64rem;
+  }
+}
+
 /* API See also and Examples boxes use the same violet as parameter names in each scheme. */
 .md-typeset .admonition.seealso,
 .md-typeset .admonition.example,
