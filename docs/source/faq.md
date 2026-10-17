@@ -113,11 +113,9 @@ Pick the function by how your treatment behaves over time and across units.
 two-period designs, dynamic covariate balancing, and sensitivity analysis.
 Neither the estimator of Sun and Abraham (2021) nor the imputation estimator of
 Borusyak, Jaravel, and Spiess (2024) has its own function, since
-{func}`~moderndid.etwfe` reproduces both in matched specifications. With
-`cgroup="never"` and no covariates, its event study matches the Sun and Abraham
-estimator. Its default cohort-time effects match those of the imputation
-estimator when both use the same balanced sample, time-constant covariates,
-and comparison units, as {ref}`the ETWFE background <background-etwfe>` shows.
+{func}`~moderndid.etwfe` reproduces both in the matched specifications that
+{ref}`the ETWFE background <background-etwfe>` sets out. With `cgroup="never"`
+and no covariates, its event study matches the Sun and Abraham estimator.
 
 ### Should I compare with never-treated or not-yet-treated units?
 
@@ -129,68 +127,17 @@ comparisons can add precision but extend parallel trends to the later adopters.
 why never-treated units are the safer choice when you have enough of them and
 they resemble the treated ones.
 
-:::{admonition} Without never-treated units, the usable years change
-:class: warning
-
-With no never-treated units, `att_gt` drops every period from the last
-cohort's adoption onward because no untreated units remain for comparison.
-Under the default it also makes that cohort the comparison group and warns
-you.
-:::
-
-Holding the other settings in the {ref}`shared specification
-<faq-example-setup>` fixed makes the effect of this choice easier to see.
-Both rows below report the simple average effect in log employment units.
-
-```{code-cell} ipython3
-# The simple average under each comparison group.
-for comparison in ["nevertreated", "notyettreated"]:
-    fit = did.att_gt(data, **(spec | {"control_group": comparison}))
-    overall = did.aggte(fit, type="simple", cband=False)
-    print(f"{comparison}: {overall.overall_att:.4f}")
-```
-
-On the county data, the extra comparisons move the simple average only from
-−0.0400 to −0.0398. Either comparison group still needs a parallel trends
-argument for your data.
-
 ### Why do `att_gt` and `etwfe` give different answers on the same data?
 
 Most of the gap comes from their default comparison groups rather than from the
-methods. With its default not-yet-treated comparison, {func}`~moderndid.etwfe`
-followed by `emfx(type="simple")` gives −0.0477 on mpdta. Under its default
-never-treated comparison, {func}`~moderndid.att_gt` with
-`aggte(type="simple")` gives −0.0400, the same number `etwfe` gives with
-`cgroup="never"`. The {ref}`extended TWFE example <example_etwfe>` walks
-through the comparison on the same county data.
-
-We leave covariates out of both fits here so the comparison isolates their
-default control conventions and the never-treated alternative. This example
-also needs the `etwfe` extra, installed with `uv add "moderndid[etwfe]"` or
-`python -m pip install "moderndid[etwfe]"`.
-
-```{code-cell} ipython3
-# att_gt under its default never-treated comparison.
-fit = did.att_gt(data, **spec)
-overall = did.aggte(fit, type="simple", cband=False)
-print(f"att_gt, never-treated: {overall.overall_att:.4f}")
-
-# etwfe under its default not-yet-treated comparison and under never-treated controls.
-for comparison in ["notyet", "never"]:
-    regression = did.etwfe(
-        data,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        cgroup=comparison,
-    )
-    average = did.emfx(regression, type="simple")
-    print(f"etwfe, {comparison}: {average.overall_att:.4f}")
-```
-
-Once you add covariates, the two estimators adjust for them in different ways
-and may no longer agree under never-treated controls.
+methods. Where {func}`~moderndid.att_gt` compares each cohort with never-treated
+units by default, {func}`~moderndid.etwfe` defaults to `cgroup="notyet"` and
+also counts cohorts in their years before adoption as controls. On a balanced
+panel without covariates, `etwfe` with `cgroup="never"` gives the same simple
+average as `att_gt` under its defaults. Once you add covariates, the two
+estimators adjust for them in different ways and may no longer agree. The
+{ref}`extended TWFE example <example_etwfe>` compares the two comparison groups
+on the county data.
 
 ### Should I use a varying or universal base period?
 
@@ -198,73 +145,34 @@ With no anticipation, `base_period` changes only the estimates before adoption,
 since every effect after adoption uses $g-1$ as its base under either setting.
 The default `"varying"` makes each estimate before adoption a change over one
 period. Under `"universal"` every period is measured against $g-1$ and the
-placebo estimates sit on the same scale as the effects. Choose `"universal"`
-for an event study you plot or set beside a regression event study. With
-a positive anticipation setting, the universal base is
-$g-\text{anticipation}-1$ rather than $g-1$.
+placebo estimates sit on the same scale as the effects. Choose `"universal"` for
+an event study you plot, set beside a regression event study, or pass to
+{func}`~moderndid.honest_did`, since `honest_did` raises an error for one
+estimated with the varying base.
 [The base period](user_guide/example_staggered_did.md#the-base-period) puts the
 two settings side by side on the county data.
-
-:::{admonition} Use a universal base before `honest_did`
-:class: important
-
-Since {func}`~moderndid.honest_did` needs every coefficient measured against
-one reference period at event time $-1-\text{anticipation}$, estimate the
-event study with `base_period="universal"`. An event study estimated with the
-varying base makes `honest_did` raise an error.
-:::
-
-For the 2007 cohort in 2005, the varying base compares 2005 with 2004 while
-the universal base compares 2005 with 2006.
-
-```{code-cell} ipython3
-# The 2007 cohort's 2005 estimate under each base period.
-for base in ["varying", "universal"]:
-    fit = did.att_gt(data, **(spec | {"base_period": base}))
-    cell = did.to_df(fit).filter((pl.col("group") == 2007) & (pl.col("time") == 2005))
-    print(f"{base}: {cell['att'][0]:.4f}")
-```
 
 ### What can I put in `xformla`?
 
 {func}`~moderndid.att_gt`, {func}`~moderndid.ddd`, {func}`~moderndid.etwfe`, and
 {func}`~moderndid.did_multiplegt` read `xformla` as plain column names joined by
-`+`. The two-period {func}`~moderndid.drdid`, {func}`~moderndid.ipwdid`, and
-{func}`~moderndid.ordid` can evaluate a full formula when the `formulaic`
-dependency is installed. The {doc}`data guide <user_guide/data>` shows how to
-pass covariates through `xformla` for a staggered design.
-
-:::{admonition} Build transformed covariates before estimation
-:class: important
-
-The named-column parser rejects transformations, categorical terms, powers,
-and interactions rather than evaluating them. Build each one as its own
-column first, such as `pl.col("pop").log().alias("lpop")`, before you name it
-in `xformla`.
-:::
-
-For example, you can add a squared term for the recorded log population and
-name both columns in the specification.
-
-```{code-cell} ipython3
-# Square the log population in its own column and name both columns in xformla.
-with_square = data.with_columns((pl.col("lpop") ** 2).alias("lpop_sq"))
-adjusted = did.att_gt(with_square, **(spec | {"xformla": "~lpop + lpop_sq"}))
-adjusted_overall = did.aggte(adjusted, type="simple", cband=False)
-print(f"Population-adjusted average: {adjusted_overall.overall_att:.4f} log points")
-```
-
-Choose the population adjustment according to your argument for conditional
-parallel trends in the application you are studying.
+`+`. Since that parser rejects transformations, categorical terms, powers, and
+interactions, build each one as its own column first, such as
+`pl.col("pop").log().alias("lpop")`. The two-period {func}`~moderndid.drdid`,
+{func}`~moderndid.ipwdid`, and {func}`~moderndid.ordid` can evaluate a full
+formula when the `formulaic` dependency is installed. The data guide's
+[Choose covariates measured before treatment](user_guide/data.md#choose-covariates-measured-before-treatment)
+shows how to pass covariates through `xformla` for a staggered design.
 
 ### Can my covariates change over time?
 
-On a balanced panel, each {func}`~moderndid.att_gt` comparison reads
-covariates from the earlier of its two periods, the base period for every
-effect after adoption. A covariate that changes over time therefore enters
-at its value before treatment, even if
-treatment changes it later. The {doc}`data guide <user_guide/data>` explains
-why the covariates should be fixed before treatment in the first place.
+On a balanced panel, {func}`~moderndid.att_gt` reads each covariate in the
+earlier of a comparison's two periods. Every effect after adoption therefore
+adjusts for the covariate's value before treatment, even if treatment changes it
+later.
+[The data guide](user_guide/data.md#choose-covariates-measured-before-treatment)
+explains why the covariates should be fixed before treatment in the first
+place.
 
 ### Does `est_method` matter if I have no covariates?
 
@@ -272,15 +180,7 @@ Without covariates, `"dr"`, `"ipw"`, and `"reg"` reduce to the same comparison
 of mean changes and give identical estimates. Once you add covariates, `"dr"`
 stays consistent if either the outcome model or the propensity score model is
 right. That double protection is why `"dr"` is the default, as
-{ref}`Doubly robust DiD <background-drdid>` explains in detail.
-
-```{code-cell} ipython3
-# The simple average under each estimation method, without covariates.
-for method in ["dr", "ipw", "reg"]:
-    fit = did.att_gt(data, **(spec | {"est_method": method}))
-    overall = did.aggte(fit, type="simple", cband=False)
-    print(f"{method}: {overall.overall_att:.4f}")
-```
+{ref}`Doubly robust DiD <background-drdid>` explains.
 
 ### What if the policy was announced before it took effect?
 
@@ -290,16 +190,6 @@ respond. Each cohort's base period then moves back from $g-1$ to $g-1-k$ for
 effect instead of looking like a pre-trend. A cohort without an earlier base
 period drops out, as Illinois does in
 [Anticipation](user_guide/example_staggered_did.md#anticipation).
-
-Because one year of anticipation requires a baseline before 2003 for the 2004
-cohort, its 20 counties leave this five-year panel's estimation sample. The
-cohort summary below therefore reports only the 2006 and 2007 cohorts.
-
-```{code-cell} ipython3
-# One year of anticipation moves each cohort's base period back a year.
-anticipating = did.att_gt(data, **(spec | {"anticipation": 1}))
-print(did.aggte(anticipating, type="group", cband=False))
-```
 
 ## Reading the results
 
