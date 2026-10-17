@@ -152,7 +152,33 @@ of wrapping text never need the sideways scrolling the theme's block layout allo
 
 .md-typeset .architecture-table code {
   white-space: nowrap;
+}
+
+/*
+A narrow table squeezes until the theme splits its code names at any character. Whole names make most tables scroll in
+their own box instead. Index tables cannot scroll and give up some cell padding on the smallest phones.
+*/
+.md-typeset table :is(td, th) code {
   word-break: normal;
+}
+
+@media screen and (max-width: 22.5em) {
+  .md-typeset table.data.section-index-table :is(th, td) {
+    padding-inline: 0.8em;
+  }
+}
+
+/*
+Each table in a tab fills the tab so its edge stays put as readers switch tabs. The tab scrolls sideways when the names
+inside need more room than a phone has.
+*/
+.md-typeset .sd-tab-content > table.data:not(.plain) {
+  display: table;
+  width: 100%;
+}
+
+.md-typeset .sd-tab-content:has(> table.data) {
+  overflow-x: auto;
 }
 
 .md-nav {
