@@ -169,8 +169,13 @@ The visual is the logo mark drawn in Fira Mono characters. It runs 104 glyphs of
 fills its column up to 12px glyphs.
 */
 
+/*
+Since the title's line box leaves room above its capitals, the text's visible middle sits about 4px
+below its box's middle. The margin lowers the logo by the same amount.
+*/
 .mdid-hero__visual {
   position: relative;
+  margin-top: 0.4rem;
 }
 
 .mdid-mark {
@@ -226,6 +231,7 @@ fills its column up to 12px glyphs.
 
   .mdid-hero__visual {
     max-width: 36rem;
+    margin-top: 0;
   }
 }
 
