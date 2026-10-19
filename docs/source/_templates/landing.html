@@ -14,25 +14,33 @@
 {% block container %}
 <div class="md-content mdid-landing" data-md-component="content">
   <section class="mdid-hero" aria-labelledby="moderndid">
-    <span id="moderndid-docs-mainpage"></span>
-    <h1 id="moderndid" class="mdid-hidden">Modern Difference-in-Differences in Python</h1>
-    <div class="mdid-mark">
-      <pre class="mdid-mark__art" id="mdid-mark" role="img" aria-label="The ModernDiD logo, two rings joined by two cats, drawn in text characters."></pre>
-      <noscript><img class="mdid-mark__logo" src="{{ pathto('_static/logo-mark.svg', 1) }}" alt="" width="480" height="270"></noscript>
-    </div>
-    <p class="mdid-lede">
-      ModernDiD is a Python library that implements the
-      <span class="mdid-nowrap">difference-in-differences</span> estimators of recent
-      econometric research.
-    </p>
-    <div class="mdid-actions">
-      <div class="mdid-press mdid-press--brand">
-        <span class="mdid-press__block" aria-hidden="true"></span>
-        <a class="mdid-press__button" href="{{ pathto('user_guide/index') }}">User Guide</a>
+    <div class="mdid-hero__copy">
+      <span id="moderndid-docs-mainpage"></span>
+      <h1 id="moderndid" class="mdid-title">
+        Modern
+        <span class="mdid-title__accent">Difference-in-Differences</span>
+        in Python
+      </h1>
+      <p class="mdid-lede">
+        Estimate treatment effects with difference-in-differences methods from
+        econometric research, brought together in one Python API.
+      </p>
+      <div class="mdid-actions">
+        <div class="mdid-press mdid-press--brand">
+          <span class="mdid-press__block" aria-hidden="true"></span>
+          <a class="mdid-press__button" href="{{ pathto('user_guide/index') }}">User Guide</a>
+        </div>
+        <div class="mdid-press mdid-press--secondary">
+          <span class="mdid-press__block" aria-hidden="true"></span>
+          <a class="mdid-press__button" href="{{ pathto('examples/index') }}">Examples</a>
+        </div>
       </div>
-      <div class="mdid-press mdid-press--secondary">
-        <span class="mdid-press__block" aria-hidden="true"></span>
-        <a class="mdid-press__button" href="{{ pathto('examples/index') }}">Examples</a>
+      <a class="mdid-link" href="{{ pathto('api/index') }}">See API reference<span aria-hidden="true">&rarr;</span></a>
+    </div>
+    <div class="mdid-hero__visual">
+      <div class="mdid-mark">
+        <pre class="mdid-mark__art" id="mdid-mark" role="img" aria-label="The ModernDiD logo, two rings joined by two cats, drawn in text characters."></pre>
+        <noscript><img class="mdid-mark__logo" src="{{ pathto('_static/logo-mark.svg', 1) }}" alt="" width="480" height="270"></noscript>
       </div>
     </div>
   </section>
