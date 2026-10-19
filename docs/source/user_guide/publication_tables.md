@@ -18,25 +18,18 @@ a table from the analysis that produced it.
 
 We begin with the minimum wage county sample so readers know whose employment
 the estimates describe. The event-study table then puts each estimate beside
-its uncertainty before we compare specifications in separate columns. Each
-table renders directly from the code so you can see how the rows, labels, and
-uncertainty appear together.
+its uncertainty before we compare specifications in separate columns.
 `ETable` reads supported result objects, `DTable` describes the data, and
 `MTable` gives you control over custom panels. All three can produce LaTeX,
 HTML, Word, and Typst output for the document you're preparing.
 
-
-## Installing the table package
-
-To follow the table examples, add `maketables` to the environment where you
-run your analysis. Because the ordinary ModernDiD installation leaves it out,
-install it with whichever command fits the way you manage that environment.
+Since the ordinary ModernDiD installation leaves `maketables` out, add it to
+the environment where you run your analysis before following the examples. Use
+`uv add` in a uv project and pip in any other Python environment.
 
 ```bash
 uv add maketables
 ```
-
-Or install the package into your current Python environment with pip.
 
 ```bash
 python -m pip install maketables
@@ -77,16 +70,9 @@ sample_table = mt.DTable(
 sample_table.make("gt")
 ```
 
-Because each county appears once in this table, its count describes the
-baseline sample rather than the county-year observations used for estimation.
-The means and standard deviations also retain the variables' log units.
-Although these summaries help readers understand the sample, they do not
-establish the parallel trends assumption needed to interpret an effect.
-
 ## Making a table from an event study
 
-With the sample described, we can turn to what the increases did to teen
-employment. Since the fit below reuses the specification of the
+Since the fit below reuses the specification of the
 {ref}`first analysis <quickstart>`, the tables report county-level bootstrap
 standard errors and show simultaneous bands wherever they print intervals. For
 a paper, format the fit whose inference you chose to report. The results
@@ -118,10 +104,6 @@ event_study = did.aggte(result, type="dynamic")
 print(event_study)
 ```
 
-The event times are years relative to a state's first increase. With a log
-outcome, the estimates remain in log-employment units when you put them in a
-table. A negative estimate represents lower employment relative to the
-untreated counterfactual under the specification's parallel trends assumption.
 We put the estimate above its simultaneous band so readers can assess both
 without looking between separate columns.
 
@@ -144,16 +126,12 @@ tab.make("gt")
 The `coef_fmt` string puts the estimate on the first line and its interval
 on the second. Its tokens name values that the result object supplies, as in
 `b` for the estimate, `se` for its standard error, and `ci95l` and `ci95u` for
-the interval bounds. We use `.3f` to keep three decimal places
-and `\\n` to place the interval on its own line within the cell.
+the interval bounds. Because `keep` selects rows by their names, `r"^Event "`
+leaves out the separate overall ATT.
 
 For the first year after adoption, the table reports −0.053 log points with a
 simultaneous band from −0.094 to −0.012 that excludes zero. These are the same
 estimates shown in the report, rounded for the publication display.
-
-Because `keep` selects rows by their names, `r"^Event "` leaves out the
-separate overall ATT. We also omit event time minus one because that reference
-year is normalized to zero rather than estimated as a separate effect.
 
 :::{admonition} Say which sample size you report
 :class: tip
@@ -185,12 +163,6 @@ changes = [
 models = [result] + [did.att_gt(data, **(spec | change)) for change in changes]
 event_studies = [did.aggte(model, type="dynamic") for model in models]
 ```
-
-The inverse probability weighting and outcome regression columns each rely
-on one of the nuisance models used by the doubly robust estimator. The
-{ref}`estimator guide <estimator-overview>` describes how the three estimation
-methods use those models. This table keeps their labels beside the estimates so
-the specifications remain identifiable after export.
 
 ```{code-cell} ipython3
 # One column per specification and one shared heading over the two doubly robust fits.
@@ -247,8 +219,7 @@ agreement shows only that the specification choice matters little here.
 
 Once the full table is available, you can choose a shorter set of rows for a
 particular display. Use literal coefficient names with `exact_match=True`
-and regex patterns when it is false. We retain one pre-adoption estimate and
-the first two effects after adoption below, in their event-time order.
+and regex patterns when it is false.
 
 ```{code-cell} ipython3
 # Keep three rows by exact name, in event-time order, and relabel them in words.
@@ -346,12 +317,6 @@ report = mt.ETable(
 report.make("gt")
 ```
 
-Group aggregation gives each treated county the same weight in the overall
-effect after averaging over its cohort's observed post-adoption years. The
-overall event-study effect instead averages across post-adoption event times.
-Naming the aggregation in the notes helps readers
-understand why two overall numbers from the same analysis can differ.
-
 The group averages here are −0.033 and −0.032 log points under the two
 comparison groups. The joint pre-trend p-values come from the original
 group-time fits and do not test these overall effects. Keeping that
@@ -360,8 +325,8 @@ comparison it was designed to assess.
 
 Use the `caption` to describe the question the table answers and `tab_label`
 to identify it for cross-referencing or replacement in a document. The notes
-are where you record the outcome's units, the inference method, and any
-restrictions readers need to interpret the rows.
+are where you record the outcome's units, the aggregation, the inference
+method, and any restrictions readers need to interpret the rows.
 
 :::{admonition} Name the clustering level in the notes
 :class: tip
@@ -382,8 +347,6 @@ headings and a column `MultiIndex` for spanners that group related columns.
 The panels below compare the population-adjusted estimates with estimates
 under unconditional parallel trends. Within each panel, simple, group,
 dynamic, and calendar aggregations answer different averaging questions.
-Keeping the aggregation in the row label tells readers which effect each
-estimate describes even when several summaries appear in the same table.
 
 ```{code-cell} ipython3
 # Fit the same specification under unconditional parallel trends.
@@ -412,12 +375,8 @@ for panel, model in specifications.items():
     }
 ```
 
-There are at most four component estimates in each of these rows. The
-post-adoption event study is restricted to event times zero through three.
-The cohort and calendar rows report their observed cohorts or calendar years
-instead. `to_df` returns those cohorts and years in the same `event_time`
-column that holds the event times. The simple aggregation has no separate
-component estimates to display.
+For the cohort and calendar rows, `to_df` returns the cohorts and years in the
+same `event_time` column that holds an event study's event times.
 
 ```{code-cell} ipython3
 # Write each component's label, estimate, and standard error into one cell and
@@ -467,9 +426,7 @@ panel_table.make("gt")
 
 The component cells show the cohort, event time, or calendar year above
 each estimate and standard error. Keeping those labels in the cells avoids
-aligning a cohort date with an event time as though they shared an axis.
-The panel headings separate the two parallel trends specifications and the
-overall column identifies each aggregation's average. The
+aligning a cohort date with an event time as though they shared an axis. The
 [MTable documentation](https://py-econometrics.github.io/maketables/docs/MTable.html)
 covers further options for row groups and column spanners.
 
@@ -540,10 +497,4 @@ report.update_docx("./results.docx", tab_num=1)
 ```
 
 The [maketables reference](https://py-econometrics.github.io/maketables/docs/ETable.html)
-lists the full set of coefficient and metadata formatting options. For a figure
-built from the same estimates,
-{ref}`plotting treatment effects <plotting>` shows how to carry the result's
-confidence bounds into a plot without copying them by hand. The
-{ref}`staggered DiD example <example_staggered_did>` takes the same county data
-through a complete analysis, from choosing the specification to checking how
-the employment estimates respond to other choices.
+lists the full set of coefficient and metadata formatting options.

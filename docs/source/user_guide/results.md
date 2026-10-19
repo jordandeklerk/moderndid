@@ -24,15 +24,12 @@ uncertainty was calculated.
 
 ## Start from the first analysis's fit
 
-Here we compare counties whose states raised the minimum wage with counties
-whose states never raised it during the observed years and adjust for
-pre-policy population. Since the fit below keeps every setting of the
-{ref}`first analysis <quickstart>`, it also bootstraps over counties and
-reports simultaneous bands. Every summary from {func}`~moderndid.aggte`
-inherits the comparison and the clustering of that fit. For uncertainty
-clustered by state,
-[Match the uncertainty to the comparison](#match-the-uncertainty-to-the-comparison)
-fits the specification again.
+We start from a fit that keeps every setting of the
+{ref}`first analysis <quickstart>`. It compares counties whose states raised the
+minimum wage with counties whose states never raised it during the observed
+years and adjusts for pre-policy population. The
+{ref}`staggered DiD example <example_staggered_did>` explains these choices and
+checks how the results change under other specifications.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -65,15 +62,6 @@ result = did.att_gt(data, **spec)
 print(result)
 ```
 
-The doubly robust method adjusts for population with both an outcome
-regression and propensity score weights. Its consistency still depends on
-conditional parallel trends, no anticipation, and a correctly specified model
-for at least one of those adjustments. The universal base
-period expresses each cohort's comparisons relative to the year before
-adoption. The {ref}`staggered DiD example <example_staggered_did>`
-explains these choices and checks how the results change under other
-specifications.
-
 ## Read the report and its result object
 
 The report pairs each cohort's adoption year with an observation year.
@@ -102,10 +90,8 @@ group_time = did.to_df(result)
 group_time.head()
 ```
 
-The `group` and `time` columns identify the comparison alongside its
-estimate in `att` and standard error in `se`. Because `ci_lower` and
-`ci_upper` use the critical value stored in the result, the conversion
-retains the fit's band convention.
+Because `ci_lower` and `ci_upper` use the critical value stored in the result,
+the conversion retains the fit's band convention.
 
 Alongside the estimation settings, the result object keeps influence
 functions that summarize how each unit contributes to sampling
@@ -170,6 +156,24 @@ first two treated years and pull the overall event-study average down to
 −0.0804 log points. Before reading this as evidence of a growing employment
 response, we need to check which cohorts remain in those later averages.
 
+Since the panel ends in 2007, only the 2004 cohort is observed two and three
+years after adoption. Because `balance_e=1` keeps only the cohorts observed at
+event times zero and one, the estimates at those two event times then rest on
+the same counties. The `min_e` and `max_e` arguments only trim the event window
+and leave its cohort mix unchanged.
+[Holding the counties fixed](example_staggered_did.md#holding-the-counties-fixed)
+in the staggered DiD example shows how much the effect still grows once the
+counties stay the same.
+
+```{code-cell} ipython3
+# Hold the cohorts fixed over event times 0 and 1 and show only that window.
+balanced = did.aggte(result, type="dynamic", balance_e=1, min_e=-1, max_e=1)
+print(balanced)
+```
+
+Once `balance_e=1` drops the 2007 cohort, the adoption-year estimate moves from
+−0.0211 to −0.0042 log points.
+
 ### Give each cohort an average over its treated years
 
 To compare adoption cohorts, we first average each cohort's observed
@@ -218,10 +222,7 @@ print(calendar_effects)
 ```
 
 The calendar report's −0.0442 log-point overall effect averages the effects
-for 2004 through 2007. Since these reports weight the same underlying
-estimates differently, choose the target before comparing their numbers.
-A change in the population or exposure lengths you average
-does not represent a change in the fitted comparison.
+for 2004 through 2007.
 
 ### When some cells fail to estimate
 
@@ -255,41 +256,6 @@ and the missing rows are then the only signs that an average covers less than
 you intended. If the failures leave no effect after adoption to average,
 `aggte` says so in a warning or an error rather than returning an estimate.
 
-## Track which cohorts contribute to an event study
-
-The event-study averages need particular care because longer horizons are
-often observed for fewer cohorts. In this panel, the 2007 cohort contributes
-in its adoption year but has no observation one year afterward. Two and three
-years after a state's increase, the curve concerns only the 2004 cohort's
-counties, since no other cohort is observed that long.
-
-:::{admonition} Illinois alone fills the late horizons
-:class: warning
-
-Because the 2004 cohort comes from Illinois, only one treated state
-contributes to event times 2 and 3. Although their bands exclude zero, a
-bootstrap that treats those 20 counties as independent leaves out any shock
-that hit all of Illinois.
-:::
-
-To compare the first two post-treatment years using the same cohorts, we
-set `balance_e=1` to keep cohorts observed at event times zero and one.
-The `min_e` and `max_e` arguments also limit the displayed estimates to
-the reference year and those two treated years.
-
-```{code-cell} ipython3
-# Hold the cohorts fixed over event times 0 and 1 and show only that window.
-balanced = did.aggte(result, type="dynamic", balance_e=1, min_e=-1, max_e=1)
-print(balanced)
-```
-
-After dropping the 2007 cohort, the curve describes a different population.
-Its adoption-year effect moves from −0.0211 log points with the 2007 cohort to
-−0.0042 log points without it. Setting only `min_e` and `max_e` would
-trim the event times without holding cohort composition fixed. Holding the
-cohorts fixed helps us separate changes in exposure from changes in the
-counties contributing to the average.
-
 ## Interpret the units of the outcome
 
 Since the outcome in this fit is log employment, a negative post-treatment
@@ -317,10 +283,6 @@ count.
 
 ## Match the uncertainty to the comparison
 
-The reports above carry the inference settings of the original fit. With
-`boot=True`, `att_gt` computes multiplier bootstrap standard errors and,
-through `cband=True`, a simultaneous critical value for the group-time effects.
-
 If you use the default `boot=False`, `att_gt` calculates analytical standard
 errors. Although `cband=True` is also a default, its group-time bands use a
 simultaneous critical value only when the bootstrap is enabled. Specify
@@ -335,62 +297,26 @@ estimates.
 
 Because the minimum wage is set state by state, treatment arrives for whole
 states rather than for single counties. Clustering the bootstrap by state
-matches the uncertainty to that assignment. We pass `clustervars=["state"]`
-with the rest of `spec` unchanged to give every county in a state the same
-bootstrap weight.
-
-```{code-cell} ipython3
-import polars as pl
-
-# Add a state column from the leading digits of each county's FIPS code.
-data = data.with_columns((pl.col("countyreal") // 1000).alias("state"))
-
-# Refit with one bootstrap weight per state and average by cohort again.
-clustered = did.att_gt(data, **spec, clustervars=["state"])
-clustered_cohorts = did.aggte(clustered, type="group")
-print(clustered_cohorts)
-```
-
-Clustering by state raises the overall effect's standard error from 0.0122 in
-[the cohort section's report](#give-each-cohort-an-average-over-its-treated-years)
-to 0.0131. Although the interval widens to run from −0.0584 to −0.0072, it
-stays below zero. The 2004 row's standard error falls instead, from 0.0265 to
-0.0174, because all 20 of that cohort's counties share one cluster. Within that
-cluster the bootstrap no longer sees how the counties differ.
+matches the uncertainty to that assignment. When you pass
+`clustervars=["state"]` to `att_gt`, every county in a state gets the same
+bootstrap weight in the fit and in each summary that `aggte` computes from it.
 [Clustering by state](example_staggered_did.md#clustering-by-state) in the
-staggered DiD example reports the same narrowing at event times 2 and 3.
-
-Remark 10 of Callaway and Sant'Anna (2021) justifies the cluster bootstrap when
-the number of clusters is large. The overall effect rests on 13 treated states
-and 16 comparison states. For a summary that draws on that many states, report
-the state-clustered interval. Since a single cohort's band rests on far fewer
-treated states, from one in 2004 to nine in 2007, it can come out too narrow
-even under state clusters. Where a cohort has only one treated state, neither
-bootstrap can measure a shock that hit only that state.
-
-Under Inference, the clustered report reads "Bootstrap standard errors
-clustered by state" where the county-level one reads "Bootstrap standard
-errors". Tables made from the fit carry "Bootstrap clustered by state" as
-the S.E. type.
+staggered DiD example runs that fit and shows why a cohort from a single
+treated state still gets too narrow a band.
 
 :::{admonition} Check clustered pre-trends with the bands
 :class: important
 
-Both the bootstrap and the analytic standard errors of `att_gt` and `aggte`
-become cluster-robust under `clustervars`. Since a Wald test on a
-cluster-robust covariance rejects too often at realistic numbers of clusters,
-a fit clustered by state reports no Wald pre-test. Its `att_gt` report points
-you to the bootstrap's uniform bands over the pre-treatment cells instead.
+Instead of a Wald pre-test, the report of a fit clustered by state points you to
+the bootstrap's uniform bands over the pre-treatment cells.
 :::
 
-Pre-treatment bands can help assess the comparison without proving
-post-treatment parallel trends. If you want to examine bounded departures
-from that assumption, the {ref}`sensitivity analysis example
-<example_honest_did>` explains the inputs that {func}`~moderndid.honest_did`
-needs, such as a universal base period and an event window. Since
-`honest_did` sums the influence function within the fit's clusters before it
-forms the covariance, an event study from the state-clustered fit keeps that
-clustering in the sensitivity analysis.
+If you want to examine bounded departures from parallel trends, the
+{ref}`sensitivity analysis example <example_honest_did>` explains the inputs
+that {func}`~moderndid.honest_did` needs, such as a universal base period and
+an event window. Since `honest_did` sums the influence function within the
+fit's clusters before it forms the covariance, an event study from a
+state-clustered fit keeps that clustering in the sensitivity analysis.
 
 ## Export estimates and keep a reproducible specification
 
@@ -418,11 +344,7 @@ estimates.write_csv("employment-event-study.csv")
 ```
 
 Save the input data version, full specification, package version, and seeds
-alongside the exported estimates. An integer seed reproduces a bootstrap
-call under the same settings. A different seed can change its standard
-errors and bands without changing the underlying point estimates.
-
-The {ref}`plotting guide <plotting>` draws these results and explains how to
-save a figure. For publication tables that retain the estimator's labels and
-uncertainty, continue with the
+alongside the exported estimates. The {ref}`plotting guide <plotting>` draws
+these results and explains how to save a figure. For publication tables that
+retain the estimator's labels and uncertainty, continue with the
 {ref}`publication tables guide <publication_tables>`.

@@ -66,7 +66,7 @@ def test_calendar_aggregation_leaves_out_periods_without_treated_effects(synthet
     failed = (synthetic_mp_result.groups == 2004) & (synthetic_mp_result.times >= 2004)
     with_failed_cells = synthetic_mp_result._replace(att_gt=np.where(failed, np.nan, synthetic_mp_result.att_gt))
 
-    result = compute_aggte(with_failed_cells, aggregation_type="calendar", dropna=True)
+    result = compute_aggte(with_failed_cells, aggregation_type="calendar", na_rm=True)
 
     np.testing.assert_array_equal(result.event_times, [2006, 2007])
     np.testing.assert_allclose(result.att_by_event, [0.05, 0.055], rtol=1e-12)
@@ -84,7 +84,7 @@ def test_group_aggregation_leaves_out_cohorts_without_post_treatment_effects(syn
     with_nan = synthetic_mp_result._replace(att_gt=np.where(failed, np.nan, synthetic_mp_result.att_gt))
 
     from_dropped = compute_aggte(dropped, aggregation_type="group")
-    from_nan = compute_aggte(with_nan, aggregation_type="group", dropna=True)
+    from_nan = compute_aggte(with_nan, aggregation_type="group", na_rm=True)
 
     np.testing.assert_array_equal(from_dropped.event_times, [2006, 2007])
     np.testing.assert_array_equal(from_nan.event_times, [2006, 2007])
@@ -107,7 +107,7 @@ def test_aggregation_with_only_pre_treatment_cells_left_reports_nan(synthetic_mp
         UserWarning,
         match="^The overall effect is NaN because no post-treatment group-time effect is left to average\\. ",
     ):
-        result = compute_aggte(with_failed_cells, aggregation_type=aggregation_type, dropna=True)
+        result = compute_aggte(with_failed_cells, aggregation_type=aggregation_type, na_rm=True)
 
     assert np.isnan(result.overall_att)
     assert np.isnan(result.overall_se)
@@ -134,9 +134,9 @@ def test_na_rm_functionality(synthetic_mp_result):
     synthetic_mp_result.att_gt[5] = np.nan
 
     with pytest.raises(ValueError, match="Missing values"):
-        compute_aggte(synthetic_mp_result, aggregation_type="simple", dropna=False)
+        compute_aggte(synthetic_mp_result, aggregation_type="simple", na_rm=False)
 
-    result = compute_aggte(synthetic_mp_result, aggregation_type="simple", dropna=True)
+    result = compute_aggte(synthetic_mp_result, aggregation_type="simple", na_rm=True)
     assert not np.isnan(result.overall_att)
     assert not np.isnan(result.overall_se)
 
@@ -178,6 +178,11 @@ def test_compute_aggte_stores_biters(synthetic_mp_result):
 def test_compute_aggte_rejects_the_removed_bootstrap_iterations_argument(synthetic_mp_result):
     with pytest.raises(TypeError, match="unexpected keyword argument 'bootstrap_iterations'"):
         compute_aggte(synthetic_mp_result, aggregation_type="simple", bootstrap_iterations=99)
+
+
+def test_compute_aggte_rejects_the_removed_dropna_argument(synthetic_mp_result):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'dropna'"):
+        compute_aggte(synthetic_mp_result, aggregation_type="simple", dropna=True)
 
 
 def test_invalid_aggregation_type(synthetic_mp_result):

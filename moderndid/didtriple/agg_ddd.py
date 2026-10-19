@@ -11,7 +11,7 @@ def agg_ddd(
     balance_e=None,
     min_e=-np.inf,
     max_e=np.inf,
-    dropna=False,
+    na_rm=False,
     boot=True,
     biters=1000,
     cband=True,
@@ -42,8 +42,9 @@ def agg_ddd(
         Earliest event time in an event study.
     max_e : float, default=inf
         Latest event time in the simple, group, and event-study aggregations.
-    dropna : bool, default=False
-        Whether to drop missing ATT(g,t) before aggregating.
+    na_rm : bool, default=False
+        Whether to drop group-time effects that are NaN before aggregating. Without it,
+        a NaN effect stops the aggregation with an error.
     boot : bool, default=True
         Whether the multiplier bootstrap computes the standard errors.
     biters : int, default=1000
@@ -172,7 +173,7 @@ def agg_ddd(
         balance_e=balance_e,
         min_e=min_e,
         max_e=max_e,
-        dropna=dropna,
+        na_rm=na_rm,
         boot=boot,
         biters=biters,
         cband=cband,

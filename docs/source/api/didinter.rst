@@ -1,7 +1,7 @@
 .. _api-didinter:
 
-Intertemporal DiD
-=================
+Intertemporal treatment
+=======================
 
 When treatment can switch on and off or change in intensity, a unit's past
 exposure may still affect its current outcome. :func:`~moderndid.did_multiplegt`
@@ -40,13 +40,20 @@ Inference
 Result objects
 --------------
 
-.. currentmodule:: moderndid.didinter.container
+.. currentmodule:: moderndid
 
 .. autosummary::
    :toctree: generated/didinter/
    :nosignatures:
 
    DIDInterResult
+
+.. currentmodule:: moderndid.didinter.container
+
+.. autosummary::
+   :toctree: generated/didinter/
+   :nosignatures:
+
    EffectsResult
    PlacebosResult
    ATEResult

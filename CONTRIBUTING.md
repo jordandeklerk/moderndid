@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to ModernDiD!
 
-The [Contributing guide](https://moderndid.readthedocs.io/en/latest/contributing/index.html) covers the development setup, the Git workflow, testing, review, and releases. The [Development guide](https://moderndid.readthedocs.io/en/latest/dev/index.html) explains the library's architecture and how to add an estimator.
+The [Contributing guide](https://moderndid.readthedocs.io/en/latest/dev/index.html#contributing) covers the development setup, the Git workflow, testing, review, and releases. The [Development guide](https://moderndid.readthedocs.io/en/latest/dev/index.html#how-the-package-works) explains the library's architecture and how to add an estimator.
 
 ## Quick start
 

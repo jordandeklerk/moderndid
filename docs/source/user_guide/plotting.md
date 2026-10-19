@@ -22,13 +22,6 @@ together. Every plotting function returns a [plotnine](https://plotnine.org/)
 `ggplot` object that you can customize by adding a theme or another layer
 with `+`.
 
-If your existing installation does not include the optional plotting
-dependencies, add them with the `plots` extra before running these examples.
-
-```bash
-python -m pip install "moderndid[plots]"
-```
-
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
@@ -40,13 +33,10 @@ options.dpi = 100
 
 ## Starting with an event study
 
-The {ref}`staggered DiD example <example_staggered_did>` asks whether
-teenagers lost jobs when their states raised the minimum wage. Because this
-page fits the same specification as that example and the
-{ref}`first analysis <quickstart>`, its plots show the estimates and bands both
-of those pages report. With a universal base period, each estimate is measured
-against the year before adoption. The event-study reference line therefore
-belongs at event time minus one.
+The plots below draw the minimum wage fit of the
+{ref}`first analysis <quickstart>`. With a universal base period, each estimate
+is measured against the year before adoption. The event-study reference line
+therefore belongs at event time minus one.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -76,12 +66,14 @@ print(event_study)
 ```
 
 The report gives the estimates and simultaneous bands that the plot will
-display. Before reading the post-adoption path, check the estimates before
-adoption for evidence of different trends. At longer event times, check which
-cohorts are still observed. The staggered DiD example explains why the last two
-points of the event study describe only the earliest cohort.
+display.
 
 ```{code-cell} ipython3
+---
+mystnb:
+  image:
+    alt: Event study of minimum wage effects on log teen employment. Navy estimates sit near zero at event times −4 to −2 before a dashed line that marks the base year at −1. Red effects fall below zero from event time 0 to 3.
+---
 # Label the axes in the employment question's terms and mark the base year.
 p = (
     did.plot_event_study(
@@ -98,8 +90,7 @@ p
 
 The navy points mark estimates before adoption and the red points mark
 effects after adoption. The horizontal dashed line marks zero and the vertical
-line marks the omitted base year. Because `lemp` is a log outcome, the
-vertical axis reports changes in log employment rather than numbers of jobs.
+line marks the omitted base year.
 
 :::{admonition} Preserve the inference you estimated
 :class: important
@@ -190,16 +181,17 @@ For example, the unaggregated minimum wage estimates can be plotted one
 cohort at a time without refitting the model.
 
 ```{code-cell} ipython3
+---
+mystnb:
+  image:
+    alt: Group-time effects from 2003 to 2007 in three stacked panels for the 2004, 2006, and 2007 cohorts. Navy estimates come before each cohort's adoption and red effects after it.
+---
 from plotnine import theme
 
 # One panel per cohort on a taller canvas so the three panels stay readable.
 cohort_plot = did.plot_gt(result) + did.theme_moderndid() + theme(figure_size=(12, 8))
 cohort_plot
 ```
-
-With each cohort in its own panel, you can compare their estimated responses
-over calendar time. The taller figure leaves enough room to read the
-intervals and axis labels in all of those panels.
 
 (plotting_tutorials)=
 
@@ -232,6 +224,11 @@ smaller text and a panel border for print. For a lighter look,
 fills.
 
 ```{code-cell} ipython3
+---
+mystnb:
+  image:
+    alt: The minimum wage event study drawn in the publication theme's smaller text and bordered panel.
+---
 # Resize the print theme from its six-by-four-inch default to fit the page.
 publication_plot = (
     did.plot_event_study(event_study, ref_period=-1)
@@ -241,16 +238,16 @@ publication_plot = (
 publication_plot
 ```
 
-The final `theme` overrides the publication theme's default six-by-four-inch
-size and 300 dpi resolution for display in the documentation. You can make
-similar overrides for legend placement or text size without replacing the
-rest of the theme.
-
 The default navy and red colors are stored in `moderndid.plots.COLORS`.
 For an event study, plotnine's `scale_color_manual` lets you substitute
 colors for the `Pre` and `Post` labels used in the plot data.
 
 ```{code-cell} ipython3
+---
+mystnb:
+  image:
+    alt: The minimum wage event study redrawn with orange estimates before adoption and charcoal effects after adoption.
+---
 from plotnine import scale_color_manual
 
 # Replace the treatment-status colors of the first event study plot.
@@ -308,12 +305,7 @@ plot_data = did.to_df(event_study)
 plot_data
 ```
 
-For this event study, the columns are `event_time`, `att`, `se`,
-`ci_lower`, `ci_upper`, and `treatment_status`. Normalized base-period
-rows with undefined standard errors are left out, since they are reference
-values rather than estimated effects. The confidence bounds keep the result's
-critical values and therefore show simultaneous bands when the result has
-them. For a dose result, `did.to_df(dose_result, effect_type="acrt")` extracts
+For a dose result, `did.to_df(dose_result, effect_type="acrt")` extracts
 the fitted slope curve instead of the level effects that the default
 `effect_type="att"` returns. Interpreting the slope as a causal response
 requires additional restrictions, as the
@@ -340,6 +332,11 @@ studies need to sit in one long table whose `controls` column names the
 specification behind each row.
 
 ```{code-cell} ipython3
+---
+mystnb:
+  image:
+    alt: Minimum wage event studies for the never-treated and not-yet-treated comparison groups side by side at each estimated event time from −4 to 3. The navy circles and red triangles nearly coincide and their intervals overlap.
+---
 import polars as pl
 from plotnine import (
     aes,

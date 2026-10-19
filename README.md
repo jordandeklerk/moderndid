@@ -80,14 +80,14 @@ uv add "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 
 ModernDiD covers the main research designs in the modern DiD literature.
 
-- [Staggered adoption](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html): `att_gt` and `aggte`, based on Callaway and Sant'Anna (2021)
-- [Doubly Robust Two periods](https://moderndid.readthedocs.io/en/latest/api/drdid.html): `drdid`, `ipwdid`, and `ordid`, based on Sant'Anna and Zhao (2020)
+- [Staggered DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html): `att_gt` and `aggte`, based on Callaway and Sant'Anna (2021)
+- [Two-period DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html): `drdid`, `ipwdid`, and `ordid`, based on Sant'Anna and Zhao (2020)
 - [Triple differences](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html): `ddd` and `agg_ddd`, based on Ortiz-Villavicencio and Sant'Anna (2025)
 - [Continuous treatment](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html): `cont_did`, based on Callaway, Goodman-Bacon, and Sant'Anna (2025)
-- [Treatments that switch on and off](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html): `did_multiplegt`, based on de Chaisemartin and D'Haultfoeuille (2024)
+- [Intertemporal treatment](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html): `did_multiplegt`, based on de Chaisemartin and D'Haultfoeuille (2024)
 - [Dynamic covariate balancing](https://moderndid.readthedocs.io/en/latest/user_guide/example_dyn_balancing.html): `dyn_balancing`, based on Viviano and Bradic (2026)
 - [Machine learning DiD](https://moderndid.readthedocs.io/en/latest/api/didml.html): `didml`, based on Hatamyar, Kreif, Rocha, and Huber (2023)
-- [Extended two-way fixed effects](https://moderndid.readthedocs.io/en/latest/user_guide/example_etwfe.html): `etwfe` and `emfx`, based on Wooldridge (2023, 2025)
+- [Extended TWFE](https://moderndid.readthedocs.io/en/latest/user_guide/example_etwfe.html): `etwfe` and `emfx`, based on Wooldridge (2023, 2025)
 - [Sensitivity analysis](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html): `honest_did`, based on Rambachan and Roth (2023)
 - [Nonparametric IV](https://moderndid.readthedocs.io/en/latest/user_guide/example_npiv.html): `npiv`, based on Chen, Christensen, and Kankanala (2024)
 
@@ -141,8 +141,7 @@ did.plot_event_study(event_study)
 - [Background](https://moderndid.readthedocs.io/en/latest/background/index.html): the assumptions, identification, and inference behind each estimator.
 - [Comparisons with R](https://moderndid.readthedocs.io/en/latest/r_comparisons/index.html): each estimator's results beside those of the R package for the same method.
 - [FAQ](https://moderndid.readthedocs.io/en/latest/faq.html): answers to common questions about data, estimators, and results.
-- [Development](https://moderndid.readthedocs.io/en/latest/dev/index.html): architecture, new estimators, debugging, and benchmarking.
-- [Contributing](https://moderndid.readthedocs.io/en/latest/contributing/index.html): setup, workflow, testing, and releases.
+- [Development](https://moderndid.readthedocs.io/en/latest/dev/index.html): setup, workflow, testing, releases, architecture, new estimators, debugging, and benchmarking.
 - [Changelog](https://moderndid.readthedocs.io/en/latest/release/index.html): changes between versions.
 
 ## Acknowledgements

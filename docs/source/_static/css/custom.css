@@ -116,7 +116,33 @@ of wrapping text never need the sideways scrolling the theme's block layout allo
 
 .md-typeset .architecture-table code {
   white-space: nowrap;
+}
+
+/*
+A narrow table squeezes until the theme splits its code names at any character. Whole names make most tables scroll in
+their own box instead. Index tables cannot scroll and give up some cell padding on the smallest phones.
+*/
+.md-typeset table :is(td, th) code {
   word-break: normal;
+}
+
+@media screen and (max-width: 22.5em) {
+  .md-typeset table.data.section-index-table :is(th, td) {
+    padding-inline: 0.8em;
+  }
+}
+
+/*
+Each table in a tab fills the tab so its edge stays put as readers switch tabs. The tab scrolls sideways when the names
+inside need more room than a phone has.
+*/
+.md-typeset .sd-tab-content > table.data:not(.plain) {
+  display: table;
+  width: 100%;
+}
+
+.md-typeset .sd-tab-content:has(> table.data) {
+  overflow-x: auto;
 }
 
 .md-nav {
@@ -259,6 +285,21 @@ Python, so their token colors are cleared.
   border-left-width: 4px !important;
 }
 
+/*
+Callout text takes the body size, since the theme's smaller size made the most important text on a page its smallest.
+The fold MyST-NB makes for hidden input uses the same markup and keeps its size.
+*/
+.md-typeset .admonition:not(.hide) {
+  font-size: inherit;
+}
+
+/* On a phone, math in a callout keeps the theme's smaller size because more of its displays would scroll at the body size. */
+@media screen and (max-width: 44.984375em) {
+  .md-typeset .admonition div.math {
+    font-size: 0.64rem;
+  }
+}
+
 /* API See also and Examples boxes use the same violet as parameter names in each scheme. */
 .md-typeset .admonition.seealso,
 .md-typeset .admonition.example,
@@ -367,6 +408,31 @@ Python, so their token colors are cleared.
   padding-bottom: 0.2rem;
 }
 
+/*
+The theme leaves an equation number alone above its display because it skips Sphinx's basic stylesheet. Here the number
+sits beside the display's middle and moves above it only when a phone needs the whole width for the math. The permalink
+opens to the left of the number because one past the right edge would widen the page.
+*/
+.md-typeset div.math:has(> span.eqno) {
+  display: flex;
+  flex-flow: row-reverse wrap;
+  align-items: center;
+}
+
+.md-typeset div.math:has(> span.eqno) > mjx-container {
+  flex: 1 0 auto;
+}
+
+.md-typeset span.eqno {
+  position: relative;
+}
+
+.md-typeset span.eqno a.headerlink {
+  position: absolute;
+  right: 100%;
+  margin-right: 0.3em;
+}
+
 button.copybtn {
   opacity: 0.4;
 }
@@ -387,6 +453,16 @@ button.copybtn.success {
 /* Wide printed tables scroll inside the code element, so room at its end keeps the last column clear of the copy button. */
 .md-typeset :is(.cell_output, .cell-output) div.highlight pre > code {
   padding-right: 2.5rem;
+}
+
+/*
+Since input code scrolls sideways under the copy button on a phone, it gets the room at its end that outputs have.
+Only code in the article gets it, because the landing page styles its own install box.
+*/
+@media screen and (max-width: 44.984375em) {
+  article.md-content__inner div.highlight pre > code {
+    padding-right: 2.5rem;
+  }
 }
 
 :root {

@@ -29,8 +29,8 @@ Continuous treatment plots
 
    plot_dose_response
 
-Intertemporal DiD plots
------------------------
+Intertemporal treatment plots
+-----------------------------
 
 .. autosummary::
    :toctree: generated/plotting/

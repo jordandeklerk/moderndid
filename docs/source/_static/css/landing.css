@@ -1,6 +1,6 @@
 /*
-The landing page drawn by _templates/landing.html. Styles use landing-only
-classes because instant navigation keeps this stylesheet loaded on every page.
+The landing page drawn by _templates/landing.html and _static/js/landing-mark.js. Styles use
+landing-only classes because instant navigation keeps this stylesheet loaded on every page.
 */
 
 /* Keep the home page's drawer available when the header tabs are folded away. */
@@ -10,74 +10,130 @@ classes because instant navigation keeps this stylesheet loaded on every page.
   }
 }
 
+/* Like every other page, the home page follows the reader's color scheme. */
 .mdid-landing {
   --mdid-ink: #18233d;
-  --mdid-ink-soft: #56617a;
-  --mdid-brand: #315bc4;
-  --mdid-accent: #315bc4;
-  --mdid-line: rgba(49, 91, 196, 0.16);
-  --mdid-secondary: #6d46c1;
-  --mdid-contour: #315bc4;
-  --mdid-contour-opacity: 0.9;
+  --mdid-text: #56617a;
+  --mdid-mark-body: #315bc4;
+  --mdid-mark-edge: rgba(49, 91, 196, 0.45);
+  --mdid-mark-halo: #7c9cf0;
   --mdid-press-face: #ffffff;
   --mdid-press-edge: #18233d;
+  --mdid-press-brand: rgba(49, 91, 196, 0.85);
+  --mdid-press-secondary: rgba(109, 70, 193, 0.8);
+  --mdid-focus: #6d46c1;
+  display: flex;
+  flex-direction: column;
 }
 
 [data-md-color-scheme="slate"] .mdid-landing {
   --mdid-ink: #edf1ff;
-  --mdid-ink-soft: #b1bbd3;
-  --mdid-brand: #91acff;
-  --mdid-accent: #91acff;
-  --mdid-line: rgba(255, 255, 255, 0.16);
-  --mdid-contour: #91acff;
-  --mdid-contour-opacity: 0.55;
+  --mdid-text: #b1bbd3;
+  --mdid-mark-body: #d9dde8;
+  --mdid-mark-edge: rgba(217, 221, 232, 0.58);
+  --mdid-mark-halo: #6d8ff2;
   --mdid-press-face: var(--md-default-bg-color);
   --mdid-press-edge: #e0e6f5;
-}
-
-.mdid-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  align-items: center;
-  column-gap: clamp(2.5rem, 5vw, 5.5rem);
-  min-height: min(calc(100vh - 10rem), 52rem);
-  padding: 0 clamp(0.8rem, 2.5vw, 2.4rem) clamp(2rem, 5vh, 4rem);
-  color: var(--mdid-ink);
-  font-family: var(--md-text-font-family);
-}
-
-/* The copy column. */
-
-.mdid-title {
-  margin: 0;
-  color: var(--mdid-ink);
-  font-size: clamp(36px, 3.9vw, 58px);
-  font-weight: 700;
-  letter-spacing: -0.028em;
-  line-height: 1.08;
-}
-
-.mdid-title__accent {
-  color: var(--mdid-accent);
-}
-
-.mdid-lede {
-  max-width: 27em;
-  margin: 1.9rem 0 0;
-  color: var(--mdid-ink-soft);
-  font-size: clamp(17px, 1.35vw, 20px);
-  line-height: 1.55;
+  --mdid-press-brand: rgba(145, 172, 255, 0.85);
+  --mdid-focus: #c4b5fd;
 }
 
 /*
-The buttons follow marimo's. Each sits on a colored block offset down and to
-the left, and on hover it slides onto the block as if pressed.
+The hero holds the mark, one sentence, and the two buttons. It fills the window apart from the
+10rem of header and footer. Its top padding is zero because the theme's 1.5rem margin above it
+already balances its 1.5rem bottom padding.
+*/
+
+.mdid-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100svh - 10rem);
+  padding: 0 clamp(0.8rem, 2.5vw, 2.4rem) 1.5rem;
+  color: var(--mdid-text);
+  font-family: var(--md-text-font-family);
+}
+
+/* Below 76.25em the header drops its row of tabs, so the hero takes back most of that height. */
+@media screen and (max-width: 76.1875em) {
+  .mdid-hero {
+    min-height: calc(100svh - 8rem);
+  }
+}
+
+.mdid-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/*
+The mark is 112 glyphs of 0.6em by 37 rows of 1.1em, up to 12px each. Since the header, text,
+buttons, and footer take 19.5rem, the mark shrinks to the rest of a short window so nothing scrolls.
+*/
+.mdid-mark {
+  width: min(880px, 100%);
+  container-type: inline-size;
+}
+
+.mdid-mark__art {
+  width: max-content;
+  min-height: calc(37 * 1.1em);
+  margin: 0 auto;
+  padding: 0;
+  overflow: visible;
+  background: none;
+  color: var(--mdid-mark-body);
+  font-family: var(--md-code-font-family);
+  font-size: min(12px, 100cqi / 67.2, max(4px, (100svh - 19.5rem) / 40.7));
+  line-height: 1.1;
+  white-space: pre;
+  user-select: none;
+}
+
+.mdid-mark__art .e {
+  color: var(--mdid-mark-edge);
+}
+
+.mdid-mark__art .h {
+  color: var(--mdid-mark-halo);
+}
+
+.mdid-mark__logo {
+  display: block;
+  width: min(480px, 100%);
+  height: auto;
+  margin: 0 auto;
+}
+
+.mdid-lede {
+  max-width: 34em;
+  margin: 1.7rem 0 0;
+  color: var(--mdid-text);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.mdid-nowrap {
+  white-space: nowrap;
+}
+
+/*
+The buttons follow marimo's at the size of Ghostty's. Each sits on a colored block offset down and
+to the left. On hover the button slides onto its block as if pressed.
 */
 .mdid-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.4rem;
-  margin-top: 2.6rem;
+  justify-content: center;
+  gap: 1.1rem;
+  margin-top: 1.6rem;
 }
 
 .mdid-press {
@@ -86,8 +142,8 @@ the left, and on hover it slides onto the block as if pressed.
 
 .mdid-press__block {
   position: absolute;
-  bottom: -4px;
-  left: -4px;
+  bottom: -3px;
+  left: -3px;
   width: 100%;
   height: 100%;
   border-radius: 6px;
@@ -95,15 +151,11 @@ the left, and on hover it slides onto the block as if pressed.
 }
 
 .mdid-press--brand {
-  --mdid-press-block: rgba(49, 91, 196, 0.85);
+  --mdid-press-block: var(--mdid-press-brand);
 }
 
 .mdid-press--secondary {
-  --mdid-press-block: rgba(109, 70, 193, 0.8);
-}
-
-[data-md-color-scheme="slate"] .mdid-press--brand {
-  --mdid-press-block: rgba(145, 172, 255, 0.85);
+  --mdid-press-block: var(--mdid-press-secondary);
 }
 
 .mdid-press__button {
@@ -111,13 +163,13 @@ the left, and on hover it slides onto the block as if pressed.
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 160px;
-  height: 58px;
+  width: 7.2rem;
+  height: 2.05rem;
   border: 1px solid var(--mdid-press-edge);
   border-radius: 6px;
   background: var(--mdid-press-face);
   color: var(--mdid-ink);
-  font-size: 19px;
+  font-size: 0.8rem;
   text-decoration: none;
   transition: transform 0.2s ease;
 }
@@ -125,94 +177,26 @@ the left, and on hover it slides onto the block as if pressed.
 .mdid-press__button:hover,
 .mdid-press__button:focus-visible {
   color: var(--mdid-ink);
-  transform: translate(-4px, 4px);
+  transform: translate(-3px, 3px);
 }
 
-.mdid-link {
-  display: flex;
-  width: fit-content;
-  align-items: center;
-  gap: 0.45em;
-  margin-top: 1.8rem;
-  color: var(--mdid-accent);
-  font-size: 15px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.mdid-link span {
-  display: inline-block;
-  transition: transform 0.18s ease;
-}
-
-.mdid-link:hover,
-.mdid-link:focus-visible {
-  color: var(--mdid-accent);
-  text-decoration: underline;
-  text-underline-offset: 0.3em;
-}
-
-.mdid-link:hover span {
-  transform: translateX(3px);
-}
-
-.mdid-press__button:focus-visible,
-.mdid-link:focus-visible {
-  outline: 2px solid var(--mdid-secondary);
+.mdid-press__button:focus-visible {
+  outline: 2px solid var(--mdid-focus);
   outline-offset: 3px;
 }
 
-/* The visual is the logo mark, drawn in the scheme's colors. */
-
-.mdid-hero__visual {
-  position: relative;
-}
-
-.mdid-mark {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-}
-
-[data-md-color-scheme="slate"] .mdid-mark {
-  filter: brightness(1.25);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .mdid-press__button,
-  .mdid-link span {
+  .mdid-press__button {
     transition: none;
   }
 }
 
-/* The columns stack where the theme folds its tabs into the drawer. */
-
-@media screen and (max-width: 76.1875em) {
-  .mdid-hero {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 3rem;
-    min-height: 0;
-    padding-top: 2rem;
-  }
-
-  .mdid-hero__visual {
-    max-width: 36rem;
-  }
-}
-
 @media screen and (max-width: 30em) {
-  .mdid-title {
-    font-size: 36px;
+  .mdid-lede {
+    font-size: 0.8rem;
   }
 
   .mdid-actions {
     gap: 1rem;
-  }
-
-  .mdid-press__button {
-    width: 140px;
-    height: 52px;
-    font-size: 17px;
   }
 }

@@ -1,7 +1,7 @@
 .. _api-didcont:
 
-Continuous treatment DiD
-========================
+Continuous treatment
+====================
 
 When units receive different amounts of treatment, :func:`~moderndid.cont_did`
 fits level effects across doses and their derivatives, or an event study by

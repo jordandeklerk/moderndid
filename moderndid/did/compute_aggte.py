@@ -15,7 +15,7 @@ def compute_aggte(
     balance_e=None,
     min_e=-np.inf,
     max_e=np.inf,
-    dropna=False,
+    na_rm=False,
     bootstrap=None,
     biters=None,
     confidence_band=None,
@@ -48,8 +48,9 @@ def compute_aggte(
     max_e : float, default=np.inf
         Largest event time to include. It limits the 'dynamic', 'simple', and
         'group' aggregations.
-    dropna : bool, default=False
-        Whether to remove NaN estimates before aggregation.
+    na_rm : bool, default=False
+        Whether to drop group-time effects that are NaN before aggregating.
+        Without it, a NaN effect stops the aggregation with an error.
     bootstrap : bool, optional
         Whether to use bootstrap inference. Defaults to the setting stored in
         multi_period_result.
@@ -132,7 +133,7 @@ def compute_aggte(
             "failed to estimate. Fewer covariates or control_group='notyettreated' can recover them."
         )
 
-    if dropna:
+    if na_rm:
         notna = ~np.isnan(att)
         if not notna.any():
             raise ValueError(
