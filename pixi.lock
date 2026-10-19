@@ -30858,7 +30858,7 @@ packages:
   - prettytable>=3.10.0
   - moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots] ; extra == 'all'
   - asv>=0.6.6,<0.7 ; extra == 'benchmark'
-  - asv-runner==0.3.1 ; extra == 'benchmark'
+  - asv-runner==0.3.2 ; extra == 'benchmark'
   - spin>=0.18,<0.19 ; extra == 'benchmark'
   - build>=1.2.2 ; extra == 'benchmark'
   - formulaic>=1.1.0 ; extra == 'benchmark'
