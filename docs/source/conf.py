@@ -166,6 +166,7 @@ html_css_files = ["css/custom.css", "css/landing.css"]
 html_js_files = [
     ("js/copybutton-shim.js", {"priority": 200}),
     "js/header-title-link.js",
+    "js/landing-mark.js",
     "js/toc-rail.js",
 ]
 html_use_modindex = True
