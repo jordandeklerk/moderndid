@@ -42,12 +42,10 @@ options.dpi = 100
 
 ## The county data
 
-With the federal minimum wage held at \$5.15 an hour from 1997 until mid-2007,
-each increase in this panel was a state's own decision. Because many of the jobs
-that pay close to the minimum wage go to teenagers, the outcome here is teen
-employment. {func}`~moderndid.load_mpdta` loads the panel, five years of data
-from 2003 through 2007 on each of 500 US counties. We also add each county's
-state, the level at which minimum wages are set.
+{func}`~moderndid.load_mpdta` loads the county panel that the staggered
+example's [data section](example_staggered_did.md#the-data) describes, including
+the Illinois counties that make up its whole 2004 cohort. We also add each
+county's state, the level at which minimum wages are set.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -57,29 +55,6 @@ import polars as pl
 data = did.load_mpdta().with_columns(state=pl.col("countyreal") // 1000)
 data.head()
 ```
-
-`lemp` holds teen employment in logs for each county and year. Next to it,
-`lpop` is the log of the county's population in 2000. The timing comes from
-`first.treat`, the year the county's state lifted its minimum wage, or 0 if that
-never happened in these years.
-
-:::{admonition} Keep adoption years in gname
-:class: important
-
-{func}`~moderndid.etwfe` takes each county's adoption year from whichever column
-`gname` names and reads a 0, infinity, or a year after the panel ends as never
-treated. Rows with a missing adoption year leave the sample with a warning. So
-do counties already treated in the first year, since no untreated year is left
-to identify their effects.
-:::
-
-Of the 191 treated counties, 131 adopted in 2007, 40 in 2006, and 20 in 2004.
-The 16 states without an increase supply the other 309 counties as never-treated
-controls. Because all 20 counties of the 2004 cohort lie in Illinois (state code
-17), every estimate two or three years after adoption describes that one state.
-Average `lpop` is 3.18 among the never-treated counties and between 3.46 and
-3.75 in the treated cohorts. The specification below therefore lets employment
-trends differ with county population.
 
 ## The target of each coefficient
 
@@ -102,9 +77,7 @@ before its increase. In practice, {func}`~moderndid.etwfe` gives each of the
 seven treated cohort-years, or cells, its own indicator in a regression with
 county and year fixed effects and year-specific slopes on population. Wooldridge
 (2025) proves that the coefficients on those indicators equal an imputation
-estimate. That estimate fits a regression to the untreated county-years,
-predicts untreated employment for the treated ones, and averages the gaps within
-each cohort and year.
+estimate.
 
 :::{admonition} County or cohort fixed effects
 :class: note
@@ -131,12 +104,6 @@ formal assumptions in the paper's notation and lays out the imputation steps
 that the regression reproduces.
 
 ## Specifying the regression
-
-Before fitting the regression, we'll choose which county-years predict
-employment without the increases, how population enters those predictions,
-and how to measure uncertainty. The dictionary below keeps these choices
-together with the columns for the outcome, the year, the adoption year, and the
-county.
 
 ```{code-cell} ipython3
 # Three design choices follow the column names, one for each section below.
@@ -183,21 +150,14 @@ regression has no cells left to test parallel trends in those years.
 Because employment can trend differently in large and small counties and the
 treated counties are larger on average, `xformla="~lpop"` lets each year carry
 its own slope on population. Parallel trends then only has to hold among
-counties of similar size. Inside the treated cells, population enters centered
-at its cohort mean. That centering makes each cell's coefficient the average
-effect over the cohort's counties rather than the effect at a log population of
-zero. The check in
+counties of similar size. Since population was measured in 2000, before any
+increase, it avoids the problem in the staggered example's
+[covariate warning](example_staggered_did.md#never-treated-counties-of-a-similar-size).
+Inside the treated cells, population enters centered at its cohort mean. That
+centering makes each cell's coefficient the average effect over the cohort's
+counties rather than the effect at a log population of zero. The check in
 [One trend for counties of every size](#one-trend-for-counties-of-every-size)
 shows how much the adjustment matters here.
-
-:::{admonition} A covariate can carry the effect away
-:class: warning
-
-If a minimum wage increase could change a covariate, an adjustment for that
-covariate would strip part of the increase's effect out of the estimate.
-Population measured in 2000, four years before the first increase, can't have
-responded to any increase.
-:::
 
 ### Standard errors clustered by county
 
@@ -225,18 +185,15 @@ print(result)
 
 The Group and Time columns name the cohort and year behind each of the seven
 coefficients. The 2004 cohort's effect deepens from −0.0212 in its first year to
-−0.0818 and −0.1379 over the next two years before easing to −0.1095 in 2007.
-The 2006 cohort moves from 0.0025 in its first year to −0.0451 in its second. In
-2007, its only treated year, the 2007 cohort comes in at −0.0460. Of the seven
-bands, only the two for the first treated year of the 2004 and 2006 cohorts
-cover zero.
+−0.1379 in its third. Of the seven bands, only the two for the first treated
+year of the 2004 and 2006 cohorts cover zero.
 
 :::{admonition} Pointwise bands from the regression
 :class: note
 
 Since the standard errors come straight from the regression's clustered variance
-matrix, no bootstrap is drawn and no seed is needed. Each band holds its 95
-percent coverage for its own effect only, not for all seven at once.
+matrix, each band is pointwise and needs no seed, unlike the simultaneous bands
+that the {ref}`bootstrap background <background-did-bootstrap>` explains.
 :::
 
 ## The effect over years of exposure
@@ -277,11 +234,8 @@ print(by_cohort)
 The overall effect of −0.0452 has a 95 percent interval from −0.0723 to
 −0.0180. Since `lemp` is in logs, the effect converts to $e^{-0.0452} - 1$, or
 about 4.4 percent fewer teenagers employed in the treated counties than without
-the increases. At −0.0876, the 2004 counties fell furthest of the three cohorts.
-The 2006 cohort's effect of −0.0213 has a band that covers zero. For the 2007
-cohort, the effect equals its one treated cell at −0.0460. With 131 of the 191
-treated counties, the 2007 cohort carries most of the weight in the overall
-effect.
+the increases. With 131 of the 191 treated counties, the 2007 cohort and its
+effect of −0.0460 carry most of the weight in the overall effect.
 
 ### Counting treated years instead of counties
 
@@ -294,12 +248,12 @@ simple = did.emfx(result, type="simple")
 print(f"simple average {simple.overall_att:.4f} ({simple.overall_se:.4f})")
 ```
 
-The simple average of −0.0506 counts every treated county-year once rather than
-every treated county. Illinois's counties each add four treated years to that
-average, twice as many as the 2006 counties and four times as many as the 2007
-counties. Their share of the weight thus grows from 20 of the 191 counties to 80
-of the 291 treated county-years. We keep the group summary of −0.0452 as our
-answer, because it gives Illinois the weight of its 20 counties and no more.
+Because the simple average of −0.0506 counts every treated county-year once,
+Illinois's counties make up 80 of its 291 treated county-years instead of 20 of
+the 191 counties. We keep the group summary of −0.0452 as our answer, because it
+gives Illinois the weight of its 20 counties and no more. The
+{ref}`results guide <working-with-results>` compares the aggregation types by
+their weights and the question each one answers.
 
 ### The one-coefficient regression
 
@@ -334,10 +288,6 @@ Giving each cell its own coefficient removes those comparisons and measures
 every cell only against county-years that are still untreated.
 
 ## Testing the three choices
-
-Each check below refits the regression with one argument of `spec` changed. The
-controls come up first, the population trends second, and the clusters last,
-just as [Specifying the regression](#specifying-the-regression) set them out.
 
 ### Never-treated controls and placebo estimates
 
@@ -438,6 +388,16 @@ it. After adoption the two designs nearly coincide, except in the year of the
 increase. Since the 2007 cohort makes up most of the counties at event time 0,
 the gray circle sits closer to zero there than the blue triangle at −0.0332.
 
+:::{admonition} Pair the default with placebo estimates
+:class: tip
+
+When you report the default design, fit the never-treated design next to it. Its
+placebo estimates show whether the years the default treats as controls moved in
+step with the never-treated counties. To show both designs in one table, give
+each regression its own column as in the
+{ref}`publication tables guide <publication_tables>`.
+:::
+
 ### One trend for counties of every size
 
 Dropping the covariate asks parallel trends to hold for large and small counties
@@ -475,37 +435,15 @@ excludes zero by less than a thousandth.
 :::{admonition} One treated state cannot reveal state-level variation
 :class: warning
 
-With all 20 of its counties in Illinois, the 2004 cohort gets a state-clustered
-standard error of 0.0130, well below the 0.0230 from county clusters. That band
-is too narrow to trust, because a single cluster gives the variance estimate no
-way to see shocks to Illinois as a whole.
+The 2004 cohort's standard error falls from 0.0230 under county clusters to
+0.0130 under state clusters. The staggered example's
+[clustering check](example_staggered_did.md#clustering-by-state) explains why a
+single treated state makes that band too narrow to trust.
 :::
 
-### Four estimates of the overall effect
-
-Across these four specifications the estimate ranges from −0.0329 to −0.0452
-with every interval below zero. Only the switch to never-treated controls moves the
-estimate much, by about 0.012 against 0.003 for dropping the covariate. The size of
-the drop in teen employment therefore turns on which years count as controls,
-about 3.2 percent with never-treated counties alone against 4.4 percent under
-the default.
-
-:::{admonition} Pair the default with placebo estimates
-:class: tip
-
-When you report the default design, fit the never-treated design next to it. Its
-placebo estimates show whether the years the default treats as controls moved in
-step with the never-treated counties. To show both designs in one table, give
-each regression its own column as in the
-{ref}`publication tables guide <publication_tables>`.
-:::
-
-All of these answers assume that teen employment in counties of similar size
-would have trended alike without the increases. The data alone can't settle
-whether the 2007 cohort's slip before its increase was employers holding back on
-teen jobs ahead of time. The staggered example's
+Only the choice of controls moves the overall effect much, from −0.0452 under
+the default to −0.0329 with never-treated counties alone. The data alone can't
+tell whether the 2007 cohort's slip before its increase was a pre-trend or
+employers holding back on teen jobs ahead of time. The staggered example's
 [anticipation check](example_staggered_did.md#anticipation) shows how far an
-answer on this data moves if it was. For counts or binary outcomes, `family`
-fits a Poisson, logit, or probit version of the same regression. The
-{ref}`background page <background-etwfe>` explains which parallel trends
-assumption each of those models imposes.
+answer on this data moves if employers did hold back.

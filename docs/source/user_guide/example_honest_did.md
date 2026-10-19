@@ -59,7 +59,8 @@ to expand, coverage in the expansion states need not have been on the same path
 as coverage elsewhere.
 
 The coverage shares in {func}`~moderndid.load_ehec` come from the American
-Community Survey and cover every year from 2008 to 2019.
+Community Survey and fill one row for each of the 46 states in each year from
+2008 to 2019.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -70,8 +71,7 @@ data = did.load_ehec().with_columns(expansion_year=pl.col("yexp2").fill_null(0).
 data.head()
 ```
 
-The data holds one row for each of the 46 states in each of the 12 years. Its
-outcome, `dins`, is the share of low-income adults without children who had
+The outcome, `dins`, is the share of low-income adults without children who had
 health insurance. The column `yexp2` records the year a state expanded and is
 missing for states that hadn't expanded by 2019. The `W` column holds a
 population weight for each state that this example doesn't use.
@@ -86,8 +86,7 @@ expanded by 2019 if you passed `yexp2` as `gname`.
 
 The expansion years tell us how much information supports each part of the
 event study. The 2014 cohort holds 22 states, against just 3, 2, 1, and 2 in
-the 2015, 2016, 2017, and 2019 cohorts. The remaining 16 states hadn't expanded
-at all by 2019, the last year of the data. Because the data starts in 2008, the
+the 2015, 2016, 2017, and 2019 cohorts. Because the data starts in 2008, the
 2014 cohort is observed for six years before it expanded. Any estimate seven or
 more years before expansion therefore rests only on states that expanded in 2015
 or later, eight at most.
@@ -96,9 +95,7 @@ or later, eight at most.
 
 Since {func}`~moderndid.honest_did` works from an event study rather than
 estimating effects itself, the first step is the event study you would report
-anyway. It takes two calls, {func}`~moderndid.att_gt` for the effect on every
-cohort in every year and {func}`~moderndid.aggte` to line those effects up by
-years since expansion. Four choices in these two calls set up what comes after.
+anyway, built with {func}`~moderndid.att_gt` and {func}`~moderndid.aggte`.
 
 Every estimate has to be measured from the same year for the restrictions to
 make sense. With `base_period="universal"`, each year is compared with the year
@@ -114,9 +111,8 @@ event study built that way.
 
 To widen the comparison, `control_group="notyettreated"` compares each cohort
 with the 16 states that hadn't expanded by 2019 and with each later cohort in the
-years before that cohort expands. In 2014 the later cohorts add eight states to
-the 16 that stayed out, half again as many comparisons. The price is that
-parallel trends has to hold for them as well. The staggered example's
+years before that cohort expands. The price is that parallel trends has to hold
+for those later cohorts as well. The staggered example's
 [check of the comparison group](example_staggered_did.md#other-control-groups-and-estimators)
 shows how this choice can play out.
 
@@ -124,12 +120,10 @@ Since each sensitivity analysis concerns a single event time,
 {func}`~moderndid.honest_did` reports that estimate's pointwise interval as the
 original one and never reads the event study's bands. Setting `cband=False` makes
 the event study print those same pointwise intervals in place of simultaneous
-bands. Because {func}`~moderndid.aggte` then draws no bootstrap, the event study
-also needs no `random_state`.
+bands.
 
 Last, we keep the five years on either side of expansion with `min_e=-5` and
-`max_e=5`. Five years after expansion is as far as the data reaches, since
-only the 2014 cohort is observed that long after expanding. The matching five years
+`max_e=5`, the furthest the data reaches after expansion. The matching years
 before expansion stay clear of the earliest event times, where only the late
 expanders contribute. [A longer event window](#a-longer-event-window) brings
 those years back to show what they change.
@@ -153,8 +147,7 @@ event_study = did.aggte(result, type="dynamic", min_e=-5, max_e=5)
 print(event_study)
 ```
 
-The row at event time −1 shows 0.0000 and NA, since every other estimate is
-measured from that year. The four rows above it are placebo estimates, from
+The four rows above the base year at event time −1 are placebo estimates, from
 −0.0125 five years before expansion to −0.0049 two years before. Every one of
 their intervals covers zero, although the interval at −5 only just does with an
 upper end of 0.0003.
@@ -163,10 +156,7 @@ The estimate of 0.0453 in the year of expansion corresponds to a 4.53 percentage
 point rise in coverage for low-income adults without children relative to the
 comparison states. Since the fit leaves population weights unused, each of the
 30 expansion states gets equal weight in that average. Its 95 percent interval
-runs from 3.35 to 5.71 percentage points. Only the 22 states that expanded in
-2014 contribute five years later, when the estimate of 0.0803 corresponds to an
-8.03 percentage point gain. The larger estimate therefore concerns a different
-group of states as well as a later year after expansion.
+runs from 3.35 to 5.71 percentage points.
 
 The event-study plot below shows the navy placebo estimates climbing toward zero
 on their way to the dashed line at the base year. That climb hints that the
@@ -229,12 +219,6 @@ restriction its formal definition and derives the identified sets and the
 inference methods behind these intervals.
 
 ## The estimate, the restriction, and the interval
-
-Before running {func}`~moderndid.honest_did`, we'll choose which estimate to
-examine, what shape a violation of parallel trends may take, and how to
-build the interval. The dictionary below records all three decisions so that
-the checks in [Other windows and restrictions](#other-windows-and-restrictions)
-can later revisit them.
 
 ```{code-cell} ipython3
 # One dictionary holds every decision, so later sections show only the entries they change.
@@ -320,19 +304,24 @@ smoothness.robust_ci
 
 ## How far the trend could bend
 
-Each row holds the interval for one value of $M$, listed in the `m` column. The
-`delta` and `method` columns name the restriction and the way the interval was
-built, here DeltaSD for smoothness and FLCI. At $M = 0$ the interval runs from
-0.0295 to 0.0546, below the original interval of 0.0335 to 0.0571. Continuing
-the straight line fitted to the placebo estimates past the base year absorbs
-part of the jump, since that line keeps climbing.
+Each row holds the interval for one value of $M$, listed in the `m` column. At
+$M = 0$ the interval runs from 0.0295 to 0.0546, below the original interval of
+0.0335 to 0.0571. Continuing the straight line fitted to the placebo estimates
+past the base year absorbs part of the jump, since that line keeps climbing.
 
-The lower bound falls as $M$ grows, to 0.0073 at $M = 0.02$ and to 0.0023 at
-$M = 0.025$. On this grid, zero first enters at $M = 0.03$, where the lower bound
-reaches −0.0027. The interval for the effect in the year of expansion therefore
+On this grid, zero first enters at $M = 0.03$, where the lower bound reaches
+−0.0027. The interval for the effect in the year of expansion therefore
 excludes zero for every bend up to 0.025 a year, more than four times the
 sharpest bend among the placebo estimates. At the smoothness bound of 0.025,
 the interval still permits coverage gains as small as 0.23 percentage points.
+
+:::{admonition} Breakdown values on a grid
+:class: note
+
+Each breakdown value lies between the largest bound whose interval excludes
+zero and the next bound on the grid. The grid therefore brackets the threshold
+rather than locating it exactly.
+:::
 
 The plot draws the gold original interval at the left and a navy fixed-length
 interval for each value of $M$ to its right.
@@ -367,19 +356,17 @@ against six effects, this event study comes reasonably close. The grid in
 :class: note
 
 For relative magnitudes, {func}`~moderndid.honest_did` tests a grid of
-candidate effects and reports the smallest and largest it can't reject. Its
-default of 100 candidates leaves them too far apart to tell on which side of
-zero some of these bounds fall. Every relative magnitudes call to
-{func}`~moderndid.honest_did` on this page therefore passes `grid_points=1000`,
-at the cost of a slower run.
+candidate effects and reports the smallest and largest it can't reject. Since
+its default of 100 candidates is too coarse to place some of these bounds on
+either side of zero, the specification below passes `grid_points=1000` at the
+cost of a slower run.
 :::
 
 ```{code-cell} ipython3
-:tags: [skip-execution]
-
 # Cap each year's change after expansion at multiples of the largest change before it.
-relative = did.honest_did(
-    event_study,
+# Every relative magnitudes call below starts from this dictionary.
+relative_spec = dict(
+    event_study=event_study,
     event_time=0,
     sensitivity_type="relative_magnitude",
     m_bar_vec=[0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
@@ -388,18 +375,16 @@ relative = did.honest_did(
 ```
 
 ```{code-cell} ipython3
+:tags: [skip-execution]
+
+# The relative magnitudes intervals for the effect in the year of expansion.
+relative = did.honest_did(**relative_spec)
+```
+
+```{code-cell} ipython3
 :tags: [remove-cell]
 
-relative = stored(
-    "honest_did_relative_magnitudes",
-    lambda: did.honest_did(
-        event_study,
-        event_time=0,
-        sensitivity_type="relative_magnitude",
-        m_bar_vec=[0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-        grid_points=1000,
-    ),
-)
+relative = stored("honest_did_relative_magnitudes", lambda: did.honest_did(**relative_spec))
 ```
 
 ```{code-cell} ipython3
@@ -429,10 +414,8 @@ did.plot_sensitivity(relative) + did.theme_moderndid()
 ## Three years after expansion
 
 Only the 27 states that expanded in 2014, 2015, or 2016 are observed three years
-after expansion. This later effect therefore concerns fewer states than the
-effect in the year of expansion. Any departure from parallel trends has also had
-longer to build by then. Changing `event_time` to 3 reruns the smoothness
-analysis for that later effect.
+after expansion. Any departure from parallel trends has also had longer to build
+by then.
 
 ```{code-cell} ipython3
 # The same restriction applied to the effect three years after expansion.
@@ -440,12 +423,10 @@ later = did.honest_did(**(spec | {"event_time": 3}))
 later.robust_ci
 ```
 
-The event study's interval for this effect runs from 0.0552 to 0.0899. At
-$M = 0$ the interval that {func}`~moderndid.honest_did` reports sits lower, from
-0.0425 to 0.0842. Where the effect in the year of expansion kept zero out for
-every bend up to 0.025, the later effect lets it in at the very next value on
-the grid. At $M = 0.005$ the interval three years after expansion already
-stretches from −0.0205 to 0.1387.
+Where the effect in the year of expansion kept zero out for every bend up to
+0.025, the later effect lets it in at the very next value on the grid. At
+$M = 0.005$ the interval three years after expansion already stretches from
+−0.0205 to 0.1387.
 
 :::{admonition} Small bends add up over time
 :class: warning
@@ -455,20 +436,11 @@ every year since expansion. A value of $M$ too small to matter in the year of
 expansion can leave the effect three years later indistinguishable from zero.
 :::
 
-The same grid of $\bar{M}$ shows whether relative magnitudes agrees about the
-later effect.
-
 ```{code-cell} ipython3
 :tags: [skip-execution]
 
 # The relative magnitudes analysis for the effect three years after expansion.
-later_relative = did.honest_did(
-    event_study,
-    event_time=3,
-    sensitivity_type="relative_magnitude",
-    m_bar_vec=[0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-    grid_points=1000,
-)
+later_relative = did.honest_did(**(relative_spec | {"event_time": 3}))
 ```
 
 ```{code-cell} ipython3
@@ -476,13 +448,7 @@ later_relative = did.honest_did(
 
 later_relative = stored(
     "honest_did_relative_magnitudes_three_years",
-    lambda: did.honest_did(
-        event_study,
-        event_time=3,
-        sensitivity_type="relative_magnitude",
-        m_bar_vec=[0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-        grid_points=1000,
-    ),
+    lambda: did.honest_did(**(relative_spec | {"event_time": 3})),
 )
 ```
 
@@ -497,11 +463,6 @@ $\bar{M} = 1.5$ on, where the effect in the year of expansion still had a lower
 end of 0.0159, the later interval contains zero.
 
 ## Other windows and restrictions
-
-Two parts of the analysis are still open to question, the event window that
-feeds {func}`~moderndid.honest_did` and the shape of the restriction. The checks
-below vary the window first and the restriction second. Each one keeps every
-other entry of `spec` at the value it had above.
 
 ### A longer event window
 
@@ -519,9 +480,7 @@ did.to_df(full_window).filter(pl.col("event_time") < -5)
 
 Three of the six new placebo estimates have intervals that exclude zero, among
 them 0.0398 ten years before expansion and −0.0357 eight years before. None of
-the three estimates draws on more than five of the expansion states. Ten and
-eleven years before expansion, only the two states that expanded in 2019
-contribute.
+the three estimates draws on more than five of the expansion states.
 
 ```{code-cell} ipython3
 # The smoothness analysis on the full event study.
@@ -539,13 +498,7 @@ effect rather than subtracting from it and moves the interval up to 0.0474 to
 :tags: [skip-execution]
 
 # The relative magnitudes analysis on the full event study.
-full_relative = did.honest_did(
-    full_window,
-    event_time=0,
-    sensitivity_type="relative_magnitude",
-    m_bar_vec=[0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-    grid_points=1000,
-)
+full_relative = did.honest_did(**(relative_spec | {"event_study": full_window}))
 ```
 
 ```{code-cell} ipython3
@@ -553,13 +506,7 @@ full_relative = did.honest_did(
 
 full_relative = stored(
     "honest_did_relative_magnitudes_full_window",
-    lambda: did.honest_did(
-        full_window,
-        event_time=0,
-        sensitivity_type="relative_magnitude",
-        m_bar_vec=[0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
-        grid_points=1000,
-    ),
+    lambda: did.honest_did(**(relative_spec | {"event_study": full_window})),
 )
 ```
 
@@ -622,10 +569,9 @@ hybrid.robust_ci.select("m", "lb", "ub").join(
 Without the sign, the hybrid's intervals come within 0.0005 of the
 fixed-length ones from $M = 0.01$ up. Adding the sign leaves every one of the
 lower bounds exactly where it was. Instead the sign pulls down the upper ends,
-from 0.0833 to 0.0554 at $M = 0.03$. From $M = 0.01$ up, the upper end stays
-between 0.0554 and 0.0560. At $M = 0$ the restricted interval even reaches
-higher, 0.0599 against 0.0558. Intervals built by inverting two different tests
-need not nest inside each other.
+from 0.0833 to 0.0554 at $M = 0.03$. At $M = 0$ the restricted interval even
+reaches higher, 0.0599 against 0.0558. Intervals built by inverting two
+different tests need not nest inside each other.
 
 :::{admonition} Ground a sign in the setting
 :class: tip
@@ -635,23 +581,12 @@ as another policy known to push the outcome one way. A climb across four noisy
 placebo estimates is weaker ground for one.
 :::
 
-### Where each analysis reaches zero
-
-We can compare these analyses by the largest bound on each grid whose interval
-still excludes zero. Under smoothness, the effect in the year of expansion
-barely notices the other choices. The longer window, the hybrid, and the hybrid
-with a sign all keep zero out of the interval up to $M = 0.025$, as our
-specification does. Under relative magnitudes the answer hinges on the event
-window instead. On the five-year window the interval excludes zero up to
-$\bar{M} = 2.5$, against only $\bar{M} = 0.5$ with every event time.
-
-:::{admonition} Breakdown values on a grid
-:class: note
-
-Each breakdown value lies between the largest bound whose interval excludes
-zero and the next bound on the grid. The grid therefore brackets the threshold
-rather than locating it exactly.
-:::
+Under smoothness, the longer window, the hybrid, and the hybrid with a sign all
+keep zero out of the interval for the effect in the year of expansion up to
+$M = 0.025$, as the main specification does. Under relative magnitudes the answer
+hinges on the event window instead, since the interval excludes zero up to
+$\bar{M} = 2.5$ on the five-year window but only to $\bar{M} = 0.5$ with every
+event time.
 
 (example_honest_did_external)=
 
@@ -660,12 +595,10 @@ rather than locating it exactly.
 If your event study comes from a regression or another estimator rather than
 from {func}`~moderndid.aggte`, the functions behind
 {func}`~moderndid.honest_did` take the event-study coefficients and their
-covariance matrix directly. To try them, we'll estimate a simpler design
-with a regression. Keeping the years through 2015 and dropping the three states
-that expanded in 2015 leaves 22 states that expanded in 2014 and 21 states that
-hadn't expanded by 2015. With a single expansion year, an event-study
-regression with state and year fixed effects compares the two groups year by
-year against 2013, the last year before expansion.
+covariance matrix directly. To try them, we'll estimate a simpler design with a
+single expansion year in an event-study regression with state and year fixed
+effects. It compares the 22 states that expanded in 2014 with the 21 that hadn't
+expanded by 2015.
 
 ```{code-cell} ipython3
 import pyfixest as pf
@@ -725,9 +658,13 @@ regression_smoothness
 
 The regression's original interval for the effect in 2014 runs from 0.0285 to
 0.0644. Its smoothness intervals keep zero out up to $M = 0.02$, where the lower
-bound is 0.0028, and let it in from $M = 0.025$ on. For relative magnitudes,
-{func}`~moderndid.create_sensitivity_results_rm` tests 1000 candidate effects by
-default rather than 100.
+bound is 0.0028, and let it in from $M = 0.025$ on. All three functions target
+the first effect after expansion unless you pass weights in `l_vec`, such as
+`np.array([0.5, 0.5])` for the average of the 2014 and 2015 effects.
+
+For relative magnitudes, {func}`~moderndid.create_sensitivity_results_rm` takes
+the same arguments with `m_bar_vec` in place of `m_vec` and tests 1000 candidate
+effects by default.
 
 ```{code-cell} ipython3
 :tags: [skip-execution]
@@ -763,18 +700,8 @@ regression_relative
 
 Under relative magnitudes the regression's interval stays above zero through
 $\bar{M} = 1.5$, where it runs from 0.0086 to 0.0796, before zero enters at
-$\bar{M} = 2$. All three functions target the first effect after expansion
-unless told otherwise. After `import numpy as np`, the argument
-`l_vec=np.array([0.5, 0.5])` targets the average of the 2014 and 2015 effects
-instead.
-
-On this regression, the effect in 2014 keeps zero out of its interval up to a
-bend of 0.02 a year under smoothness and up to $\bar{M} = 1.5$ under relative
-magnitudes. The event study's effect in the year of expansion held up somewhat
-longer, to 0.025 and $\bar{M} = 2.5$. For the theory behind every interval on
-this page, {ref}`Honest DiD sensitivity analysis <background-didhonest>` defines
-both restrictions formally, derives their identified sets, and explains why
-fixed-length intervals suit smoothness but fail under relative magnitudes. It
-also covers the restriction that combines the two, the one
-`bound="deviation from linear trend"` selects in
-{func}`~moderndid.create_sensitivity_results_rm`.
+$\bar{M} = 2$. The event study's effect in the year of expansion held up longer
+under both restrictions, through $M = 0.025$ and $\bar{M} = 2.5$.
+{ref}`Honest DiD sensitivity analysis <background-didhonest>` defines both
+restrictions formally and derives the identified sets behind every interval on
+this page.

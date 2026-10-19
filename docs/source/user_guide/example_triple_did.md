@@ -84,7 +84,7 @@ in 2000, 2001, and 2002.
 
 With `treat_period=2003`, {func}`~moderndid.core.panel.get_group` turns the flag
 into that year by giving households in the insured county 2003 and everyone
-else 0. We add that adoption year before passing the data to the estimator.
+else 0.
 
 ```{code-cell} ipython3
 # Give households in the insured county the year insurance arrived and every other household a 0.
@@ -144,8 +144,7 @@ households to move alike across counties.
 ## Setting up the estimation
 
 Apart from the first four, which only name columns in the data, every argument
-below settles a question about this design. We write them all out first so that
-you can see every answer in one place.
+below settles a question about this design.
 
 ```{code-cell} ipython3
 # The whole specification lives in one dictionary.
@@ -249,19 +248,16 @@ print(result)
 
 ## Year by year
 
-There's one row per year, all for the same insured tobacco farmers. The 2002
-row reads 0.0000 with no standard error because 2002 is the anchor year. The two
-rows above it serve as placebo tests for the years before coverage. Had the gap between tobacco farmers and other
-households moved alike in every county before 2003, both would hover near zero.
+The rows for 2000 and 2001 serve as placebo tests for the years before coverage.
+Had the gap between tobacco farmers and other households moved alike in every
+county before 2003, both would hover near zero.
 
 Instead, the 2000 estimate of −0.0599 has an interval from −0.1069 to −0.0128
 that excludes zero. The 2001 estimate of −0.0264 sits between it and the base
 year, as if the gap were already widening on its way to 2002. We'll come back to
 that pattern near the end, since it shapes how to read everything after 2003.
 After 2003 the estimates rise from 0.0118 in the first year to 0.1553 by 2008.
-The one break in that climb comes in 2006, when the estimate slips from 0.0525
-to 0.0494. Only the intervals for 2007 and 2008, the last two years, exclude
-zero.
+Only the intervals for 2007 and 2008, the last two years, exclude zero.
 
 To read these effects by time since the insurance arrived and to get one overall
 number, `type="eventstudy"` in {func}`~moderndid.agg_ddd` lines the years up by
@@ -274,12 +270,11 @@ event_study = did.agg_ddd(result, type="eventstudy", biters=999, random_state=7)
 print(event_study)
 ```
 
-The estimates are the same as in the table above, since event time $e$ is just
-the year $2003 + e$. The bands, however, now cover all eight estimates together
-with 95 percent probability and come out wider as a result. Under these bands,
-only the effect at event time 5 excludes zero. Both the band at event time 4, from
-−0.0080 to 0.1851, and the placebo band at event time −3, from −0.1232 to 0.0035,
-just cover zero.
+Since event time $e$ is just the year $2003 + e$, the estimates match the table
+above. The bands now cover all eight estimates together with 95 percent
+probability and come out wider as a result. Under them only the effect at event
+time 5 excludes zero. Even the 2000 placebo's band at event time −3, from
+−0.1232 to 0.0035, now just covers zero.
 
 :::{admonition} Aggregations with one adoption year
 :class: note
@@ -309,8 +304,7 @@ The overall effect at the top of the event study answers the central question.
 It averages the effects of the six years after the insurance arrived. At 0.0652,
 it says insured tobacco farmers kept about 6.5 percentage points more of their
 net savings in checking accounts than they would have without the insurance. Its
-95 percent interval runs from 0.0216 to 0.1089, entirely above zero. Like
-everything here, it holds only if the four assumptions above do.
+95 percent interval runs from 0.0216 to 0.1089, entirely above zero.
 
 ### Against the original regression
 
@@ -342,12 +336,15 @@ regression.tidy().round(4)
 In the table, the rows ending in `[T.-3]` through `[T.5]` are the regression's
 event-time estimates. The figure below lines up both sets of estimates with
 95 percent pointwise intervals, as Figure 5 of Ortiz-Villavicencio and
-Sant'Anna (2025) does. It lets you compare the paths and their precision at
-each event time.
+Sant'Anna (2025) does.
 
 ```{code-cell} ipython3
-:tags: [hide-input]
-
+---
+tags: [hide-input]
+mystnb:
+  image:
+    alt: Triple difference and three-way fixed effects estimates with 95 percent pointwise intervals at event times −3 to 5, both rising after 2003
+---
 from plotnine import (
     aes,
     geom_errorbar,
@@ -402,12 +399,11 @@ dodge = position_dodge(width=0.3)
 )
 ```
 
-Although only the triple difference dips in 2006, its blue triangles and the
-gray circles of the regression rise together in the figure after 2003. They part
-most at the
-ends, where the regression's 2000 placebo is −0.0175 against −0.0599 and its
-2008 effect is 0.1047 against 0.1553. On this data the regression's intervals
-also come out narrower, between 0.67 and 0.98 times as wide as the triple
+The blue triangles of the triple difference and the gray circles of the
+regression rise together in the figure after 2003. They part most at the ends,
+where the regression's 2000 placebo is −0.0175 against −0.0599 and its 2008
+effect is 0.1047 against 0.1553. On this data the regression's intervals also
+come out narrower, between 0.67 and 0.98 times as wide as the triple
 difference's.
 
 :::{admonition} The regression's narrower intervals
@@ -422,12 +418,6 @@ come out about equally wide.
 :::
 
 ## How sturdy the answer is
-
-Every estimate so far rests on the one specification set up earlier. Each check
-below changes a
-single piece of it and reports what happens to the overall effect. The checks
-run in the order that [Setting up the estimation](#setting-up-the-estimation)
-introduced the choices.
 
 ### Two differences instead of three
 
@@ -462,8 +452,7 @@ households barely moved in the counties without insurance.
 ### Other estimators and no covariates
 
 The second check revisits how the specification makes two households comparable
-to each other. The cell below tries each single-model estimator in place of the
-doubly robust one and then removes the covariates.
+to each other.
 
 ```{code-cell} ipython3
 # Swap the estimator or drop the covariates, one change at a time.
@@ -488,7 +477,7 @@ standard error of 0.0218 is close to the doubly robust estimate's 0.0223.
 
 A universal base suits the event study but blurs how the gap moved from one year
 to the next before 2003. Switching to `base_period="varying"` turns each
-placebo into a one-year change and leaves every estimate from 2003 on untouched.
+placebo into a one-year change.
 
 ```{code-cell} ipython3
 # The same specification under a varying base, so each placebo is a one-year change.
@@ -534,20 +523,9 @@ that fall comes from the switch to the panel estimator rather than from the
 smaller sample alone. Their 2000 placebo of −0.0564 shows the same widening
 before 2003. Dropping the households that miss a year doesn't remove the trend.
 
-### The checks side by side
-
-Read together, the checks separate the choices that matter from the ones that
-don't. The estimator, the covariates, and the base period keep the overall effect
-between 0.0565 and 0.0652. Keeping only the households seen every year, which
-also brings in the panel estimator, lowers it to 0.0429 without pushing its
-interval down to zero. Dropping the third difference moves the answer the
-most, since comparing tobacco farmers across counties alone gives 0.1111.
-
-What none of these checks can settle is the widening gap before 2003. Every
-number on this page leans on that trend having stopped when the insurance
-arrived. Bounding how much a trend like that could change an event study is the
-job of {ref}`sensitivity analysis <example_honest_did>`. The
-{ref}`staggered example <example_staggered_did>` shows what changes when groups
-adopt in different years. With only two periods, {func}`~moderndid.ddd` reports a
-single effect instead of one per year. For repeated cross sections you pass
-`panel=False`, as the {ref}`API reference <api-didtriple>` describes.
+Across the checks, the estimator, the covariates, and the base period keep the
+overall effect between 0.0565 and 0.0652. Dropping the third difference moves it
+the most, to 0.1111 for tobacco farmers compared across counties. What none of
+the checks can settle is the widening gap before 2003. Bounding how much a trend
+like that could change an event study is the job of
+{ref}`sensitivity analysis <example_honest_did>`.
