@@ -95,7 +95,7 @@ test = [
     "pytest-xdist>=3.6",
 ]
 doc = [
-    "sphinx>=8,<9",
+    "sphinx>=9,<10",
     "sphinx-immaterial>=0.13.9",
     "myst-parser[linkify]",
     "myst-nb",

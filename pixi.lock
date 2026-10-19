@@ -30874,7 +30874,7 @@ packages:
   - econml>=0.17.0 ; extra == 'didml'
   - xgboost>=2.0.0 ; extra == 'didml'
   - formulaic>=1.1.0 ; extra == 'didml'
-  - sphinx>=8,<9 ; extra == 'doc'
+  - sphinx>=9,<10 ; extra == 'doc'
   - sphinx-immaterial>=0.13.9 ; extra == 'doc'
   - myst-parser[linkify] ; extra == 'doc'
   - myst-nb ; extra == 'doc'
