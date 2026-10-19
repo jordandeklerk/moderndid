@@ -40,7 +40,8 @@ landing-only classes because instant navigation keeps this stylesheet loaded on 
 
 /*
 The hero holds the mark, one sentence, and the two buttons. It fills the window apart from the
-10rem of header and footer.
+10rem of header and footer. Its top padding is zero because the theme's 1.5rem margin above it
+already balances its 1.5rem bottom padding.
 */
 
 .mdid-hero {
@@ -49,9 +50,16 @@ The hero holds the mark, one sentence, and the two buttons. It fills the window 
   align-items: center;
   justify-content: center;
   min-height: calc(100svh - 10rem);
-  padding: 1rem clamp(0.8rem, 2.5vw, 2.4rem) 1.5rem;
+  padding: 0 clamp(0.8rem, 2.5vw, 2.4rem) 1.5rem;
   color: var(--mdid-text);
   font-family: var(--md-text-font-family);
+}
+
+/* Below 76.25em the header drops its row of tabs, so the hero takes back most of that height. */
+@media screen and (max-width: 76.1875em) {
+  .mdid-hero {
+    min-height: calc(100svh - 8rem);
+  }
 }
 
 .mdid-hidden {
@@ -65,7 +73,7 @@ The hero holds the mark, one sentence, and the two buttons. It fills the window 
 
 /*
 The mark is 112 glyphs of 0.6em by 37 rows of 1.1em, up to 12px each. Since the header, text,
-buttons, and footer take 20.5rem, the mark shrinks to the rest of a short window so nothing scrolls.
+buttons, and footer take 19.5rem, the mark shrinks to the rest of a short window so nothing scrolls.
 */
 .mdid-mark {
   width: min(880px, 100%);
@@ -81,7 +89,7 @@ buttons, and footer take 20.5rem, the mark shrinks to the rest of a short window
   background: none;
   color: var(--mdid-mark-body);
   font-family: var(--md-code-font-family);
-  font-size: min(12px, 100cqi / 67.2, max(4px, (100svh - 20.5rem) / 40.7));
+  font-size: min(12px, 100cqi / 67.2, max(4px, (100svh - 19.5rem) / 40.7));
   line-height: 1.1;
   white-space: pre;
   user-select: none;

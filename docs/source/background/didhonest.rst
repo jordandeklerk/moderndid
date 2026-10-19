@@ -829,13 +829,13 @@ estimated pre-treatment path.
       \frac{\displaystyle\inf_{C\in\mathcal I_\alpha(\Delta,V_n)}
              \mathbb E_{\widehat\beta_n\sim N(\delta+\tau,V_n)}
                           [\lambda(C)]}{2\chi_n}
-      &\geq
+      \geq
       \frac{z_{1-\alpha}(1-\alpha)
              -\widetilde z_\alpha\Phi(\widetilde z_\alpha)
              +\phi(z_{1-\alpha})-\phi(\widetilde z_\alpha)}
-           {z_{1-\alpha/2}},\\
-      \widetilde z_\alpha
-      &=z_{1-\alpha}-z_{1-\alpha/2}.
+           {z_{1-\alpha/2}},
+      \qquad
+      \widetilde z_\alpha=z_{1-\alpha}-z_{1-\alpha/2}.
 
    Here :math:`\lambda` is Lebesgue length, :math:`z_p` is a
    standard normal quantile, and :math:`\Phi,\phi` are its

@@ -27,8 +27,7 @@ additional columns that design needs.
 A county observed in five years contributes five observations to a panel
 that follows the same units through time. ModernDiD's panel estimators take
 data in long format, where each row records one unit in one period rather
-than placing each year's outcome in a separate column. In the minimum wage
-data, each row therefore describes one county in one year.
+than placing each year's outcome in a separate column.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -41,9 +40,7 @@ data.head()
 
 You can see that `countyreal` and `year` identify the county and year on
 each row of this dataset. It follows 500 counties from 2003 through 2007 and
-records log teen employment in `lemp`. Because that outcome is a logarithm,
-an estimated effect measures log points rather than a number of jobs in the
-county.
+records log teen employment in `lemp`.
 
 For a staggered adoption fit, the names in the call have these roles.
 
@@ -83,8 +80,7 @@ the design before you adapt the column names.
 Although the dataset loaders return Polars DataFrames, you can use the
 DataFrame format you already work with. The DataFrame-based estimators also
 accept an eager pandas DataFrame or a pyarrow Table through the Arrow
-PyCapsule interface, `__arrow_c_stream__`. We can convert the county data
-to either format without changing its observations or their meaning.
+PyCapsule interface, `__arrow_c_stream__`.
 
 ```{code-cell} ipython3
 # Convert the county data to pandas and to Arrow.
@@ -161,11 +157,15 @@ with missing values. Since all 500 counties appear in each of the five years,
 balancing this panel will not remove any of them. For your own data, the
 {ref}`panel utilities <panel-utilities>` explain the diagnostics and provide
 tools for inspecting gaps.
-If duplicates appear, resolve them according to what each row means in your
-study rather than keeping one arbitrarily. Preprocessing drops rows with
-infinite outcomes as well as rows with missing ones. Since the report counts an
-infinity as missing only in the county or year column, check for those values
-yourself if your outcome construction can produce them.
+
+:::{admonition} The report misses infinite outcomes
+:class: warning
+
+Preprocessing drops rows with infinite outcomes as well as rows with missing
+ones. Since the report counts an infinity as missing only in the county or year
+column, check for those values yourself if your outcome construction can
+produce them.
+:::
 
 For `att_gt`, the default `allow_unbalanced_panel=False` drops units
 missing any observed period after the required data have been cleaned.
@@ -175,15 +175,6 @@ unit-level contributions retained for inference. That choice requires the
 repeated-cross-section conditions in the
 {ref}`two-period background <background-drdid>` and does not recover
 missing outcomes.
-
-:::{admonition} Missing rows are not zero outcomes
-:class: warning
-
-Filling a panel gap creates a row without an observed outcome. Treating
-that outcome as zero changes the data and can change the effect you
-estimate. Decide how missing observations arose before using the panel
-utilities to fill or remove gaps.
-:::
 
 If your study samples different units in each period, it is a repeated
 cross-section and needs `panel=False`. Each row then represents a separate
@@ -206,26 +197,17 @@ columns joined by `+` and includes an intercept. The outcome goes in `yname`
 instead of on the formula's left-hand side. Leaving `xformla` unset, or
 passing `"~1"`, fits the comparison without covariates. If you need a
 transformation or an interaction, create it as a column before naming it in
-the formula.
+the formula. The {ref}`staggered DiD example <example_staggered_did>` shows the
+population adjustment and then checks an unadjusted comparison.
 
-Covariate adjustment asks for parallel trends conditional on those
-characteristics and enough overlap between treated and comparison units.
-Adding more variables does not establish either condition or solve a lack of
-comparable observations.
-
-:::{admonition} Treatment-affected covariates hide part of the effect
-:class: warning
-
-A variable affected by treatment can absorb part of the effect you intended
-to estimate or make the comparison depend on a treatment response.
-:::
+:::{admonition} Covariates enter from the earlier period
+:class: note
 
 On a balanced panel, each `att_gt` two-period comparison uses covariates
 from the earlier of its two periods. A time-varying column therefore needs
 careful interpretation, especially for pre-treatment comparisons whose
-earlier period changes. The
-{ref}`staggered DiD example <example_staggered_did>` shows the
-population adjustment and then checks an unadjusted comparison.
+earlier period changes.
+:::
 
 ## Keep sampling weights and inference groups distinct
 
@@ -260,5 +242,5 @@ For `att_gt`, you name this column in `clustervars=["state"]` so that both the
 analytic and the bootstrap standard errors treat the counties of each state as
 one cluster. Other estimators expose different clustering arguments or
 limitations that you should check in their API entry before transferring the
-setting. The results guide brings these clusters into the employment fit under
-[Match the uncertainty to the comparison](results.md#match-the-uncertainty-to-the-comparison).
+setting. [Clustering by state](example_staggered_did.md#clustering-by-state)
+in the staggered DiD example brings these clusters into the employment fit.

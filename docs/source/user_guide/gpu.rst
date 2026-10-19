@@ -12,9 +12,7 @@ whether the GPU helps with your specification.
 
 The amount of work inside each comparison matters as much as the total number
 of rows. A GPU can be slower than the CPU for small comparisons because
-transferring arrays and starting GPU kernels also takes time. Measuring the
-complete call on your specification will tell you whether those costs are
-offset by faster calculations.
+transferring arrays and starting GPU kernels also takes time.
 
 Setting up a CUDA environment
 -----------------------------
@@ -95,8 +93,7 @@ backend when it returns or raises an exception.
 The minimum wage data gives us a small estimation to check the installation.
 Its comparison group and covariates also appear in the :ref:`staggered example
 <example_staggered_did>`, where you can follow the interpretation of the
-estimated effects. Since this sample is small, it cannot tell you how much
-time the GPU might save in a larger analysis.
+estimated effects.
 
 .. code-block:: python
 
@@ -249,9 +246,8 @@ behavior and the controls for the pool.
    matrices, influence functions, and temporary arrays also occupy memory.
 
 The GPU multiplier bootstrap batches its draws to reduce temporary memory
-use. That batching does not impose a limit on the entire estimator, since
-the influence function matrix and other arrays still need memory. If a fit
-exhausts the GPU, reduce the concurrent work or use ``backend="numpy"``.
+use. If a fit exhausts the GPU, reduce the concurrent work or use
+``backend="numpy"``.
 Resetting the backend alone does not release memory that the pool has cached.
 
 Although CuPy normally selects device 0, a device context lets you choose
@@ -262,10 +258,6 @@ device for the call rather than splitting it across those devices.
 
    with cp.cuda.Device(1):
        result = did.att_gt(**spec, backend="cupy")
-
-This last snippet requires a machine with a second visible CUDA device.
-Start with one worker when measuring a single GPU, since extra worker
-threads may increase memory use without making its calculations faster.
 
 .. _gpu-troubleshooting:
 
@@ -287,6 +279,4 @@ installation even when the CuPy import succeeds.
 
 For details about the installed runtime, run ``cupy.show_config()`` and compare
 its report with the `CuPy installation troubleshooting instructions
-<https://docs.cupy.dev/en/stable/install.html#faq>`_. Once the small calculation
-above works, rerun your specification and use the timing comparison to decide
-whether to keep the GPU backend for that analysis.
+<https://docs.cupy.dev/en/stable/install.html#faq>`_.

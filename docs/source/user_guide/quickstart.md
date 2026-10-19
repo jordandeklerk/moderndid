@@ -89,8 +89,7 @@ result = did.att_gt(data, **spec)
 print(result)
 ```
 
-Each row of the report pairs a cohort in the Group column with a year in the
-Time column. Rows before a cohort's adoption hold placebo estimates that should
+Rows before a cohort's adoption hold placebo estimates that should
 sit near zero if the comparison counties trend like the treated ones. The zero
 rows with NA standard errors are the base years that every other row is
 measured against. Since every placebo band covers zero, the report shows no
@@ -116,10 +115,9 @@ print(overall)
 The overall effect of −0.0328 log points puts the treated counties' teen
 employment about 3.2 percent below the level that the comparison counties
 imply for them. The 95 percent interval for the overall effect runs from −0.0567
-to −0.0089.
-[Match the uncertainty to the comparison](results.md#match-the-uncertainty-to-the-comparison)
-in the results guide shows how that interval changes once the bootstrap stops
-treating counties as independent and clusters them by state.
+to −0.0089. [Clustering by state](example_staggered_did.md#clustering-by-state)
+in the staggered DiD example shows how that interval changes once the bootstrap
+stops treating counties as independent.
 
 ## Plot the event study
 
@@ -128,6 +126,11 @@ years since each state's increase. The plot of that event study puts the placebo
 estimates and the effects after adoption on one axis.
 
 ```{code-cell} ipython3
+---
+mystnb:
+  image:
+    alt: Event study of minimum wage effects on log teen employment. Navy placebo estimates sit near zero at event times −4 to −2. Red effects fall below zero after adoption and reach their lowest values at event times 2 and 3.
+---
 # Average the effects at each number of years since adoption.
 event_study = did.aggte(result, type="dynamic")
 
@@ -144,6 +147,6 @@ Since its 20 counties all lie in Illinois, those two points trace one state's
 path rather than an average over the cohorts. The staggered DiD example [holds
 the counties fixed](example_staggered_did.md#holding-the-counties-fixed) to
 separate growth in the effect from that change in composition. When you're
-ready to fit your own data, the {ref}`Fundamentals <fundamentals>` guides start
+ready to fit your own data, the {ref}`Data and results <fundamentals>` guides start
 with {ref}`choosing an estimator <estimator-overview>` and the columns your
 method needs.

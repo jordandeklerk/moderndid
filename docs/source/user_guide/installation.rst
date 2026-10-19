@@ -48,18 +48,14 @@ Choose optional dependencies
 ----------------------------
 
 Each extra listed below adds the dependencies of an optional estimator,
-plotting, or faster computation to the base installation. If you expect to
-work through several treatment designs, ``moderndid[all]`` includes every
-estimator extra and plotting.
+plotting, or faster computation to the base installation.
 
 .. admonition:: Install GPU dependencies separately
    :class: important
 
-   The ``gpu`` extra installs ``cupy-cuda12x[ctk]``, the CUDA 12 build of
-   CuPy along with the CUDA libraries it needs. It requires an NVIDIA driver
-   that supports CUDA 12 or later and cannot provide GPU acceleration on
-   macOS. Follow the :doc:`GPU guide <gpu>` for the hardware and installation
-   checks before adding this extra.
+   Since the ``gpu`` extra needs an NVIDIA GPU and cannot provide acceleration
+   on macOS, follow the :doc:`GPU guide <gpu>` for the hardware and
+   installation checks before adding it.
 
 .. tab-set::
 
