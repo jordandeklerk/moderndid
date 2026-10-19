@@ -82,22 +82,16 @@ it as the two cats blink now and then.
     return cells;
   }
 
-  // Rows span the mark plus an equal margin on both sides that fits its outline. Trimmed rows kept
-  // only the left margin and pushed the mark right of center.
+  // Rows run from the outline's left edge to its right edge so the art centers on all it draws.
+  // Since the outline reaches a column further out on the left, centering only the mark looked off.
   function columns(cells) {
-    var body = [COLS, 0];
-    var all = [COLS, 0];
+    var span = [COLS, 0];
     cells.forEach(function (cell, i) {
-      var c = i % COLS;
       if (cell.kind || cell.eye) {
-        all = [Math.min(all[0], c), Math.max(all[1], c)];
-        if (cell.kind !== 3) {
-          body = [Math.min(body[0], c), Math.max(body[1], c)];
-        }
+        span = [Math.min(span[0], i % COLS), Math.max(span[1], (i % COLS) + 1)];
       }
     });
-    var margin = Math.max(body[0] - all[0], all[1] - body[1]);
-    return [body[0] - margin, body[1] + 1 + margin];
+    return span;
   }
 
   function escape(text) {
