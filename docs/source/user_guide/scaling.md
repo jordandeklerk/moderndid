@@ -7,7 +7,7 @@ kernelspec:
 
 (scaling)=
 
-# Scaling your analysis
+# CPU parallelism
 
 An analysis that runs quickly on a small panel can take much longer when you
 add counties, treatment cohorts, or observed periods. Staggered DiD fits a
@@ -20,13 +20,6 @@ The choice depends on where your analysis spends its time. While more worker
 threads can help when you have many comparisons to fit, a GPU may help with
 large matrix calculations within a comparison. Neither setting changes the
 identification assumptions or the effect you set out to estimate.
-
-```{toctree}
-:hidden:
-:maxdepth: 1
-
-gpu
-```
 
 ## Fitting comparisons in parallel
 
@@ -125,17 +118,5 @@ and choose which calls use the GPU.
 Local threading and GPU acceleration both operate within one machine rather
 than distributing an analysis across a cluster. ModernDiD has no Dask or Spark
 backend for these calculations.
-
-```{eval-rst}
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-   :class: section-index-table
-
-   * - Guide
-     - What you'll learn
-   * - :doc:`gpu`
-     - Set up CuPy, select supported GPU calculations, and measure their running time.
-```
 
 <p class="mdid-footer-logo"><img src="../_static/logo-wordmark.svg" alt="ModernDiD logo"></p>

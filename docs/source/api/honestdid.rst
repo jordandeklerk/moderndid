@@ -1,7 +1,7 @@
 .. _api-honestdid:
 
-Honest DiD
-==========
+Sensitivity analysis
+====================
 
 To examine how an event-study conclusion depends on parallel trends,
 :func:`~moderndid.honest_did` builds confidence sets that allow deviations

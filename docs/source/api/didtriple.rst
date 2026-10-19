@@ -1,7 +1,7 @@
 .. _api-didtriple:
 
-Triple DiD
-==========
+Triple differences
+==================
 
 When a policy reaches only eligible units within adopting groups,
 :func:`~moderndid.ddd` uses the additional eligibility comparison to estimate

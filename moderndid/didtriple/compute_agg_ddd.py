@@ -17,7 +17,7 @@ def compute_agg_ddd(
     balance_e=None,
     min_e=-np.inf,
     max_e=np.inf,
-    dropna=False,
+    na_rm=False,
     boot=True,
     biters=1000,
     cband=True,
@@ -47,8 +47,9 @@ def compute_agg_ddd(
         Earliest event time in an event study.
     max_e : float, default=inf
         Latest event time in the simple, group, and event-study aggregations.
-    dropna : bool, default=False
-        Whether to drop missing ATT(g,t) before aggregating.
+    na_rm : bool, default=False
+        Whether to drop group-time effects that are NaN before aggregating. Without it,
+        a NaN effect stops the aggregation with an error.
     boot : bool, default=True
         Whether the multiplier bootstrap computes the standard errors.
     biters : int, default=1000
@@ -121,10 +122,10 @@ def compute_agg_ddd(
             "estimate. Fewer covariates or control_group='notyettreated' can recover them."
         )
 
-    if not dropna and np.any(np.isnan(att)):
-        raise ValueError("Missing values in ATT(g,t) found. Set dropna=True to remove them.")
+    if not na_rm and np.any(np.isnan(att)):
+        raise ValueError("Missing values in ATT(g,t) found. Set na_rm=True to remove them.")
 
-    if dropna:
+    if na_rm:
         notna = ~np.isnan(att)
         if not notna.any():
             raise ValueError(
@@ -323,7 +324,7 @@ def _compute_group(
 ):
     """Compute group-specific ATT aggregation."""
     # A cohort without a post-treatment cell in the window has nothing to average, whether the fit skipped its
-    # failed cells or dropna removed them.
+    # failed cells or na_rm removed them.
     has_cell = np.array([np.any((group == g) & (g <= t) & (t <= g + max_e)) for g in glist_recoded], dtype=bool)
     glist_recoded = glist_recoded[has_cell]
     orig_glist = orig_glist[has_cell]

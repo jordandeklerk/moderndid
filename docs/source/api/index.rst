@@ -26,54 +26,54 @@ Estimators
    :class: section-index-table
    :widths: 35 65
 
-   * - :doc:`multiperiod`
+   * - :doc:`Staggered DiD <multiperiod>`
      - Group-time effects under staggered adoption and their aggregation into event studies and overall effects.
-   * - :doc:`drdid`
+   * - :doc:`Two-period DiD <drdid>`
      - Two-period estimators with doubly robust, inverse probability weighting, and outcome regression methods.
-   * - :doc:`didtriple`
+   * - :doc:`Triple differences <didtriple>`
      - Triple differences for policies that reach only an eligible part of each treated group.
-   * - :doc:`didcont`
+   * - :doc:`Continuous treatment <didcont>`
      - Continuous treatment doses and the dose-response functions they trace out.
-   * - :doc:`didinter`
+   * - :doc:`Intertemporal treatment <didinter>`
      - Treatments that switch on and off or change in intensity over time.
-   * - :doc:`diddynamic`
+   * - :doc:`Dynamic covariate balancing <diddynamic>`
      - Average outcomes under one treatment history against another when treatment varies over time.
-   * - :doc:`didml`
+   * - :doc:`Machine learning DiD <didml>`
      - Group-time and individual conditional effects estimated with cross-fitted machine learning models.
-   * - :doc:`etwfe`
+   * - :doc:`Extended TWFE <etwfe>`
      - Extended two-way fixed effects regressions and the marginal effects that aggregate them.
-   * - :doc:`npiv`
+   * - :doc:`Nonparametric IV <npiv>`
      - Nonparametric instrumental variables estimation with uniform confidence bands.
 
 .. toctree::
    :hidden:
    :maxdepth: 2
 
-   multiperiod
-   drdid
-   didtriple
-   didcont
-   didinter
-   diddynamic
-   didml
-   etwfe
-   npiv
+   Staggered DiD <multiperiod>
+   Two-period DiD <drdid>
+   Triple differences <didtriple>
+   Continuous treatment <didcont>
+   Intertemporal treatment <didinter>
+   Dynamic covariate balancing <diddynamic>
+   Machine learning DiD <didml>
+   Extended TWFE <etwfe>
+   Nonparametric IV <npiv>
 
-Sensitivity analysis
-====================
+Robustness
+==========
 
 .. list-table::
    :class: section-index-table
    :widths: 35 65
 
-   * - :doc:`honestdid`
+   * - :doc:`Sensitivity analysis <honestdid>`
      - Confidence sets for event-study estimates that stay valid when parallel trends fail within limits you choose.
 
 .. toctree::
    :hidden:
    :maxdepth: 2
 
-   honestdid
+   Sensitivity analysis <honestdid>
 
 Data
 ====
