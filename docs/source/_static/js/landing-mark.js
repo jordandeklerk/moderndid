@@ -82,6 +82,24 @@ it as the two cats blink now and then.
     return cells;
   }
 
+  // Rows span the mark plus an equal margin on both sides that fits its outline. Trimmed rows kept
+  // only the left margin and pushed the mark right of center.
+  function columns(cells) {
+    var body = [COLS, 0];
+    var all = [COLS, 0];
+    cells.forEach(function (cell, i) {
+      var c = i % COLS;
+      if (cell.kind || cell.eye) {
+        all = [Math.min(all[0], c), Math.max(all[1], c)];
+        if (cell.kind !== 3) {
+          body = [Math.min(body[0], c), Math.max(body[1], c)];
+        }
+      }
+    });
+    var margin = Math.max(body[0] - all[0], all[1] - body[1]);
+    return [body[0] - margin, body[1] + 1 + margin];
+  }
+
   function escape(text) {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   }
@@ -97,6 +115,7 @@ it as the two cats blink now and then.
     }
     var cells = decode();
     var rows = MAP.length;
+    var span = columns(cells);
     var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var timer = 0;
     var blinkUntil = 0;
@@ -115,7 +134,7 @@ it as the two cats blink now and then.
         var row = "";
         var run = "";
         var current = "";
-        for (var c = 0; c < COLS; c++) {
+        for (var c = span[0]; c < span[1]; c++) {
           var cell = cells[r * COLS + c];
           var kind = blinking && cell.eye ? 1 : cell.kind;
           var glyph = " ";
@@ -153,7 +172,7 @@ it as the two cats blink now and then.
         if (run) {
           row += current ? '<span class="' + current + '">' + escape(run) + "</span>" : run;
         }
-        html += (r ? "\n" : "") + row.replace(/\s+$/, "");
+        html += (r ? "\n" : "") + row;
       }
       art.innerHTML = html;
     }
