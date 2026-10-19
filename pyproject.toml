@@ -45,7 +45,7 @@ documentation = "https://moderndid.readthedocs.io"
 [project.optional-dependencies]
 benchmark = [
     "asv>=0.6.6,<0.7",
-    "asv-runner==0.3.1",
+    "asv-runner==0.3.2",
     "spin>=0.18,<0.19",
     "build>=1.2.2",
     "formulaic>=1.1.0",
