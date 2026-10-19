@@ -1,7 +1,9 @@
 """moderndid sphinx configuration."""
 
+import inspect
 import math
 import os
+import re
 import sys
 from datetime import date
 from importlib.metadata import metadata
@@ -134,7 +136,7 @@ html_theme_options = {
         "toc.follow",
     ],
     "toc_title": "On this page",
-    "globaltoc_collapse": False,
+    "globaltoc_collapse": True,
     "palette": [
         {
             "media": "(prefers-color-scheme)",
@@ -164,6 +166,7 @@ html_css_files = ["css/custom.css", "css/landing.css"]
 html_js_files = [
     ("js/copybutton-shim.js", {"priority": 200}),
     "js/header-title-link.js",
+    "js/landing-mark.js",
     "js/toc-rail.js",
 ]
 html_use_modindex = True
@@ -270,9 +273,27 @@ def _panel_diagnostics_signature(app, what, name, obj, options, signature, retur
     return None
 
 
+def _listed_attributes(cls):
+    """Return the names a class docstring lists under Attributes."""
+    doc = inspect.getdoc(cls) or ""
+    section = re.search(r"^Attributes\n-+\n(.*?)(?=^\w[^\n]*\n-+\n|\Z)", doc, re.M | re.S)
+    return set(re.findall(r"^(\w+)", section.group(1), re.M)) if section else set()
+
+
+def _skip_listed_fields(app, what, name, obj, skip, options):
+    """Leave out a member that its class docstring already lists under Attributes."""
+    if what != "class" or skip:
+        return None
+    # Since the event passes the member but not its class, the class comes from autodoc's per-document data.
+    current = app.env.temp_data
+    cls = getattr(sys.modules.get(current.get("autodoc:module")), current.get("autodoc:class") or "", None)
+    return True if name in _listed_attributes(cls) else None
+
+
 def setup(app):
     """Register the Sphinx event hooks that customize these docs."""
     app.connect("html-page-context", _landing_template)
     app.connect("html-page-context", _sidebar_sections, priority=600)
     app.connect("doctree-read", _open_examples_boxes)
     app.connect("autodoc-process-signature", _panel_diagnostics_signature)
+    app.connect("autodoc-skip-member", _skip_listed_fields)
