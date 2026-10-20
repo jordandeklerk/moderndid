@@ -100,7 +100,8 @@ def test_plot_event_study_wrong_ddd_aggregation_raises(ddd_agg_simple):
 
 def test_plot_event_study_invalid_input_raises():
     with pytest.raises(
-        TypeError, match="plot_event_study requires AGGTEResult, PTEResult, DDDAggResult, or EmfxResult, got str"
+        TypeError,
+        match="plot_event_study requires AGGTEResult, PTEResult, DDDAggResult, EmfxResult, or DIDMLAggResult, got str",
     ):
         plot_event_study("invalid")
 
