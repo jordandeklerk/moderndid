@@ -10,6 +10,8 @@ body[data-md-color-scheme="default"] {
   --mdid-code-parameter: #6543ba;
   --mdid-code-type: #315bc4;
   --mdid-error-name: #c62828;
+  --mdid-brand: #315bc4;
+  --mdid-tint: #7c9cf0;
 }
 
 body[data-md-color-scheme="slate"] {
@@ -22,6 +24,8 @@ body[data-md-color-scheme="slate"] {
   --mdid-code-parameter: #c4b5fd;
   --mdid-code-type: #91acff;
   --mdid-error-name: #ff8a80;
+  --mdid-brand: #6d8ff2;
+  --mdid-tint: #b4c4f5;
 }
 
 /* Both schemes take the blue of the ModernDiD logo for the accent instead of the theme's teal. */
@@ -534,9 +538,14 @@ add a second chevron beside sphinx-design's. The borders take the theme's colors
   --mdid-header-height: 55px;
 }
 
-.md-header__button.md-logo img,
-.md-header__button.md-logo svg {
-  height: 36px;
+.md-header__button.md-logo img {
+  height: 30px;
+  width: auto;
+}
+
+/* Beside the logo mark, the header spells the project's name in the home page's block letters. */
+.md-header__button.md-logo .mdid-banner__art {
+  height: 24px;
   width: auto;
 }
 
@@ -544,6 +553,20 @@ add a second chevron beside sphinx-design's. The borders take the theme's colors
   height: 100%;
   margin: 0 0 0 53px;
   padding: 0;
+}
+
+/* Since the theme hides the header's logo on narrow screens, only wide screens set the mark and letters in a row. */
+@media screen and (min-width: 76.25em) {
+  .md-header__button.md-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+/* The navigation drawer already names the project in text under its logo. */
+.md-nav__title .md-nav__button.md-logo .mdid-banner__art {
+  display: none;
 }
 
 .md-header__title {

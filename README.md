@@ -1,6 +1,6 @@
 <div align="center">
 
-<img alt="ModernDiD" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/logo-wordmark.svg" width="550">
+<img alt="ModernDiD" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_templates/landing-banner.svg" width="550">
 
 ## Modern Difference-in-Differences in Python
 
