@@ -1,4 +1,4 @@
-{# The documentation home, styled by _static/css/landing.css, with its logo drawn by _static/js/landing-mark.js and its prompt and start menu wired by _static/js/landing-app.js. #}
+{# The documentation home, styled by _static/css/landing.css, with its logo drawn by _static/js/landing-mark.js and its start menu wired by _static/js/landing-app.js. #}
 {% extends "page.html" %}
 
 {% block site_nav %}
@@ -22,8 +22,7 @@
 ] %}
 <div class="md-content mdid-landing" data-md-component="content">
   <section class="mdid-app" aria-labelledby="moderndid">
-    <div class="mdid-app__frame">
-      <span class="mdid-app__title" aria-hidden="true">welcome</span>
+    <div class="mdid-app__screen">
       <div class="mdid-app__body">
         <div class="mdid-app__copy">
           <span id="moderndid-docs-mainpage"></span>
@@ -43,12 +42,6 @@
           <noscript><img class="mdid-mark__logo" src="{{ pathto('_static/logo-mark.svg', 1) }}" alt="" width="480" height="270"></noscript>
         </div>
       </div>
-      <label class="mdid-prompt">
-        <span class="mdid-prompt__sigil" aria-hidden="true">&#10095;</span>
-        <span class="mdid-prompt__cursor" aria-hidden="true"></span>
-        <input class="mdid-prompt__input" type="text" placeholder="Search the docs" aria-label="Search the docs">
-        <kbd class="mdid-prompt__key" aria-hidden="true">/</kbd>
-      </label>
       <div class="mdid-status">
         <span>moderndid {{ version }}</span>
         <span>&copy; {{ copyright }}</span>

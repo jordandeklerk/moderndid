@@ -1,7 +1,6 @@
 /*
-Wire the landing page's prompt and start menu. Focusing the prompt hands the reader to the theme's
-search field. Pressing a key from the menu opens its page. The j and k keys or the arrow keys move the
-menu's cursor row for Enter to open.
+Wire the landing page's start menu. Pressing a key from the menu opens its page. The j and k keys or
+the arrow keys move the menu's cursor row for Enter to open.
 */
 (function () {
   if (window.__moderndidLandingAppLoaded) {
@@ -27,21 +26,6 @@ menu's cursor row for Enter to open.
     var chosen = (index + links.length) % links.length;
     links.forEach(function (link, i) {
       link.classList.toggle("is-selected", i === chosen);
-    });
-  }
-
-  function setupPrompt() {
-    var prompt = document.querySelector(".mdid-prompt__input");
-    var toggle = document.querySelector('input[data-md-toggle="search"]');
-    var field = document.querySelector(".md-search__input");
-    if (!prompt || !toggle || !field || prompt.dataset.wired) {
-      return;
-    }
-    prompt.dataset.wired = "true";
-    prompt.addEventListener("focus", function () {
-      toggle.checked = true;
-      toggle.dispatchEvent(new Event("change"));
-      field.focus();
     });
   }
 
@@ -114,14 +98,10 @@ menu's cursor row for Enter to open.
   });
 
   function boot() {
-    setupPrompt();
     setupMenu();
-    // Since instant navigation swaps pages without a reload, set the prompt and menu up again on each new page.
+    // Since instant navigation swaps pages without a reload, set the menu up again on each new page.
     if (typeof document$ !== "undefined" && document$ && document$.subscribe) {
-      document$.subscribe(function () {
-        setupPrompt();
-        setupMenu();
-      });
+      document$.subscribe(setupMenu);
     }
   }
 
