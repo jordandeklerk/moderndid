@@ -27,7 +27,7 @@ with `+`.
 
 from plotnine import options
 
-options.figure_size = (12, 5)
+options.figure_size = (8.7, 3.6)
 options.dpi = 100
 ```
 
@@ -189,7 +189,7 @@ mystnb:
 from plotnine import theme
 
 # One panel per cohort on a taller canvas so the three panels stay readable.
-cohort_plot = did.plot_gt(result) + did.theme_moderndid() + theme(figure_size=(12, 8))
+cohort_plot = did.plot_gt(result) + did.theme_moderndid() + theme(figure_size=(8.7, 5.8))
 cohort_plot
 ```
 
@@ -233,7 +233,7 @@ mystnb:
 publication_plot = (
     did.plot_event_study(event_study, ref_period=-1)
     + did.theme_publication()
-    + theme(figure_size=(12, 5), dpi=100)
+    + theme(figure_size=(8.7, 3.6), dpi=100)
 )
 publication_plot
 ```

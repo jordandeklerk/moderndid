@@ -41,7 +41,7 @@ import polars as pl
 from plotnine import options
 from prerun import stored
 
-options.figure_size = (12, 5)
+options.figure_size = (8.7, 3.6)
 options.dpi = 100
 pl.Config.set_tbl_rows(20)
 ```
