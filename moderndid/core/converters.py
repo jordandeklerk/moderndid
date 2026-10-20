@@ -795,8 +795,10 @@ def blpresult_to_polars(result):
     """Convert BLPResult to polars DataFrame.
 
     Returns one row per event time and coefficient. Rows are ordered by event
-    time and then by the key order of ``result.coefs``. The ``event_time``
-    column holds integers when every value in it is a whole number.
+    time and then by the key order of ``result.coefs``. An event time whose
+    regression was skipped for lack of data keeps its rows and holds NaN in
+    the estimate, se, and pvalue columns. The ``event_time`` column holds
+    integers when every value in it is a whole number.
 
     Parameters
     ----------
@@ -820,20 +822,33 @@ def blpresult_to_polars(result):
         for name in result.coefs
     ]
 
-    df = pl.DataFrame(rows, schema=["event_time", "covariate", "estimate", "se", "pvalue"], orient="row")
+    # Since an Int64 column would truncate a fractional event time, the cast below sets the integer dtype.
+    df = pl.DataFrame(
+        rows,
+        schema={
+            "event_time": pl.Float64,
+            "covariate": pl.String,
+            "estimate": pl.Float64,
+            "se": pl.Float64,
+            "pvalue": pl.Float64,
+        },
+        orient="row",
+    )
     return _whole_numbers_as_int(df, ["event_time"])
 
 
 def clanresult_to_polars(result):
     """Convert CLANResult to polars DataFrame.
 
-    Returns one row per covariate in ``result.affected``, in that order.
+    Returns one row per covariate in ``result.affected``, in that order. Since
+    :func:`~moderndid.clan_ttest` and :func:`~moderndid.clan_glhtest` return a
+    list with one CLANResult per post-treatment event time, convert each item
+    of the list on its own.
 
     Parameters
     ----------
     result : CLANResult
-        Classification analysis result for one event time, from
-        :func:`~moderndid.clan_ttest` or :func:`~moderndid.clan_glhtest`.
+        Classification analysis result for one event time.
 
     Returns
     -------

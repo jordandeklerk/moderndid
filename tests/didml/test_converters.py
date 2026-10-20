@@ -79,6 +79,16 @@ def test_to_df_on_a_blp_result_has_one_row_per_event_time_and_covariate(het_blp)
     np.testing.assert_allclose(df["pvalue"].to_numpy(), pvalue, rtol=1e-12)
 
 
+def test_to_df_on_an_empty_blp_result_has_no_rows_and_typed_columns(het_blp):
+    empty = het_blp._replace(coefs={}, ses={}, pvalues={})
+
+    df = to_df(empty)
+
+    assert df.height == 0
+    assert df.columns == ["event_time", "covariate", "estimate", "se", "pvalue"]
+    assert df.dtypes == [pl.Int64, pl.String, pl.Float64, pl.Float64, pl.Float64]
+
+
 def test_to_df_on_a_clan_result_has_one_row_per_covariate(het_clan):
     df = to_df(het_clan)
 

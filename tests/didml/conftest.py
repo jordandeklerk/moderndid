@@ -277,8 +277,8 @@ def het_blp(het_data):
 
 @pytest.fixture
 def het_clan(het_data):
-    """Compare the top and bottom quintiles of the heterogeneity data on x at event time 0."""
-    return clan_ttest(het_data, affected=["x"], threshold=0.2)[0]
+    """Compare the top and bottom quintiles of the heterogeneity data on x and dynamic_cate at event time 0."""
+    return clan_ttest(het_data, affected=["x", "dynamic_cate"], threshold=0.2)[0]
 
 
 @pytest.fixture

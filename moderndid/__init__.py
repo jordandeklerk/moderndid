@@ -24,7 +24,6 @@ __all__ = [
     "BLPResult",
     # Optional: didcont (requires formulaic)
     "BSpline",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "CLANResult",
     "ComputeATTgtResult",
     # didtriple module
@@ -42,7 +41,6 @@ __all__ = [
     "DIDInterEffectsResult",
     "DIDInterPlacebosResult",
     "DIDInterResult",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "DIDMLAggResult",
     "DIDMLResult",
     "DeltaRMBResult",
@@ -80,13 +78,11 @@ __all__ = [
     "affine_variance",
     "agg_ddd",
     "aggte",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "aggte_didml",
     # drdid module
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "amle_weights",
     # panel module (lowercase)
     "are_varying",
@@ -96,11 +92,9 @@ __all__ = [
     "basis_dimension",
     "basis_vector",
     "bin_factor",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "blp_eventtimes",
     "blp_result",
     "calculate_pscore_ipt",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "clan_glhtest",
     "clan_result",
     "clan_ttest",
@@ -154,7 +148,6 @@ __all__ = [
     "deduplicate_panel",
     "diagnose_panel",
     "did_multiplegt",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "didml",
     "didml_agg",
     "didml_result",
@@ -166,14 +159,12 @@ __all__ = [
     "drdid_rc",
     "drdid_trad_rc",
     "dyn_balancing",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "dynamic_cates",
     "emfx",
     "estimate_lowerbound_m_conditional_test",
     "etwfe",
     "extract_vars_from_formula",
     "fill_panel_gaps",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "fit_causal_forest",
     "fit_delta",
     "fit_rlearner",
@@ -194,7 +185,6 @@ __all__ = [
     "get_first_difference",
     "get_group",
     "has_gaps",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "het_prep",
     "honest_did",
     "ipw_did_panel",
@@ -204,7 +194,6 @@ __all__ = [
     "is_balanced_panel",
     "is_full_rank",
     "lee_coefficient",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "lnw_did",
     "load_acemoglu",
     "load_cai2016",
@@ -258,7 +247,6 @@ __all__ = [
     "setup_pte_cont",
     "std_ipw_did_panel",
     "std_ipw_did_rc",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "summary_didml",
     "summary_didml_agg",
     "summary_mp_pretest",
