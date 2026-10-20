@@ -44,3 +44,5 @@ working with that type, or use ``to_df`` to select it for you.
    dynbalancinghistoryresult_to_polars
    dynbalancinghetresult_to_polars
    dynbalancingcoefs_to_polars
+   blpresult_to_polars
+   clanresult_to_polars

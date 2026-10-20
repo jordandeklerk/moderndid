@@ -7,7 +7,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 importorskip("moderndid.didml")
 
-from moderndid import didml, load_mpdta
+from moderndid import aggte_didml, blp_eventtimes, clan_ttest, didml, didml_agg, load_mpdta
 from moderndid.didml import didml_result
 
 
@@ -111,6 +111,24 @@ def mpdta_short_bootstrap_fit(mpdta_short):
         random_state=0,
         biters=2,
     )
+
+
+@pytest.fixture
+def mpdta_dynamic_agg(mpdta_analytic_fit):
+    """Aggregate the analytic mpdta fit to event time."""
+    return aggte_didml(mpdta_analytic_fit)
+
+
+@pytest.fixture
+def mpdta_group_agg(mpdta_dynamic_agg):
+    """Relabel the dynamic aggregation of the mpdta fit as a group aggregation."""
+    return mpdta_dynamic_agg._replace(aggregation_type="group")
+
+
+@pytest.fixture
+def mpdta_simple_agg(mpdta_dynamic_agg):
+    """Keep only the overall effect of the dynamic aggregation of the mpdta fit."""
+    return didml_agg(mpdta_dynamic_agg.overall_att, mpdta_dynamic_agg.overall_se, aggregation_type="simple")
 
 
 @pytest.fixture
@@ -249,6 +267,18 @@ def het_data_padded(het_data):
             ),
         ]
     )
+
+
+@pytest.fixture
+def het_blp(het_data):
+    """Fit the best linear predictor of the heterogeneity data on x at event times 0 and 1."""
+    return blp_eventtimes(het_data, n_periods=1, rhs_formula="x")
+
+
+@pytest.fixture
+def het_clan(het_data):
+    """Compare the top and bottom quintiles of the heterogeneity data on x at event time 0."""
+    return clan_ttest(het_data, affected=["x"], threshold=0.2)[0]
 
 
 @pytest.fixture
