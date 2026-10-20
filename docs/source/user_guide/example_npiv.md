@@ -26,8 +26,7 @@ household splits its budget can also shape how much it spends in total.
 number of spline segments. It avoids the second by using the earnings of each
 household's head as an instrument for total spending. We'll estimate the curve
 with a band that covers all of it at once and read off the slope and food
-elasticity it implies. The checks at the end change one choice at a time to see
-how the curve and its band respond.
+elasticity it implies.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -132,9 +131,7 @@ decide how many spline segments to use and how to build bands around the result.
 ## Settling the specification
 
 The estimation turns on the instrument, on how flexible the curve may be, and on
-where to read it. The dictionary below gives each of the three its own group of
-arguments. [How much each choice matters](#how-much-each-choice-matters) later
-varies each of those arguments while the rest keep the values set below.
+where to read it.
 
 ```{code-cell} ipython3
 # Evaluate the curve at 81 points from 4.5 to 6.5, one every 0.025 of log total spending.
@@ -187,13 +184,11 @@ estimate is biased. With too many, the estimate turns noisy, since earnings pin
 down fine detail only weakly.
 
 With `j_x_degree=3` and `j_x_segments=None`, the curve is a cubic spline whose
-number of segments the data choose. The authors' selection first caps the
-candidates at what the sample size and the strength of the instrument support. It
-then keeps the fewest segments whose curve differs from every finer candidate by no
-more than bootstrap noise. The instrument gets quartic splines with `k_w_degree=4`,
-since the average of $h_0(X)$ given earnings is smoother than $h_0$ itself. Setting
-`k_w_smooth=2` gives the instrument four times as many segments as the curve, one
-of the two settings the authors recommend.
+number of segments the data choose by the rule the
+[background page](../background/npiv) writes out. The instrument gets quartic
+splines with `k_w_degree=4`, since the average of $h_0(X)$ given earnings is
+smoother than $h_0$ itself. Setting `k_w_smooth=2` gives the instrument four times
+as many segments as the curve, one of the two settings the authors recommend.
 
 The main alternative is to fix the number of segments yourself through
 `j_x_segments`.
@@ -213,8 +208,8 @@ its candidates there too, where the data are dense.
 shows what happens when `x_grid` is left out.
 
 With `alpha=0.05`, each band is built so that the chance it misses its function
-anywhere on the grid is at most 5 percent. If a 10 percent chance is acceptable for
-your purpose, `alpha=0.10` narrows both bands. The 1,000 bootstrap draws in
+anywhere on the grid is at most 5 percent. Setting `alpha=0.10` would narrow both
+bands if a 10 percent chance suits your purpose. The 1,000 bootstrap draws in
 `biters=1000` match the number Chen, Christensen, and Kankanala (2024) use.
 [Ten bootstrap seeds](#ten-bootstrap-seeds) swaps `seed=7` for other seeds to see
 how much the selection and the bands move.
@@ -245,11 +240,9 @@ print(f"critical values {result.cv:.4f} for the curve and {result.cv_deriv:.4f} 
 
 The selection settled on a single segment out of the candidates 1, 2, 4, 8,
 and 16. The curve is therefore one cubic polynomial in log spending, built from 4
-basis functions. Unlike a line or a quadratic fixed in advance, that single cubic
-piece is what the data picked over finer splines with 2 to 16 segments. Its
-critical values, 3.8678 for the curve and 3.8263 for the slope, sit well above
-the 1.96 of a pointwise interval, in part because each band covers every point of
-its function at once.
+basis functions. Its critical values, 3.8678 for the curve and 3.8263 for the
+slope, sit well above the 1.96 of a pointwise interval, in part because each band
+covers every point of its function at once.
 
 :::{admonition} A margin for the data's choice
 :class: note
@@ -260,10 +253,6 @@ approximation bias that a number of segments picked from the data can't rule out
 [A number of segments fixed in advance](#a-number-of-segments-fixed-in-advance)
 measures how much width it adds.
 :::
-
-The result keeps the curve in `h` and its band in `h_lower` and `h_upper`. The
-slope and its band sit in `deriv`, `h_lower_deriv`, and `h_upper_deriv`, all
-evaluated on the same spending grid so you can compare their shapes.
 
 You can see the food share fall at all 80 steps of the grid, from 0.2614 at log
 spending 4.5 to 0.1288 at 6.5. Households at the top of the range devote about half
@@ -367,8 +356,6 @@ slope = pl.DataFrame(
 ```
 
 ## How much each choice matters
-
-The five checks below each change one choice that could move the curve or its band.
 
 ### Total spending as its own instrument
 
@@ -538,24 +525,10 @@ the critical value ranges from 3.7475 to 3.8678. Since our seed of 7 gives the
 largest of them, the curve's band on this page is the widest that any of the ten
 seeds would draw.
 
-### Comparing the checks
-
-The checks distinguish choices that move the fall in the food share from those
-that mostly change how wide its band is. Dropping the instrument changes the
-fall the most, since the regression's curve falls by 0.1113 between 5.0 and 6.0
-against 0.0630 for ours. Half as many instrument segments come next and flatten the
-fall to 0.0432. Fixed numbers of segments keep the fall between 0.0630 and 0.0713
-but change the band from about a third narrower with one segment to 3.6 times as
-wide with eight. Selecting over the full range and changing the seed leave the
-curve alone.
-
-Apart from the fits with eight or 64 segments, each band rules out a food share
-that stays flat as total spending rises. How fast it falls depends most on
-whether earnings serve as the instrument and on how finely the instrument's splines
-are cut. Only the first of those choices leans on the assumption that earnings are
-unrelated to food tastes and reach the food share only through total spending. With
-the instrument set equal to the regressor, the same estimator also provides
-the data-driven dose-response fit available through
-{func}`~moderndid.cont_did` with `dose_est_method="cck"` in a two-period design.
-The [background page on nonparametric instrumental variables](../background/npiv)
+Of these choices, dropping the instrument and halving the instrument's segments
+move the fall in the food share most, to 0.1113 and 0.0432 between log spending
+5.0 and 6.0 against 0.0630 for ours. Apart from the fits with eight or 64
+segments, every band still rules out a food share that stays flat as total
+spending rises. The
+[background page on nonparametric instrumental variables](../background/npiv)
 writes out the selection rule and the margin in the data-driven band.

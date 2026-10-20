@@ -32,9 +32,7 @@ the final year.
 The answer you'll reach is the effect of two years of democracy, against two
 years of autocracy, on GDP per capita in the last year of the panel. On the way,
 you'll see how closely the weights match the two groups of countries and how the
-effect changes as the stretch grows from one year to five. Each closing check
-reruns the estimate with one choice changed to find out whether that choice can
-move the answer.
+effect changes as the stretch grows from one year to five.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -75,8 +73,7 @@ In each row, `Y` holds the country's log GDP per capita and `D` holds a 1 if the
 country was a democracy that year. The row also records the year from 0 to 5 in
 `Time` and one of seven world regions in `region`. The four columns from
 `lag1.Value1` to `lag4.Value1` hold log GDP per capita one to four years
-earlier. Because `lag1.Value1` in each of the rows above repeats `Y` from the
-year before, you can also tell that the six years are consecutive.
+earlier.
 
 In the last two years, 91 countries were democracies throughout and 46 were
 autocracies throughout, against three that became democracies and one that
@@ -91,12 +88,10 @@ main estimates rest on 137 countries.
 :::{admonition} Regions where one history dominates
 :class: note
 
-With every industrialized country (INL) and every South Asian one (SAS) a
-democracy in both of the last two years, the regional distribution limits the
-comparison of the two histories. The Middle East and North Africa (MNA) is the
-mirror image because 10 of its 11 countries were autocracies in both. Those gaps
-come back later, when the weights try to match the autocracies to the full set
-of countries.
+Since every industrialized country (INL) and every South Asian one (SAS) was a
+democracy in both of the last two years, no autocracy from those regions can
+stand in for them. The Middle East and North Africa (MNA) is the mirror image
+because 10 of its 11 countries were autocracies in both.
 :::
 
 ## The effect of a stretch of democracy
@@ -129,9 +124,9 @@ rests on four assumptions.
 - Every country had some chance of being a democracy and some chance of being an
   autocracy in each year, given its covariates and earlier status.
 
-Each assumption gets its formal statement in
-{ref}`Dynamic covariate balancing DiD <background-diddynamic>`. That page also
-shows how the estimator recovers both potential outcomes under them.
+{ref}`Dynamic covariate balancing DiD <background-diddynamic>` states each
+assumption formally and shows how the estimator recovers both potential outcomes
+under them.
 
 :::{admonition} A different assumption from parallel trends
 :class: note
@@ -145,10 +140,7 @@ capita accounting for whatever ties a country's democracy to its growth.
 
 To estimate this comparison, we'll choose the treatment histories, the
 covariates that account for treatment assignment, the outcome model and balance
-requirements, and the method for measuring uncertainty. The dictionary below
-groups its arguments by those four choices.
-[Which choices move the answer](#which-choices-move-the-answer) comes back to
-each decision in the order set here.
+requirements, and the method for measuring uncertainty.
 
 ```{code-cell} ipython3
 # Every choice sits in this dictionary so that each check can swap out one of them.
@@ -176,14 +168,12 @@ spec = dict(
 
 ### Two years at the end of the panel
 
-The comparison starts from the two treatment histories it sets side by side.
-With `ds1=[1, 1]` and `ds2=[0, 0]`, those are two years of democracy and two
-years of autocracy. Two years is long enough for the dynamic part of the method
-to matter. In the second year, the weights must match the weighted averages from
-the first year rather than the plain averages of the whole sample. The window is
-also short enough that 91 and 46 countries followed the two histories. Histories
-that switch status inside the window, such as autocracy followed by democracy,
-hold too few countries to compare.
+With `ds1=[1, 1]` and `ds2=[0, 0]`, the comparison sets two years of democracy
+beside two years of autocracy. Two years is long enough for the dynamic part of
+the method to matter. In the second year, the weights must match the weighted
+averages from the first year rather than the plain averages of the whole sample.
+Histories that switch status inside the window, such as autocracy followed by
+democracy, hold too few countries to compare.
 
 :::{admonition} Count histories back from the final period
 :class: important
@@ -236,33 +226,25 @@ removing the first year's effect.
 
 ### A lasso projection with adaptive balance
 
-The first of the estimator's two stages fits an outcome model for each year.
-Working backward from the last year, it projects GDP per capita onto everything
-known about a country by then. With `method="lasso_plain"`, each projection fits
-one linear model to all countries at once. The democracy indicators enter it as
-regressors that the lasso leaves unpenalized. With `regularization=True`,
-cross-validation picks a single penalty for the four lags and the region dummies
-alike.
-
-That shared model assumes that the effects of democracy add up the same way in
-every country. The fully interacted model of `method="lasso_subsample"` drops
-that assumption by fitting each year only on the countries still on the history.
-Its fits rest on fewer countries with every year the history adds. Viviano and
-Bradic (2026) use the linear model in their own analysis of the democracy panel.
+The {ref}`background page <background-diddynamic>` sets out the estimator's two
+stages in its sections on fitting the projections and on why the weights are
+sequential. With `method="lasso_plain"` and `regularization=True`, the first
+stage fits one linear model of GDP per capita to all countries at once and lets
+cross-validation pick its lasso penalty. That shared model assumes that the
+effects of democracy add up the same way in every country. Viviano and Bradic
+(2026) use the linear model in their own analysis of the democracy panel. The
+fully interacted model of `method="lasso_subsample"` drops that assumption at
+the cost of fitting each year on fewer countries.
 
 In the second stage, `balancing="dcb"` makes each year's weights as even as
-possible. They sum to one, stay between zero and a cap, give nothing to
-countries off the history, and keep each covariate's weighted mean close to a
-target. For the first year, that target is the mean over all countries. For the
-second, it's the mean under the first year's weights.
+possible while keeping each covariate's weighted mean close to its target.
 
 :::{admonition} Why inverse probability weights fail here
 :class: note
 
 If you switch to `balancing="ipw"` or `"aipw"`, the call stops with an error on
-this data because the logistic model for the propensity score has no estimate.
-Since no industrialized or South Asian country was an autocracy in either year,
-those two region dummies predict democracy perfectly in the first year. Without
+this data. Since the INL and SAS dummies predict democracy perfectly in the
+first year, the logistic model for the propensity score has no estimate. Without
 region, past GDP per capita still singles out the one country that left
 democracy in the second year.
 :::
@@ -284,8 +266,7 @@ value that the inference theorem of Viviano and Bradic (2026) supports.
 [Two other measures of uncertainty](#two-other-measures-of-uncertainty) tries
 the larger chi-squared critical value and standard errors clustered by region.
 
-{func}`~moderndid.diddynamic.dyn_balancing` then runs both stages for each
-history under `spec` and reports the gap between the two estimates.
+The call below runs both stages for each history under `spec`.
 
 ```{code-cell} ipython3
 # Estimate mean GDP per capita in the last year under each history and the gap between them.
@@ -303,18 +284,18 @@ under the democracy history. Along with the p-value of 0.2259, that interval
 gives us no reason to reject an effect of zero. Since it still allows changes in
 either direction, it doesn't establish that democracy has no effect.
 
-Below the table, `mu(ds1)` estimates the mean log GDP per capita of all 137
-countries in the last year at 7.8179 had every one of them been a democracy in
-both years. Under two years of autocracy, `mu(ds2)` puts the same mean at
-7.8423. The effect of −0.0244 is the gap between those two means.
+The effect is the gap between the two means below the table. Had all 137
+countries been democracies in both years, `mu(ds1)` puts their mean log GDP per
+capita in the last year at 7.8179, against 7.8423 under `mu(ds2)` for two years
+of autocracy.
 
 ### How closely the weights match the two groups
 
 Each set of weights tries to make the countries on its history look like all 137
 countries in every covariate. The `imbalances` field of the result measures how
 far each one falls short, as the gap between a covariate's weighted mean and its
-target in standard deviations of the covariate. We can inspect the autocracy
-weights in the first year to see where those matches fall short.
+target in standard deviations of the covariate. The autocracy weights in the
+first year show where those matches fall short.
 
 ```{code-cell} ipython3
 # Read the first year's diagnostic directly from the result.
@@ -324,10 +305,9 @@ result.imbalances["ds2"].filter(pl.col("period") == 1).select("covariate", "imba
 The democracy weights match every covariate to within 0.0013 standard deviations
 in both years. The autocracy weights come close on past GDP per capita too,
 where the largest gap is −0.0150 for `lag4.Value1`. The region dummies are where
-the autocracy weights fall short of their targets. INL sits at −0.4707 and SAS
-at −0.1939 because neither region had an autocracy in either year for the
-weights to draw on. MNA at 0.6870 and EAP, East Asia and the Pacific, at 0.5105
-end up overrepresented instead.
+the autocracy weights fall short of their targets. The two regions without
+autocracies, INL and SAS, sit at −0.4707 and −0.1939. MNA at 0.6870 and EAP,
+East Asia and the Pacific, at 0.5105 end up overrepresented instead.
 
 Those gaps are allowed to stand because the lasso kept only `lag1.Value1`.
 Adaptive balancing held that one covariate to the tight tolerance and let the
@@ -366,9 +346,8 @@ pull the estimate down to −0.0312 at five years. The standard error doubles fr
 0.0149 at one year to 0.0297 at five. Each extra year adds another round of
 weights and another term to the variance.
 
-The figure that {func}`~moderndid.plots.plot_dyn_balancing_history` draws from
-these estimates lets you watch the bars widen with each added year while the
-points stay close to zero.
+In the figure that {func}`~moderndid.plots.plot_dyn_balancing_history` draws
+from these estimates, the bars widen with each added year.
 
 ```{code-cell} ipython3
 ---
@@ -395,18 +374,15 @@ long.
 ## Which choices move the answer
 
 The interval around the two-year effect leaves room for changes in either
-direction. To see how much that conclusion depends on our specification, each
-check below changes one choice in `spec` and keeps the others fixed.
+direction.
 
 ### Stacking the earlier windows
 
-Nothing forces the comparison to use only the last two years of the panel. With
-`pooled=True`, every earlier two-year window joins the comparison as a separate
-country history, from the window ending in the second year of the panel to the
-one ending in the last. Because the windows end in different years, the check
-also adds `Time` to `fixed_effects` to give each year its own dummy, as the
-pooled regression of Viviano and Bradic (2026) does. A shock that hits every
-country in the same year can then be absorbed by that year's dummy.
+With `pooled=True`, every earlier two-year window of the panel joins the
+comparison as a separate country history. Because the windows end in different
+years, the check also adds `Time` to `fixed_effects` to give each year its own
+dummy, as the pooled regression of Viviano and Bradic (2026) does. A shock that
+hits every country in the same year can then be absorbed by that year's dummy.
 
 ```{code-cell} ipython3
 :tags: [skip-execution]
@@ -441,8 +417,7 @@ each year's own intercept.
 ### Leaving out past GDP per capita
 
 To see how much of the answer past GDP per capita carries, this check drops the
-four lags from `xformla` and keeps only the region dummies. Without past GDP per
-capita, the weights can match democracies and autocracies on region alone.
+four lags from `xformla` and keeps only the region dummies.
 
 ```{code-cell} ipython3
 # The same specification without past GDP per capita, so only the region is balanced.
@@ -464,9 +439,8 @@ start that region doesn't explain into the estimate of 0.3067.
 
 ### Swapping the outcome model or the tolerance
 
-This check turns to the settings that shape each of the estimator's two stages.
-We try the fully interacted model, a nearly unpenalized ridge fit, and a single
-tolerance for every covariate before comparing their results in the final table.
+This check turns to the settings that shape each of the estimator's two stages,
+one at a time.
 
 ```{code-cell} ipython3
 # The two-year effect when only the outcome model or the balance tolerance changes.
@@ -478,9 +452,9 @@ print(f"ridge: effect {ridge.att:.4f}, standard error {ridge.se:.4f}")
 print(f"one tolerance: effect {one_tolerance.att:.4f}, standard error {one_tolerance.se:.4f}")
 ```
 
-Under these swaps the effect runs from −0.0241 to −0.0121, a spread smaller than
+Under these swaps the effect runs from −0.0238 to −0.0121, a spread smaller than
 the standard error of 0.0201 in our specification. The fully interacted model
-and ridge report smaller standard errors of 0.0125 and 0.0105. Because both fit
+and ridge report smaller standard errors of 0.0129 and 0.0105. Because both fit
 GDP per capita more closely than a lasso that keeps only `lag1.Value1`, their
 residuals in the last year and the year-to-year changes in their projections
 both come out smaller.
@@ -513,6 +487,10 @@ chi_squared = did.dyn_balancing(data, **(spec | {"robust_quantile": True}))
 region_clusters = did.dyn_balancing(data, **(spec | {"clustervars": ["region"]}))
 print(f"chi-squared critical value {chi_squared.robust_quantile:.4f}")
 print(f"standard error with region clusters {region_clusters.se:.4f}")
+
+# The ATE row of each fit, with the interval its inference settings give.
+ate = pl.col("parameter") == "ATE"
+pl.concat([did.to_df(chi_squared).filter(ate), did.to_df(region_clusters).filter(ate)])
 ```
 
 The chi-squared critical value of 3.0802 widens the interval to run from −0.0864
@@ -527,52 +505,12 @@ no small-sample correction. Treat the larger standard error as a hint that
 regional shocks could matter rather than as a measure of how much.
 :::
 
-### The spread across the checks
-
-For our specification and every check, the table below gives the two-year
-effect, its standard error, and its 95 percent interval. The public
-{func}`~moderndid.to_df` converter supplies those bounds from each result's
-inference settings when you want to compare fits in your own analysis. For a
-paper, you can put the same estimates, standard errors, and intervals into one
-table straight from the result objects, as the
-{ref}`publication tables guide <publication_tables>` shows.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-
-# Extract the ATE row from each result using its own inference settings.
-checks = {
-    "our specification": result,
-    "stacked earlier windows": pooled,
-    "without past GDP per capita": without_past_gdp,
-    "fully interacted outcome model": interacted,
-    "ridge outcome model": ridge,
-    "one balance tolerance": one_tolerance,
-    "chi-squared critical value": chi_squared,
-    "clustered by region": region_clusters,
-}
-
-rows = []
-for name, fitted in checks.items():
-    ate = did.to_df(fitted).filter(pl.col("parameter") == "ATE")
-    rows.append(ate.with_columns(pl.lit(name).alias("check")))
-
-pl.concat(rows).select("check", "estimate", "se", "ci_lower_robust", "ci_upper_robust")
-```
-
-Whenever past GDP per capita stays among the covariates, the two-year effect
-runs from −0.0244 to −0.0121 and every interval covers zero. The fully
-interacted model comes closest to excluding zero, since its interval tops out at
-0.0004. Only leaving out past GDP per capita moves the estimate much, to 0.3067
-with an interval from −0.1153 to 0.7286.
-
-Across the histories of one to five years, we haven't isolated a clear gain in
-GDP per capita from democracy. These comparisons leave open what longer
-stretches of democracy do to GDP per capita.
-
-Sequential ignorability given region and past GDP per capita still carries every
-estimate on this page. A hidden factor that moved democracy and growth together
-would bias all of them. If you'd rather assume parallel trends among countries
-that start from the same status, the
+Every check that keeps past GDP per capita among the covariates leaves the
+two-year effect between −0.0244 and −0.0121 with an interval that covers zero.
+Only leaving out past GDP per capita moves it far, to 0.3067. Sequential
+ignorability given region and past GDP per capita still carries every estimate
+on this page. A hidden factor that moved democracy and growth together would
+bias all of them. If you'd rather assume parallel trends among countries that
+start from the same status, the
 {ref}`intertemporal treatment example <example_inter_did>` estimates the effects
 of a treatment that switches on and off under that assumption.

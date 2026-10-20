@@ -25,16 +25,6 @@ published curves requires the window-specific calculations below. The final
 section checks these estimates and the pooled appendix figures against values
 extracted from the published plotting paths.
 
-The data come from [Bartik, Currie, Greenstone, and Knittel
-(2019)](https://doi.org/10.1257/app.20170487) through the
-[continuous-treatment replication files](https://doi.org/10.3886/E201785V1).
-This is the 2024 companion paper's application rather than the Medicare
-application in the [December 2025 main
-paper](https://psantanna.com/files/CGBS_v4.pdf). Our
-{ref}`background page <background-didcont>` uses the latter paper to explain
-identification of level effects and the stronger restrictions needed for
-causal responses to a larger dose.
-
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
@@ -46,19 +36,13 @@ options.dpi = 100
 
 ## County employment and geological exposure
 
-Prospectivity measures the geological conditions that make fracking attractive,
-rather than how many wells a county eventually drilled. Since actual drilling
-can respond to local economic conditions, the geological score helps distinguish
-potential exposure from that subsequent investment. Total county employment
-captures changes across the local economy rather than only employment in the
-oil and gas industry.
-
-{func}`~moderndid.load_fracking` loads a balanced panel of 402 counties observed
-every year from 1990 through 2014. After dropping 2015 because all its
-employment outcomes are missing, the preparation removes missing outcomes and
-counties without the complete remaining panel. Each row identifies a county
-with `i` and a year with `t`. Because the outcome `y` is already the log of
-total employment, the estimation below uses it directly.
+The {ref}`continuous treatment example <example_cont_did>` describes the
+counties, prospectivity scores, adoption dates, and coded-zero comparison
+counties in the paper's [replication data](https://doi.org/10.3886/E201785V1).
+Figure 1 splits the 329 positive-dose counties at their median score of 3.95.
+Counties at or below the median form the low-dose group and the rest form the
+high-dose group. The split uses the stored median instead of a rounded `3.95`
+cutoff so that ties land in the right group.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -68,41 +52,7 @@ from scipy.stats import norm
 
 # Keep the source outcome in log employment throughout the analysis.
 data = did.load_fracking()
-data.head()
-```
 
-The score `d` gives each county's fixed dose and `G` records the adoption year
-used by the estimator. The `G_original` column preserves the source formation
-date even when a county's zero dose changes its estimation `G` to zero. The
-remaining column, `shale_basin1`, identifies the shale basin that contains each
-county. The [original research
-design](https://www.aeaweb.org/articles/materials/11519) dates adoption to when
-successful fracking became publicly known within a formation. Because the
-outcomes are annual, announcements after June enter the following year. That
-date represents a change in a formation's economic prospects rather than the
-first well drilled in each county. A zero score places a county in the
-untreated group and gives it `G=0` for estimation. The
-[original appendix](https://www.aeaweb.org/articles/materials/11519)
-constructs prospectivity separately within shale plays without calibrating
-the scores on a common scale.
-
-:::{admonition} Coded zeros include missing scores
-:class: warning
-
-The preparation recodes missing prospectivity scores to zero without retaining
-a flag that distinguishes them from observed zeros. The untreated group
-therefore depends on that coding decision, rather than an independently
-observed absence of geological exposure in every county.
-:::
-
-Before splitting the treated counties, we count each county once and find the
-median among the positive scores. The split uses the stored median rather than
-a rounded `3.95` cutoff so ties stay in the correct group. Counting each county
-once leaves 329 positive-dose counties and 73 coded-zero counties. Among the
-positive-dose counties, a score at or below the median of 3.95 puts a county in
-the low-dose group. A score above it puts the county in the high-dose group.
-
-```{code-cell} ipython3
 # Count each county once and preserve the stored precision of the median.
 units = data.filter(pl.col("t") == data["t"].min()).sort("i")
 positive = units.filter(pl.col("d") > 0)
@@ -112,11 +62,9 @@ high_data = data.filter((pl.col("d") > median_d) | (pl.col("d") == 0))
 print("Median positive score:", median_d)
 ```
 
-There are 177 low-dose and 152 high-dose counties because several counties share
-the median score. The smallest positive score of 0.20 describes the observed
-support rather than an additional trimming rule. Each group keeps the same 73
-coded-zero counties for comparisons. Counties in the other positive-dose group
-are excluded from its estimation sample.
+Because several counties share the median score, the groups hold 177 low-dose
+and 152 high-dose counties. Each group keeps the same 73 coded-zero counties for
+comparisons and leaves the other group's counties out of its estimation sample.
 
 ## Employment over time in low- and high-dose counties
 
@@ -127,8 +75,8 @@ Within each group, the starting point is the average effect of adoption at a
 given dose,
 
 $$
-ATT(g,t,d)
-= E[Y_t(g,d)-Y_t(0)\mid G=g,D=d].
+ATT(g,t,d\mid g,d)
+= \mathbb{E}[Y_t(g,d)-Y_t(0)\mid G=g,D=d].
 $$
 
 Here, $g$ is the adoption year, $t$ is the outcome year, and $d$ is the
@@ -151,9 +99,6 @@ county. The {ref}`continuous-treatment background <background-didcont>`
 develops this distinction between an effect at a dose and a causal response to
 increasing the dose.
 :::
-
-The specification below holds the event-study choices that the next three
-subsections explain.
 
 ```{code-cell} ipython3
 event_spec = dict(
@@ -186,20 +131,17 @@ these untreated counties using the regression method without covariates.
 
 ### Keep the year before adoption as the reference
 
-The universal base period measures each cohort's employment changes relative
-to the year before its adoption. The event study therefore sets event time
-minus one to zero by construction. Keeping zero anticipation follows the
-paper's specification and makes the interpretation depend on employment not
-responding before the recorded adoption year.
+As in the paper and the {ref}`staggered example <example_staggered_did>`,
+`base_period="universal"` and `anticipation=0` measure each cohort's employment
+changes from the year before it adopts and fix event time minus one at zero.
 
 ### Follow the paper's event window
 
 {func}`~moderndid.aggte` averages the cohort effects at each event time from
-11 years before adoption through four years afterward. The aggregation weights
-cohorts by their numbers of treated counties and uses every cohort observed at
-the requested event time. It does not impose a balanced event window across
-all the plotted years. All 177 low-dose and 152 high-dose counties contribute
-at every event time from minus 11 through two.
+11 years before adoption through four years afterward. It weights cohorts by
+their numbers of treated counties and uses every cohort observed at the
+requested event time without imposing a balanced window. All 177 low-dose and
+152 high-dose counties contribute at every event time from minus 11 through two.
 
 :::{admonition} Later event times drop the 2012 cohort
 :class: warning
@@ -210,24 +152,33 @@ change along either curve can therefore reflect a change in the contributing
 counties as well as a change in their employment effects.
 :::
 
+```{code-cell} ipython3
+# Estimate each cohort's effects in both dose groups without the default bootstrap.
+high_group_time = did.att_gt(high_data, **event_spec)
+low_group_time = did.att_gt(low_data, **event_spec)
+
+# Average the cohort effects at each event time in the paper's window.
+dynamic_spec = dict(type="dynamic", min_e=-11, max_e=4, boot=False, cband=False)
+high_dynamic = did.aggte(high_group_time, **dynamic_spec)
+low_dynamic = did.aggte(low_group_time, **dynamic_spec)
+
+# Read the estimates four years after adoption, the last event time in the window.
+print("High dose:", round(float(high_dynamic.att_by_event[-1]), 4))
+print("Low dose:", round(float(low_dynamic.att_by_event[-1]), 4))
+```
+
 County influence functions describe how each county's observation contributes
-to sampling variation in an estimated effect. The helper below gives those
-contributions independent Rademacher multipliers of minus one or plus one in
-1,000 draws using the fixed seed `20240103`. For each effect, it divides the
-draws' interquartile range by the standard normal interquartile range to
-estimate its standard error. A normal critical value then gives the pointwise
-intervals from those bootstrap standard errors.
+to sampling variation in an estimated effect. The event studies below give
+those contributions independent Rademacher multipliers of minus one or plus one
+in 1,000 draws using the fixed seed `20240103`. Each standard error is the
+draws' interquartile range divided by the standard normal interquartile range.
+A normal critical value then turns those standard errors into pointwise
+intervals.
 
 ```{code-cell} ipython3
-:tags: [scroll-output]
+:tags: [hide-input]
 
-def paper_event_study(sample, biters, random_state):
-    # Retain county influence functions without drawing the default bootstrap weights.
-    group_time = did.att_gt(sample, **event_spec)
-    result = did.aggte(
-        group_time, type="dynamic", min_e=-11, max_e=4, boot=False, cband=False
-    )
-
+def paper_inference(result, biters, random_state):
     # Give each county an independent equal-probability minus-one/plus-one multiplier.
     influence = np.column_stack([result.influence_func, result.influence_func_overall])
     n = influence.shape[0]
@@ -252,12 +203,15 @@ def paper_event_study(sample, biters, random_state):
         estimation_params=params,
         call_info=call_info,
     )
+```
 
+```{code-cell} ipython3
+:tags: [hide-input, scroll-output]
 
 # Give every event study on this page the same number of draws and seed.
 bootstrap_spec = dict(biters=1000, random_state=20240103)
-high_event = paper_event_study(high_data, **bootstrap_spec)
-low_event = paper_event_study(low_data, **bootstrap_spec)
+high_event = paper_inference(high_dynamic, **bootstrap_spec)
+low_event = paper_inference(low_dynamic, **bootstrap_spec)
 print("HIGH DOSE")
 print(high_event)
 print("LOW DOSE")
@@ -265,9 +219,7 @@ print(low_event)
 ```
 
 Figure 1 uses orange for the low-dose counties and blue for the high-dose
-counties. Each ribbon shows uncertainty around an individual estimate and lets
-you read whether the employment contrast at a particular year is distinguishable
-from zero. Although the point estimates reproduce the published curves to the
+counties. Although the point estimates reproduce the published curves to the
 resolution of the paper's figure, the recomputed intervals do not exactly
 reproduce the historical ribbons.
 
@@ -325,26 +277,22 @@ figure1
 
 At four years after adoption, the low-dose estimate is 0.0235 log points and
 the high-dose estimate is 0.0719 log points. Converting those log contrasts
-gives about 2.4 percent and 7.5 percent, respectively. These are averages of
-county log employment effects relative to their estimated untreated paths,
-rather than percentage increases in the total number of jobs across each
-sample. The larger blue estimate describes a larger employment gain among
-high-dose counties. Comparing the two estimates alone does not test whether
-the groups' effects differ statistically.
+gives about 2.4 percent and 7.5 percent, respectively. The larger blue estimate
+describes a larger employment gain among high-dose counties. Comparing the two
+estimates alone does not test whether the groups' effects differ statistically.
 
 :::{admonition} Read intervals one estimate at a time
 :class: important
 
 These 95 percent pointwise intervals do not cover the whole curve with
 95 percent confidence. The joint pre-treatment Wald test is unavailable
-because its estimated covariance matrix is singular. Pre-treatment intervals
-that include zero therefore provide neither a joint acceptance of parallel
-trends nor proof of the identifying assumption.
+because its estimated covariance matrix is singular. As the
+{ref}`sensitivity analysis example <example_honest_did>` explains, intervals
+that include zero before adoption wouldn't establish parallel trends anyway.
 :::
 
 The pre-adoption estimates show no pronounced divergence in employment before
-the recorded onset. Their uncertainty still allows some differences in those
-earlier trends. Because the inference treats counties as independent sampling
+the recorded onset. Because the inference treats counties as independent sampling
 units, it does not account for shocks shared by counties in the same formation.
 
 ## Short- and long-run effects across prospectivity scores
@@ -355,10 +303,8 @@ short-run curve for the adoption year through year two and a long-run curve for
 years three and four.
 
 Each point on either curve is the estimated effect for counties at that
-prospectivity score, averaged over the corresponding years. It still compares
-those counties with their untreated employment path. A difference across
-scores can reflect differences between the counties that received them,
-rather than a causal effect of raising a county's score.
+prospectivity score, averaged over the corresponding years. Like the dose
+groups above, the curve compares different counties at different scores.
 
 :::{admonition} Match the paper's aggregation
 :class: tip
@@ -402,16 +348,11 @@ comparison is narrower than the one the paper's text describes.
 
 The window filter retains only counties whose formation's original adoption
 year allows the entire window to be observed by 2014. Keeping that original
-date matters even for coded-zero counties whose estimation `G` is zero. The
-short-run sample contains 329 treated counties and 73 comparison counties.
-The long-run sample contains 307 treated counties and 60 comparison counties,
-since the 2012 cohort removes 22 positive-dose counties and 13 coded-zero
-counties under this filter.
-
-Since each county's dose and adoption dates stay fixed, one value per county
-is enough to prepare each window. The code keeps these values in the same
-county order as the employment matrix so every adjusted change uses the
-corresponding county's outcome, dose, and dates.
+date in `G_original` matters even for coded-zero counties, whose estimation `G`
+is zero. The short-run sample contains 329 treated counties and 73 comparison
+counties. The long-run sample contains 307 treated counties and 60 comparison
+counties, since the 2012 cohort removes 22 positive-dose counties and 13
+coded-zero counties under this filter.
 
 ```{code-cell} ipython3
 # Align the balanced outcomes and the fixed county characteristics.
@@ -451,25 +392,18 @@ short_sample.head()
 ```
 
 Within each window, every retained county contributes in every averaged year.
-The comparison between the short- and long-run curves still changes the
-population because the short-run window includes the 2012 cohort. It therefore
-combines differences in exposure length with differences in eligible counties,
-even though composition stays fixed inside each window.
+Because the short-run window includes the 2012 cohort, a comparison of the two
+curves mixes differences in exposure length with differences in the counties.
 
 ### Let the spline describe changes across doses
 
 The pooled regression approximates each window's adjusted employment changes
 with a cubic spline. Its three internal knots of 3.35, 3.95, and 4.34 sit at the
-treated-dose quartiles in both samples. These knots allow the relationship to
-bend within the observed score distribution without requiring one linear
-employment response over the whole range.
-
-The fit uses all eligible positive doses and displays the predictions at
-observed scores strictly between two and six as the paper does. That plotting
-restriction keeps the figure focused on the central range without removing
-other positive-dose counties from estimation. Each fitted curve remains a
-model-based approximation, rather than a separate nonparametric estimate at
-every plotted score.
+treated-dose quartiles in both samples. These knots let the relationship bend
+within the observed score distribution instead of imposing one linear
+employment response over the whole range. As in the paper, the fit uses all
+eligible positive doses and displays the predictions only at observed scores
+strictly between two and six.
 
 ```{code-cell} ipython3
 def fit_window(sample):
@@ -515,9 +449,8 @@ estimating those means. Although this calculation reproduces the plotted
 dose-response results, its intervals should not be read as the simultaneous
 bands returned by `cont_did`.
 
-Figure 2 uses orange for the short-run effects and blue for the long-run
-effects. Before comparing their heights, keep in mind that the change in color
-now marks a time window rather than a low- or high-dose group.
+In Figure 2, orange marks the short-run effects and blue the long-run effects.
+The colors now distinguish time windows instead of low- and high-dose groups.
 
 ```{code-cell} ipython3
 :tags: [hide-input]
@@ -556,10 +489,9 @@ pl.concat([
 
 The short-run estimate of 0.0125 log points has a pointwise interval from
 −0.0007 to 0.0257. The long-run estimate of 0.0733 log points corresponds to
-about 7.6 percent and has an interval from 0.0388 to 0.1079 log points. This
-contrast describes a larger estimated employment gain several years after
-adoption. A formal test of the difference would also need the covariance between
-the two estimates.
+about 7.6 percent and has an interval from 0.0388 to 0.1079 log points. A
+formal test of the difference would also need the covariance between the two
+estimates.
 
 :::{admonition} Score units differ across shale plays
 :class: warning
@@ -571,58 +503,20 @@ everywhere.
 
 ## What the pooled figures leave out
 
-The appendix averages over all positive doses for its overall event study and
-over the adoption year through year four for its overall dose curve. Each
-gives a shorter account of the employment gains at the cost of hiding
-differences across doses or exposure lengths.
-
-### Average the event study across positive doses
-
-Appendix Figure B.1 uses all 329 positive-dose counties and the 73 coded-zero
-counties in one event-study fit. It keeps the same not-yet-treated comparison
-group, reference period, event window, and pointwise inference as Figure 1.
-At years three and four, the estimate again covers the 307 treated counties
-observed for that long.
-
-```{code-cell} ipython3
-all_event = paper_event_study(data, **bootstrap_spec)
-print(all_event)
-```
-
-The green curve below summarizes employment changes for all positive-dose
-counties at their observed doses. It answers how adoption affected that pooled
-population at each exposure length, rather than how the effect varies across
-prospectivity scores.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-:mystnb: {"image": {"alt": "Pooled county employment event study across all positive doses, with larger post-adoption estimates in the later years and a shaded pointwise interval."}}
-
-figure_b1 = comparison_plot(
-    event_frame(all_event, "All positive doses"), {"All positive doses": "#009E73"},
-    "Years relative to adoption", event=True,
-)
-figure_b1
-```
-
-Four years after adoption, the pooled estimate is 0.0474 log points,
-equivalent to about 4.9 percent. This reading averages the effects at the
-counties' actual scores rather than imposing a common dose.
-
-The pooled post-adoption estimates sit between the low- and high-dose profiles
-and conceal how much larger the later high-dose contrast is. Since this fit
-also uses a broader not-yet-treated comparison population than either dose
-group's fit, its estimates are not just a weighted average of the two plotted
-profiles. The later points still cover fewer cohorts and the pointwise
-intervals still treat counties as independent sampling units.
+The appendix averages over all positive doses for its overall event study,
+Figure B.1, and over the adoption year through year four for its overall dose
+curve, Figure B.3. Each gives a shorter account of the employment gains at the
+cost of hiding differences across doses or exposure lengths. Since the
+{ref}`continuous treatment example <example_cont_did>` draws the pooled event
+study of Figure B.1 with `cont_did`, this page checks that figure only against
+its published values below.
 
 ### Average the dose curve over the first five years
 
 Appendix Figure B.3 uses the same adjusted-outcome construction as Figure 2
-but averages event times zero through four. That window holds each treated
-county's adoption year and the four years after it. Its 307 treated
-counties and 60 coded-zero comparison counties match the long-run sample
-because both windows require observation through year four.
+but averages event times zero through four. Its 307 treated counties and 60
+coded-zero comparison counties match the long-run sample because both windows
+require observation through year four.
 
 ```{code-cell} ipython3
 # Average event times zero through four and read the curve at a score of 5.
@@ -662,10 +556,14 @@ Figure 2 at a larger scale and supplies its reference values. The comparison
 checks every plotted point and both interval endpoints. The small dose-curve
 differences reflect graphical rounding in the extracted paths. Recomputed
 event-study intervals retain larger differences from the historical bootstrap
-ribbons.
+ribbons. The check also refits the pooled event study of Figure B.1 for its row.
 
 ```{code-cell} ipython3
 :tags: [hide-input]
+
+# Figure B.1 pools every positive dose into one event study.
+all_group_time = did.att_gt(data, **event_spec)
+all_event = paper_inference(did.aggte(all_group_time, **dynamic_spec), **bootstrap_spec)
 
 # Match each published plotting location to its original observed score or event time.
 reference = pl.read_csv("../_static/fracking_paper_reference.csv")
@@ -709,6 +607,4 @@ Interpreting the larger employment gains in higher-prospectivity counties and
 in later years as effects of fracking requires the assumptions about untreated
 employment trends and the recorded adoption dates. The
 {ref}`continuous-treatment background <background-didcont>` develops the
-identification and aggregation results behind these choices. The
-{ref}`staggered adoption example <example_staggered_did>` shows how the same
-cohort effects are used when treatment is binary.
+identification and aggregation results behind these choices.
