@@ -1,4 +1,4 @@
-{# The documentation home, styled by _static/css/landing.css and drawn by _static/js/landing-mark.js. #}
+{# The documentation home, styled by _static/css/landing.css, with its logo drawn by _static/js/landing-mark.js and its prompt and start menu wired by _static/js/landing-app.js. #}
 {% extends "page.html" %}
 
 {% block site_nav %}
@@ -12,27 +12,47 @@
 {% endblock %}
 
 {% block container %}
+{% set start_menu = [
+  ("g", "User Guide", "user_guide/index", "book-open-page-variant-outline"),
+  ("e", "Examples", "examples/index", "notebook-outline"),
+  ("c", "Choosing an estimator", "user_guide/estimator_overview", "directions-fork"),
+  ("a", "API reference", "api/index", "function-variant"),
+  ("b", "Background", "background/index", "sigma"),
+  ("?", "FAQ", "faq", "help-circle-outline"),
+] %}
 <div class="md-content mdid-landing" data-md-component="content">
-  <section class="mdid-hero" aria-labelledby="moderndid">
-    <span id="moderndid-docs-mainpage"></span>
-    <h1 id="moderndid" class="mdid-hidden">Modern Difference-in-Differences in Python</h1>
-    <div class="mdid-mark">
-      <pre class="mdid-mark__art" id="mdid-mark" role="img" aria-label="The ModernDiD logo, two rings joined by two cats, drawn in text characters."></pre>
-      <noscript><img class="mdid-mark__logo" src="{{ pathto('_static/logo-mark.svg', 1) }}" alt="" width="480" height="270"></noscript>
-    </div>
-    <p class="mdid-lede">
-      ModernDiD is a Python library that implements the
-      <span class="mdid-nowrap">difference-in-differences</span> estimators of recent
-      econometric research.
-    </p>
-    <div class="mdid-actions">
-      <div class="mdid-press mdid-press--brand">
-        <span class="mdid-press__block" aria-hidden="true"></span>
-        <a class="mdid-press__button" href="{{ pathto('user_guide/index') }}">User Guide</a>
+  <section class="mdid-app" aria-labelledby="moderndid">
+    <div class="mdid-app__frame">
+      <span class="mdid-app__title" aria-hidden="true">welcome</span>
+      <div class="mdid-app__body">
+        <div class="mdid-app__copy">
+          <span id="moderndid-docs-mainpage"></span>
+          <h1 id="moderndid" class="mdid-banner">{% include "landing-banner.svg" %}</h1>
+          <p class="mdid-tagline">Modern difference-in-differences in Python</p>
+          <nav class="mdid-menu" aria-label="Start here">
+            <ul>
+              {% for key, label, page, icon in start_menu %}
+              <li><a href="{{ pathto(page) }}" data-key="{{ key }}" aria-keyshortcuts="{{ key }}"><span class="mdid-menu__icon" aria-hidden="true">{% include ".icons/material/" ~ icon ~ ".svg" %}</span><span>{{ label }}</span><kbd aria-hidden="true">{{ key }}</kbd></a></li>
+              {% endfor %}
+            </ul>
+            <p class="mdid-menu__footer" hidden><span class="mdid-menu__icon" aria-hidden="true">{% include ".icons/material/lightning-bolt.svg" %}</span><span>Docs loaded in <span class="mdid-menu__time"></span></span></p>
+          </nav>
+        </div>
+        <div class="mdid-mark">
+          <pre class="mdid-mark__art" id="mdid-mark" role="img" aria-label="The ModernDiD logo, two rings joined by two cats, drawn in text characters."></pre>
+          <noscript><img class="mdid-mark__logo" src="{{ pathto('_static/logo-mark.svg', 1) }}" alt="" width="480" height="270"></noscript>
+        </div>
       </div>
-      <div class="mdid-press mdid-press--secondary">
-        <span class="mdid-press__block" aria-hidden="true"></span>
-        <a class="mdid-press__button" href="{{ pathto('examples/index') }}">Examples</a>
+      <label class="mdid-prompt">
+        <span class="mdid-prompt__sigil" aria-hidden="true">&#10095;</span>
+        <span class="mdid-prompt__cursor" aria-hidden="true"></span>
+        <input class="mdid-prompt__input" type="text" placeholder="Search the docs" aria-label="Search the docs">
+        <kbd class="mdid-prompt__key" aria-hidden="true">/</kbd>
+      </label>
+      <div class="mdid-status">
+        <span>moderndid {{ version }}</span>
+        <span>&copy; {{ copyright }}</span>
+        <span>MIT license</span>
       </div>
     </div>
   </section>

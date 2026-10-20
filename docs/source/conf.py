@@ -113,7 +113,7 @@ intersphinx_mapping = {
 
 html_theme = "sphinx_immaterial"
 
-html_logo = "_static/logo-wordmark.svg"
+html_logo = "_static/logo-mark.svg"
 html_favicon = "_static/logo-mark.svg"
 
 html_theme_options = {
@@ -167,6 +167,7 @@ html_js_files = [
     ("js/copybutton-shim.js", {"priority": 200}),
     "js/header-title-link.js",
     "js/landing-mark.js",
+    "js/landing-app.js",
     "js/toc-rail.js",
 ]
 html_use_modindex = True
