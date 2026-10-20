@@ -28,34 +28,34 @@ share the brand blue and its tint, those two colors live in custom.css.
 .mdid-landing {
   --mdid-ink: #18233d;
   --mdid-faint: #8a93a8;
-  --mdid-rule: rgba(49, 91, 196, 0.45);
   --mdid-on-brand: #ffffff;
   --mdid-key: #6d46c1;
   --mdid-mark-body: #315bc4;
   --mdid-mark-edge: rgba(49, 91, 196, 0.45);
   --mdid-mark-halo: #7c9cf0;
+  --mdid-screen: #f3f5fa;
 }
 
+/* Since the dark screen takes the header's color, the header and the screen read as one terminal. */
 [data-md-color-scheme="slate"] .mdid-landing {
   --mdid-ink: #edf1ff;
   --mdid-faint: #7d869c;
-  --mdid-rule: rgba(109, 143, 242, 0.45);
   --mdid-on-brand: #10131a;
   --mdid-key: #c4b5fd;
   --mdid-mark-body: #d9dde8;
   --mdid-mark-edge: rgba(217, 221, 232, 0.58);
   --mdid-mark-halo: #6d8ff2;
+  --mdid-screen: var(--mdid-header-bg);
 }
 
-/* The home page is one terminal window. Its brand-colored frame carries the window's name on the top edge. */
+/* The home page is one terminal screen. Since a tint sets it apart from the header, it needs no outline. */
 .mdid-app {
-  padding: 16px;
   color: var(--mdid-ink);
   font-family: var(--md-text-font-family);
 }
 
 /*
-On wide screens the window fills the height left under the header. Its tabs take 2.4rem, plus a
+On wide screens the home page fills the height left under the header. Its tabs take 2.4rem, plus a
 0.05rem rule under them in the light scheme.
 */
 @media screen and (min-width: 76.25em) {
@@ -66,25 +66,11 @@ On wide screens the window fills the height left under the header. Its tabs take
   }
 }
 
-.mdid-app__frame {
-  position: relative;
+.mdid-app__screen {
   display: flex;
   flex: 1;
   flex-direction: column;
-  border: 1.5px solid var(--mdid-brand);
-  border-radius: 14px;
-}
-
-.mdid-app__title {
-  position: absolute;
-  top: -0.75em;
-  left: 1.6rem;
-  padding: 0 0.6em;
-  background: var(--md-default-bg-color);
-  color: var(--mdid-brand);
-  font-family: var(--md-code-font-family);
-  font-size: 14px;
-  line-height: 1.5;
+  background: var(--mdid-screen);
 }
 
 .mdid-app__body {
@@ -228,10 +214,10 @@ On wide screens the window fills the height left under the header. Its tabs take
   user-select: none;
 }
 
-/* On wide screens the mark also shrinks with the window's height. The frame, prompt, and status line keep 15rem of it. */
+/* On wide screens the mark also shrinks with the window's height. The padding and status line keep 13rem of it. */
 @media screen and (min-width: 76.25em) {
   .mdid-mark__art {
-    font-size: min(12px, 100cqi / 62.4, (100svh - var(--mdid-header-height) - 17.45rem) / 40.7);
+    font-size: min(12px, 100cqi / 62.4, (100svh - var(--mdid-header-height) - 15.45rem) / 40.7);
   }
 }
 
@@ -250,71 +236,6 @@ On wide screens the window fills the height left under the header. Its tabs take
   margin: 0 auto;
 }
 
-/* The prompt reads as the window's input line. Focusing it opens the theme's search. */
-.mdid-prompt {
-  display: flex;
-  align-items: center;
-  gap: 0.8em;
-  padding: 1em clamp(1.5rem, 3.5vw, 3rem);
-  border-top: 1px solid var(--mdid-rule);
-  font-family: var(--md-code-font-family);
-  cursor: text;
-}
-
-.mdid-prompt__sigil {
-  color: var(--mdid-brand);
-  font-size: 16px;
-}
-
-/* Like a terminal's, a block cursor waits in the empty prompt until the real caret takes over. */
-.mdid-prompt__cursor {
-  flex: none;
-  width: 0.6em;
-  height: 1.15em;
-  margin-right: -0.3em;
-  background: var(--mdid-brand);
-  animation: mdid-blink 1.1s steps(1) infinite;
-}
-
-.mdid-prompt:focus-within .mdid-prompt__cursor {
-  display: none;
-}
-
-.mdid-prompt__input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: none;
-  color: var(--mdid-ink);
-  font: inherit;
-  font-size: 15px;
-}
-
-.mdid-prompt__input::placeholder {
-  color: var(--mdid-faint);
-}
-
-.mdid-prompt__key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.6em;
-  height: 1.6em;
-  padding: 0 0.35em;
-  border: 1px solid var(--mdid-rule);
-  border-radius: 4px;
-  color: var(--mdid-faint);
-  font-family: var(--md-code-font-family);
-  font-size: 12px;
-}
-
-@keyframes mdid-blink {
-  50% {
-    opacity: 0;
-  }
-}
-
 /*
 Like a terminal program's status line, the bottom edge carries the version and the license. It also
 takes the copyright from the theme's footer.
@@ -325,17 +246,10 @@ takes the copyright from the theme's footer.
   justify-content: space-between;
   gap: 0.2em 1rem;
   padding: 0.5em clamp(1.5rem, 3.5vw, 3rem);
-  border-radius: 0 0 12.5px 12.5px;
   background: var(--mdid-brand);
   color: var(--mdid-on-brand);
   font-family: var(--md-code-font-family);
   font-size: 12.5px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mdid-prompt__cursor {
-    animation: none;
-  }
 }
 
 /* The panes stack where the theme folds its tabs into the drawer. */
