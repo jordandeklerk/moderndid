@@ -1,0 +1,78 @@
+# Standalone Spark cluster for the tests in tests/spark. A master and two workers form the cluster. A Spark Connect
+# server on port 15002 runs the driver of each test session on it. From the repository root, these commands start the
+# cluster, run the tests on it, and stop it.
+#   docker compose -f tests/spark/cluster/compose.yaml up -d --build --wait
+#   MODERNDID_SPARK_REMOTE=sc://localhost:15002 pixi run -e spark pytest tests/spark
+#   docker compose -f tests/spark/cluster/compose.yaml down
+name: moderndid-spark
+
+x-spark: &spark
+  image: moderndid-spark-cluster
+  build:
+    context: ../../..
+    dockerfile: tests/spark/cluster/Dockerfile
+
+services:
+  master:
+    <<: *spark
+    hostname: master
+    command: spark-class org.apache.spark.deploy.master.Master --host master --port 7077 --webui-port 8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/json/')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  worker-1:
+    <<: *spark
+    hostname: worker-1
+    command: spark-class org.apache.spark.deploy.worker.Worker --host worker-1 --cores 2 --memory 1g spark://master:7077
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/json/')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  worker-2:
+    <<: *spark
+    hostname: worker-2
+    command: spark-class org.apache.spark.deploy.worker.Worker --host worker-2 --cores 2 --memory 1g spark://master:7077
+    depends_on:
+      master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/json/')"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  connect:
+    <<: *spark
+    hostname: connect
+    command: >-
+      spark-submit --class org.apache.spark.sql.connect.service.SparkConnectServer
+      --master spark://master:7077 --conf spark.driver.host=connect --conf spark.executor.memory=1g
+    ports:
+      - "15002:15002"
+    depends_on:
+      worker-1:
+        condition: service_healthy
+      worker-2:
+        condition: service_healthy
+    # The server is ready once it accepts connections and the master has given its session the four cores.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json, socket, urllib.request
+          state = json.load(urllib.request.urlopen("http://master:8080/json/"))
+          assert state["aliveworkers"] == 2 and state["coresused"] == 4
+          socket.create_connection(("localhost", 15002), 2).close()
+      interval: 2s
+      timeout: 5s
+      retries: 90

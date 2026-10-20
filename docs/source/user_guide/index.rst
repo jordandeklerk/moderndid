@@ -93,6 +93,8 @@ Scaling
      - Spread comparisons and bootstrap draws over several CPU workers.
    * - :doc:`GPU acceleration <gpu>`
      - Set up CuPy, select supported GPU calculations, and measure their running time.
+   * - :doc:`Spark <spark>`
+     - Fit group-time effects on a Spark DataFrame without collecting its rows.
 
 .. toctree::
    :hidden:
@@ -100,6 +102,7 @@ Scaling
 
    CPU parallelism <scaling>
    GPU acceleration <gpu>
+   Spark <spark>
 
 .. _whatis-methods:
 

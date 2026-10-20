@@ -95,8 +95,9 @@ their inputs in the API reference.
 
 If a table is lazy or distributed, materialize it before passing it to an
 estimator. Accepting an Arrow table does not mean estimation runs inside the
-database or a distributed scheduler. The {ref}`scaling guide <scaling>`
-explains the execution options the package supports.
+database or a distributed scheduler. A Spark DataFrame passed to
+{func}`~moderndid.att_gt` is the one exception. Spark's executors then run the
+fit where the rows already live, as the {ref}`Spark guide <spark>` explains.
 
 The outcome, time, cohort, and panel identifier columns must be numeric.
 If your identifiers are strings, map them to numeric codes once across the

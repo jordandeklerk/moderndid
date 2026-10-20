@@ -90,8 +90,10 @@ plotting, or faster computation to the base installation.
            - The package's plotnine figures and plotting themes.
          * - ``gpu``
            - CuPy computation on supported NVIDIA hardware.
+         * - ``spark``
+           - Spark computation of :func:`~moderndid.att_gt` with PySpark 4.0 or later.
          * - ``all``
-           - All estimator and plotting dependencies, without GPU dependencies.
+           - All estimator and plotting dependencies, without GPU or Spark dependencies.
 
 For example, either of the commands below installs continuous DiD and
 plotting together. Replace the extras inside the brackets to match your
@@ -104,6 +106,12 @@ analysis.
 .. code-block:: console
 
    python -m pip install "moderndid[didcont,plots]"
+
+Besides the ``spark`` extra, running Spark on your own machine needs Java 17 or
+later. On Databricks, leave out the ``spark`` extra, since the runtime already
+provides PySpark. The :doc:`Spark guide <spark>` says which Databricks runtimes
+to choose and shows how to install ``moderndid`` on the executors of a
+Databricks cluster or one you manage.
 
 Check the installation
 -----------------------

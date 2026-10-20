@@ -28,6 +28,12 @@ def aggte(
     standard errors combine the influence functions of the group-time effects and
     account for the estimated weights.
 
+    A fit on a Spark DataFrame keeps sums over its units in place of their influence
+    functions. From those sums aggte computes the same analytic standard errors as for
+    an in-memory fit but returns no influence functions. Since the bootstrap reuses the
+    draws that the fit stored, a call that asks for more draws, another seed, or draws
+    by unit from a clustered fit raises an error.
+
     See the :ref:`staggered DiD example <example_staggered_did>` for event study,
     cohort, and overall aggregations of the minimum wage effects.
 
@@ -87,6 +93,8 @@ def aggte(
         - **balanced_event_threshold**: The ``balance_e`` that balanced an event study, or None
         - **estimation_params**: Dictionary of the estimation settings
         - **call_info**: Dictionary describing the call that produced the result
+        - **vcov_analytical**: Asymptotic variance-covariance matrix of the disaggregated effects, or of the overall
+          effect for 'simple'
 
     See Also
     --------

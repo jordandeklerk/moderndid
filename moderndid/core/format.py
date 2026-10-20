@@ -133,16 +133,34 @@ def warn_few_clusters(cluster, cohort_clusters):
         Clusters of the treated units of each treated cohort, keyed by the
         cohort. A design with a single treated group passes them under None.
     """
-    n_clusters = len(np.unique(cluster))
-    if n_clusters == len(cluster):
-        return
     counts = {cohort: len(np.unique(clusters)) for cohort, clusters in cohort_clusters.items()}
-    few = [(cohort, count) for cohort, count in sorted(counts.items()) if 0 < count < 5]
+    warn_few_cluster_counts(len(np.unique(cluster)), len(cluster), counts)
+
+
+def warn_few_cluster_counts(n_clusters, n_units, cohort_counts):
+    """Warn when cluster-robust inference rests on very few clusters given only the counts.
+
+    The warning is that of :func:`warn_few_clusters` for a fit that holds no
+    cluster vector, such as a fit on a Spark DataFrame.
+
+    Parameters
+    ----------
+    n_clusters : int
+        Number of clusters of all the units.
+    n_units : int
+        Number of units.
+    cohort_counts : dict
+        Number of clusters of the treated units of each treated cohort, keyed by
+        the cohort. A design with a single treated group passes its count under None.
+    """
+    if n_clusters == n_units:
+        return
+    few = [(cohort, count) for cohort, count in sorted(cohort_counts.items()) if 0 < count < 5]
     if n_clusters >= 30 and not few:
         return
 
     sentences = [f"The units fall in only {_clusters(n_clusters)}."] if n_clusters < 30 else []
-    single = None in cohort_clusters
+    single = None in cohort_counts
     if few:
         cohort, count = few[0]
         subject = "The treated units" if cohort is None else f"The treated units of cohort {_cohort_label(cohort)}"

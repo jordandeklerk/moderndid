@@ -475,3 +475,73 @@ def test_honest_did_covariance_matches_the_clustered_standard_errors_of_an_event
         stats.norm.ppf(0.975) * event_study.se_by_event[on_impact],
         rtol=1e-10,
     )
+
+
+@pytest.mark.parametrize(
+    "sensitivity_type, options",
+    [
+        ("smoothness", {"m_vec": np.array([0.0, 0.01])}),
+        ("relative_magnitude", {"m_bar_vec": np.array([0.0, 1.0]), "grid_points": 20}),
+    ],
+    ids=["smoothness", "relative_magnitude"],
+)
+def test_honest_did_on_an_event_study_of_a_shard_fit_matches_the_in_memory_fit(
+    att_gt_on_shards, sensitivity_type, options
+):
+    data = load_mpdta()
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "base_period": "universal",
+        "cband": False,
+    }
+    memory = aggte(att_gt(data, **spec), type="dynamic")
+    sharded = aggte(att_gt_on_shards(data, 3, **spec), type="dynamic")
+
+    from_memory = honest_did(memory, event_time=0, sensitivity_type=sensitivity_type, **options)
+    from_shards = honest_did(sharded, event_time=0, sensitivity_type=sensitivity_type, **options)
+
+    assert sharded.influence_func is None
+    np.testing.assert_allclose(from_shards.robust_ci["lb"], from_memory.robust_ci["lb"], rtol=1e-10)
+    np.testing.assert_allclose(from_shards.robust_ci["ub"], from_memory.robust_ci["ub"], rtol=1e-10)
+    np.testing.assert_allclose(
+        [from_shards.original_ci.lb, from_shards.original_ci.ub],
+        [from_memory.original_ci.lb, from_memory.original_ci.ub],
+        rtol=1e-12,
+    )
+
+
+def test_honest_did_on_an_event_study_of_a_clustered_shard_fit_matches_the_in_memory_fit(att_gt_on_shards):
+    data = load_mpdta().with_columns((pl.col("countyreal") // 1000).alias("state"))
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "base_period": "universal",
+        "clustervars": ["state"],
+        "cband": False,
+    }
+    with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
+        memory = aggte(att_gt(data, **spec), type="dynamic")
+    with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
+        sharded = aggte(att_gt_on_shards(data, 3, **spec), type="dynamic")
+    unclustered = aggte(att_gt_on_shards(data, 3, **{**spec, "clustervars": None}), type="dynamic")
+
+    from_memory = honest_did(memory, event_time=0, m_vec=np.array([0.0, 0.01]))
+    from_shards = honest_did(sharded, event_time=0, m_vec=np.array([0.0, 0.01]))
+    from_unclustered = honest_did(unclustered, event_time=0, m_vec=np.array([0.0, 0.01]))
+
+    assert sharded.estimation_params["n_clusters"] == 29
+    np.testing.assert_allclose(from_shards.robust_ci["lb"], from_memory.robust_ci["lb"], rtol=1e-10)
+    np.testing.assert_allclose(from_shards.robust_ci["ub"], from_memory.robust_ci["ub"], rtol=1e-10)
+    np.testing.assert_allclose(
+        [from_shards.original_ci.lb, from_shards.original_ci.ub],
+        [from_memory.original_ci.lb, from_memory.original_ci.ub],
+        rtol=1e-12,
+    )
+    assert np.max(np.abs(from_unclustered.robust_ci["lb"].to_numpy() - from_shards.robust_ci["lb"].to_numpy())) > 1e-3

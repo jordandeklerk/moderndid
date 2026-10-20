@@ -122,6 +122,82 @@ jobs:
       - name: Run the fast test suite
         run: tox -e ${{ matrix.env }}
 
+  # Since a classic Spark session and a Spark Connect session can't share a process, each mode runs in a job of its own.
+  # One mode per job also keeps each job short.
+  spark:
+    name: ${{ matrix.name }} (Python 3.13)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        include:
+          - name: Spark local cluster, classic
+            remote: ""
+          - name: Spark local cluster through Spark Connect
+            remote: local-cluster[2,1,1024]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Set up Java 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+          # Since PyPI has pyspark only as a source archive, this cache keeps the wheel that uv builds from it.
+          cache-suffix: spark
+      - name: Install dependencies
+        run: uv pip install --system tox tox-uv
+      # An empty MODERNDID_SPARK_REMOTE starts a classic session.
+      - name: Run the Spark tests on a local cluster
+        run: tox -e spark
+        env:
+          MODERNDID_SPARK_REMOTE: ${{ matrix.remote }}
+
+  spark-cluster:
+    name: Spark standalone cluster through Spark Connect (Python 3.13)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Since Spark Connect runs the client's Python functions on the workers, the client runs the Python of the image.
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+          cache-suffix: spark
+      - name: Install dependencies
+        run: uv pip install --system tox tox-uv
+      - name: Start the Spark cluster
+        run: docker compose -f tests/spark/cluster/compose.yaml up -d --build --wait
+      - name: Run the Spark tests on the cluster
+        run: tox -e spark
+        env:
+          MODERNDID_SPARK_REMOTE: sc://localhost:15002
+      - name: Show the cluster logs
+        if: failure()
+        run: docker compose -f tests/spark/cluster/compose.yaml logs --no-color
+      - name: Stop the Spark cluster
+        if: always()
+        run: docker compose -f tests/spark/cluster/compose.yaml down
+
   coverage:
     name: Full coverage (Python 3.14)
     runs-on: ubuntu-latest

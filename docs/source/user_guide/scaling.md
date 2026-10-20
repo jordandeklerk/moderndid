@@ -116,7 +116,9 @@ analysis spends time on these larger calculations, the
 and choose which calls use the GPU.
 
 Local threading and GPU acceleration both operate within one machine rather
-than distributing an analysis across a cluster. ModernDiD has no Dask or Spark
-backend for these calculations.
+than distributing an analysis across a cluster. When your panel outgrows one
+machine or already sits in a Spark table, {func}`~moderndid.att_gt` can fit it
+on a Spark cluster instead. The {ref}`Spark guide <spark>` explains when a
+Spark fit helps and when an in-memory fit is enough.
 
 <p class="mdid-footer-logo"><img src="../_static/logo-wordmark.svg" alt="ModernDiD logo"></p>

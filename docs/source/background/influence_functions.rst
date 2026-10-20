@@ -162,10 +162,11 @@ term for the aggregations in :func:`~moderndid.aggte`.
    :class: tip
 
    For a comparison that :func:`~moderndid.aggte` doesn't report, multiply the ``influence_func``
-   array by your fixed weights :math:`a` to get one contribution per row. Square the contributions,
-   sum them, take the square root, and divide by :math:`n`, the number of rows in the array. With
-   clustering, sum the contributions within each cluster before squaring and still divide by
-   :math:`n`.
+   array by your fixed weights :math:`a`, square the resulting contributions, sum them, take the
+   square root, and divide by :math:`n`, the number of rows in the array. With clustering, sum the
+   contributions within each cluster before squaring and still divide by :math:`n`. For a fit on a
+   Spark DataFrame, which keeps no ``influence_func``, the same standard error is
+   :math:`\sqrt{a'Va/n}` for :math:`V` its ``vcov_analytical`` and :math:`n` its ``n_units``.
 
 Clustered sampling
 ~~~~~~~~~~~~~~~~~~

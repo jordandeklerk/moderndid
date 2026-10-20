@@ -1,0 +1,6 @@
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!moderndid
+**/__pycache__

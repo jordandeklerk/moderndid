@@ -523,6 +523,12 @@ def cluster_data():
 
 
 @pytest.fixture
+def rademacher_keys():
+    """Random 64-bit keys of 200 units for the keyed bootstrap multipliers."""
+    return np.random.default_rng(42).integers(0, 2**64, size=200, dtype=np.uint64)
+
+
+@pytest.fixture
 def cuda_probes(monkeypatch):
     """Report CuPy as missing and answer the nvidia-smi and nvcc probes from a mock that fails by default."""
     probes = Mock(side_effect=FileNotFoundError("nvidia-smi"))

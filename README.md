@@ -65,9 +65,10 @@ uv add "moderndid[plots]"            # Core estimators and plotting
 uv add "moderndid[all]"              # All estimator extras and plots
 uv add "moderndid[didcont,plots]"    # Choose individual extras
 uv add "moderndid[gpu]"              # CUDA 12 GPU dependencies
+uv add "moderndid[spark]"            # PySpark for att_gt on Spark
 ```
 
-The `all` extra includes `didml` and leaves out `gpu`. The
+The `all` extra includes `didml` and leaves out `gpu` and `spark`. The
 [installation guide](https://moderndid.readthedocs.io/en/latest/user_guide/installation.html)
 covers every extra, GPU setup, and troubleshooting. The development version
 installs straight from GitHub.
@@ -105,6 +106,9 @@ Every estimator also comes with the tools the rest of an analysis needs.
   HTML, Word, and Typst tables.
 - Parallel threads speed up estimation on one machine.
 - Supported estimators also run on NVIDIA GPUs through CuPy for large panels.
+- `att_gt`
+  [fits a panel held in a Spark DataFrame](https://moderndid.readthedocs.io/en/latest/user_guide/spark.html)
+  on the Spark executors without collecting its rows.
 
 ## Quickstart
 

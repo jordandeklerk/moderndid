@@ -315,6 +315,116 @@ environment from ``uv.lock`` and mounts ``moderndid/``, ``tests/``, and
 ``pyproject.toml`` from your checkout. Before running ``pytest -m gpu``, it
 checks that CuPy can see the GPU and fails when CuPy can't.
 
+.. _testing-spark:
+
+Testing on Spark
+================
+
+A fit on a Spark DataFrame has to reproduce the in-memory result on a cluster
+whose tasks run in other processes. Since the shard engine never imports
+PySpark, we test it in the ordinary suite. Its parity tests in
+``tests/did/test_shards.py`` run it through ``LocalExecutor``, as the
+:ref:`architecture guide <architecture-shards>` describes.
+
+The tests in ``tests/spark/`` cover the whole path on Spark. They compare the
+results of ``att_gt``, ``aggte``, and ``honest_did`` on a Spark DataFrame with
+the in-memory results and confirm that the bootstrap draws don't change with
+the partitioning. Other tests check the unit table that ``build_unit_table``
+builds, the executor that runs each pass, and whether a Spark fit raises the
+same errors and warnings as an in-memory fit.
+
+Writing a Spark test
+--------------------
+
+Every test module in ``tests/spark/`` carries the ``spark`` marker that
+``pyproject.toml`` registers and skips itself when PySpark is missing. Unlike a
+folder whose ``conftest.py`` calls ``importorskip`` at the top,
+``tests/spark/conftest.py`` imports PySpark only when it is installed. Passing
+the folder to pytest by name without PySpark therefore skips its tests instead
+of stopping the run. The session fixture in the folder's ``conftest.py`` also
+needs a Java runtime on ``JAVA_HOME`` or ``PATH`` and skips without one, unless
+the tests connect to a running server at an ``sc://`` address.
+
+A parity test fits the same Polars data in memory and on Spark. The
+``to_spark`` fixture turns the data into a Spark DataFrame through Arrow.
+``record_warnings`` returns each fit with the warnings it raised. Once the test
+has checked that both fits raised the same warnings, ``assert_same_fit``
+compares their results at a tolerance such as 1e-12.
+
+.. admonition:: Keep the fixture in step with ``spark_att_gt``
+   :class: important
+
+   The ``att_gt_on_shards`` fixture in ``tests/conftest.py`` runs a fit
+   through ``LocalExecutor``. Since it builds ``estimation_params`` and
+   ``cluster_counts`` by hand the way ``spark_att_gt`` does, a change to how
+   ``spark_att_gt`` builds either one needs the same change in the fixture.
+
+Most Spark tests fit a unit table of one partition, since ``build_unit_table``
+merges its partitions to about a megabyte each and a test panel rarely fills
+more than one. To reach several partitions, repartition the table that the
+``unit_table_of`` fixture returns, by cluster in a clustered fit, as
+``test_executor.py`` does. A panel whose unit table passes a megabyte, such as
+``large_clustered_panel``, gets more than one partition from
+``build_unit_table`` itself. The eight shuffle partitions of the session
+fixture change how long a fit takes rather than what it estimates.
+
+A bootstrap test needs reference values that the engine didn't compute. Since
+a fit on shards draws different signs from an in-memory fit, its bootstrap
+standard errors don't match the in-memory ones. The tests in
+``tests/did/test_shards.py`` instead multiply ``keyed_rademacher`` signs on
+``canonical_keys`` of the unit or cluster identifiers by the in-memory
+influence function, summed within clusters for a clustered fit. They finish
+those draws with ``_mboot_from_draws`` and compare the engine's standard errors
+and critical value with the result at 1e-12. A test that compares the engine
+only with itself would pass a mistake that both sides share. The Spark tests
+compare their bootstrap with a fit through ``LocalExecutor`` because these
+reference tests already pin that fit.
+
+Running the Spark tests
+-----------------------
+
+On Linux or macOS, you can run the Spark tests in the ``spark`` Pixi
+environment. It provides PySpark and Java on Python 3.13. By default the
+session fixture starts a classic ``local-cluster[2,1,1024]`` session. Since its
+two executors have JVMs of their own, the tasks of every pass run outside the
+driver's JVM as they would on a cluster.
+
+Setting the ``MODERNDID_SPARK_REMOTE`` environment variable switches the
+fixture to Spark Connect. The value ``local-cluster[2,1,1024]`` starts a local
+Spark Connect server over the same kind of cluster. An address such as
+``sc://localhost:15002`` connects to a server that is already running. Each
+mode needs a pytest run of its own because a classic session and a Spark
+Connect session can't share one process.
+
+.. code-block:: bash
+
+   pixi run -e spark pytest tests/spark -ra
+   MODERNDID_SPARK_REMOTE="local-cluster[2,1,1024]" pixi run -e spark pytest tests/spark -ra
+
+As in the GPU command, ``-ra`` lists any skipped test with its reason.
+
+Testing on a Docker cluster
+---------------------------
+
+The executors of a local cluster share the Python environment of your test
+session. The Docker cluster in ``tests/spark/cluster/`` runs them in an image
+of their own, as a deployed cluster would. Its compose file starts a master,
+two workers, and a Spark Connect server. The image runs Python 3.13 like the
+``spark`` Pixi environment, since the executors need the same Python minor
+version as the test session. Because the image installs moderndid from your
+checkout, ``--build`` rebuilds it with the code you're testing.
+
+.. code-block:: bash
+
+   docker compose -f tests/spark/cluster/compose.yaml up -d --build --wait
+   MODERNDID_SPARK_REMOTE=sc://localhost:15002 pixi run -e spark pytest tests/spark -ra
+   docker compose -f tests/spark/cluster/compose.yaml down
+
+The ``--wait`` flag makes the first command return once the cluster's health
+checks pass. On macOS, the compose commands need a container runtime such as
+Colima. Start it with ``colima start --cpu 4 --memory 8`` before the first
+command and stop it with ``colima stop`` after the last.
+
 Understanding automated checks
 ==============================
 
@@ -337,6 +447,21 @@ fast suite with smaller installs. The ``minimal`` environment installs the
 package with its test tools and no extras. The ``minimal-plots`` environment
 adds the ``plots`` extra to that install. In both, every test that needs a
 missing extra skips through ``importorskip``.
+
+The ``spark`` and ``spark-cluster`` jobs run ``tox -e spark`` on Ubuntu with
+Python 3.13. The ``spark`` job runs it on a local cluster with Java 21, once in
+a classic session and once through Spark Connect. The ``spark-cluster`` job
+starts the Docker cluster from ``tests/spark/cluster/``, runs the same command
+against ``sc://localhost:15002``, and stops the cluster even when a test fails.
+Since the tox environment sets ``MODERNDID_REQUIRE_ALL_DEPS``, a test that
+would skip for lack of PySpark or Java fails instead.
+
+Both jobs install the newest PySpark, 4.2 at the time of writing, although the
+``spark`` extra allows 4.0 and later. The Docker cluster itself runs the 4.2.0
+that its image pins. Since CI never runs 4.0, a change that calls a PySpark API
+needs a check that 4.0 has it. The ``record_warnings`` fixture ignores
+warnings about unclosed sockets only because PySpark 4.0 and 4.1 leave the
+socket of each classic collect for the garbage collector to close.
 
 The weekly full-suite workflow runs on Sunday at 02:00 UTC and can also be
 started manually. An upstream dependency workflow runs at 03:00 UTC on Sunday

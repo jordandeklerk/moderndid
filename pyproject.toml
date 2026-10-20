@@ -84,6 +84,9 @@ plots = [
 gpu = [
     "cupy-cuda12x[ctk]>=14.0",
 ]
+spark = [
+    "pyspark[connect]>=4.0",
+]
 all = [
     "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots]",
 ]
@@ -204,6 +207,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "benchmark: marks benchmark tests",
     "gpu: marks tests that need CuPy and a CUDA GPU (select with '-m gpu')",
+    "spark: marks tests that need pyspark and Java (select with '-m spark')",
 ]
 
 [tool.coverage.run]
