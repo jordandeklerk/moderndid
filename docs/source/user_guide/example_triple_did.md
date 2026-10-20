@@ -36,7 +36,7 @@ and vary the specification one choice at a time.
 
 from plotnine import options
 
-options.figure_size = (12, 5)
+options.figure_size = (8.7, 3.6)
 options.dpi = 100
 ```
 

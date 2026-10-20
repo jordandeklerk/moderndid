@@ -30,7 +30,7 @@ time to show you which parts of the answer to this natural experiment hold up.
 import polars as pl
 from plotnine import options
 
-options.figure_size = (12, 5)
+options.figure_size = (8.7, 3.6)
 options.dpi = 100
 pl.Config.set_float_precision(4)
 ```
@@ -262,7 +262,7 @@ mystnb:
     alt: Group-time effects for the 2004, 2006, and 2007 cohorts in three stacked panels
 ---
 # Drop the gray grid with theme_moderndid and give the three stacked panels a taller canvas.
-did.plot_gt(result) + did.theme_moderndid() + theme(figure_size=(12, 8))
+did.plot_gt(result) + did.theme_moderndid() + theme(figure_size=(8.7, 5.8))
 ```
 
 ## How the effect builds over time
