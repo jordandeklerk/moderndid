@@ -18,14 +18,14 @@ def _whole_numbers_as_int(df, columns):
 
 
 def mpresult_to_polars(result):
-    """Convert MPResult to polars DataFrame for plotting.
+    """Convert MPResult or DIDMLResult to polars DataFrame for plotting.
 
     The ``group`` and ``time`` columns hold integers when every value in
     them is a whole number.
 
     Parameters
     ----------
-    result : MPResult
+    result : MPResult or DIDMLResult
         Multi-period DID result containing group-time ATT estimates.
 
     Returns
@@ -67,14 +67,14 @@ def mpresult_to_polars(result):
 
 
 def aggteresult_to_polars(result):
-    """Convert AGGTEResult to polars DataFrame for plotting.
+    """Convert AGGTEResult or DIDMLAggResult to polars DataFrame for plotting.
 
     The ``event_time`` column holds integers when every value in it is a
     whole number.
 
     Parameters
     ----------
-    result : AGGTEResult
+    result : AGGTEResult or DIDMLAggResult
         Aggregated treatment effect result (dynamic, group, or calendar).
 
     Returns
@@ -98,7 +98,7 @@ def aggteresult_to_polars(result):
 
     if result.event_times is None or result.att_by_event is None or result.se_by_event is None:
         raise ValueError(
-            f"AGGTEResult with aggregation_type='{result.aggregation_type}' "
+            f"{type(result).__name__} with aggregation_type='{result.aggregation_type}' "
             "must have event_times, att_by_event, and se_by_event"
         )
 
@@ -791,6 +791,87 @@ def dynbalancingcoefs_to_polars(result, history="ds1"):
     return pl.DataFrame(rows)
 
 
+def blpresult_to_polars(result):
+    """Convert BLPResult to polars DataFrame.
+
+    Returns one row per event time and coefficient. Rows are ordered by event
+    time and then by the key order of ``result.coefs``. An event time whose
+    regression was skipped for lack of data keeps its rows and holds NaN in
+    the estimate, se, and pvalue columns. The ``event_time`` column holds
+    integers when every value in it is a whole number.
+
+    Parameters
+    ----------
+    result : BLPResult
+        Best linear predictor result from :func:`~moderndid.blp_eventtimes`.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - **event_time**: Event time of the regression
+        - **covariate**: Name of the coefficient, "Intercept" for the constant
+        - **estimate**: Coefficient estimate
+        - **se**: Standard error
+        - **pvalue**: P-value of the coefficient
+    """
+    rows = [
+        (event_time, name, result.coefs[name][k], result.ses[name][k], result.pvalues[name][k])
+        for k, event_time in enumerate(result.event_times)
+        for name in result.coefs
+    ]
+
+    # Since an Int64 column would truncate a fractional event time, the cast below sets the integer dtype.
+    df = pl.DataFrame(
+        rows,
+        schema={
+            "event_time": pl.Float64,
+            "covariate": pl.String,
+            "estimate": pl.Float64,
+            "se": pl.Float64,
+            "pvalue": pl.Float64,
+        },
+        orient="row",
+    )
+    return _whole_numbers_as_int(df, ["event_time"])
+
+
+def clanresult_to_polars(result):
+    """Convert CLANResult to polars DataFrame.
+
+    Returns one row per covariate in ``result.affected``, in that order. Since
+    :func:`~moderndid.clan_ttest` and :func:`~moderndid.clan_glhtest` return a
+    list with one CLANResult per post-treatment event time, convert each item
+    of the list on its own.
+
+    Parameters
+    ----------
+    result : CLANResult
+        Classification analysis result for one event time.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - **covariate**: Covariate name
+        - **high_mean**: Mean of the covariate in the top CATT group
+        - **low_mean**: Mean of the covariate in the bottom CATT group
+        - **diff**: High mean minus low mean
+        - **pvalue**: P-value of the difference
+    """
+    return pl.DataFrame(
+        {
+            "covariate": result.affected,
+            "high_mean": result.high_means,
+            "low_mean": result.low_means,
+            "diff": result.diffs,
+            "pvalue": result.pvalues,
+        }
+    )
+
+
 _DISPATCH = {
     "MPResult": mpresult_to_polars,
     "AGGTEResult": aggteresult_to_polars,
@@ -806,6 +887,10 @@ _DISPATCH = {
     "DynBalancingResult": dynbalancingresult_to_polars,
     "DynBalancingHistoryResult": dynbalancinghistoryresult_to_polars,
     "DynBalancingHetResult": dynbalancinghetresult_to_polars,
+    "DIDMLResult": mpresult_to_polars,
+    "DIDMLAggResult": aggteresult_to_polars,
+    "BLPResult": blpresult_to_polars,
+    "CLANResult": clanresult_to_polars,
 }
 
 
@@ -838,6 +923,10 @@ def to_df(result, **kwargs):
         - :class:`~moderndid.diddynamic.DynBalancingResult`
         - :class:`~moderndid.diddynamic.DynBalancingHistoryResult`
         - :class:`~moderndid.diddynamic.DynBalancingHetResult`
+        - :class:`~moderndid.DIDMLResult`
+        - :class:`~moderndid.DIDMLAggResult`
+        - :class:`~moderndid.BLPResult`
+        - :class:`~moderndid.CLANResult`
     **kwargs
         Additional arguments passed to the underlying converter.
         For example, ``effect_type="acrt"`` for DoseResult.

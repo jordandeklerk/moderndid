@@ -56,9 +56,9 @@ def plot_gt(
 
     Parameters
     ----------
-    result : MPResult, DDDMultiPeriodResult, or DDDMultiPeriodRCResult
+    result : MPResult, DDDMultiPeriodResult, DDDMultiPeriodRCResult, or DIDMLResult
         Multi-period result object containing group-time ATT estimates.
-        This should be the output from ``att_gt()`` or ``ddd()``.
+        This should be the output from ``att_gt()``, ``ddd()``, or ``didml()``.
     show_ci : bool, default=True
         Whether to show confidence intervals as error bars.
     ref_line : float or None, default=0
@@ -77,7 +77,8 @@ def plot_gt(
     ggplot
         A plotnine ggplot object that can be further customized.
     """
-    if isinstance(result, MPResult):
+    # Since importing didml needs packages that a plots-only install lacks, its results are matched by class name.
+    if isinstance(result, MPResult) or type(result).__name__ == "DIDMLResult":
         df = mpresult_to_polars(result)
         plot_title = "Group-Time Average Treatment Effects"
     elif isinstance(result, (DDDMultiPeriodResult, DDDMultiPeriodRCResult)):
@@ -85,7 +86,8 @@ def plot_gt(
         plot_title = "Group-Time DDD Treatment Effects"
     else:
         raise TypeError(
-            f"plot_gt requires MPResult, DDDMultiPeriodResult, or DDDMultiPeriodRCResult, got {type(result).__name__}"
+            "plot_gt requires MPResult, DDDMultiPeriodResult, DDDMultiPeriodRCResult, or DIDMLResult, "
+            f"got {type(result).__name__}"
         )
 
     df = df.with_columns([df["group"].cast(int).cast(str).alias("group_label")])
@@ -149,7 +151,7 @@ def plot_event_study(
 
     Parameters
     ----------
-    result : AGGTEResult, PTEResult, DDDAggResult, or EmfxResult
+    result : AGGTEResult, PTEResult, DDDAggResult, EmfxResult, or DIDMLAggResult
         Aggregated treatment effect result with dynamic/eventstudy aggregation,
         or PTEResult with event_study attribute.
     show_ci : bool, default=True
@@ -183,14 +185,15 @@ def plot_event_study(
             raise ValueError(f"Event study plot requires eventstudy aggregation, got {result.aggregation_type}")
         df = dddaggresult_to_polars(result)
         default_title = "DDD Event Study"
-    elif isinstance(result, AGGTEResult):
+    # Since importing didml needs packages that a plots-only install lacks, its result is matched by class name.
+    elif isinstance(result, AGGTEResult) or type(result).__name__ == "DIDMLAggResult":
         if result.aggregation_type != "dynamic":
             raise ValueError(f"Event study plot requires dynamic aggregation, got {result.aggregation_type}")
         df = aggteresult_to_polars(result)
         default_title = "Event Study"
     else:
         raise TypeError(
-            "plot_event_study requires AGGTEResult, PTEResult, DDDAggResult, or EmfxResult, "
+            "plot_event_study requires AGGTEResult, PTEResult, DDDAggResult, EmfxResult, or DIDMLAggResult, "
             f"got {type(result).__name__}"
         )
 
