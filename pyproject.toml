@@ -29,7 +29,7 @@ dependencies = [
   "scipy>=1.17",
   "polars>=1.38",
   "pyarrow>=8.0.0",
-  "narwhals>=1.13.3",
+  "narwhals>=1.31.0",
   "statsmodels>=0.14.6",
   "prettytable>=3.10.0",
 ]
@@ -91,6 +91,7 @@ all = [
     "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots]",
 ]
 test = [
+    "duckdb>=1.1",
     "pytest",
     "pytest-benchmark",
     "pytest-cov",

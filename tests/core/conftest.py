@@ -50,8 +50,8 @@ def mpdta_pandas(mpdta):
 
 @pytest.fixture
 def duckdb_connection():
-    """In-memory DuckDB connection that skips the test when DuckDB is missing."""
-    duckdb = pytest.importorskip("duckdb")
+    """In-memory DuckDB connection."""
+    duckdb = importorskip("duckdb")
     return duckdb.connect()
 
 

@@ -27,6 +27,9 @@ pytest-cov = ">=4.0.0"
 pytest-timeout = ">=2.0.0"
 pytest-xdist = ">=3.6"
 
+[feature.dev.pypi-dependencies]
+duckdb = ">=1.1"
+
 [feature.dev.tasks]
 tests-core = "pytest -m 'not slow' -n auto --dist worksteal -vv"
 tests-full = "pytest -n auto --dist worksteal -vv"

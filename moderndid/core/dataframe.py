@@ -28,6 +28,13 @@ def to_polars(df):
     if isinstance(df, pl.DataFrame):
         return df
 
+    msg = f"Expected object implementing '__arrow_c_stream__' or a pandas DataFrame, got: {type(df).__name__}"
+    # Since a pandas 3 Series also exports an Arrow stream, a Series other than a polars one stops here before the
+    # PyCapsule branch reads it as a table.
+    series = nw.from_native(df, series_only=True, pass_through=True)
+    if isinstance(series, nw.Series) and not isinstance(df, pl.Series):
+        raise TypeError(msg)
+
     # Arrow PyCapsule Interface
     if hasattr(df, "__arrow_c_stream__"):
         return nw.from_arrow(df, backend=pl).to_native()
@@ -37,7 +44,6 @@ def to_polars(df):
     if isinstance(frame, nw.DataFrame):
         return frame.to_polars()
 
-    msg = f"Expected object implementing '__arrow_c_stream__' or a pandas DataFrame, got: {type(df).__name__}"
     raise TypeError(msg)
 
 

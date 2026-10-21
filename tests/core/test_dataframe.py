@@ -92,16 +92,14 @@ class TestPyArrowInput:
 
 
 class TestDuckDBInput:
-    def test_arrow_table_from_query(self, duckdb_connection):
-        arrow = duckdb_connection.execute("SELECT 1 as a, 2 as b").fetch_arrow_table()
-        result = to_polars(arrow)
+    def test_relation_from_query(self, duckdb_connection):
+        result = to_polars(duckdb_connection.sql("SELECT 1 AS a, 2 AS b"))
         assert isinstance(result, pl.DataFrame)
         assert result.columns == ["a", "b"]
 
-    def test_arrow_table_with_multiple_rows(self, duckdb_connection):
-        arrow = duckdb_connection.execute("SELECT * FROM range(10) AS t(x)").fetch_arrow_table()
-        result = to_polars(arrow)
-        assert len(result) == 10
+    def test_relation_with_multiple_rows(self, duckdb_connection):
+        result = to_polars(duckdb_connection.sql("SELECT * FROM range(10) AS t(x)"))
+        assert result["x"].to_list() == list(range(10))
 
 
 class TestInvalidInput:
@@ -125,12 +123,6 @@ class TestInvalidInput:
         with pytest.raises(TypeError, match="__arrow_c_stream__"):
             to_polars("not a dataframe")
 
-    @pytest.mark.xfail(
-        hasattr(pd.Series, "__arrow_c_stream__"),
-        raises=pl.exceptions.SchemaError,
-        strict=True,
-        reason="a pandas 3 Series takes the PyCapsule branch and raises polars' SchemaError in place of TypeError",
-    )
     def test_pandas_series_raises(self):
         s = pd.Series([1, 2, 3])
         with pytest.raises(TypeError, match="__arrow_c_stream__"):
@@ -181,6 +173,11 @@ def test_load_mpdta_returns_the_county_data_on_old_pandas():
     assert result["year"].unique().sort().to_list() == [2003, 2004, 2005, 2006, 2007]
     assert result["first.treat"].unique().sort().to_list() == [0, 2004, 2006, 2007]
     assert result["treat"].to_list() == (result["first.treat"] > 0).cast(pl.Int64).to_list()
+
+
+def test_to_polars_rejects_a_pyarrow_chunked_array():
+    with pytest.raises(TypeError, match=re.escape("got: ChunkedArray")):
+        to_polars(pa.chunked_array([[1, 2], [3]]))
 
 
 def test_to_polars_error_names_the_accepted_inputs():
