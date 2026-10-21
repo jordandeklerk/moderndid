@@ -79,7 +79,7 @@ def mpdta_converted(request, mpdta_data):
         duckdb = importorskip("duckdb")
         conn = duckdb.connect()
         conn.register("mpdta", mpdta_data.to_arrow())
-        return conn.execute("SELECT * FROM mpdta").fetch_arrow_table()
+        return conn.sql("SELECT * FROM mpdta")
     raise ValueError(f"Unknown dataframe type: {df_type}")
 
 

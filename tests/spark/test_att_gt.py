@@ -8,12 +8,13 @@ import pytest
 from polars.testing import assert_frame_equal
 from scipy import stats
 
-from moderndid import aggte, att_gt, drdid_panel, honest_did, to_df
 from tests.helpers import importorskip
 
 pyspark = importorskip("pyspark")
 
 from pyspark.sql import functions as F
+
+from moderndid import aggte, att_gt, drdid_panel, honest_did, to_df
 
 pytestmark = pytest.mark.spark
 

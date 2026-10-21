@@ -973,7 +973,7 @@ def contdid_converted(request, contdid_data):
         duckdb = importorskip("duckdb")
         conn = duckdb.connect()
         conn.register("contdid_data", contdid_data.to_arrow())
-        return conn.execute("SELECT * FROM contdid_data").fetch_arrow_table()
+        return conn.sql("SELECT * FROM contdid_data")
     raise ValueError(f"Unknown dataframe type: {df_type}")
 
 

@@ -1018,9 +1018,10 @@ base periods, weights, clusters, and anticipation. The
    engine copies neither the iteration count of an exactly collinear logit,
    which varies from run to run inside statsmodels, nor the warnings and errors
    of the Gaussian GLM in ``reg_did_panel``, nor the RuntimeWarnings that NumPy
-   raises inside statsmodels. A Spark fit also lists the cohorts of its
-   small-groups warning in ascending order and stops before its first job on
-   weights or covariates that aren't numbers.
+   raises inside statsmodels. Nor does it copy the ``SingularMatrixWarning``
+   that statsmodels 0.15 raises for a rank-deficient design. A Spark fit also
+   lists the cohorts of its small-groups warning in ascending order and stops
+   before its first job on weights or covariates that aren't numbers.
 
 The kernels and the driver repeat what the in-memory ``att_gt`` computes.
 ``build_unit_table`` in ``spark/preprocess.py`` runs the in-memory ``validate``

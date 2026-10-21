@@ -10,7 +10,7 @@ import numpy as np
 import polars as pl
 import pyarrow as pa
 import pytest
-from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
+from statsmodels.tools.sm_exceptions import PerfectSeparationWarning, SingularMatrixWarning
 
 from moderndid import aggte, att_gt, drdid_panel, preprocess_did
 from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
@@ -378,6 +378,7 @@ def test_att_gt_on_shards_warns_like_att_gt_when_regression_covariates_are_colli
 
     with warnings.catch_warnings(record=True) as memory_warnings:
         warnings.simplefilter("always")
+        warnings.simplefilter("ignore", SingularMatrixWarning)
         memory = att_gt(mpdta_collinear_covariates, **spec)
     with warnings.catch_warnings(record=True) as shard_warnings:
         warnings.simplefilter("always")
@@ -409,6 +410,7 @@ def test_att_gt_on_shards_matches_att_gt_when_propensity_covariates_are_collinea
 
     with warnings.catch_warnings(record=True) as memory_warnings:
         warnings.simplefilter("always")
+        warnings.simplefilter("ignore", SingularMatrixWarning)
         memory = att_gt(mpdta_collinear_covariates, **spec)
     with warnings.catch_warnings(record=True) as shard_warnings:
         warnings.simplefilter("always")
