@@ -32880,7 +32880,7 @@ packages:
   - great-tables>=0.2.0 ; extra == 'etwfe'
   - cupy-cuda12x[ctk]>=14.0 ; extra == 'gpu'
   - plotnine>=0.14.0 ; extra == 'plots'
-  - pyspark[connect]>=4.0 ; extra == 'spark'
+  - pyspark[connect]>=3.5 ; extra == 'spark'
   - pytest ; extra == 'test'
   - pytest-benchmark ; extra == 'test'
   - pytest-cov ; extra == 'test'

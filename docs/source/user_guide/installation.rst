@@ -91,7 +91,7 @@ plotting, or faster computation to the base installation.
          * - ``gpu``
            - CuPy computation on supported NVIDIA hardware.
          * - ``spark``
-           - Spark computation of :func:`~moderndid.att_gt` with PySpark 4.0 or later.
+           - Spark computation of :func:`~moderndid.att_gt` with PySpark 3.5 or later.
          * - ``all``
            - All estimator and plotting dependencies, without GPU or Spark dependencies.
 
@@ -107,11 +107,12 @@ analysis.
 
    python -m pip install "moderndid[didcont,plots]"
 
-Besides the ``spark`` extra, running Spark on your own machine needs Java 17 or
-later. On Databricks, leave out the ``spark`` extra, since the runtime already
-provides PySpark. The :doc:`Spark guide <spark>` says which Databricks runtimes
-to choose and shows how to install ``moderndid`` on the executors of a
-Databricks cluster or one you manage.
+Besides the ``spark`` extra, running Spark on your own machine needs Java.
+Java 17 works with both Spark 3.5 and Spark 4. On Databricks, leave out the
+``spark`` extra, since the runtime already provides PySpark. The
+:doc:`Spark guide <spark>` says which Databricks runtimes to choose and shows
+how to install ``moderndid`` on the executors of a Databricks cluster or one
+you manage.
 
 Check the installation
 -----------------------

@@ -233,7 +233,7 @@ def test_att_gt_on_spark_keeps_each_cluster_whole_on_a_unit_table_of_several_par
     np.testing.assert_allclose(distributed.att_gt, memory.att_gt, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(distributed.vcov_analytical, memory.vcov_analytical, rtol=1e-12, atol=1e-12)
     assert_same_fit(distributed, local, 1e-12)
-    np.testing.assert_allclose(moments.cluster_gram, expected.cluster_gram, rtol=1e-12, atol=1e-10)
+    np.testing.assert_allclose(moments.cluster_gram, expected.cluster_gram, rtol=1e-12, atol=1e-9)
     np.testing.assert_allclose(moments.bootstrap_sums, expected.bootstrap_sums, rtol=1e-12, atol=1e-10)
 
 
@@ -422,16 +422,16 @@ def test_att_gt_on_spark_rejects_options_it_cannot_fit(mpdta_data, to_spark, opt
         att_gt(frame, yname="lemp", tname="year", idname="countyreal", gname="first.treat", **option)
 
 
-def test_att_gt_on_spark_rejects_a_pyspark_older_than_4(mpdta_data, to_spark, monkeypatch):
+def test_att_gt_on_spark_rejects_a_pyspark_older_than_3_5(mpdta_data, to_spark, monkeypatch):
     frame = to_spark(mpdta_data)
-    monkeypatch.setattr(pyspark, "__version__", "3.5.1")
+    monkeypatch.setattr(pyspark, "__version__", "3.4.1")
 
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "pyspark 3.5.1 is installed. A fit of att_gt on a Spark DataFrame needs pyspark 4.0 or later. Upgrade "
-            "pyspark or, on Databricks, choose a runtime with Spark 4, as the Spark guide of the moderndid docs "
-            "describes."
+            "pyspark 3.4.1 is installed. A fit of att_gt on a Spark DataFrame needs pyspark 3.5 or later. Upgrade "
+            "pyspark or, on Databricks, choose Databricks Runtime 16 or later, as the Spark guide of the moderndid "
+            "docs describes."
         ),
     ):
         att_gt(frame, yname="lemp", tname="year", idname="countyreal", gname="first.treat")

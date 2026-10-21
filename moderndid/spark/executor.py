@@ -78,9 +78,13 @@ class SparkExecutor:
         if self._n_tasks is None or self._n_tasks > 16:
             # Since grouping task numbers by their integer square root gives about the root of their count in groups
             # of at most twice that size, the second stage stays balanced without knowing the count in advance.
-            frame = frame.groupBy(F.floor(F.sqrt(F.col("part")))).applyInArrow(
-                _combine_task(version, python, arrow_schema), _spark_schema()
-            )
+            grouped = frame.groupBy(F.floor(F.sqrt(F.col("part"))))
+            combine = _combine_task(version, python, arrow_schema)
+            # Since PySpark 3.5 has no grouped applyInArrow, its groups reach the same combine function through pandas.
+            if hasattr(grouped, "applyInArrow"):
+                frame = grouped.applyInArrow(combine, _spark_schema())
+            else:
+                frame = grouped.applyInPandas(_pandas_combine(combine, arrow_schema), _spark_schema())
         rows = frame.collect()
         self.n_passes += 1
 
@@ -171,12 +175,14 @@ def _shard_task(payload, version, python, n_periods, n_covariates, arrow_schema)
 
 
 def _combine_task(version, python, arrow_schema):
-    """Return the ``applyInArrow`` function that combines the rows of one group of tasks.
+    """Return the function that combines the rows of one group of tasks.
 
-    The function folds the statistics in the order of the task numbers. It
-    unpickles one payload at a time so that the others stay in their Arrow
-    buffers. Rows whose versions differ from the driver's pass through
-    unchanged. An executor whose own versions differ returns only its report.
+    The function takes the rows of the group as a pyarrow Table and returns a
+    pyarrow Table of the combined rows. It folds the statistics in the order of
+    the task numbers. It unpickles one payload at a time so that the others
+    stay in their Arrow buffers. Rows whose versions differ from the driver's
+    pass through unchanged. An executor whose own versions differ returns only
+    its report.
     """
 
     def combine(table):
@@ -238,6 +244,21 @@ def _combine_task(version, python, arrow_schema):
         return pa.Table.from_pylist(result, schema=arrow_schema)
 
     return combine
+
+
+def _pandas_combine(combine, arrow_schema):
+    """Return the ``applyInPandas`` function that runs a combine function on the rows of one group.
+
+    The function turns the pandas DataFrame of the group into a pyarrow Table
+    of the Arrow schema, combines the rows, and returns the result as a pandas
+    DataFrame.
+    """
+
+    def combine_frame(frame):
+        table = pa.Table.from_pandas(frame, schema=arrow_schema, preserve_index=False)
+        return combine(table).to_pandas()
+
+    return combine_frame
 
 
 def _version_message(found, found_python, error, version, python):

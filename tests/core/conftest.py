@@ -34,11 +34,43 @@ from moderndid.drdid.drdid import drdid
 from moderndid.drdid.ipwdid import ipwdid
 from moderndid.drdid.ordid import ordid
 from moderndid.etwfe.container import EmfxResult
+from tests.helpers import importorskip
 
 
 @pytest.fixture(scope="session")
 def mpdta():
     return load_mpdta()
+
+
+@pytest.fixture
+def mpdta_pandas(mpdta):
+    """The county data as a pandas DataFrame."""
+    return mpdta.to_pandas()
+
+
+@pytest.fixture
+def duckdb_connection():
+    """In-memory DuckDB connection that skips the test when DuckDB is missing."""
+    duckdb = pytest.importorskip("duckdb")
+    return duckdb.connect()
+
+
+@pytest.fixture
+def mixed_pandas_data():
+    """Pandas DataFrame of panel data that holds every column type polars must read."""
+    pd = importorskip("pandas")
+    return pd.DataFrame(
+        {
+            "id": [1, 1, 2, 2, 3, 3],
+            "year": [2003, 2004, 2003, 2004, 2003, 2004],
+            "y": [1.5, np.nan, 3.25, 4.0, 5.5, 6.0],
+            "visits": pd.array([1, None, 3, 4, 5, 6], dtype="Int64"),
+            "group": ["a", "b", None, "a", "b", "c"],
+            "treated": [True, False, True, True, False, False],
+            "cohort": pd.Categorical(["x", "y", "x", None, "y", "x"]),
+            "date": pd.to_datetime(["2020-01-01", "2020-01-02", None, "2020-01-04", "2020-01-05", "2020-01-06"]),
+        }
+    )
 
 
 @pytest.fixture(scope="session")

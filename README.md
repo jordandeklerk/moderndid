@@ -175,7 +175,7 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder.getOrCreate()
 
 # The county data stands in for a large panel stored in a Spark table
-data = spark.createDataFrame(did.load_mpdta().to_arrow())
+data = spark.createDataFrame(did.load_mpdta().to_pandas())
 
 # The same calls as in the quickstart
 result = did.att_gt(

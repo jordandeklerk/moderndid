@@ -61,12 +61,13 @@ walks through the conversion on a county panel.
 
 ### Which DataFrames and column types does ModernDiD accept?
 
-ModernDiD accepts DataFrames from libraries that implement the Arrow PyCapsule
-interface. If a pandas DataFrame keeps the unit or period in its index, call
-`reset_index()` first, since only columns survive the conversion. The unit
-identifier, time, outcome, and timing columns must all be numeric. Map text
-identifiers to integers with `pl.col("id").rank("dense")` across the whole
-dataset and turn dates into integer periods such as `pl.col("date").dt.year()`.
+ModernDiD accepts pandas DataFrames and DataFrames from libraries that implement
+the Arrow PyCapsule interface. If a pandas DataFrame keeps the unit or period in
+its index, call `reset_index()` first, since only columns survive the
+conversion. The unit identifier, time, outcome, and timing columns must all be
+numeric. Map text identifiers to integers with `pl.col("id").rank("dense")`
+across the whole dataset and turn dates into integer periods such as
+`pl.col("date").dt.year()`.
 The {ref}`data guide <data-formats>` shows how to prepare Polars, pandas, and
 pyarrow inputs and what to do with a lazy table.
 

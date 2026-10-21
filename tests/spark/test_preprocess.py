@@ -210,7 +210,9 @@ def test_att_gt_on_spark_rejects_decimal_ids_and_clusters_that_64_bit_integers_c
         att_gt(frame, yname="lemp", tname="year", idname="countyreal", gname="first.treat", **options)
 
 
-def test_build_unit_table_holds_each_unit_in_the_layout_that_shards_read(mpdta_with_weights_and_states, unit_table_of):
+def test_build_unit_table_holds_each_unit_in_the_layout_that_shards_read(
+    mpdta_with_weights_and_states, unit_table_of, to_arrow
+):
     spec = {
         "yname": "lemp",
         "tname": "year",
@@ -224,7 +226,7 @@ def test_build_unit_table_holds_each_unit_in_the_layout_that_shards_read(mpdta_w
     did_data = preprocess_did(mpdta_with_weights_and_states, panel=True, allow_unbalanced_panel=False, **spec)
     expected = shards_from_did_data(did_data, 1)[0]
     unit_table, config, *_ = unit_table_of(mpdta_with_weights_and_states, **spec)
-    shard = shard_from_arrow(unit_table.toArrow(), config.time_periods_count, 1)
+    shard = shard_from_arrow(to_arrow(unit_table), config.time_periods_count, 1)
     order = np.argsort(shard.unit_keys)
     expected_order = np.argsort(expected.unit_keys)
 

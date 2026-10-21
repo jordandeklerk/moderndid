@@ -1947,7 +1947,7 @@ requires-dist = [
     { name = "prettytable", specifier = ">=3.10.0" },
     { name = "pyarrow", specifier = ">=8.0.0" },
     { name = "pyfixest", marker = "extra == 'etwfe'", specifier = ">=0.40.0,<0.50.0" },
-    { name = "pyspark", extras = ["connect"], marker = "extra == 'spark'", specifier = ">=4.0" },
+    { name = "pyspark", extras = ["connect"], marker = "extra == 'spark'", specifier = ">=3.5" },
     { name = "pytest", marker = "extra == 'test'" },
     { name = "pytest-benchmark", marker = "extra == 'test'" },
     { name = "pytest-cov", marker = "extra == 'test'" },

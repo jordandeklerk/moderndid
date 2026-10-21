@@ -327,7 +327,13 @@ def _kept_rows(data, config, kept, periods, mean_weight, cluster, covariates, ty
     negative zero joins the cluster of zero.
     """
     period = _column(config.tname)
-    index = F.array_position(F.array(*[F.lit(value) for value in periods]), period) - 1 if periods else F.lit(-1)
+    index = F.lit(-1)
+    if periods:
+        # Since the array_position of PySpark 3.5 accepts only a literal value, a CASE WHEN chain numbers the periods.
+        index = F.when(period == F.lit(periods[0]), 0)
+        for position, value in enumerate(periods[1:], start=1):
+            index = index.when(period == F.lit(value), position)
+        index = index.otherwise(-1)
     columns = [
         _column(config.idname).alias("id"),
         period.alias("t"),

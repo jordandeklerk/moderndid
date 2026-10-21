@@ -94,8 +94,11 @@ From input names to a configuration
 
 At the data boundary, ``to_polars`` in ``core/dataframe.py`` passes
 a Polars DataFrame through directly and converts other accepted inputs
-through Narwhals using their ``__arrow_c_stream__`` interface. Being called a
-DataFrame is therefore not enough to make an arbitrary object valid input.
+through Narwhals. An input with an ``__arrow_c_stream__`` interface converts
+through that interface. An eager DataFrame without it, such as a pandas
+DataFrame older than 2.2, converts only when Narwhals supports its library.
+Being called a DataFrame is therefore not enough to make an arbitrary object
+valid input.
 Once the data reach this boundary, shared selection, filtering, joins, and
 sorting use Polars. Numerical estimators then work on arrays that an adapter
 prepares for their calculation or dependency.
@@ -798,18 +801,39 @@ task's moderndid and Python versions for the driver to check. They travel as
 data because an exception raised on an executor would reach the driver as a
 ``PythonException`` rather than as an error that says what to install.
 
-When a pass has more than 16 tasks, a grouped ``applyInArrow`` stage combines
-the rows of the :math:`P` tasks in about :math:`\sqrt{P}` groups. The driver
-then collects one row per group instead of one per task. Because the executor
-counts the tasks only once a pass has run, the first pass takes that route too.
+When a pass has more than 16 tasks, a grouped stage combines the rows of the
+:math:`P` tasks in about :math:`\sqrt{P}` groups. The driver then collects one
+row per group instead of one per task. Because the executor counts the tasks
+only once a pass has run, the first pass takes that route too.
 
-Code that runs on Spark keeps to five rules that the tests through
+Wherever the grouped data has ``applyInArrow``, as on PySpark 4, the stage
+hands each group through it to the function that ``_combine_task`` returns.
+Elsewhere, as on open-source PySpark 3.5, ``applyInPandas`` calls the same
+function through ``_pandas_combine``. That wrapper rebuilds the group as a
+pyarrow Table of the fixed schema and returns the combined rows as pandas.
+While it combines a group of up to about :math:`2\sqrt{P}` rows, it holds three
+copies of their payloads, two in Arrow and one in pandas. The Arrow copies are
+the batch that PySpark keeps while the wrapper runs and the table that the
+wrapper rebuilds.
+
+Code that runs on Spark keeps to six rules that the tests through
 ``LocalExecutor`` mostly can't check.
 
 - It calls only DataFrame APIs that Spark Connect supports and never
   ``sparkContext``, RDDs, or broadcast variables. The second stage groups its
-  rows through ``applyInArrow`` since ``repartition(k)`` would need a partition
-  count that costs an extra job under Spark Connect.
+  rows with ``groupBy`` since ``repartition(k)`` would need a partition count
+  that costs an extra job under Spark Connect.
+- It runs on PySpark 3.5 as well as on PySpark 4. Code that needs an API newer
+  than 3.5 keeps a 3.5 path beside it and picks between the two by feature,
+  never by version. A check of the version would miss the newer APIs that
+  Databricks adds to its PySpark 3.5, such as ``toArrow`` from Databricks
+  Runtime 15.3 on. ``SparkExecutor.run`` checks the grouped data for
+  ``applyInArrow`` this way, as the ``to_arrow`` test fixture checks a
+  DataFrame for ``toArrow``. Where PySpark 3.5 takes only a literal, such as
+  the value that ``array_position`` looks up, the code passes no Column.
+  ``_kept_rows`` in ``spark/preprocess.py`` therefore numbers the periods with
+  a CASE WHEN chain. Library code reads the version only in the floor check of
+  ``spark/att_gt.py``. CI runs the Spark tests on PySpark 3.5 and 4.2.
 - It never sets a session configuration, since Databricks documents that
   serverless compute lets a session set only a few of them.
 - Kernels are module-level functions in ``kernels.py`` with NamedTuple states,

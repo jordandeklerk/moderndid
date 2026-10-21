@@ -346,7 +346,10 @@ needs a Java runtime on ``JAVA_HOME`` or ``PATH`` and skips without one, unless
 the tests connect to a running server at an ``sc://`` address.
 
 A parity test fits the same Polars data in memory and on Spark. The
-``to_spark`` fixture turns the data into a Spark DataFrame through Arrow.
+``to_spark`` fixture turns the data into a Spark DataFrame through Arrow. Since
+PySpark 3.5 can neither build a DataFrame from a pyarrow Table nor collect a
+DataFrame with ``toArrow()``, a test that needs either step calls ``to_spark``
+or the ``to_arrow`` fixture rather than the PySpark method.
 ``record_warnings`` returns each fit with the warnings it raised. Once the test
 has checked that both fits raised the same warnings, ``assert_same_fit``
 compares their results at a tolerance such as 1e-12.
@@ -384,7 +387,7 @@ Running the Spark tests
 -----------------------
 
 On Linux or macOS, you can run the Spark tests in the ``spark`` Pixi
-environment. It provides PySpark and Java on Python 3.13. By default the
+environment. It provides PySpark 4.2 and Java 21 on Python 3.13. By default the
 session fixture starts a classic ``local-cluster[2,1,1024]`` session. Since its
 two executors have JVMs of their own, the tasks of every pass run outside the
 driver's JVM as they would on a cluster.
@@ -402,6 +405,38 @@ Connect session can't share one process.
    MODERNDID_SPARK_REMOTE="local-cluster[2,1,1024]" pixi run -e spark pytest tests/spark -ra
 
 As in the GPU command, ``-ra`` lists any skipped test with its reason.
+
+The ``spark35`` Tox environment runs the same tests on PySpark 3.5 with numpy
+below 2, pandas below 2.2, and pyarrow below 16, as on Databricks Runtime 16.
+Since the tests of older pandas in ``tests/core/test_dataframe.py`` skip on any
+pandas with the Arrow PyCapsule interface, the environment runs that file too.
+It needs three things that the Pixi runs above don't.
+
+- Java 17 on ``JAVA_HOME``, because Spark 3.5 can't run its Arrow functions on
+  Java 21.
+- The tox-uv plugin, because ``constrain_package_deps = true`` puts the pins
+  into a constraint file and pip rejects the extra of ``pyspark[connect]``
+  there.
+- Network access on the first run through Spark Connect, when Spark downloads
+  the server's package from Maven Central into ``~/.ivy2``.
+
+The environment runs on Python 3.12, the Python of Databricks Runtime 16. The
+commands below run it in a classic session and through Spark Connect.
+
+.. code-block:: bash
+
+   uvx --with tox-uv tox -e spark35
+   MODERNDID_SPARK_REMOTE="local-cluster[2,1,1024]" uvx --with tox-uv tox -e spark35
+
+Since PySpark 3.5 doesn't bundle the Spark Connect server, the session fixture
+adds its package through ``spark.jars.packages`` on 3.5. A ``local[2]`` server
+like the one in the :ref:`Spark guide <spark>` needs nothing more, because its
+executor shares the driver's JVM. On the executors of a ``local-cluster``
+server, Spark 3.5 runs the tasks of each Connect session with a class loader
+that sees only the executor's classpath and the session's own jars. The
+fixture therefore also puts the jar from Ivy's default folder,
+``~/.ivy2/jars``, on ``spark.executor.extraClassPath``. A custom
+``spark.jars.ivy`` would move the jar out of that folder and break those runs.
 
 Testing on a Docker cluster
 ---------------------------
@@ -448,20 +483,26 @@ package with its test tools and no extras. The ``minimal-plots`` environment
 adds the ``plots`` extra to that install. In both, every test that needs a
 missing extra skips through ``importorskip``.
 
-The ``spark`` and ``spark-cluster`` jobs run ``tox -e spark`` on Ubuntu with
-Python 3.13. The ``spark`` job runs it on a local cluster with Java 21, once in
-a classic session and once through Spark Connect. The ``spark-cluster`` job
-starts the Docker cluster from ``tests/spark/cluster/``, runs the same command
+The ``spark`` and ``spark-cluster`` jobs run the Spark tests on Ubuntu. The
+``spark`` job runs them on a local cluster, once in a classic session and once
+through Spark Connect, on each of two PySpark lines. Its PySpark 4.2 entries
+run ``tox -e spark`` on Python 3.13 with Java 21. Its PySpark 3.5 entries run
+``tox -e spark35`` on Python 3.12 with Java 17. The ``spark-cluster`` job
+starts the Docker cluster from ``tests/spark/cluster/``, runs ``tox -e spark``
 against ``sc://localhost:15002``, and stops the cluster even when a test fails.
-Since the tox environment sets ``MODERNDID_REQUIRE_ALL_DEPS``, a test that
+Since both tox environments set ``MODERNDID_REQUIRE_ALL_DEPS``, a test that
 would skip for lack of PySpark or Java fails instead.
 
-Both jobs install the newest PySpark, 4.2 at the time of writing, although the
-``spark`` extra allows 4.0 and later. The Docker cluster itself runs the 4.2.0
-that its image pins. Since CI never runs 4.0, a change that calls a PySpark API
-needs a check that 4.0 has it. The ``record_warnings`` fixture ignores
-warnings about unclosed sockets only because PySpark 4.0 and 4.1 leave the
-socket of each classic collect for the garbage collector to close.
+The ``spark`` environment installs the newest PySpark, 4.2 at the time of
+writing. The Docker cluster runs the 4.2.0 that its image pins. Because the
+``spark35`` entries test the 3.5 floor of the ``spark`` extra, a call to a
+PySpark API that 3.5 lacks fails there unless the code keeps a 3.5 path, as
+the rules for Spark code in the :ref:`architecture guide <architecture-shards>`
+require. The ``record_warnings`` fixture ignores two warnings that come from
+PySpark rather than from a fit. Classic sessions of PySpark 3.5 through 4.1
+leave the socket of each collect for the garbage collector to close.
+PySpark 3.5 also checks the versions of pandas and pyarrow with the deprecated
+version classes of ``distutils``.
 
 The weekly full-suite workflow runs on Sunday at 02:00 UTC and can also be
 started manually. An upstream dependency workflow runs at 03:00 UTC on Sunday

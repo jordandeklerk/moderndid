@@ -23,20 +23,24 @@ When an in-memory fit is enough
 If the data fits comfortably in memory, an in-memory fit is simpler and
 usually faster, since every step on Spark pays for scheduling a job across the
 cluster. A Spark DataFrame that small can be collected to the driver first.
-Passing ``data.toArrow()`` to ``att_gt`` gives an in-memory fit that also
-accepts the arguments a Spark fit rejects, such as ``panel=False`` and
-``allow_unbalanced_panel=True``. Without a cluster, the ``n_jobs`` argument can
-spread the comparisons over several threads, as the
-:ref:`CPU parallelism guide <scaling>` shows.
+Passing ``data.toArrow()`` to ``att_gt``, or ``data.toPandas()`` on PySpark
+3.5, gives an in-memory fit that also accepts the arguments a Spark fit
+rejects, such as ``panel=False`` and ``allow_unbalanced_panel=True``. Without a
+cluster, the ``n_jobs`` argument can spread the comparisons over several
+threads, as the :ref:`CPU parallelism guide <scaling>` shows.
 
 Setting up Spark
 ----------------
 
-You need Spark 4.0 or later, whether you run classic Spark, Spark Connect, or
+You need Spark 3.5 or later, whether you run classic Spark, Spark Connect, or
 Databricks. With an older PySpark, the fit stops before Spark runs a job and
 names the version it found. On a laptop or a cluster you manage, the ``spark``
 extra installs PySpark together with the Spark Connect client. Running Spark
-on your own machine also needs Java 17 or later.
+on your own machine also needs Java 17 or 21 for Spark 4, or Java 8, 11, or 17
+for Spark 3.5. On Java 21, the Arrow library that Spark 3.5 bundles stops a fit
+at its first pass. Because Python 3.12 dropped the ``distutils`` module that
+PySpark 3.5 imports, an install of PySpark 3.5 that you manage also needs
+setuptools to provide it.
 
 .. tab-set::
 
@@ -75,15 +79,13 @@ sample of units first checks a new cluster quickly.
 Running on Databricks
 ^^^^^^^^^^^^^^^^^^^^^
 
-Since we haven't yet run moderndid on Databricks, the steps in this section
-follow Databricks' documentation. On a cluster, choose a runtime built on
-Spark 4, such as Databricks Runtime 17.0 or later. On serverless compute,
-moderndid needs `environment version
+Since we haven't yet run a fit on Databricks, the steps in this section follow
+Databricks' documentation. On a cluster, choose Databricks Runtime 16.0 or
+later, either a 16.x runtime with Spark 3.5 or one from 17.0 on with Spark 4.
+On serverless compute, moderndid needs `environment version
 <https://docs.databricks.com/aws/en/release-notes/serverless/environment-version/>`_
-4 or later. In Databricks' list, versions 1 and 2 run Python 3.10 and 3.11,
-below the 3.12 that moderndid needs. Version 3 comes with the Databricks
-Connect 16.4 client of a Spark 3.5 runtime, below the Spark 4.0 that moderndid
-needs.
+3 or later. The earlier runtimes and environment versions run Python 3.11 or
+older, below the 3.12 that moderndid needs.
 
 On a cluster, install ModernDiD as a `cluster library
 <https://docs.databricks.com/aws/en/libraries/cluster-libraries>`_ or with
@@ -125,7 +127,19 @@ local mode.
 In a fresh Python process, ``SparkSession.builder.remote("local[2]").getOrCreate()``
 starts a local Spark Connect server instead. That lets you check the code on
 this page under Spark Connect before you point it at a running server with an
-address such as ``sc://localhost:15002``.
+address such as ``sc://localhost:15002``. Since PySpark 3.5 doesn't bundle the
+Spark Connect server, a local server on 3.5 needs the server's package from
+Maven Central, as below.
+
+.. code-block:: python
+
+   import pyspark
+   from pyspark.sql import SparkSession
+
+   # On PySpark 3.5, add the Spark Connect server package of the same version.
+   package = f"org.apache.spark:spark-connect_2.12:{pyspark.__version__}"
+   builder = SparkSession.builder.config("spark.jars.packages", package)
+   spark = builder.remote("local[2]").getOrCreate()
 
 .. admonition:: Point Spark at your Python
    :class: tip
@@ -155,7 +169,7 @@ method first.
    spark = SparkSession.builder.getOrCreate()
 
    # The county data stands in for a table that spark.read.table would load.
-   data = spark.createDataFrame(did.load_mpdta().to_arrow())
+   data = spark.createDataFrame(did.load_mpdta().to_pandas())
    data.printSchema()
 
 .. container:: cell_output
@@ -501,7 +515,7 @@ below fits a generated panel of 40,000 units instead. Two settings of
    generated = did.gen_did_scalable(
        40000, n_periods=3, n_cohorts=2, n_covariates=4, random_state=7
    )["data"]
-   panel = spark.createDataFrame(generated.to_arrow())
+   panel = spark.createDataFrame(generated.to_pandas())
    demo = dict(
        yname="y", tname="time", idname="id", gname="group", xformla="~cov1", boot=True, random_state=7
    )
@@ -630,9 +644,11 @@ with 25 cohorts over 40 periods has an :math:`L` near 1,000 and would send
 about 88 MB per task at 10,000 draws. When a pass has more than 16 tasks, a
 second stage combines their payloads in groups before they reach the driver.
 For :math:`P` tasks, each combining task holds a group of up to about
-:math:`2\sqrt{P}` payloads at once. Because a pass of 16 tasks or fewer skips
-that stage, the driver collects up to 16 payloads, or about :math:`\sqrt{P}` of
-them once :math:`P` passes 256. Their total must stay under the 1 GB that
+:math:`2\sqrt{P}` payloads at once. Since open-source PySpark 3.5 passes each
+group through pandas, its combining tasks hold three copies of those payloads,
+two in Arrow and one in pandas. Because a pass of 16 tasks or fewer skips that
+stage, the driver collects up to 16 payloads, or about :math:`\sqrt{P}` of them
+once :math:`P` passes 256. Their total must stay under the 1 GB that
 ``spark.driver.maxResultSize`` allows by default. Sixteen payloads of the
 larger design would come to about 1.4 GB. Under Spark Connect, each payload
 must also fit in one message of at most 128 MiB by default. A design that large
@@ -684,10 +700,9 @@ Among the estimators, only ``att_gt`` fits a Spark DataFrame where its rows
 live. Other functions that take data, such as :func:`~moderndid.ddd`,
 :func:`~moderndid.cont_did`, and :func:`~moderndid.core.panel.diagnose_panel`,
 collect every row on the driver. Converting the DataFrame first with
-``data.toArrow()`` works with PySpark 4.0 and later. With PySpark 3.5, which has
-no ``toArrow()``, pass ``pyarrow.Table.from_pandas(data.toPandas())`` instead.
-From PySpark 4.2 on, these functions also read a Spark DataFrame directly
-through its Arrow stream.
+``data.toArrow()``, or with ``data.toPandas()`` on PySpark 3.5, works with any
+of them. From PySpark 4.2 on, these functions also read a Spark DataFrame
+directly through its Arrow stream.
 
 The test suite runs fits like these on a local cluster with separate executor
 processes and on a Docker cluster. The :ref:`testing guide <testing-spark>`

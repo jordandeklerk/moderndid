@@ -8,6 +8,7 @@ from importlib.util import find_spec
 
 import numpy as np
 import polars as pl
+import pyarrow as pa
 import pytest
 
 from moderndid import att_gt, gen_did_scalable, load_mpdta
@@ -16,7 +17,9 @@ from moderndid.core.preprocess import DIDConfig
 # Since pytest imports this file before it can skip anything when the folder is named on the command line, the test
 # modules skip themselves without pyspark and this file imports it only when it is installed.
 if find_spec("pyspark") is not None:
+    import pyspark
     from pyspark.sql import SparkSession
+    from pyspark.sql.pandas.types import from_arrow_schema, to_arrow_schema
 
     from moderndid.spark.preprocess import build_unit_table
 
@@ -37,6 +40,16 @@ def spark():
         # interpreter of the tests on its executors.
         patch.setenv("PYSPARK_PYTHON", sys.executable)
         if remote:
+            if remote.startswith("local") and int(pyspark.__version__.split(".")[0]) < 4:
+                # Since PySpark 3.5 doesn't bundle the Spark Connect server, a local server loads it from Maven Central.
+                version = pyspark.__version__
+                builder = builder.config("spark.jars.packages", f"org.apache.spark:spark-connect_2.12:{version}")
+                # Because the tasks of a Connect session in Spark 3.5 load classes only from the executor's classpath
+                # and the session's own jars, the executors of a local cluster read the server jar from the Ivy folder.
+                jar = os.path.join(
+                    os.path.expanduser("~"), ".ivy2", "jars", f"org.apache.spark_spark-connect_2.12-{version}.jar"
+                )
+                builder = builder.config("spark.executor.extraClassPath", jar)
             session = builder.remote(remote).getOrCreate()
         else:
             session = (
@@ -55,9 +68,27 @@ def to_spark(spark):
     """Function that turns a polars DataFrame into a Spark DataFrame through Arrow."""
 
     def convert(data):
-        return spark.createDataFrame(data.to_arrow())
+        table = data.to_arrow()
+        if int(pyspark.__version__.split(".")[0]) >= 4:
+            return spark.createDataFrame(table)
+        # Since PySpark 3.5 builds no DataFrame from a pyarrow Table, the rows go in with the table's Spark types.
+        # Going through pandas instead would turn integer columns with nulls into floats.
+        return spark.createDataFrame(table.to_pylist(), schema=from_arrow_schema(table.schema))
 
     return convert
+
+
+@pytest.fixture(scope="session")
+def to_arrow():
+    """Function that collects a Spark DataFrame as a pyarrow Table."""
+
+    def collect(frame):
+        if hasattr(frame, "toArrow"):
+            return frame.toArrow()
+        rows = [row.asDict(recursive=True) for row in frame.collect()]
+        return pa.Table.from_pylist(rows, schema=to_arrow_schema(frame.schema))
+
+    return collect
 
 
 @pytest.fixture(scope="session")
@@ -241,12 +272,17 @@ def unit_table_of(to_spark):
 
 @pytest.fixture
 def record_warnings():
-    """Function that returns a call's result with the category and text of every warning except unclosed sockets."""
+    """Function that returns a call's result with its warnings except unclosed sockets and distutils deprecations."""
 
     def call(function, *args, **kwargs):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
+            # Since classic PySpark 3.5 through 4.1 leave a socket open on each collect and PySpark 3.5 checks versions
+            # with the deprecated distutils, those warnings come from PySpark rather than from the call.
             warnings.filterwarnings("ignore", message=r"unclosed <socket\.socket", category=ResourceWarning)
+            warnings.filterwarnings(
+                "ignore", message="distutils Version classes are deprecated", category=DeprecationWarning
+            )
             result = function(*args, **kwargs)
         return result, [(warning.category, str(warning.message)) for warning in caught]
 

@@ -47,7 +47,7 @@ def spark_att_gt(
     multiplier to its unit or cluster, a bootstrap fit draws different
     multipliers from an in-memory fit with the same ``random_state``.
 
-    The fit needs pyspark 4 or later, ``panel=True``,
+    The fit needs pyspark 3.5 or later, ``panel=True``,
     ``allow_unbalanced_panel=False``, a built-in ``est_method``, and
     ``n_jobs=1``. The ``random_state`` must be None, a non-negative integer,
     a SeedSequence, a BitGenerator, or a Generator. Any other choice raises a
@@ -61,12 +61,12 @@ def spark_att_gt(
         in place of ``influence_func``, ``G``, and ``weights_ind``.
     """
     # Since a Databricks runtime brings its own pyspark and skips the extra's floor, the version is checked here.
-    major = pyspark.__version__.split(".")[0]
-    if major.isdigit() and int(major) < 4:
+    release = pyspark.__version__.split(".")[:2]
+    if all(part.isdigit() for part in release) and tuple(int(part) for part in release) < (3, 5):
         raise ValueError(
-            f"pyspark {pyspark.__version__} is installed. A fit of att_gt on a Spark DataFrame needs pyspark 4.0 or "
-            "later. Upgrade pyspark or, on Databricks, choose a runtime with Spark 4, as the Spark guide of the "
-            "moderndid docs describes."
+            f"pyspark {pyspark.__version__} is installed. A fit of att_gt on a Spark DataFrame needs pyspark 3.5 or "
+            "later. Upgrade pyspark or, on Databricks, choose Databricks Runtime 16 or later, as the Spark guide of "
+            "the moderndid docs describes."
         )
     if not panel:
         raise ValueError(
