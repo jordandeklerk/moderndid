@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import warnings
 
 import numpy as np
@@ -66,14 +67,16 @@ def att_gt(
     an event study or an overall effect.
 
     See the :ref:`staggered DiD example <example_staggered_did>` for a full analysis of
-    the minimum wage data with ``att_gt``.
+    the minimum wage data with ``att_gt``. The :ref:`Spark guide <spark>` shows how to
+    fit a balanced panel held in a Spark DataFrame.
 
     Parameters
     ----------
     data : DataFrame
         Panel data in long format. Accepts any object implementing the Arrow PyCapsule
         Interface (``__arrow_c_stream__``), including polars, pandas, pyarrow Table, and
-        cudf DataFrames.
+        cudf DataFrames. Also accepts a Spark DataFrame from a classic or Spark Connect
+        session.
     yname : str
         The name of the outcome column.
     tname : str
@@ -145,6 +148,8 @@ def att_gt(
           anticipation_periods
         - **G**: Unit-level group assignments
         - **weights_ind**: Unit-level sampling weights (if provided)
+        - **influence_moments**: Sums over units as an :class:`~moderndid.InfluenceMoments` in place of influence_func,
+          G, and weights_ind for a fit on a Spark DataFrame, or None
 
     See Also
     --------
@@ -195,7 +200,23 @@ def att_gt(
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
+    # Since att_gt never imports pyspark, a Spark DataFrame can only arrive after the caller has imported it. Because a
+    # Spark Connect DataFrame of pyspark 3.5 shares no class with a classic one, its class is checked as well.
+    spark_frames = tuple(
+        frame
+        for frame in (
+            getattr(sys.modules.get("pyspark.sql"), "DataFrame", None),
+            getattr(sys.modules.get("pyspark.sql.connect.dataframe"), "DataFrame", None),
+        )
+        if frame is not None
+    )
+    spark_data = isinstance(data, spark_frames)
     if backend is not None:
+        if spark_data:
+            raise ValueError(
+                f"backend={backend!r} is not supported for a Spark DataFrame. Pass backend=None to fit on the Spark "
+                "executors."
+            )
         with use_backend(backend):
             return att_gt(
                 data=data,
@@ -242,6 +263,35 @@ def att_gt(
         raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
+
+    if spark_data:
+        # Since pyspark is optional, the Spark path loads only for a Spark DataFrame. It comes before check_columns
+        # because converting the data for that check would collect its rows to the driver.
+        from moderndid.spark.att_gt import spark_att_gt
+
+        return spark_att_gt(
+            data=data,
+            yname=yname,
+            tname=tname,
+            idname=idname,
+            gname=gname,
+            xformla=xformla,
+            weightsname=weightsname,
+            alpha=alpha,
+            cband=cband,
+            boot=boot,
+            biters=biters,
+            clustervars=clustervars,
+            est_method=est_method,
+            panel=panel,
+            allow_unbalanced_panel=allow_unbalanced_panel,
+            control_group=control_group,
+            anticipation=anticipation,
+            base_period=base_period,
+            random_state=random_state,
+            n_jobs=n_jobs,
+        )
+
     check_columns(
         data,
         yname=yname,
@@ -322,11 +372,7 @@ def att_gt(
     else:
         variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
 
-    standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
-    standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-
-    zero_na_sd_indices = np.unique(np.where(np.isnan(standard_errors))[0])
-
+    bootstrap_results = None
     if boot:
         # Since a cell with a negligible bootstrap scale would swamp the band, the group-time critical value leaves
         # such cells out and keeps every draw.
@@ -340,12 +386,92 @@ def att_gt(
             skip_small_scales=True,
         )
 
-        if len(zero_na_sd_indices) > 0:
-            standard_errors[~np.isin(np.arange(len(standard_errors)), zero_na_sd_indices)] = bootstrap_results["se"][
-                ~np.isin(np.arange(len(standard_errors)), zero_na_sd_indices)
-            ]
-        else:
-            standard_errors = bootstrap_results["se"]
+    estimation_params = {
+        "yname": yname,
+        "idname": idname,
+        "control_group": control_group,
+        "anticipation_periods": anticipation,
+        "estimation_method": est_method if isinstance(est_method, str) else "custom",
+        "bootstrap": boot,
+        "uniform_bands": cband,
+        "base_period": base_period,
+        "panel": panel,
+        "clustervars": clustervars,
+        "cluster": cluster,
+        "biters": biters,
+        "random_state": random_state,
+        "n_units": n_units,
+        "n_obs": len(dp.data),
+    }
+
+    group_assignments = None
+    sampling_weights = None
+
+    if hasattr(dp, "time_invariant_data"):
+        if gname in dp.time_invariant_data.columns:
+            group_assignments = dp.time_invariant_data[gname]
+        # Preprocessing keeps the normalized weights in one internal column whatever the user's column is called.
+        if weightsname is not None:
+            sampling_weights = dp.time_invariant_data[WEIGHTS_COLUMN]
+            if _is_unbalanced_panel(dp):
+                # Since a unit of an unbalanced panel can carry a different weight in each of its rows, aggte
+                # weighs the unit by the mean of those weights.
+                unit_ids = dp.time_invariant_data[dp.config.idname]
+                unit_means = dp.data.group_by(dp.config.idname).agg(pl.col(WEIGHTS_COLUMN).mean())
+                sampling_weights = unit_ids.replace_strict(
+                    unit_means[dp.config.idname], unit_means[WEIGHTS_COLUMN]
+                ).alias(WEIGHTS_COLUMN)
+
+    return _finish_att_gt(
+        groups=groups,
+        times=times,
+        att_values=att_values,
+        variance_matrix=variance_matrix,
+        clustered=clustered,
+        bootstrap_results=bootstrap_results,
+        n_units=n_units,
+        alpha=alpha,
+        cband=cband,
+        anticipation=anticipation,
+        estimation_params=estimation_params,
+        influence_func=influence_functions_dense,
+        G=group_assignments,
+        weights_ind=sampling_weights,
+    )
+
+
+def _finish_att_gt(
+    groups,
+    times,
+    att_values,
+    variance_matrix,
+    clustered,
+    bootstrap_results,
+    n_units,
+    alpha,
+    cband,
+    anticipation,
+    estimation_params,
+    influence_func=None,
+    G=None,
+    weights_ind=None,
+    influence_moments=None,
+):
+    r"""Assemble the att_gt result from the effects and their covariance for a fit in memory or on shards.
+
+    Effect :math:`k` has the analytic standard error :math:`\sqrt{V_{kk} / n}`
+    for :math:`V` the ``variance_matrix`` and :math:`n` the number of units. A
+    standard error of at most about 1.5e-7 is NaN. Where the analytic standard
+    error is not NaN, the bootstrap standard error in ``bootstrap_results``
+    replaces it.
+    """
+    standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
+    standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
+
+    zero_na_sd_indices = np.unique(np.where(np.isnan(standard_errors))[0])
+
+    if bootstrap_results is not None:
+        standard_errors = np.where(np.isnan(standard_errors), standard_errors, bootstrap_results["se"])
 
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
@@ -408,7 +534,7 @@ def att_gt(
 
     critical_value = scipy.stats.norm.ppf(1 - alpha / 2)
 
-    if boot and cband:
+    if bootstrap_results is not None and cband:
         critical_value = bootstrap_results["crit_val"]
         if not np.isnan(critical_value) and critical_value >= 7:
             warnings.warn(
@@ -418,42 +544,6 @@ def att_gt(
                 UserWarning,
             )
 
-    estimation_params = {
-        "yname": yname,
-        "idname": idname,
-        "control_group": control_group,
-        "anticipation_periods": anticipation,
-        "estimation_method": est_method if isinstance(est_method, str) else "custom",
-        "bootstrap": boot,
-        "uniform_bands": cband,
-        "base_period": base_period,
-        "panel": panel,
-        "clustervars": clustervars,
-        "cluster": cluster,
-        "biters": biters,
-        "random_state": random_state,
-        "n_units": n_units,
-        "n_obs": len(dp.data),
-    }
-
-    group_assignments = None
-    sampling_weights = None
-
-    if hasattr(dp, "time_invariant_data"):
-        if gname in dp.time_invariant_data.columns:
-            group_assignments = dp.time_invariant_data[gname]
-        # Preprocessing keeps the normalized weights in one internal column whatever the user's column is called.
-        if weightsname is not None:
-            sampling_weights = dp.time_invariant_data[WEIGHTS_COLUMN]
-            if _is_unbalanced_panel(dp):
-                # Since a unit of an unbalanced panel can carry a different weight in each of its rows, aggte
-                # weighs the unit by the mean of those weights.
-                unit_ids = dp.time_invariant_data[dp.config.idname]
-                unit_means = dp.data.group_by(dp.config.idname).agg(pl.col(WEIGHTS_COLUMN).mean())
-                sampling_weights = unit_ids.replace_strict(
-                    unit_means[dp.config.idname], unit_means[WEIGHTS_COLUMN]
-                ).alias(WEIGHTS_COLUMN)
-
     return mp(
         groups=groups,
         times=times,
@@ -461,12 +551,13 @@ def att_gt(
         vcov_analytical=variance_matrix,
         se_gt=standard_errors,
         critical_value=critical_value,
-        influence_func=influence_functions_dense,
+        influence_func=influence_func,
         n_units=n_units,
         wald_stat=wald_statistic,
         wald_pvalue=wald_pvalue,
         alpha=alpha,
         estimation_params=estimation_params,
-        G=group_assignments,
-        weights_ind=sampling_weights,
+        G=G,
+        weights_ind=weights_ind,
+        influence_moments=influence_moments,
     )

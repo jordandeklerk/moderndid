@@ -45,9 +45,11 @@ class AGGTEResult(NamedTuple):
         aggregation stores the overall effect's function as a vector of length
         n_units. The other aggregations store one column for each event time,
         group, or period in a matrix of shape (n_units, n_events).
+        It is None for a fit on a Spark DataFrame.
     influence_func_overall : ndarray, optional
         Influence function for the overall ATT (1D array of length n_units).
         This is stored separately for compatibility with both aggregation types.
+        Like ``influence_func``, it is None for a fit on a Spark DataFrame.
     min_event_time : int, optional
         Minimum event time (for dynamic effects).
     max_event_time : int, optional
@@ -60,6 +62,12 @@ class AGGTEResult(NamedTuple):
         ``estimation_method``.
     call_info : dict
         Information about the function call that created this object.
+    vcov_analytical : ndarray, optional
+        Analytical estimator for the asymptotic variance-covariance matrix of
+        the disaggregated effects, or of the overall effect for the simple
+        aggregation. Dividing it by the number of units gives the covariance
+        matrix of the estimates. With a cluster variable besides the unit
+        identifier it sums the influence functions within clusters.
     """
 
     #: Estimated overall average treatment effect on the treated.
@@ -90,6 +98,8 @@ class AGGTEResult(NamedTuple):
     estimation_params: dict = {}
     #: Information about the function call that created this object.
     call_info: dict = {}
+    #: Analytical estimator for the asymptotic variance-covariance matrix of the disaggregated effects.
+    vcov_analytical: np.ndarray | None = None
 
     @property
     def __maketables_coef_table__(self):
@@ -181,6 +191,57 @@ class AGGTEResult(NamedTuple):
         return keys
 
 
+class InfluenceMoments(NamedTuple):
+    r"""Container for sums that stand in for the influence functions of a fit on a Spark DataFrame.
+
+    Unit :math:`i` contributes the row
+
+    .. math::
+
+        z_i = \left(\psi_i', \ \omega_i \mathbf{1}\{G_i = g_1\}, \ \ldots, \
+        \omega_i \mathbf{1}\{G_i = g_C\}, \ 1\right)'.
+
+    The row stacks the unit's influence function :math:`\psi_i` for every
+    group-time effect, its first-period sampling weight :math:`\omega_i` in the
+    column of its treated cohort :math:`G_i`, and a constant. From these sums
+    :func:`~moderndid.aggte` computes the standard errors and bootstrap draws of
+    every aggregation.
+
+    Attributes
+    ----------
+    cohorts : ndarray
+        Treated cohorts :math:`g_1 < \cdots < g_C` of the weight columns.
+    gram : ndarray
+        Sum of :math:`z_i z_i'` over the units. Its shape is (L, L) for L the
+        length of :math:`z_i`.
+    cluster_gram : ndarray, optional
+        Sum of :math:`s_c s_c'` over the clusters for :math:`s_c` the sum of
+        :math:`z_i` over cluster :math:`c`, or None without a cluster variable
+        besides the unit identifier.
+    n_clusters : int, optional
+        Number of clusters, or None without a cluster variable besides the unit identifier.
+    bootstrap_sums : ndarray, optional
+        Sums :math:`\sum_i v_{bi} z_i` of shape (biters, L) for :math:`v_{bi}` the
+        multiplier of unit :math:`i` in draw :math:`b`, or None without bootstrap
+        draws. The units of a cluster share one multiplier.
+    random_state : int, optional
+        Seed of the bootstrap multipliers, or None without bootstrap draws.
+    """
+
+    #: Treated cohort of each weight column.
+    cohorts: np.ndarray
+    #: Sum of the outer products of the unit rows.
+    gram: np.ndarray
+    #: Sum of the outer products of the cluster sums of the unit rows.
+    cluster_gram: np.ndarray | None = None
+    #: Number of clusters.
+    n_clusters: int | None = None
+    #: Multiplier bootstrap sums of the unit rows.
+    bootstrap_sums: np.ndarray | None = None
+    #: Seed of the bootstrap multipliers.
+    random_state: int | None = None
+
+
 class MPResult(NamedTuple):
     """Container for group-time average treatment effect results.
 
@@ -207,6 +268,7 @@ class MPResult(NamedTuple):
         otherwise.
     influence_func : ndarray
         The influence function for estimating group-time average treatment effects.
+        It is None for a fit on a Spark DataFrame.
     n_units : int, optional
         The number of unique cross-sectional units.
     wald_stat : float, optional
@@ -226,6 +288,9 @@ class MPResult(NamedTuple):
         Group of each unit.
     weights_ind : ndarray, optional
         Sampling weight of each unit.
+    influence_moments : InfluenceMoments, optional
+        Sums over units that replace ``influence_func``, ``G``, and ``weights_ind``
+        for a fit on a Spark DataFrame.
     """
 
     #: Which group (defined by period first treated) each group-time ATT is for.
@@ -258,6 +323,8 @@ class MPResult(NamedTuple):
     G: np.ndarray | None = None
     #: Unit-level sampling weights.
     weights_ind: np.ndarray | None = None
+    #: Sums over units that replace the influence function of a fit on a Spark DataFrame.
+    influence_moments: InfluenceMoments | None = None
 
     @property
     def __maketables_coef_table__(self):
@@ -384,6 +451,57 @@ class ATTgtResult(NamedTuple):
     post: int
 
 
+class CellSpec(NamedTuple):
+    """Container for the periods and comparison cohorts of one group-time cell.
+
+    Attributes
+    ----------
+    group : float
+        The treatment group identifier (first treatment period).
+    time : float
+        The time period of the cell.
+    time_index : int
+        Position of ``time`` in ``config.time_periods``.
+    base_index : int, optional
+        Position of the cell's base period in ``config.time_periods``, or None
+        for a cell skipped with a warning.
+    earlier_index : int, optional
+        Position of the earlier of the cell's two periods, or None for a cell
+        skipped with a warning. In a balanced panel the cell takes its
+        covariates and sampling weights from that period.
+    post : int
+        Indicator for whether this is a post-treatment period (1) or
+        pre-treatment period (0).
+    reference : bool
+        Whether the cell compares the universal base period with itself. Its
+        effect and its influence function are zero.
+    skip_warning : str, optional
+        Warning to emit before skipping the cell, or None for a cell to keep.
+    control_cohorts : ndarray
+        Cohorts from ``cohort_counts`` whose units form the comparison group.
+        It never holds ``group``.
+    """
+
+    #: Treatment group identifier (first treatment period).
+    group: float
+    #: Time period of the cell.
+    time: float
+    #: Position of the time period in the configured periods.
+    time_index: int
+    #: Position of the base period in the configured periods.
+    base_index: int | None
+    #: Position of the earlier of the cell's two periods.
+    earlier_index: int | None
+    #: Indicator for post-treatment (1) or pre-treatment (0).
+    post: int
+    #: Whether the cell compares the universal base period with itself.
+    reference: bool
+    #: Warning to emit before skipping the cell.
+    skip_warning: str | None
+    #: Cohorts whose units form the comparison group.
+    control_cohorts: np.ndarray
+
+
 class ComputeATTgtResult(NamedTuple):
     """Container for compute_att_gt results.
 
@@ -417,6 +535,7 @@ def aggte(
     balanced_event_threshold=None,
     estimation_params=None,
     call_info=None,
+    vcov_analytical=None,
 ):
     """Create an aggregate treatment effect result object.
 
@@ -453,6 +572,9 @@ def aggte(
         DID estimation parameters.
     call_info : dict, optional
         Information about the function call.
+    vcov_analytical : ndarray, optional
+        Analytical asymptotic variance-covariance matrix of the disaggregated
+        effects, or of the overall effect for the simple aggregation.
 
     Returns
     -------
@@ -473,6 +595,8 @@ def aggte(
         - **balanced_event_threshold**: Event time that balanced an event study, or None
         - **estimation_params**: Dictionary of the estimation settings, empty when none are given
         - **call_info**: Dictionary describing the call, empty when none is given
+        - **vcov_analytical**: Asymptotic variance-covariance matrix of the disaggregated effects, or of the overall
+          effect for 'simple'
     """
     if aggregation_type not in ["simple", "dynamic", "group", "calendar"]:
         raise ValueError(
@@ -508,6 +632,7 @@ def aggte(
         balanced_event_threshold=balanced_event_threshold,
         estimation_params=estimation_params,
         call_info=call_info,
+        vcov_analytical=vcov_analytical,
     )
 
 
@@ -527,6 +652,7 @@ def mp(
     estimation_params=None,
     G=None,
     weights_ind=None,
+    influence_moments=None,
 ):
     """Create a multi-period result object for group-time ATTs.
 
@@ -562,6 +688,8 @@ def mp(
         Unit-level group assignments (length n, where n is number of units).
     weights_ind : ndarray, optional
         Unit-level sampling weights (length n, where n is number of units).
+    influence_moments : InfluenceMoments, optional
+        Sums over units that replace the influence function of a fit on a Spark DataFrame.
 
     Returns
     -------
@@ -583,6 +711,7 @@ def mp(
         - **estimation_params**: Dictionary of the estimation settings, empty when none are given
         - **G**: Group of each unit, or None
         - **weights_ind**: Sampling weight of each unit, or None
+        - **influence_moments**: Sums over units for a fit on a Spark DataFrame, or None
     """
     groups = np.asarray(groups)
     times = np.asarray(times)
@@ -616,6 +745,7 @@ def mp(
         estimation_params=estimation_params,
         G=G,
         weights_ind=weights_ind,
+        influence_moments=influence_moments,
     )
 
 

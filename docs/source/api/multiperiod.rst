@@ -37,6 +37,7 @@ Result objects
 
    MPResult
    AGGTEResult
+   InfluenceMoments
    ATTgtResult
    ComputeATTgtResult
    MPPretestResult

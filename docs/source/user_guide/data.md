@@ -80,7 +80,8 @@ the design before you adapt the column names.
 Although the dataset loaders return Polars DataFrames, you can use the
 DataFrame format you already work with. The DataFrame-based estimators also
 accept an eager pandas DataFrame or a pyarrow Table through the Arrow
-PyCapsule interface, `__arrow_c_stream__`.
+PyCapsule interface, `__arrow_c_stream__`. Since pandas added that interface in
+version 2.2, an older pandas DataFrame converts through Narwhals instead.
 
 ```{code-cell} ipython3
 # Convert the county data to pandas and to Arrow.
@@ -95,8 +96,9 @@ their inputs in the API reference.
 
 If a table is lazy or distributed, materialize it before passing it to an
 estimator. Accepting an Arrow table does not mean estimation runs inside the
-database or a distributed scheduler. The {ref}`scaling guide <scaling>`
-explains the execution options the package supports.
+database or a distributed scheduler. A Spark DataFrame passed to
+{func}`~moderndid.att_gt` is the one exception. Spark's executors then run the
+fit where the rows already live, as the {ref}`Spark guide <spark>` explains.
 
 The outcome, time, cohort, and panel identifier columns must be numeric.
 If your identifiers are strings, map them to numeric codes once across the

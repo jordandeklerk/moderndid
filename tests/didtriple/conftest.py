@@ -454,7 +454,7 @@ def ddd_converted(request, two_period_df):
         duckdb = importorskip("duckdb")
         conn = duckdb.connect()
         conn.register("ddd_data", two_period_df.to_arrow())
-        return conn.execute("SELECT * FROM ddd_data").fetch_arrow_table()
+        return conn.sql("SELECT * FROM ddd_data")
     raise ValueError(f"Unknown dataframe type: {df_type}")
 
 

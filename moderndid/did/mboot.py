@@ -139,7 +139,7 @@ def _mboot(
 
     inf_func = inf_func.reshape(-1, 1) if inf_func.ndim == 1 else np.atleast_2d(inf_func)
 
-    n_obs, n_params = inf_func.shape
+    n_obs = inf_func.shape[0]
 
     if cluster is None:
         bres = np.sqrt(n_units) * _run_multiplier_bootstrap(inf_func, biters, random_state)
@@ -159,6 +159,40 @@ def _mboot(
         bres = np.sqrt(n_clusters) * _run_multiplier_bootstrap(cluster_sums, biters, random_state)
         draw_scale = n_obs / np.sqrt(n_clusters)
 
+    return _mboot_from_draws(bres, draw_scale, alpha, skip_small_scales, keep_infinite_draws)
+
+
+def _mboot_from_draws(bres, draw_scale, alpha=0.05, skip_small_scales=False, keep_infinite_draws=False):
+    """Compute the standard errors and critical value of :func:`_mboot` from given bootstrap draws.
+
+    Parameters
+    ----------
+    bres : ndarray
+        Bootstrap draws of shape (biters, k) on the scale that :func:`mboot` describes.
+    draw_scale : float
+        Factor by which the draws exceed the perturbations of the estimates.
+    alpha : float, default=0.05
+        Significance level for confidence intervals.
+    skip_small_scales : bool, default=False
+        Whether the critical value leaves out every column with a small bootstrap scale.
+    keep_infinite_draws : bool, default=False
+        Whether the critical value keeps the draws that move a column with zero bootstrap scale.
+        Requires ``skip_small_scales`` to be False.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+
+        - **bres**: Bootstrap draws of shape (biters, k)
+        - **V**: Covariance matrix of the bootstrap draws
+        - **se**: Standard errors for each parameter
+        - **crit_val**: Critical value for uniform confidence bands
+    """
+    if skip_small_scales and keep_infinite_draws:
+        raise ValueError("skip_small_scales and keep_infinite_draws can't both be True.")
+
+    n_params = bres.shape[1]
     col_sums_sq = np.sum(bres**2, axis=0)
     ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
 

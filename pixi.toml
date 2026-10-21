@@ -27,6 +27,9 @@ pytest-cov = ">=4.0.0"
 pytest-timeout = ">=2.0.0"
 pytest-xdist = ">=3.6"
 
+[feature.dev.pypi-dependencies]
+duckdb = ">=1.1"
+
 [feature.dev.tasks]
 tests-core = "pytest -m 'not slow' -n auto --dist worksteal -vv"
 tests-full = "pytest -n auto --dist worksteal -vv"
@@ -138,6 +141,24 @@ platforms = ["linux-64"]
 [feature.gpu.pypi-dependencies]
 cupy-cuda12x = { version = ">=14.0", extras = ["ctk"] }
 
+# Since Spark runs on the JVM, the environment brings its own Java instead of relying on a system install.
+[feature.spark]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+
+# Since Spark Connect runs a client's functions on the cluster's Python workers, both sides need the same Python
+# minor version, so this pin matches the Python of the test cluster image.
+[feature.spark.dependencies]
+python = "3.13.*"
+openjdk = "21.*"
+# Since PySpark warns that it does not yet fully support pandas 3, the environment keeps pandas 2.
+pandas = ">=2.2,<3"
+
+[feature.spark.pypi-dependencies]
+pyspark = { version = ">=4.0", extras = ["connect"] }
+
+[feature.spark.tasks]
+tests-spark = "pytest tests/spark -vv"
+
 [feature.lint.dependencies]
 pre-commit = ">=3.0.0"
 
@@ -191,4 +212,5 @@ docs-r = ["docs", "docs-r", "build", "etwfe", "didcont", "didhonest", "didml", "
 check = ["lint"]
 build = ["build"]
 gpu = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "gpu"]
+spark = ["dev", "build", "didhonest", "plots", "spark"]
 validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "diddynamic", "plots"]

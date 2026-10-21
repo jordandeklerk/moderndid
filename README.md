@@ -35,7 +35,8 @@ it estimates. Most can also cluster those errors by a variable such as state.
 The staggered, triple-difference, continuous-treatment, and nonparametric IV
 estimators can build simultaneous confidence bands too. Estimation runs in
 parallel threads on one machine and supported estimators also run on NVIDIA
-GPUs for large panels.
+GPUs for large panels. Staggered DiD also runs on Spark clusters for panels too
+large for one machine.
 
 ModernDiD is under active development so expect sharp edges. Please help by trying it out,
 [reporting bugs](https://github.com/jordandeklerk/moderndid/issues), and telling
@@ -65,9 +66,10 @@ uv add "moderndid[plots]"            # Core estimators and plotting
 uv add "moderndid[all]"              # All estimator extras and plots
 uv add "moderndid[didcont,plots]"    # Choose individual extras
 uv add "moderndid[gpu]"              # CUDA 12 GPU dependencies
+uv add "moderndid[spark]"            # PySpark for staggered DiD on Spark
 ```
 
-The `all` extra includes `didml` and leaves out `gpu`. The
+The `all` extra includes `didml` and leaves out `gpu` and `spark`. The
 [installation guide](https://moderndid.readthedocs.io/en/latest/user_guide/installation.html)
 covers every extra, GPU setup, and troubleshooting. The development version
 installs straight from GitHub.
@@ -104,7 +106,6 @@ Every estimator also comes with the tools the rest of an analysis needs.
   [maketables](https://py-econometrics.github.io/maketables/) to build LaTeX,
   HTML, Word, and Typst tables.
 - Parallel threads speed up estimation on one machine.
-- Supported estimators also run on NVIDIA GPUs through CuPy for large panels.
 
 ## Quickstart
 
@@ -131,6 +132,60 @@ result = did.att_gt(
 # An event study by time relative to treatment, plotted with the plots extra
 event_study = did.aggte(result, type="dynamic")
 did.plot_event_study(event_study)
+```
+
+## Large panels
+
+The quickstart's call moves to an NVIDIA GPU or a Spark cluster with a single
+change.
+
+### NVIDIA GPUs
+
+With the `gpu` extra, passing `backend="cupy"` to `att_gt`, `ddd`, or
+`cont_did` runs its supported numerical work on the GPU. Since moving arrays to
+the GPU takes time too, a small panel such as the county data can fit faster on
+the CPU. The
+[GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html)
+shows how to check your CUDA setup and time a fit.
+
+```python
+# The quickstart's fit with its numerical work on the GPU
+result = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+    backend="cupy",
+)
+```
+
+### Spark clusters
+
+With the `spark` extra, `att_gt` takes a Spark DataFrame and fits it on the
+cluster without gathering its rows on one machine. That suits a panel that
+already sits in a Spark table or holds more units than one machine can keep in
+memory. The
+[Spark guide](https://moderndid.readthedocs.io/en/latest/user_guide/spark.html)
+covers setting up Spark and the options a Spark fit supports.
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.getOrCreate()
+
+# The county data stands in for a large panel stored in a Spark table
+data = spark.createDataFrame(did.load_mpdta().to_pandas())
+
+# The same calls as in the quickstart
+result = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+)
+event_study = did.aggte(result, type="dynamic")
 ```
 
 ## Documentation

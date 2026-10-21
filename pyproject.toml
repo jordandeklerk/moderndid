@@ -29,8 +29,8 @@ dependencies = [
   "scipy>=1.17",
   "polars>=1.38",
   "pyarrow>=8.0.0",
-  "narwhals>=1.13.3",
-  "statsmodels>=0.14.4",
+  "narwhals>=1.31.0",
+  "statsmodels>=0.14.6",
   "prettytable>=3.10.0",
 ]
 
@@ -84,10 +84,14 @@ plots = [
 gpu = [
     "cupy-cuda12x[ctk]>=14.0",
 ]
+spark = [
+    "pyspark[connect]>=3.5",
+]
 all = [
     "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots]",
 ]
 test = [
+    "duckdb>=1.1",
     "pytest",
     "pytest-benchmark",
     "pytest-cov",
@@ -204,6 +208,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "benchmark: marks benchmark tests",
     "gpu: marks tests that need CuPy and a CUDA GPU (select with '-m gpu')",
+    "spark: marks tests that need pyspark and Java (select with '-m spark')",
 ]
 
 [tool.coverage.run]

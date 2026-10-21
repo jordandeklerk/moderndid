@@ -6,7 +6,10 @@ import numpy as np
 import polars as pl
 import pytest
 
+from moderndid import preprocess_did
 from moderndid.cupy.backend import get_backend, use_backend
+from moderndid.did.shards.driver import fit_att_gt_on_shards
+from moderndid.did.shards.local import LocalExecutor, shards_from_did_data
 
 try:
     import cupy
@@ -190,6 +193,61 @@ def did_offsetting_cohort_data():
                     y += (0.4 if unit == 250 else -0.4) * time
                 records.append({"id": unit, "t": time, "y": y, "g": cohort})
     return pl.DataFrame(records)
+
+
+@pytest.fixture
+def att_gt_on_shards():
+    """Function that runs att_gt on random shards of a balanced panel through the local executor."""
+
+    def fit(data, n_shards, shard_seed=0, random_state=None, **spec):
+        settings = {
+            "alpha": 0.05,
+            "cband": True,
+            "boot": False,
+            "biters": 1000,
+            "clustervars": None,
+            "est_method": "dr",
+            "control_group": "nevertreated",
+            "anticipation": 0,
+            "base_period": "varying",
+            **spec,
+        }
+        did_data = preprocess_did(data, panel=True, allow_unbalanced_panel=False, **settings)
+        clustervars = settings["clustervars"]
+        units = did_data.time_invariant_data
+        cluster = next((name for name in clustervars or [] if name != settings["idname"]), None)
+        cluster_counts = None
+        if cluster is not None:
+            per_cohort = units.group_by(settings["gname"]).agg(pl.col(cluster).n_unique())
+            cluster_counts = (units[cluster].n_unique(), dict(per_cohort.iter_rows()))
+        estimation_params = {
+            "yname": settings["yname"],
+            "idname": settings["idname"],
+            "control_group": settings["control_group"],
+            "anticipation_periods": settings["anticipation"],
+            "estimation_method": settings["est_method"],
+            "bootstrap": settings["boot"],
+            "uniform_bands": settings["cband"],
+            "base_period": settings["base_period"],
+            "panel": True,
+            "clustervars": None if clustervars is None else [v for v in clustervars if v != settings["idname"]],
+            "cluster": None,
+            "biters": settings["biters"],
+            "random_state": random_state,
+            "n_units": did_data.config.id_count,
+            "n_obs": len(did_data.data),
+        }
+        executor = LocalExecutor(shards_from_did_data(did_data, n_shards, random_state=shard_seed))
+        return fit_att_gt_on_shards(
+            executor,
+            did_data.config,
+            did_data.cohort_counts,
+            random_state,
+            estimation_params,
+            cluster_counts=cluster_counts,
+        )
+
+    return fit
 
 
 @pytest.fixture(params=["numpy", pytest.param("cupy", marks=pytest.mark.gpu)])

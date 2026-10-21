@@ -18,7 +18,7 @@ from moderndid.drdid.estimators.reg_did_rc import reg_did_rc
 from moderndid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
 from moderndid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
 
-from .container import ATTgtResult, ComputeATTgtResult
+from .container import ATTgtResult, CellSpec, ComputeATTgtResult
 
 
 def compute_att_gt(data, n_jobs=1):
@@ -87,6 +87,88 @@ def compute_att_gt(data, n_jobs=1):
     return ComputeATTgtResult(attgt_list=att_results, influence_functions=sparse_influence_funcs)
 
 
+def cell_spec(group_idx, time_idx, config, cohort_counts):
+    """Describe one group-time cell from the periods and the cohorts.
+
+    Under the varying base period, a pre-treatment cell compares its period
+    with the period before it. A post-treatment cell compares its period with
+    the last period before its cohort may respond to treatment. Under the
+    universal base period every cell compares with that last period. The cell
+    of that period itself is the reference cell. When the cohort has no such
+    period, a cell that needs it carries a warning instead of a base.
+
+    The comparison group holds the never-treated units. With not-yet-treated
+    controls it also holds the units of every cohort first treated after the
+    later of the cell's two periods plus ``anticipation``. The treated cohort
+    never belongs to it.
+
+    Parameters
+    ----------
+    group_idx : int
+        Position of the cell's cohort in ``config.treated_groups``.
+    time_idx : int
+        Position of the cell among its cohort's cells. The cell's period is
+        ``config.time_periods[time_idx + 1]`` under the varying base period and
+        ``config.time_periods[time_idx]`` under the universal one.
+    config : DIDConfig
+        Preprocessed configuration of the fit.
+    cohort_counts : DataFrame
+        Number of units of each cohort in the columns ``cohort`` and
+        ``cohort_size``.
+
+    Returns
+    -------
+    CellSpec or None
+        The cell's description, or None for a cell whose cohort or comparison
+        group has no units. The reference cell and a cell with a warning always
+        get a description.
+    """
+    universal = config.base_period == "universal"
+    time_index = time_idx if universal else time_idx + 1
+    group = config.treated_groups[group_idx]
+    time = config.time_periods[time_index]
+    post = int(group <= time)
+
+    if universal or post:
+        pre_periods = np.flatnonzero(config.time_periods < group - config.anticipation)
+        if len(pre_periods) == 0:
+            return CellSpec(
+                group=group,
+                time=time,
+                time_index=time_index,
+                base_index=None,
+                earlier_index=None,
+                post=post,
+                reference=False,
+                skip_warning=(
+                    f"No pre-treatment periods for group first treated at {_period_label(group)}. "
+                    "Units from this group are dropped."
+                ),
+                control_cohorts=np.empty(0),
+            )
+        base_index = int(pre_periods[-1])
+    else:
+        base_index = time_idx
+
+    cohorts = cohort_counts["cohort"].to_numpy()
+    control_cohorts = _control_cohorts(group, max(base_index, time_index), config, cohorts)
+    reference = universal and base_index == time_index
+    if not reference and not (np.any(cohorts == group) and len(control_cohorts) > 0):
+        return None
+
+    return CellSpec(
+        group=group,
+        time=time,
+        time_index=time_index,
+        base_index=base_index,
+        earlier_index=min(base_index, time_index),
+        post=post,
+        reference=reference,
+        skip_warning=None,
+        control_cohorts=control_cohorts,
+    )
+
+
 def run_att_gt_estimation(
     group_idx,
     time_idx,
@@ -94,6 +176,8 @@ def run_att_gt_estimation(
     unit_index=None,
 ):
     """Run ATT estimation for a given group-time pair.
+
+    :func:`cell_spec` sets the cell's periods and comparison group.
 
     A built-in method screens each cell before it estimates the cell. The
     screen skips the cell with a warning when the fitted propensity score
@@ -124,64 +208,39 @@ def run_att_gt_estimation(
         - **att**: Estimated ATT of the cell
         - **inf_func**: Influence function of the estimate with one entry per unit
     """
-    time_factor = 1 if data.config.base_period != "universal" else 0
-    g_val = data.config.treated_groups[group_idx]
-    t_val = data.config.time_periods[time_idx + time_factor]
-    g_label = _period_label(g_val)
-    t_label = _period_label(t_val)
-
-    if data.config.base_period == "universal":
-        pre_periods = np.where(data.config.time_periods < (g_val - data.config.anticipation))[0]
-        pre_treatment_idx = pre_periods[-1] if len(pre_periods) > 0 else None
-    else:
-        pre_treatment_idx = time_idx
-
-    is_post_treatment = g_val <= t_val
-
-    if is_post_treatment and data.config.base_period != "universal":
-        pre_periods = np.where(data.config.time_periods < (g_val - data.config.anticipation))[0]
-
-        if len(pre_periods) == 0:
-            warnings.warn(
-                f"No pre-treatment periods for group first treated at {g_label}. Units from this group are dropped.",
-                UserWarning,
-            )
-            return None
-
-        pre_treatment_idx = pre_periods[-1]
-
-    if (
-        data.config.base_period == "universal"
-        and pre_treatment_idx is not None
-        and data.config.time_periods[pre_treatment_idx] == t_val
-    ):
+    spec = cell_spec(group_idx, time_idx, data.config, data.cohort_counts)
+    if spec is None:
+        return None
+    if spec.skip_warning is not None:
+        warnings.warn(spec.skip_warning, UserWarning)
+        return None
+    if spec.reference:
         return None
 
-    cohort_index = get_did_cohort_index(group_idx, time_idx, time_factor, pre_treatment_idx, data)
-
-    has_treated = np.any(cohort_index == 1)
-    has_control = np.any(cohort_index == 0)
-
-    if not (has_treated and has_control):
-        return None
+    g_label = _period_label(spec.group)
+    t_label = _period_label(spec.time)
 
     if data.config.panel:
-        # min(pre_treatment_idx, time_idx) is the earlier of the cell's two periods. Weights that vary over
-        # time enter through that period, as the covariates do.
-        earlier_idx = min(pre_treatment_idx, time_idx)
+        cohort_index = _panel_cohort_index(spec.group, spec.control_cohorts, data)
+        # Weights that vary over time enter through the earlier of the cell's two periods, as the covariates do.
         cohort_data = {
             "D": cohort_index,
-            "y1": data.outcomes_tensor[time_idx + time_factor],
-            "y0": data.outcomes_tensor[pre_treatment_idx],
-            "weights": data.weights_tensor[earlier_idx],
+            "y1": data.outcomes_tensor[spec.time_index],
+            "y0": data.outcomes_tensor[spec.base_index],
+            "weights": data.weights_tensor[spec.earlier_index],
         }
-        covariates = data.covariates_tensor[earlier_idx]
+        covariates = data.covariates_tensor[spec.earlier_index]
     else:
+        time_factor = spec.time_index - time_idx
+        cohort_index = get_did_cohort_index(group_idx, time_idx, time_factor, spec.base_index, data)
+        if not (np.any(cohort_index == 1) and np.any(cohort_index == 0)):
+            return None
+
         periods = data.data[data.config.tname].to_numpy()
         cohort_data = {
             "D": cohort_index,
             "y": data.data[data.config.yname].to_numpy(),
-            "post": (periods == t_val).astype(int),
+            "post": (periods == spec.time).astype(int),
             "period": periods,
             "weights": data.data[WEIGHTS_COLUMN].to_numpy(),
         }
@@ -339,40 +398,10 @@ def get_did_cohort_index(
         Array of 1s (treated), 0s (control), and NaNs indicating cohort membership.
     """
     if data.config.panel:
-        if data.config.control_group == ControlGroup.NOT_YET_TREATED:
-            relevant_period = (
-                data.config.time_periods[max(time_idx, pre_treatment_idx) + time_factor] + data.config.anticipation
-            )
-            future_cohorts = data.cohort_counts.filter(data.cohort_counts["cohort"] > relevant_period)
-            min_control = future_cohorts["cohort"][0] if len(future_cohorts) > 0 else np.inf
-        else:
-            min_control = np.inf
-
-        max_control = np.inf
-
-        n_units = len(data.time_invariant_data) if data.config.allow_unbalanced_panel else data.config.id_count
-        cohort_index = np.full(n_units, np.nan)
-
-        cohort_values = data.cohort_counts["cohort"].to_numpy()
-        if max_control not in cohort_values:
-            max_control = cohort_values[-1]
-
-        control_mask = (data.cohort_counts["cohort"] >= min_control) & (data.cohort_counts["cohort"] <= max_control)
-        control_mask_np = control_mask.to_numpy()
-        cohort_sizes = data.cohort_counts["cohort_size"].to_numpy()
-        for idx in np.where(control_mask_np)[0]:
-            start_control = int(cohort_sizes[:idx].sum()) if idx > 0 else 0
-            end_control = int(cohort_sizes[: idx + 1].sum())
-            cohort_index[start_control:end_control] = 0
-
-        treated_mask = data.cohort_counts["cohort"] == data.config.treated_groups[group_idx]
-        treated_mask_np = treated_mask.to_numpy()
-        if treated_mask_np.any():
-            treat_idx = int(np.argmax(treated_mask_np))
-            cohort_sizes = data.cohort_counts["cohort_size"].to_numpy()
-            start_treat = int(cohort_sizes[:treat_idx].sum()) if treat_idx > 0 else 0
-            end_treat = int(cohort_sizes[: treat_idx + 1].sum())
-            cohort_index[start_treat:end_treat] = 1
+        group = data.config.treated_groups[group_idx]
+        cohorts = data.cohort_counts["cohort"].to_numpy()
+        control_cohorts = _control_cohorts(group, max(time_idx, pre_treatment_idx) + time_factor, data.config, cohorts)
+        cohort_index = _panel_cohort_index(group, control_cohorts, data)
 
     else:
         n_units = len(data.data)
@@ -403,6 +432,31 @@ def get_did_cohort_index(
         cohort_index[keep_periods & control_flag] = 0
         cohort_index[keep_periods & treated_flag] = 1
 
+    return cohort_index
+
+
+def _control_cohorts(group, later_index, config, cohorts):
+    """Return the cohorts of a cell's comparison group from its cohort and the position of its later period."""
+    if config.control_group == ControlGroup.NOT_YET_TREATED:
+        controls = cohorts[cohorts > config.time_periods[later_index] + config.anticipation]
+    else:
+        controls = cohorts[cohorts == np.inf]
+    return controls[controls != group]
+
+
+def _panel_cohort_index(group, control_cohorts, data):
+    """Mark a cell's treated units with 1 and its comparison units with 0 in a panel sorted by cohort."""
+    n_units = len(data.time_invariant_data) if data.config.allow_unbalanced_panel else data.config.id_count
+    cohort_index = np.full(n_units, np.nan)
+
+    cohorts = data.cohort_counts["cohort"].to_numpy()
+    sizes = data.cohort_counts["cohort_size"].to_numpy()
+    ends = np.cumsum(sizes)
+    starts = ends - sizes
+    for position in np.flatnonzero(np.isin(cohorts, control_cohorts)):
+        cohort_index[starts[position] : ends[position]] = 0
+    for position in np.flatnonzero(cohorts == group):
+        cohort_index[starts[position] : ends[position]] = 1
     return cohort_index
 
 
@@ -625,7 +679,7 @@ def _check_estimate(result):
 
 
 def _process_gt_cell_did(group_idx, time_idx, data, unit_index=None):
-    """Process a single (group, time) cell for DiD estimation.
+    """Process a single group-time cell for DiD estimation.
 
     Returns
     -------
@@ -640,13 +694,8 @@ def _process_gt_cell_did(group_idx, time_idx, data, unit_index=None):
 
     if estimation_result is None or estimation_result["att"] is None:
         if data.config.base_period == "universal":
-            pre_periods = np.where(
-                data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
-            )[0]
-            is_reference = (
-                len(pre_periods) > 0
-                and data.config.time_periods[pre_periods[-1]] == data.config.time_periods[time_idx + time_factor]
-            )
+            spec = cell_spec(group_idx, time_idx, data.config, data.cohort_counts)
+            is_reference = spec is not None and spec.reference
             att_val = 0.0 if is_reference else np.nan
             inf_func = np.zeros(n_units) if is_reference else np.full(n_units, np.nan)
             return (

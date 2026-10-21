@@ -5,7 +5,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import att_gt, compute_att_gt, load_mpdta, mp, preprocess_did
+from moderndid import att_gt, compute_att_gt, gen_did_scalable, load_mpdta, mp, preprocess_did
 
 
 @pytest.fixture
@@ -37,8 +37,9 @@ def mpdta_unbalanced_varying_weights(mpdta_unbalanced):
 
 @pytest.fixture
 def mpdta_varying_weights(mpdta_data):
+    """mpdta with sampling weights that differ in every year of each county."""
     return mpdta_data.with_columns(
-        (pl.col("lpop").exp() * (1 + (pl.col("countyreal") + pl.col("year")) % 4)).alias("w")
+        (pl.col("lpop").exp() * (1 + (pl.col("countyreal") + pl.col("year")) % 5)).alias("w")
     )
 
 
@@ -78,7 +79,7 @@ def mpdta_converted(request, mpdta_data):
         duckdb = importorskip("duckdb")
         conn = duckdb.connect()
         conn.register("mpdta", mpdta_data.to_arrow())
-        return conn.execute("SELECT * FROM mpdta").fetch_arrow_table()
+        return conn.sql("SELECT * FROM mpdta")
     raise ValueError(f"Unknown dataframe type: {df_type}")
 
 
@@ -375,6 +376,38 @@ def no_post_treatment_result():
 def mpdta_separated_2004(mpdta_data):
     """mpdta with a covariate that separates the 2004 cohort from every other county."""
     return mpdta_data.with_columns((pl.col("lpop") + 100 * (pl.col("first.treat") == 2004)).alias("size"))
+
+
+@pytest.fixture
+def mpdta_with_states(mpdta_data):
+    """mpdta with the state of each county as a cluster variable."""
+    return mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+
+
+@pytest.fixture
+def mpdta_varying_weights_and_states(mpdta_varying_weights):
+    """mpdta with sampling weights that vary over time and the state of each county as a cluster variable."""
+    return mpdta_varying_weights.with_columns((pl.col("countyreal") // 1000).alias("state"))
+
+
+@pytest.fixture
+def mpdta_collinear_covariates(mpdta_data):
+    """mpdta with a covariate that is exactly twice lpop."""
+    return mpdta_data.with_columns((2 * pl.col("lpop")).alias("lpop2"))
+
+
+@pytest.fixture
+def scalable_panel():
+    """Generated panel of 400 units over five periods with four covariates and a standardized outcome."""
+    data = gen_did_scalable(400, n_periods=5, n_cohorts=3, n_covariates=4, random_state=42)["data"]
+    return data.with_columns((pl.col("y") - pl.col("y").mean()) / pl.col("y").std())
+
+
+@pytest.fixture
+def large_scalable_panel():
+    """Generated panel of 2500 units over three periods with 50 clusters and a standardized outcome."""
+    data = gen_did_scalable(2500, n_periods=3, n_cohorts=2, n_covariates=4, random_state=42)["data"]
+    return data.with_columns((pl.col("y") - pl.col("y").mean()) / pl.col("y").std())
 
 
 @pytest.fixture

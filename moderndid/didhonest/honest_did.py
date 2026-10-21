@@ -69,10 +69,11 @@ def honest_did(
     Since the restrictions measure every coefficient from one reference period, an event
     study that records a base period other than ``"universal"`` raises an error. That
     reference period is :math:`-1` minus the number of anticipation periods. The covariance
-    of the coefficients comes from the event study's influence function. When the event
-    study used ``clustervars``, the influence function is first summed within each cluster.
-    The call raises an error unless the clusters outnumber the coefficients besides the
-    reference period.
+    of the coefficients comes from the event study's influence function. Without one, as for
+    an event study of a fit on a Spark DataFrame, it comes from the event study's
+    ``vcov_analytical``. When the event study used ``clustervars``, the influence function
+    is first summed within each cluster. The call raises an error unless the clusters
+    outnumber the coefficients besides the reference period.
 
     See the :ref:`sensitivity analysis example <example_honest_did>` for a full analysis of
     the Medicaid expansion data under smoothness, relative magnitudes, and sign restrictions.
@@ -80,8 +81,9 @@ def honest_did(
     Parameters
     ----------
     event_study : AGGTEResult or similar
-        Dynamic event study with influence functions, such as an :func:`~moderndid.aggte` result
-        for effects that :func:`~moderndid.att_gt` estimated with ``base_period="universal"``.
+        Dynamic event study with influence functions or an analytical covariance, such as an
+        :func:`~moderndid.aggte` result for effects that :func:`~moderndid.att_gt` estimated
+        with ``base_period="universal"``.
     event_time : int, default=0
         The post-treatment event time of the effect, 0 for the effect on impact.
     sensitivity_type : {"smoothness", "relative_magnitude"}, default="smoothness"
@@ -181,10 +183,14 @@ def _honest_did_aggte(
     if event_study.aggregation_type != "dynamic":
         raise ValueError("honest_did requires an event study (dynamic aggregation).")
 
-    if event_study.influence_func is None:
+    estimation_params = event_study.estimation_params or {}
+    influence_func = event_study.influence_func
+    # An event study of a fit on a Spark DataFrame keeps the covariance of its effects in place of their influence
+    # functions.
+    vcov = getattr(event_study, "vcov_analytical", None) if influence_func is None else None
+    if influence_func is None and (vcov is None or estimation_params.get("n_units") is None):
         raise ValueError("Event study must have influence functions computed.")
 
-    estimation_params = event_study.estimation_params or {}
     base_period = estimation_params.get("base_period", "universal")
     if base_period != "universal":
         raise ValueError(
@@ -193,9 +199,7 @@ def _honest_did_aggte(
             "and aggregate them again with aggte(type='dynamic')."
         )
 
-    influence_func = event_study.influence_func
-
-    if influence_func.ndim != 2:
+    if influence_func is not None and influence_func.ndim != 2:
         raise ValueError(
             f"Expected 2D influence function matrix for dynamic aggregation, got shape {influence_func.shape}. "
         )
@@ -224,13 +228,18 @@ def _honest_did_aggte(
         ref_idx = np.where(event_times == reference_period)[0][0]
         event_times_no_ref = np.delete(event_times, ref_idx)
         att_no_ref = np.delete(att_estimates, ref_idx)
-        influence_func_no_ref = np.delete(influence_func, ref_idx, axis=1)
+        influence_func_no_ref = None if influence_func is None else np.delete(influence_func, ref_idx, axis=1)
+        vcov_no_ref = None if vcov is None else np.delete(np.delete(vcov, ref_idx, axis=0), ref_idx, axis=1)
     else:
         event_times_no_ref = event_times
         att_no_ref = att_estimates
         influence_func_no_ref = influence_func
+        vcov_no_ref = vcov
 
-    vcov_matrix = _event_study_covariance(influence_func_no_ref, estimation_params)
+    if influence_func_no_ref is None:
+        vcov_matrix = _covariance_from_vcov(np.asarray(vcov_no_ref), estimation_params)
+    else:
+        vcov_matrix = _event_study_covariance(influence_func_no_ref, estimation_params)
 
     num_pre_periods = np.sum(event_times_no_ref < reference_period)
     num_post_periods = len(event_times_no_ref) - num_pre_periods
@@ -333,15 +342,51 @@ def _event_study_covariance(influence_func, estimation_params):
 
     _, cluster_idx = np.unique(cluster, return_inverse=True)
     n_clusters = int(cluster_idx.max()) + 1
-    if n_clusters <= k:
-        raise ValueError(
-            "honest_did needs more clusters than event study coefficients to estimate their covariance. The event "
-            f"study has {n_clusters} clusters and {k} coefficients besides the reference period. Cluster on a "
-            "variable with more groups or narrow the event window with aggte's min_e and max_e."
-        )
+    _check_cluster_count(n_clusters, k)
 
     # Since units in one cluster share shocks, their influence functions are summed before the outer product.
     cluster_sums = np.column_stack(
         [np.bincount(cluster_idx, weights=influence_func[:, j], minlength=n_clusters) for j in range(k)]
     )
     return cluster_sums.T @ cluster_sums / (n * n)
+
+
+def _covariance_from_vcov(vcov, estimation_params):
+    """Compute the covariance of event study coefficients from their asymptotic covariance.
+
+    Since ``vcov_analytical`` already sums the influence functions within any clusters, only
+    its division by the number of units remains.
+
+    Parameters
+    ----------
+    vcov : ndarray
+        The event study's ``vcov_analytical`` without the reference period.
+    estimation_params : dict
+        Estimation parameters of the event study. They record ``n_units`` for every event
+        study and ``clustervars`` and ``n_clusters`` for a clustered one.
+
+    Returns
+    -------
+    ndarray
+        Covariance matrix of shape (n_coefficients, n_coefficients).
+    """
+    clustervars = estimation_params.get("clustervars")
+    if clustervars:
+        n_clusters = estimation_params.get("n_clusters")
+        if n_clusters is None:
+            raise ValueError(
+                f"The event study records clustervars={clustervars!r} but not its number of clusters in "
+                "estimation_params['n_clusters']. Aggregate the group-time effects again with aggte(type='dynamic')."
+            )
+        _check_cluster_count(n_clusters, vcov.shape[0])
+    return vcov / estimation_params["n_units"]
+
+
+def _check_cluster_count(n_clusters, n_coefficients):
+    """Check that the clusters outnumber the event study coefficients besides the reference period."""
+    if n_clusters <= n_coefficients:
+        raise ValueError(
+            "honest_did needs more clusters than event study coefficients to estimate their covariance. The event "
+            f"study has {n_clusters} clusters and {n_coefficients} coefficients besides the reference period. "
+            "Cluster on a variable with more groups or narrow the event window with aggte's min_e and max_e."
+        )
