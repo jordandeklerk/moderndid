@@ -313,6 +313,7 @@ def test_etwfe_nonlinear_keeps_idname_for_clustering(etwfe_poisson_id):
 def test_etwfe_nonlinear_with_idname_no_warning(mpdta_data):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module="pyfixest")
         etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", family="poisson")
     assert [str(w.message) for w in caught] == []
 
@@ -499,6 +500,7 @@ def test_etwfe_binary_family_collinear_control_raises(mpdta_moderators, xformla,
 def test_etwfe_no_collinearity_warning(mpdta_data):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module="pyfixest")
         mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal")
         emfx(mod, type="event")
     assert [str(w.message) for w in caught] == []
