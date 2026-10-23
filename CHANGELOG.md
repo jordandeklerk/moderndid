@@ -1,3 +1,37 @@
+<a id="v0.4.0"></a>
+# [v0.4.0](https://github.com/jordandeklerk/moderndid/releases/tag/v0.4.0) - 2026-10-23
+
+<!-- Release notes generated using configuration in .github/release.yml at v0.4.0 -->
+
+## What's Changed
+* DOC: add runnable Colab and molab notebooks for the examples by [@jordandeklerk](https://github.com/jordandeklerk) in [#382](https://github.com/jordandeklerk/moderndid/pull/382)
+* BUG: fix the R comparison notebooks in Colab and drop their saved outputs by [@jordandeklerk](https://github.com/jordandeklerk) in [#383](https://github.com/jordandeklerk/moderndid/pull/383)
+* MAINT: test installs without the extras in CI by [@jordandeklerk](https://github.com/jordandeklerk) in [#384](https://github.com/jordandeklerk/moderndid/pull/384)
+* MAINT: rename `dropna` to `na_rm` in `agg_ddd` and `compute_aggte` by [@jordandeklerk](https://github.com/jordandeklerk) in [#385](https://github.com/jordandeklerk/moderndid/pull/385)
+* DOC: reorganize the index pages and merge the Development and Contributing tabs by [@jordandeklerk](https://github.com/jordandeklerk) in [#386](https://github.com/jordandeklerk/moderndid/pull/386)
+* DOC: reorganize the API reference and redesign the landing page by [@jordandeklerk](https://github.com/jordandeklerk) in [#387](https://github.com/jordandeklerk/moderndid/pull/387)
+* DOC: cap the prose width and tidy callouts, equations, and tables by [@jordandeklerk](https://github.com/jordandeklerk) in [#388](https://github.com/jordandeklerk/moderndid/pull/388)
+* DOC: trim the guide pages, restore full-width text, and center the landing logo by [@jordandeklerk](https://github.com/jordandeklerk) in [#389](https://github.com/jordandeklerk/moderndid/pull/389)
+* DOC: shorten the FAQ answers and keep sidebar sections open by [@jordandeklerk](https://github.com/jordandeklerk) in [#390](https://github.com/jordandeklerk/moderndid/pull/390)
+* DOC: trim the DiD example pages and their check outputs by [@jordandeklerk](https://github.com/jordandeklerk) in [#393](https://github.com/jordandeklerk/moderndid/pull/393)
+* DOC: landing page redesign by [@jordandeklerk](https://github.com/jordandeklerk) in [#394](https://github.com/jordandeklerk/moderndid/pull/394)
+* DOC: set the footer wordmark in the block letters by [@jordandeklerk](https://github.com/jordandeklerk) in [#395](https://github.com/jordandeklerk/moderndid/pull/395)
+* DOC: trim the continuous treatment, fracking, dynamic balancing, and NPIV examples by [@jordandeklerk](https://github.com/jordandeklerk) in [#396](https://github.com/jordandeklerk/moderndid/pull/396)
+* DOC: draw figures at the column width by [@jordandeklerk](https://github.com/jordandeklerk) in [#397](https://github.com/jordandeklerk/moderndid/pull/397)
+* DOC: drop the window frame and search prompt from the landing page by [@jordandeklerk](https://github.com/jordandeklerk) in [#398](https://github.com/jordandeklerk/moderndid/pull/398)
+* ENH: support didml results in to_df and the plots by [@jordandeklerk](https://github.com/jordandeklerk) in [#399](https://github.com/jordandeklerk/moderndid/pull/399)
+* ENH: run att_gt on Spark DataFrames by [@jordandeklerk](https://github.com/jordandeklerk) in [#400](https://github.com/jordandeklerk/moderndid/pull/400)
+* DOC: split the Spark guide in two and rewrite the shard engine section by [@jordandeklerk](https://github.com/jordandeklerk) in [#401](https://github.com/jordandeklerk/moderndid/pull/401)
+* TEST: ignore pyfixest's pandas 3.1 deprecations in the ETWFE warning tests by [@jordandeklerk](https://github.com/jordandeklerk) in [#402](https://github.com/jordandeklerk/moderndid/pull/402)
+* BUG: read decimal value columns as doubles in every estimator and fix pandas version by [@jordandeklerk](https://github.com/jordandeklerk) in [#403](https://github.com/jordandeklerk/moderndid/pull/403)
+* REL: prepare release v0.4.0 by [@jordandeklerk](https://github.com/jordandeklerk) in [#404](https://github.com/jordandeklerk/moderndid/pull/404)
+
+
+**Full Changelog**: https://github.com/jordandeklerk/moderndid/compare/v0.3.1...v0.4.0
+
+[Changes][v0.4.0]
+
+
 <a id="v0.3.1"></a>
 # [v0.3.1](https://github.com/jordandeklerk/moderndid/releases/tag/v0.3.1) - 2026-10-16
 
@@ -427,6 +461,7 @@
 [Changes][v0.0.1]
 
 
+[v0.4.0]: https://github.com/jordandeklerk/moderndid/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/jordandeklerk/moderndid/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/jordandeklerk/moderndid/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/jordandeklerk/moderndid/compare/v0.1.1...v0.2.0
