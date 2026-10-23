@@ -86,6 +86,7 @@ gpu = [
 ]
 spark = [
     "pyspark[connect]>=3.5",
+    "pandas<3",
 ]
 all = [
     "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots]",

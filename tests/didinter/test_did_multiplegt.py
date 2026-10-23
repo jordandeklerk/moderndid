@@ -1248,6 +1248,41 @@ def test_rows_with_an_infinite_control_are_dropped(weighted_clustered_panel):
     np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
 
 
+def test_did_multiplegt_reads_decimal_outcome_controls_weights_and_het_covariates_as_doubles(every_option_panel):
+    kwargs = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "xformla": "~ x1 + x2",
+        "weightsname": "w",
+        "predict_het": (["het"], [-1]),
+        "effects": 2,
+        "placebo": 1,
+    }
+    data = every_option_panel.with_columns((1 + (pl.col("id") % 4) / 4).alias("w"))
+    decimal = data.with_columns(pl.col("y", "x1", "x2", "het", "w").cast(pl.Decimal(18, 6)))
+    floats = decimal.with_columns(pl.col("y", "x1", "x2", "het", "w").cast(pl.Float64))
+
+    result = did_multiplegt(decimal, **kwargs)
+    expected = did_multiplegt(floats, **kwargs)
+
+    np.testing.assert_allclose(result.effects.estimates, expected.effects.estimates, rtol=1e-12)
+    np.testing.assert_allclose(result.effects.std_errors, expected.effects.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(result.placebos.estimates, expected.placebos.estimates, rtol=1e-12)
+    np.testing.assert_allclose(result.placebos.std_errors, expected.placebos.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(
+        [het.estimates for het in result.heterogeneity],
+        [het.estimates for het in expected.heterogeneity],
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(
+        [het.std_errors for het in result.heterogeneity],
+        [het.std_errors for het in expected.heterogeneity],
+        rtol=1e-12,
+    )
+
+
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])
 @pytest.mark.parametrize("boot", [False, True])
 def test_non_finite_cluster_counts_as_missing(weighted_clustered_panel, value, boot):

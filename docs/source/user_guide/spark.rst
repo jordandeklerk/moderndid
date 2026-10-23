@@ -348,14 +348,10 @@ decimal(18,0).
 Even when it holds only small whole numbers, a column of a wider type such as
 decimal(38,0) fails that check until you cast it to bigint.
 
-.. admonition:: Collected decimal values break an in-memory fit
-   :class: warning
-
-   A decimal outcome that ``toPandas()`` or ``toArrow()`` collects leaves the
-   effects of an in-memory fit NaN. A decimal covariate or weight stops that
-   fit with an error. Since the Spark fit reads those columns as doubles
-   anyway, casting them to double before you collect rows for an in-memory fit
-   or the sample check below fixes both without changing its estimates.
+Since both a Spark fit and an in-memory fit read decimal outcomes, covariates,
+and weights as doubles, those columns need no cast. Rows that you collect with
+``toPandas()`` or ``toArrow()`` for the sample check below therefore give the
+same estimates in memory as on Spark.
 
 As in an in-memory fit, a transformed covariate or a derived cluster goes into
 the data as a column of its own. You can make such a column with Spark's column

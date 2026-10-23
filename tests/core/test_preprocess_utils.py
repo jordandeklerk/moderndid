@@ -15,6 +15,7 @@ from moderndid.core.preprocess.utils import (
     choose_knots_quantile,
     create_ddd_subgroups,
     create_dose_grid,
+    decimal_to_float,
     extract_covariates,
     extract_ddd_covariates,
     extract_vars_from_formula,
@@ -659,6 +660,20 @@ def test_nonfinite_to_null_keeps_infinity_in_named_columns():
 
     assert result["y"].to_list() == [None, 2.0, 3.0]
     assert result["g"].to_list() == [float("inf"), None, -float("inf")]
+
+
+def test_decimal_to_float_turns_only_the_named_decimal_columns_into_floats():
+    df = pl.DataFrame({"y": [1.25, None, -3.5], "id": [11, 12, 13], "x": [0.1, 0.2, 0.3]}).with_columns(
+        pl.col("y").cast(pl.Decimal(18, 6)), pl.col("id").cast(pl.Decimal(18, 0))
+    )
+
+    result = decimal_to_float(df, ["y", "x", None, "absent"])
+
+    assert result.columns == ["y", "id", "x"]
+    assert result.dtypes == [pl.Float64, pl.Decimal(18, 0), pl.Float64]
+    assert result["y"].to_list() == [1.25, None, -3.5]
+    assert result["id"].equals(df["id"])
+    assert result["x"].equals(df["x"])
 
 
 def test_make_balanced_panel_drops_units_with_two_rows_in_a_period(panel_with_duplicates):

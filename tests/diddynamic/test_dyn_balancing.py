@@ -1278,6 +1278,23 @@ def test_pooled_estimate_does_not_depend_on_the_unit_id_dtype(estimator_panel, p
     assert result.estimation_params["n_stacked_units"] == pooled_result.estimation_params["n_stacked_units"]
 
 
+def test_dyn_balancing_reads_decimal_outcome_and_treatment_as_doubles(estimator_panel, estimator_spec):
+    decimal = estimator_panel.with_columns(pl.col("y").cast(pl.Decimal(18, 6)), pl.col("D").cast(pl.Decimal(18, 0)))
+    floats = decimal.with_columns(pl.col("y", "D").cast(pl.Float64))
+
+    result = dyn_balancing(data=decimal, **estimator_spec)
+    expected = dyn_balancing(data=floats, **estimator_spec)
+
+    np.testing.assert_allclose(
+        [result.att, result.mu1, result.mu2], [expected.att, expected.mu1, expected.mu2], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        [result.var_att, result.var_mu1, result.var_mu2],
+        [expected.var_att, expected.var_mu1, expected.var_mu2],
+        rtol=1e-12,
+    )
+
+
 @pytest.mark.parametrize("infinite", [float("inf"), -float("inf")])
 def test_dyn_balancing_reads_an_infinite_final_outcome_like_nan(estimator_panel, estimator_spec, infinite):
     row = (pl.col("id") == 5) & (pl.col("time") == 3)

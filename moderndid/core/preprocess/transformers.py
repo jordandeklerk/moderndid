@@ -27,6 +27,7 @@ from .constants import (
 )
 from .utils import (
     create_ddd_subgroups,
+    decimal_to_float,
     extract_vars_from_formula,
     get_formula_columns,
     get_transformed_terms,
@@ -66,18 +67,20 @@ class ColumnSelector(BaseTransformer):
         if config.clustervars:
             cols_to_keep.extend(config.clustervars)
 
+        formula_vars = []
         if config.xformla and config.xformla != "~1":
             formula_vars = extract_vars_from_formula(config.xformla)
             formula_vars = [v for v in formula_vars if v != config.yname]
             cols_to_keep.extend(formula_vars)
 
-        if isinstance(config, ContDIDConfig) and config.dname:
-            cols_to_keep.append(config.dname)
+        dname = config.dname if isinstance(config, ContDIDConfig) else None
+        if dname:
+            cols_to_keep.append(dname)
 
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None]
 
-        return df.select(cols_to_keep)
+        return decimal_to_float(df.select(cols_to_keep), [config.yname, config.weightsname, *formula_vars, dname])
 
 
 class MissingDataHandler(BaseTransformer):
@@ -699,6 +702,7 @@ class PrePostColumnSelector(BaseTransformer):
         if config.weightsname:
             cols_to_keep.append(config.weightsname)
 
+        formula_vars = []
         if config.xformla and config.xformla != "~1":
             if get_transformed_terms(config.xformla):
                 # Since PrePostCovariateProcessor evaluates transformed terms itself, only the columns they read stay.
@@ -714,7 +718,9 @@ class PrePostColumnSelector(BaseTransformer):
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None]
 
-        return df.select(cols_to_keep)
+        return decimal_to_float(
+            df.select(cols_to_keep), [config.yname, config.treat_col, config.weightsname, *formula_vars]
+        )
 
 
 class PrePostCovariateProcessor(BaseTransformer):
@@ -861,6 +867,7 @@ class DIDInterColumnSelector(BaseTransformer):
         if config.cluster:
             cols_to_keep.append(config.cluster)
 
+        covariate_names = []
         if config.xformla and config.xformla != "~1":
             covariate_names = extract_vars_from_formula(config.xformla)
             cols_to_keep.extend(covariate_names)
@@ -868,8 +875,10 @@ class DIDInterColumnSelector(BaseTransformer):
         if config.trends_nonparam:
             cols_to_keep.extend(config.trends_nonparam)
 
+        het_covariates = []
         if config.predict_het:
-            cols_to_keep.extend(config.predict_het[0])
+            het_covariates = config.predict_het[0]
+            cols_to_keep.extend(het_covariates)
 
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
@@ -880,7 +889,7 @@ class DIDInterColumnSelector(BaseTransformer):
             if col in df.columns and df[col].dtype not in (pl.Float64, pl.Float32, pl.Int64, pl.Int32):
                 df = df.with_columns(pl.col(col).cast(pl.Float64))
 
-        return df
+        return decimal_to_float(df, [config.yname, config.weightsname, *covariate_names, *het_covariates])
 
 
 class DIDInterTimeRanker(BaseTransformer):
@@ -1411,6 +1420,7 @@ class DDDColumnSelector(BaseTransformer):
         if config.weightsname:
             cols_to_keep.append(config.weightsname)
 
+        formula_vars = []
         if config.xformla and config.xformla != "~1":
             formula_vars = extract_vars_from_formula(config.xformla)
             cols_to_keep.extend(formula_vars)
@@ -1423,7 +1433,7 @@ class DDDColumnSelector(BaseTransformer):
         if df.schema[config.gname].is_float():
             never_treated = pl.col(config.gname) == float("inf")
             df = df.with_columns(pl.when(never_treated).then(0.0).otherwise(pl.col(config.gname)).alias(config.gname))
-        return df
+        return decimal_to_float(df, [config.yname, config.pname, config.weightsname, *formula_vars])
 
 
 class DDDWeightProcessor(BaseTransformer):
@@ -1590,6 +1600,7 @@ class DynBalancingColumnSelector(BaseTransformer):
         df = to_polars(data)
         cols_to_keep = [config.yname, config.tname, config.idname, config.treatment_name]
 
+        formula_vars = []
         if config.xformla and config.xformla != "~1":
             formula_vars = extract_vars_from_formula(config.xformla)
             formula_vars = [v for v in formula_vars if v != config.yname]
@@ -1604,7 +1615,7 @@ class DynBalancingColumnSelector(BaseTransformer):
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
 
-        return df.select(cols_to_keep)
+        return decimal_to_float(df.select(cols_to_keep), [config.yname, config.treatment_name, *formula_vars])
 
 
 class DynBalancingPanelBalancer(BaseTransformer):

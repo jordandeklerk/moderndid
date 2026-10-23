@@ -9,7 +9,7 @@ import pandas as pd
 import polars as pl
 from scipy import stats
 
-from moderndid.core.preprocess.utils import parse_formula
+from moderndid.core.preprocess.utils import decimal_to_float, parse_formula
 from moderndid.core.preprocess.validators import _duplicate_unit_period_error, _reserved_name_errors, _weights_error
 
 
@@ -71,6 +71,7 @@ def clean_etwfe_data(data, config, vcov=None):
     cols = [config.tname, config.gname, config.idname, *ctrls, config.xvar, config.weightsname, *clusters]
     cols = list(dict.fromkeys(c for c in cols if c is not None))
     data = data.select([c for c in data.columns if c in {config.yname, *cols}])
+    data = decimal_to_float(data, [config.yname, *ctrls, config.xvar, config.weightsname])
     missing = {c: _is_missing(data, c, keep_infinite=c == config.gname) for c in cols}
     incomplete = [c for c in cols if data.select(missing[c].any()).item()]
     if incomplete:

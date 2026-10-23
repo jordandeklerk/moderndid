@@ -79,6 +79,16 @@ def to_spark(spark):
 
 
 @pytest.fixture(scope="session")
+def to_pandas():
+    """Function that collects a Spark DataFrame as a pandas DataFrame."""
+
+    def collect(frame):
+        return frame.toPandas()
+
+    return collect
+
+
+@pytest.fixture(scope="session")
 def to_arrow():
     """Function that collects a Spark DataFrame as a pyarrow Table."""
 
@@ -202,6 +212,12 @@ def mpdta_with_fractional_decimal_ids(mpdta_data):
 def mpdta_with_fractional_decimal_states(mpdta_with_states):
     """mpdta with the state of each county stored as a decimal with two fraction digits."""
     return mpdta_with_states.with_columns(pl.col("state").cast(pl.Decimal(10, 2)))
+
+
+@pytest.fixture(scope="session")
+def mpdta_with_decimal_values(mpdta_pop_weighted):
+    """mpdta with the outcome and the covariate and the population weights stored as decimals."""
+    return mpdta_pop_weighted.with_columns(pl.col("lemp", "lpop", "pop").cast(pl.Decimal(18, 6)))
 
 
 @pytest.fixture(scope="session")

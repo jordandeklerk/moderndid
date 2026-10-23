@@ -606,6 +606,29 @@ def test_drdid_dotted_and_backticked_covariate_names(nsw_data, panel):
     assert result.se == expected.se
 
 
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_reads_decimal_outcome_treatment_covariates_and_weights_as_doubles(nsw_data, panel):
+    data = nsw_data.with_columns((1 + (pl.col("id") % 4) / 4).alias("w")).with_columns(
+        pl.col("re", "w").cast(pl.Decimal(18, 6)), pl.col("experimental", "age", "educ").cast(pl.Decimal(18, 0))
+    )
+    floats = data.with_columns(pl.col("re", "w", "experimental", "age", "educ").cast(pl.Float64))
+    spec = {
+        "yname": "re",
+        "tname": "year",
+        "idname": "id" if panel else None,
+        "treatname": "experimental",
+        "xformla": "~ age + I(age**2) + educ",
+        "weightsname": "w",
+        "panel": panel,
+    }
+
+    result = drdid(data=data, **spec)
+    expected = drdid(data=floats, **spec)
+
+    np.testing.assert_allclose(result.att, expected.att, rtol=1e-12)
+    np.testing.assert_allclose(result.se, expected.se, rtol=1e-12)
+
+
 def test_drdid_formula_without_tilde_raises(nsw_data):
     with pytest.raises(ValueError, match="must be in the form"):
         drdid(

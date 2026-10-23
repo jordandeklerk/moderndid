@@ -8,6 +8,8 @@ import statsmodels.api as sm
 from formulaic import Formula
 from scipy import stats
 
+from moderndid.core.preprocess.utils import decimal_to_float
+
 from .container import BLPResult, CLANResult
 
 
@@ -20,7 +22,9 @@ def het_prep(data, dynamic_cates_df, *, idname, tname, gname):
     left-joins the output of :func:`dynamic_cates` so each unit-period row
     carries its aggregated CATT (or DR score) at the matching event time.
     Pre-treatment rows where ``e < 0`` carry the corresponding pre-treatment
-    aggregate. Rows with no matching event time receive a null.
+    aggregate. Rows with no matching event time receive a null. Decimal
+    columns other than the unit, period, and cohort columns come back as
+    doubles.
 
     Parameters
     ----------
@@ -57,6 +61,10 @@ def het_prep(data, dynamic_cates_df, *, idname, tname, gname):
         df = data
     else:
         df = pl.from_pandas(data) if hasattr(data, "to_pandas") or hasattr(data, "columns") else pl.DataFrame(data)
+
+    # Since formulaic reads decimal values as categories, every decimal column but the keys becomes a double.
+    # The keys keep their type for the join with the CATTs.
+    df = decimal_to_float(df, [name for name in df.columns if name not in (idname, tname, gname)])
 
     df = df.filter(pl.col(gname) > 0).with_columns(
         (pl.col(tname) - pl.col(gname)).alias("event_time"),
