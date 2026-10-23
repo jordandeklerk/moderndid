@@ -431,8 +431,8 @@ def test_att_gt_on_spark_rejects_a_pyspark_older_than_3_5(mpdta_data, to_spark, 
         ValueError,
         match=re.escape(
             "pyspark 3.4.1 is installed. A fit of att_gt on a Spark DataFrame needs pyspark 3.5 or later. Upgrade "
-            "pyspark or, on Databricks, choose Databricks Runtime 16 or later, as the Spark guide of the moderndid "
-            "docs describes."
+            "pyspark or, on Databricks, choose Databricks Runtime 16.4 LTS or later. The Spark setup guide of the "
+            "moderndid docs says which runtimes to choose."
         ),
     ):
         att_gt(frame, yname="lemp", tname="year", idname="countyreal", gname="first.treat")

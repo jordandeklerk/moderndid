@@ -98,7 +98,8 @@ def att_gt(
     boot : bool, default=False
         Whether to compute the standard errors with the multiplier bootstrap.
     biters : int, default=1000
-        The number of bootstrap draws. Only applicable if ``boot=True``.
+        The number of bootstrap draws for ``boot=True`` and, by default, for the
+        simultaneous bands that :func:`~moderndid.aggte` draws even when ``boot=False``.
     clustervars : list[str], optional
         Variables to cluster the standard errors on. Besides ``idname``, the list may
         hold one variable that stays fixed within each unit.

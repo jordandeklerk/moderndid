@@ -407,10 +407,10 @@ Connect session can't share one process.
 As in the GPU command, ``-ra`` lists any skipped test with its reason.
 
 The ``spark35`` Tox environment runs the same tests on PySpark 3.5 with numpy
-below 2, pandas below 2.2, and pyarrow below 16, as on Databricks Runtime 16.
-Since the tests of older pandas in ``tests/core/test_dataframe.py`` skip on any
-pandas with the Arrow PyCapsule interface, the environment runs that file too.
-It needs three things that the Pixi runs above don't.
+below 2, pandas below 2.2, and pyarrow below 16, as on Databricks Runtime 16.4
+LTS. Since the tests of older pandas in ``tests/core/test_dataframe.py`` skip on
+any pandas with the Arrow PyCapsule interface, the environment runs that file
+too. It needs three things that the Pixi runs above don't.
 
 - Java 17 on ``JAVA_HOME``, because Spark 3.5 can't run its Arrow functions on
   Java 21.
@@ -420,8 +420,8 @@ It needs three things that the Pixi runs above don't.
 - Network access on the first run through Spark Connect, when Spark downloads
   the server's package from Maven Central into ``~/.ivy2``.
 
-The environment runs on Python 3.12, the Python of Databricks Runtime 16. The
-commands below run it in a classic session and through Spark Connect.
+The environment runs on Python 3.12, the Python of Databricks Runtime 16.4 LTS.
+The commands below run it in a classic session and through Spark Connect.
 
 .. code-block:: bash
 
@@ -430,7 +430,7 @@ commands below run it in a classic session and through Spark Connect.
 
 Since PySpark 3.5 doesn't bundle the Spark Connect server, the session fixture
 adds its package through ``spark.jars.packages`` on 3.5. A ``local[2]`` server
-like the one in the :ref:`Spark guide <spark>` needs nothing more, because its
+like the one in the :ref:`Spark setup guide <spark-setup>` needs nothing more, because its
 executor shares the driver's JVM. On the executors of a ``local-cluster``
 server, Spark 3.5 runs the tasks of each Connect session with a class loader
 that sees only the executor's classpath and the session's own jars. The

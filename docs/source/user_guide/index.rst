@@ -93,8 +93,10 @@ Scaling
      - Spread comparisons and bootstrap draws over several CPU workers.
    * - :doc:`GPU acceleration <gpu>`
      - Set up CuPy, select supported GPU calculations, and measure their running time.
-   * - :doc:`Spark <spark>`
-     - Fit group-time effects on a Spark DataFrame without collecting its rows.
+   * - :doc:`Setting up Spark <spark_setup>`
+     - Install ModernDiD for Spark on Databricks, a cluster, or one machine and fix setup errors.
+   * - :doc:`Distributed estimation on Spark <spark>`
+     - Fit group-time effects on a Spark DataFrame and check them against an in-memory fit.
 
 .. toctree::
    :hidden:
@@ -102,7 +104,8 @@ Scaling
 
    CPU parallelism <scaling>
    GPU acceleration <gpu>
-   Spark <spark>
+   Setting up Spark <spark_setup>
+   Distributed estimation on Spark <spark>
 
 .. _whatis-methods:
 
