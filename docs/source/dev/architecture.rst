@@ -716,22 +716,27 @@ CUDA-specific dependencies.
 Fitting a panel held in shards
 ------------------------------
 
-Because a panel held in a Spark DataFrame can have more units than one
-machine's memory holds, a fit on it brings neither the rows nor the
-influence function matrix to the driver. The engine in ``did/shards/``
-therefore computes ``att_gt`` from statistics over shards, blocks of whole
-units. The adapter in ``spark/`` runs those computations on Spark and is the
-only part of moderndid that imports PySpark. ``att_gt`` recognizes a Spark
-DataFrame by its class and only then loads ``spark_att_gt`` from
-``spark/att_gt.py``. That check comes before any step that reads the data.
-Since a PySpark 4.2 DataFrame exposes ``__arrow_c_stream__``, converting it for
-``check_columns`` would collect the whole table to the driver. The
-:ref:`Spark guide <spark>` walks through such a fit from the user's side.
+When a panel sits in a Spark DataFrame, the two things an in-memory fit leans
+on can't come to the driver. The rows of the panel may be too many for one
+machine. The influence function matrix ``psi`` from earlier on this page holds a
+row for every unit and may be too large as well. We made ``att_gt`` work on a cluster by
+rewriting it around one idea. Every quantity the estimator needs is a sum over
+units or something the driver can compute from such sums. Each block of units
+then computes its share wherever it lives, and the driver only adds the shares
+up. We'll rebuild the ``result`` from the start of this page out of three
+blocks of counties to show how that works. The :ref:`Spark guide <spark>` walks
+through such a fit from the user's side.
 
-Since a shard holds every period of each of its units, any statistic that sums
-over units adds up across shards however the units were split. We'll split the
-prepared county panel into three shards with ``shards_from_did_data`` from
-``local.py`` to see what each shard holds.
+Splitting the units into shards
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A shard holds whole units, each with every period of its outcome, weights, and
+covariates. Any statistic that sums over units therefore adds up across shards
+however the units were split. The engine fits only
+balanced panels because each unit's row holds an outcome for every period.
+We'll split the prepared county panel into three shards with
+``shards_from_did_data``. The parity tests make their shards with the same
+function.
 
 .. code-block:: python
 
@@ -754,194 +759,295 @@ prepared county panel into three shards with ``shards_from_did_data`` from
          Covariates of the first shard: (167, 5, 1)
 
 Each of the 500 counties went whole to one shard and kept its outcome in all
-five years. The covariate array leaves out the intercept, since the kernels add
-it back.
+five years. The covariate array leaves out the intercept because the kernels
+add it back.
 
-Statistics from each shard
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Statistics that add up across shards
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A kernel in ``kernels.py`` is a NumPy function ``kernel(shard, state)`` that
-returns one shard's statistics as a ``Partial``. A single call handles every
-group-time cell and picks out each cell's units through a mask on their
-cohorts. ``combine_partials`` in ``partials.py`` merges the partials of two
-sets of units by four rules.
+A kernel is how the engine computes a statistic on a shard. It takes one shard
+and the state of a pass and returns a ``Partial`` that holds the named
+statistics of the shard's units. An executor runs a kernel on every shard and combines the
+partials. The kernel below counts a shard's units and sums their outcomes in
+each year. ``LocalExecutor``, the executor for shards held in memory, adds up
+those sums across the three shards.
 
-- Sums add up.
-- Maxima take the elementwise maximum.
-- QR factor pairs :math:`(R, Q'B)` of a weighted design and its right-hand
-  sides :math:`B` stack and factor again, as in a tall-skinny QR
-  factorization.
-- Keyed sums, such as sums by cluster, add up the rows that share a key.
+.. code-block:: python
 
-``finalize_keyed`` turns the keyed sums of a partial into their Gram matrix and
-their number of keys.
+   from moderndid.did.shards.container import Partial
+   from moderndid.did.shards.local import LocalExecutor
+
+
+   def outcome_sums(shard, state):
+       # Each shard counts its units and sums their outcomes in every period.
+       sums = {"units": len(shard.unit_keys), "outcomes": shard.y.sum(axis=0)}
+       return Partial(sums=sums, maxima={}, factors={}, keyed={})
+
+
+   # The executor runs the kernel on every shard and adds up the sums.
+   totals = LocalExecutor(shards).run(outcome_sums, None)
+   sharded_means = totals.sums["outcomes"] / totals.sums["units"]
+
+   # The same means from the prepared arrays, which hold every unit at once.
+   memory_means = np.array([outcomes.mean() for outcomes in prepared.outcomes_tensor])
+
+   print("Mean outcome by year:", np.round(sharded_means, 4))
+   print("Means agree:", np.allclose(sharded_means, memory_means))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Mean outcome by year: [5.7985 5.744  5.7535 5.7764 5.7903]
+         Means agree: True
+
+From the combined sums, the driver gets the mean outcome of each year. Those
+means match the ones from the prepared arrays that hold all 500 counties at
+once.
+
+Normal equations summed across shards would also give a regression. They drift
+from the in-memory coefficients as a design's condition number grows, though. Each
+shard therefore returns the QR factors :math:`(R, Q'B)` of its own rows
+instead. Stacking two pairs and factoring again gives the pair for all their
+rows in a tall-skinny QR factorization. Below, the first year's regression of
+the outcome on log population comes out the same from three shards as from all
+the counties at once.
+
+.. code-block:: python
+
+   def first_year_factors(shard, state):
+       # QR factors of the first year's regression of the outcome on log population.
+       design = np.column_stack([np.ones(len(shard.unit_keys)), shard.covariates[:, 0]])
+       q, r = np.linalg.qr(design)
+       return Partial(sums={}, maxima={}, factors={"ols": (r, q.T @ shard.y[:, [0]])}, keyed={})
+
+
+   # Stacking the three shards' factors and factoring again gives those of all the units.
+   r, qtb = LocalExecutor(shards).run(first_year_factors, None).factors["ols"]
+   sharded_coefficients = np.linalg.solve(r, qtb).ravel()
+
+   # The same regression on all 500 counties at once.
+   memory_coefficients = np.linalg.lstsq(
+       prepared.covariates_tensor[0], prepared.outcomes_tensor[0], rcond=None
+   )[0]
+
+   print("Coefficients:", np.round(sharded_coefficients, 4))
+   print("Coefficients agree:", np.allclose(sharded_coefficients, memory_coefficients))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Coefficients: [2.2067 1.0842]
+         Coefficients agree: True
+
+The driver solves the outcome regressions and each Newton step of the
+propensity score fits from factors merged this way. Partials also carry
+maxima, such as the largest weight, and keyed sums for statistics of each
+cluster. Since a shard can hold part of a cluster, a keyed sum adds the rows
+that share a cluster's key. The executor turns it into a Gram matrix only after
+every unit of the cluster has arrived. The rules for Spark code at the end of
+this section explain why the kernels that run on Spark live in an importable
+module.
 
 .. admonition:: A split cluster becomes two clusters
    :class: warning
 
    A keyed sum is final only once every unit of its key has arrived. If
-   ``finalize_keyed`` runs before then, a cluster whose units sit in two
-   partials enters the Gram matrix and the number of keys as two clusters.
-
-Local and Spark executors
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-An executor needs one method, ``run(kernel, state)``, to make a pass over the
-shards. A pass applies the kernel to every shard and returns the combined
-partial with its keyed sums finalized. ``LocalExecutor`` in ``local.py`` loops
-over shards in memory and finalizes once at the end, since a cluster can span
-several of its shards.
-
-``SparkExecutor`` in ``spark/executor.py`` runs each pass through
-``mapInArrow`` over the unit table that ``build_unit_table`` in
-``spark/preprocess.py`` builds with one row for each unit. Each task returns
-its statistics as a single row. A task can finalize its own keyed sums because
-a clustered fit partitions the unit table by cluster. Each row also carries the
-task's moderndid and Python versions for the driver to check. They travel as
-data because an exception raised on an executor would reach the driver as a
-``PythonException`` rather than as an error that says what to install.
-
-When a pass has more than 16 tasks, a grouped stage combines the rows of the
-:math:`P` tasks in about :math:`\sqrt{P}` groups. The driver then collects one
-row per group instead of one per task. Because the executor counts the tasks
-only once a pass has run, the first pass takes that route too.
-
-Wherever the grouped data has ``applyInArrow``, as on PySpark 4, the stage
-hands each group through it to the function that ``_combine_task`` returns.
-Elsewhere, as on open-source PySpark 3.5, ``applyInPandas`` calls the same
-function through ``_pandas_combine``. That wrapper rebuilds the group as a
-pyarrow Table of the fixed schema and returns the combined rows as pandas.
-While it combines a group of up to about :math:`2\sqrt{P}` rows, it holds three
-copies of their payloads, two in Arrow and one in pandas. The Arrow copies are
-the batch that PySpark keeps while the wrapper runs and the table that the
-wrapper rebuilds.
-
-Code that runs on Spark keeps to six rules that the tests through
-``LocalExecutor`` mostly can't check.
-
-- It calls only DataFrame APIs that Spark Connect supports and never
-  ``sparkContext``, RDDs, or broadcast variables. The second stage groups its
-  rows with ``groupBy`` since ``repartition(k)`` would need a partition count
-  that costs an extra job under Spark Connect.
-- It runs on PySpark 3.5 as well as on PySpark 4. Code that needs an API newer
-  than 3.5 keeps a 3.5 path beside it and picks between the two by feature,
-  never by version. A check of the version would miss the newer APIs that
-  Databricks adds to its PySpark 3.5, such as ``toArrow`` from Databricks
-  Runtime 15.3 on. ``SparkExecutor.run`` checks the grouped data for
-  ``applyInArrow`` this way, as the ``to_arrow`` test fixture checks a
-  DataFrame for ``toArrow``. Where PySpark 3.5 takes only a literal, such as
-  the value that ``array_position`` looks up, the code passes no Column.
-  ``_kept_rows`` in ``spark/preprocess.py`` therefore numbers the periods with
-  a CASE WHEN chain. Library code reads the version only in the floor check of
-  ``spark/att_gt.py``. CI runs the Spark tests on PySpark 3.5 and 4.2.
-- It never sets a session configuration, since Databricks documents that
-  serverless compute lets a session set only a few of them.
-- Kernels are module-level functions in ``kernels.py`` with NamedTuple states,
-  because ``SparkExecutor`` pickles a kernel and the class of its state by
-  reference. Since ``LocalExecutor`` never pickles, only ``tests/spark/`` and a
-  pickle round-trip test in ``tests/did/`` catch a kernel that can't travel.
-- Clusters stay whole in the unit table, since the shuffle hashes on the
-  cluster alone and the ``coalesce`` after it only merges whole partitions. A
-  repartition by anything but the cluster, or a ``REBALANCE`` hint, would split
-  clusters and miscount them without an error.
-- The kernel's working memory stays bounded through slices of 4096 rows from
-  each batch, blocks of 2048 units in the moments kernel, and blocks of at most
-  1024 draws of signs. A clustered task's cluster sums still grow by one row
-  for each of its clusters. Serverless compute on Databricks needs that bound,
-  since Databricks documents that it sizes the batches itself and caps the
-  memory of each Python UDF at 1 GB.
+   ``finalize_keyed`` turns it into a Gram matrix before then, a cluster whose
+   units sit in two partials counts as two clusters.
 
 Passes of a fit
 ^^^^^^^^^^^^^^^
 
-``fit_att_gt_on_shards`` in ``driver.py`` takes an executor and runs the passes
-of a fit on it. It plans the cells with the same ``cell_spec`` that
-``compute_att_gt`` uses and repeats the in-memory screens and warnings cell by
-cell. Cells that agree on the treated cohort, the comparison cohorts, and the
-earlier period use the same units, covariates, and weights. ``plan.py``
-therefore keys one propensity score fit and one regression design on those
-three. A new option that changes which units, covariates, or weights a cell
-uses belongs in that key. ``summary_kernel`` makes the first pass and gathers
-the counts, weight sums, and QR factors that the fits start from. Since normal
-equations can drift from the in-memory coefficients, the driver solves the
-outcome regressions from the QR factors of their comparison designs. The
-triangular factor also reproduces the condition number and rank checks of the
-full design.
+A whole fit of ``att_gt`` is a sequence of such passes over the shards.
+``fit_att_gt_on_shards`` runs each
+pass through an executor and solves on the driver what the next pass needs.
+Given ``LocalExecutor`` and the county shards, it rebuilds the ``result`` from
+the top of this page.
 
-The propensity score fits follow the iterations of the in-memory binomial fit.
-They start at :math:`\mu = (D + 1/2)/2`, stop once the deviance changes by at
-most 1e-8, and run 100 iterations at most. Each iteration takes one pass of
-``irls_kernel`` for all the fits at once. Only the first iteration fits the
-working response, at the start, from the QR factor that ``summary_kernel``
-returns. Since a refit of the working response drifts from the in-memory
-coefficients as the design's condition number grows, each pass of
-``irls_kernel`` returns the QR factor of the Newton step instead. The driver
-solves it and adds the step to the coefficients. The number of iterations
-matters beyond the coefficients, because each iteration whose scores separate
-the units adds a separation warning.
+.. code-block:: python
 
-In memory, each cell fits its logit twice, once in the overlap screen and once
-in its estimator. The engine therefore replays a fit's separation warnings once
-for every cell that shares it and once more when the cell reaches its
-estimator. It also iterates every fit to the end, even one whose cells will all
-fail a later check, because the in-memory screen has already fitted it by then.
-The overlap screen reads the largest propensity score of the estimator's own
-fit rather than fitting a second logit.
+   from moderndid.did.shards.driver import fit_att_gt_on_shards
 
-Once the fits are final, one pass of ``cell_sums_kernel`` sums the parts of
-every effect before ``moments_kernel`` makes the last pass. The result goes
-through ``_finish_att_gt``, the same step that assembles an in-memory result.
+   # The fit runs every pass on the shards through the executor.
+   executor = LocalExecutor(shards)
+   settings = {"bootstrap": False, "uniform_bands": False}
+   sharded = fit_att_gt_on_shards(executor, prepared.config, prepared.cohort_counts, None, settings)
+
+   print("Passes over the shards:", executor.n_passes)
+   print(f"Largest gap in the effects: {np.abs(sharded.att_gt - result.att_gt).max():.1e}")
+   print(f"Largest gap in the standard errors: {np.abs(sharded.se_gt - result.se_gt).max():.1e}")
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Passes over the shards: 9
+         Largest gap in the effects: 2.8e-17
+         Largest gap in the standard errors: 1.4e-17
+
+The effects and standard errors match the in-memory ``result`` up to the last
+bits of rounding. The doubly robust fit made the nine passes below in order.
+``irls_kernel`` ran once for each of the six iterations of its logits.
+
+.. code-block:: text
+
+   summary_kernel      counts, weight sums, and QR factors of the designs
+   irls_kernel         one pass for each iteration of the propensity score fits
+   cell_sums_kernel    the parts of every effect
+   moments_kernel      the sums over units that InfluenceMoments holds
+
+Before the first pass, ``plan_cells`` lists the group-time cells with the same
+``cell_spec`` that the in-memory fit uses. Cells that agree on the treated
+cohort, the comparison cohorts, and the earlier period use the same units,
+covariates, and weights. One propensity score fit and one regression design
+therefore serve all of them. On the county panel, the 12 cells share 8 fits.
+
+.. admonition:: Key new options into the shared fits
+   :class: important
+
+   A new option that changes which units, covariates, or weights a cell uses
+   belongs in that key. Leaving it out fails no test unless a parity test
+   covers the option.
+
+An outcome regression fit skips ``irls_kernel`` and makes three passes. The
+propensity score fits repeat the in-memory binomial fit iteration by iteration
+because each iteration whose scores separate the units adds a separation
+warning. In memory, each cell fits its logit twice, once in the overlap screen
+and once in its estimator. The engine therefore replays a shared fit's
+warnings once for every cell in the screen and again at the cell's estimator.
+Since each pass costs a Spark action, a new statistic that needs the final
+logit coefficients belongs in ``cell_sums_kernel`` or ``moments_kernel``.
+``_finish_att_gt`` then assembles the result just as it does for an in-memory
+fit.
 
 Inference from sums over units
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The last pass computes the sums over units that an
-:class:`~moderndid.InfluenceMoments` holds in place of the influence function
-matrix. Besides its influence functions, each unit's row :math:`z_i` holds its
-sampling weight in the column of its treated cohort and a constant. That weight
-comes from the first period, as it does in an in-memory ``aggte``. From these
-columns ``compute_aggte`` recovers the cohort shares and the influence of the
-estimated aggregation weights. The pass returns
-:math:`Z'Z = \sum_i z_i z_i'` and, when the fit asks for the bootstrap or a
-uniform band, the sum :math:`\sum_i v_{bi} z_i` for each draw :math:`b` of the
-multipliers. A clustered fit also returns the Gram matrix of the cluster sums
-of :math:`z_i`.
+The influence functions behind the standard errors can't leave the shards
+either. The last pass sums each unit's row :math:`z_i` into an
+:class:`~moderndid.InfluenceMoments` instead. The row stacks the unit's
+influence function for every effect, its first-period sampling weight in its
+cohort's column, and a constant. With bootstrap draws, the pass also returns
+the sum :math:`S_b` for each draw :math:`b` of the multipliers
+:math:`v_{bi}`.
 
-Every aggregated influence function is a linear combination :math:`c'z_i` of
-each unit's row. ``compute_aggte`` therefore reads the analytical variance of
-an aggregation as :math:`c'Z'Zc / n^2`. In a clustered fit, the cluster Gram
-matrix takes the place of :math:`Z'Z`. ``honest_did`` then works from the event
-study's ``vcov_analytical`` in place of its influence function.
+.. math::
 
-Each aggregation is a set of such coefficient columns over the kept cells, the
-weight columns of their cohorts, and the constant. ``_UnitLevelEvaluator``
-applies the columns to the unit rows of an in-memory fit. ``_MomentEvaluator``
-applies the same columns to the Gram matrix and the stored draws of a fit on
-shards. A change to an aggregation therefore belongs in its coefficients, never
-in code that reads ``influence_func``, ``G``, or ``weights_ind`` directly,
-since a fit on shards has none of them.
+   Z'Z = \sum_{i=1}^{n} z_i z_i', \qquad
+   S_b = \sum_{i=1}^{n} v_{bi} z_i, \qquad
+   \hat\sigma_c^2 = \frac{c'\,Z'Z\,c}{n^2}
+
+Since every aggregated influence function is a linear combination
+:math:`c'z_i` of each unit's row, the variance of any aggregation follows from
+:math:`Z'Z` alone. A clustered fit uses the Gram matrix of the cluster sums in
+its place. The first block of :math:`Z'Z` is the ``psi.T @ psi`` from earlier
+on this page. The shard fit's covariance and its event study therefore match
+the in-memory ones.
+
+.. code-block:: python
+
+   moments = sharded.influence_moments
+   k = len(result.att_gt)
+
+   # The influence functions fill the first k entries of each unit's row.
+   print("Length of each unit's row:", moments.gram.shape[0])
+   print("Covariance agrees:", np.allclose(moments.gram[:k, :k] / n, contribution_variance))
+
+   # An event study aggregates from those sums alone.
+   sharded_study = did.aggte(sharded, type="dynamic")
+   memory_study = did.aggte(result, type="dynamic")
+   print("Event study errors agree:", np.allclose(sharded_study.se_by_event, memory_study.se_by_event))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Length of each unit's row: 16
+         Covariance agrees: True
+         Event study errors agree: True
+
+Each row holds the 12 influence functions, the weights of the three treated
+cohorts, and the constant. ``_UnitLevelEvaluator`` and ``_MomentEvaluator``
+apply the same coefficient columns to the unit rows of an in-memory fit and to
+the sums of a fit on shards.
+
+.. admonition:: Change an aggregation through its coefficients
+   :class: important
+
+   A change to an aggregation belongs in its coefficient columns, never in code
+   that reads ``influence_func``, ``G``, or ``weights_ind`` directly. A fit on
+   shards leaves all three of those fields as None.
+
+For :math:`B` draws and the :math:`L` entries of :math:`z_i`, each row that
+``moments_kernel`` returns takes about :math:`8L(L + B)` bytes. A clustered fit
+adds another :math:`8L^2` bytes for its cluster Gram matrix. The
+:ref:`troubleshooting section <spark-troubleshooting>` of the setup guide
+covers the limits these rows can reach.
+
+.. _architecture-shard-draws:
 
 Random draws on shards
 ^^^^^^^^^^^^^^^^^^^^^^
 
-The multiplier bootstrap gives each unit one random sign in every draw, or each
-cluster one when the fit clusters. In memory, ``multiplier_bootstrap`` takes
-those signs from one random stream in the order of the units or clusters. A
-Spark table offers no such order for its rows to follow. How the rows fall into
-partitions changes with the number of executors, adaptive query execution, and
-the data source. When Spark reruns a task that failed or ran slowly, the new
-attempt may also read its rows in another order. A cluster's units, which share
-one sign, can sit in several shards as well. Seeding each partition or task, as
-the Spark backend that version 0.3.0 removed did, would tie the draws to all of
-these.
+In memory, ``multiplier_bootstrap`` draws the random sign of each unit, or of
+each cluster in a clustered fit, from one random stream in the order of the
+units or clusters. Since the way a Spark table's rows fall into partitions
+changes with the executors, adaptive query execution, and the data source, the
+table offers no such order.
 
-Each multiplier is instead a pure function of the seed, the draw, and the key
-of its unit or cluster. Since no sign depends on where a unit sits or on what
-else its task reads, every partitioning and every rerun of a task gives the
-same draws. `Chamandy et al. (2012)
+Each multiplier on shards is instead a pure function of the seed, the draw, and
+the key of its unit or cluster. ``canonical_keys`` turns each identifier into a
+64-bit key that depends only on its value. ``keyed_rademacher`` then turns the
+seed and each key into signs with the counter-based generator Philox4x32-10 of
+`Salmon et al. (2011) <https://doi.org/10.1145/2063384.2063405>`_. `Chamandy et
+al. (2012)
 <https://research.google/pubs/estimating-uncertainty-for-massive-data-streams/>`_
-seed the bootstrap weights of each user in a sharded data stream with a hash of
-the user's identifier for the same reason.
+key the bootstrap weights of each user in a sharded data stream to the user's
+identifier for the same reason.
+
+.. code-block:: python
+
+   from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
+
+   # The signs of the 500 counties in 1,000 draws from seed 7.
+   counties = prepared.time_invariant_data["countyreal"].to_numpy()
+   signs = keyed_rademacher(canonical_keys(counties), 7, 1000)
+
+   # The same seed with the counties reversed, stored as floats, or drawn 300 times.
+   reversed_signs = keyed_rademacher(canonical_keys(counties[::-1]), 7, 1000)
+   float_signs = keyed_rademacher(canonical_keys(counties.astype(float)), 7, 1000)
+   first_draws = keyed_rademacher(canonical_keys(counties), 7, 300)
+
+   print("Same signs in reverse order:", np.array_equal(signs[::-1], reversed_signs))
+   print("Same signs from float identifiers:", np.array_equal(signs, float_signs))
+   print("Same first 300 draws:", np.array_equal(signs[:, :300], first_draws))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Same signs in reverse order: True
+         Same signs from float identifiers: True
+         Same first 300 draws: True
+
+Every partitioning and every rerun of a task therefore gives the same draws.
+An integer and a float that hold the same whole number share a key. A string
+takes its 8-byte BLAKE2b digest because Python salts its built-in ``hash`` anew
+in every process. Because draw :math:`b` always comes from block
+:math:`\lfloor b / 128 \rfloor`, an aggregation with a smaller ``biters`` sees
+the same signs as a fit run with that ``biters``.
 
 .. admonition:: Seeds by partition change the draws
    :class: warning
@@ -950,96 +1056,145 @@ the user's identifier for the same reason.
    ``canonical_keys``. It never seeds them by partition or by task, as Spark's
    ``rand`` function does, or keys them by Python's ``hash`` of a string.
 
-Two functions in ``core/bootstrap.py`` compute the multipliers from the
-identifiers. ``canonical_keys`` maps each identifier to a 64-bit key that
-depends only on its value. Since integers and floats that hold integers share
-their keys, an identifier stored either way draws the same signs. Any other
-float takes the bits of its value as its key. A string takes its 8-byte BLAKE2b
-digest, because Python salts its built-in ``hash`` of a string anew in every
-process. ``keyed_rademacher`` then turns the seed and each key into signs with
-Philox4x32-10, a counter-based generator from `Salmon et al. (2011)
-<https://doi.org/10.1145/2063384.2063405>`_. The
-docstrings in `bootstrap.py
-<https://github.com/jordandeklerk/moderndid/blob/main/moderndid/core/bootstrap.py>`_
-give the exact layout of its key, its counter, and the bits that become signs.
+Since ``keyed_rademacher`` computes Philox in NumPy's integer arithmetic rather
+than through a ``Generator``, the signs stay the same whatever NumPy version an
+executor runs. ``tests/core/test_bootstrap.py`` pins the generator to the
+known-answer vectors of the Random123 library. A change to the signs fails
+tests in that file and changes every bootstrap number that a Spark fit reports
+for a seed. Because ``aggte`` inherits ``cband`` and draws for its band even
+when ``boot=False``, the moments pass stores draws whenever the fit asks for
+the bootstrap or a uniform band. When only two periods remain, preprocessing
+turns the configuration's ``cband`` off. The driver reads both settings from
+the caller's ``estimation_params`` instead.
 
-Rather than build a NumPy generator object for every unit, which would be slow,
-``keyed_rademacher`` computes the ten rounds of Philox with NumPy's integer
-arithmetic. The draws then stay the same even when the executors and the
-driver run different versions of NumPy. NumPy doesn't promise such stability
-for the numbers that a ``Generator`` returns. ``tests/core/test_bootstrap.py``
-pins the generator to the known-answer vectors of the Random123 library.
+Running the passes on Spark
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Because draw :math:`b` of a key always comes from block
-:math:`\lfloor b / 128 \rfloor`, the first :math:`b` draws of a fit don't
-depend on ``biters``. An aggregation with a smaller ``biters`` therefore reads
-the first rows of the stored sums and sees the draws of a fit with that
-``biters``. The moments pass stores draws whenever the fit asks for the
-bootstrap or a uniform band, since ``aggte`` inherits ``cband`` from the fit
-and draws for its band even when ``boot=False``.
+On Spark, the same driver runs the same passes with another executor.
+``spark_att_gt`` builds a
+table with one row for each unit and gives ``fit_att_gt_on_shards`` a
+``SparkExecutor`` over it.
 
-.. admonition:: Read the caller's bootstrap settings
-   :class: important
+.. code-block:: python
 
-   The driver reads ``boot`` and ``cband`` from ``estimation_params``, which
-   hold the caller's settings, rather than from the configuration. Since
-   preprocessing turns the configuration's ``cband`` off when only two periods
-   remain, reading it there would lose the band of a two-period fit.
+   # From spark_att_gt, where data is a Spark DataFrame.
+   unit_table, config, cohort_counts, n_obs, cluster_counts, cached = build_unit_table(data, config)
+   executor = SparkExecutor(unit_table, config.time_periods_count, len(_covariate_names(config)))
+   result = fit_att_gt_on_shards(
+       executor, config, cohort_counts, random_state, estimation_params, cluster_counts=cluster_counts
+   )
 
-A non-negative integer ``random_state`` below :math:`2^{64}` is the seed itself.
-Any other seed, None included, makes a NumPy ``Generator`` whose first 64-bit
-draw becomes the seed. The result stores the seed it used in
-``influence_moments.random_state``. Since the draws are fixed once the fit
-returns, ``aggte`` on a fit on shards can bootstrap with at most the stored
-number of draws, only the stored seed, and only the fit's own clustering. Its
-result holds the covariance of its effects in ``vcov_analytical`` but no
-influence functions. The price of keyed draws is that a Spark fit and an
-in-memory fit with the same ``random_state`` draw different signs. Both sets of
-signs give valid draws of the same bootstrap distribution. Their standard
-errors differ only by the noise of a finite number of draws.
+``build_unit_table`` runs the in-memory ``validate`` stage and
+``ColumnSelector`` on an empty frame with the data's schema and repeats the
+later ``transform`` steps in Spark SQL. There, one aggregation and one shuffle
+gather each unit's rows into one row of the unit table. A change to those steps
+in memory therefore needs the same change there. If the session allows a
+persist, the fit unpersists the cached table when it returns or when any error,
+an interrupt included, stops it.
+
+``SparkExecutor.run`` applies a kernel to each partition of the unit table
+through ``mapInArrow``. Each task reads
+its partition in slices of at most 4096 units and turns every slice into a
+``Shard`` with ``shard_from_arrow``. Since a clustered fit keeps each cluster
+within one partition, every task finalizes its own keyed sums and returns them
+as one row. Each row also carries the task's moderndid and Python versions for
+the driver to check. If a mismatched executor raised an error instead, the
+driver would see a ``PythonException`` rather than one that says what to
+install. On the first pass and after any pass whose tasks returned more than 16
+rows, a grouped stage combines the rows of the :math:`P` tasks in about
+:math:`\sqrt{P}` groups before the driver collects them.
+
+``att_gt`` recognizes a Spark DataFrame by its class without importing PySpark
+and hands it to ``spark_att_gt`` before any step that reads the data.
+Otherwise ``check_columns`` would convert a PySpark 4.2 DataFrame through its
+``__arrow_c_stream__`` and collect the whole table to the driver.
+``spark_att_gt`` builds its ``DIDConfig`` and ``estimation_params`` by hand
+rather than through the in-memory preprocessing.
+
+.. admonition:: A new option needs the Spark path
+   :class: warning
+
+   Unless a new ``att_gt`` option also gets a place in ``spark_att_gt``, a
+   Spark fit ignores it without an error. Since the parity tests in
+   ``tests/did/`` never call ``spark_att_gt``, only the tests in
+   ``tests/spark/`` catch that gap.
+
+New data for each unit also needs a column that ``build_unit_table`` writes and
+``shard_from_arrow`` reads into the shard. Each new option needs a case in the
+option matrices of ``tests/did/test_shards.py`` and
+``tests/spark/test_att_gt.py`` as well.
 
 Agreement with the in-memory fit
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We keep the in-memory ``att_gt`` as the reference implementation and check the
-engine against it. Because the two paths share the cell plan and the finishing
-step but none of the estimators' algebra, agreement between them checks the
-engine's sums. ``tests/did/test_shards.py`` runs the engine through
-``LocalExecutor`` on 1, 3, and 7 shards and compares its results with
-in-memory ``att_gt`` and ``aggte`` across the estimators, comparison groups,
-base periods, weights, clusters, and anticipation. The
-:ref:`testing guide <testing-spark>` covers the end-to-end tests on Spark.
+Because the two paths share the cell plan, the in-memory checks, and
+``_finish_att_gt`` but none of the estimators' algebra, agreement between them
+checks the engine's sums. Like the fit above, ``tests/did/test_shards.py`` runs
+the engine through ``LocalExecutor`` against the in-memory ``att_gt`` and
+``aggte``. Its option matrix of estimators, comparison groups, base periods,
+weights, clusters, and anticipation runs on three shards and compares the
+warnings in order. Each estimator also runs on one and seven shards to vary the
+split. The :ref:`testing guide <testing-spark>` covers the end-to-end tests
+that run on Spark itself.
 
-.. admonition:: Behaviors the engine doesn't copy
-   :class: note
+The parity tests work around the few behaviors below that the engine doesn't
+copy. A new warning from a dependency either gets a copy on the shard path or
+joins this list.
 
-   Since every sum adds up in another order, a decision within rounding of its
-   threshold, such as the overlap screen at 0.999, can go the other way. The
-   engine copies neither the iteration count of an exactly collinear logit,
-   which varies from run to run inside statsmodels, nor the warnings and errors
-   of the Gaussian GLM in ``reg_did_panel``, nor the RuntimeWarnings that NumPy
-   raises inside statsmodels. Nor does it copy the ``SingularMatrixWarning``
-   that statsmodels 0.15 raises for a rank-deficient design. A Spark fit also
-   lists the cohorts of its small-groups warning in ascending order and stops
-   before its first job on weights or covariates that aren't numbers.
+- A decision within rounding of its threshold, such as the overlap screen at
+  0.999, can go the other way when the sums add up in another order.
+- The iteration count of an exactly collinear logit varies from run to run
+  inside statsmodels.
+- The warnings and errors of the Gaussian GLM in ``reg_did_panel``, NumPy's
+  RuntimeWarnings inside statsmodels, and the ``SingularMatrixWarning`` that
+  statsmodels 0.15 raises for a rank-deficient design have no copy.
+- A Spark fit lists the cohorts of its small-groups warning in ascending order
+  and stops before its first job on weights or covariates that aren't numbers.
 
-The kernels and the driver repeat what the in-memory ``att_gt`` computes.
-``build_unit_table`` in ``spark/preprocess.py`` runs the in-memory ``validate``
-stage itself, on an empty frame with the data's schema, and repeats only the
-``transform`` stage in Spark SQL. The driver also hands a few in-memory checks
-stand-in arrays built from the kernels' statistics, such as the treated and
-comparison weight totals for ``_check_cell_weights`` and the largest and
-smallest positive comparison weights for ``_check_extreme_weights``.
+For a few in-memory checks, the driver builds stand-in arrays from the kernels'
+statistics, such as the treated and comparison weight totals for
+``_check_cell_weights``.
 
-.. admonition:: Change the shard path with the in-memory one
+.. admonition:: Keep the shard path in step
    :class: important
 
-   A change to the in-memory estimators or to the ``transform`` stage needs the
-   same change on the shard path. A check that starts reading more of its input
-   than its stand-in holds needs a new kernel statistic. Only the tests in
-   ``tests/spark/`` check ``build_unit_table``, since
-   ``tests/did/test_shards.py`` prepares its shards with the in-memory
-   preprocessing.
+   A change to the in-memory estimators needs the same change on the shard
+   path. A check that starts reading more of its input than its stand-in holds
+   needs a new kernel statistic.
+
+Rules for Spark code
+^^^^^^^^^^^^^^^^^^^^
+
+The tests through ``LocalExecutor`` never reach finalizing in each task, the
+grouped stage, the PySpark 3.5 paths, the version check, or the cached table. A
+change to any of them needs a test in ``tests/spark/``. Code that runs on Spark
+keeps to six rules that the ``LocalExecutor`` tests mostly can't check.
+
+- It calls only DataFrame APIs that Spark Connect supports and never
+  ``sparkContext``, RDDs, or broadcast variables. The grouped stage uses
+  ``groupBy`` because ``repartition(k)`` would cost an extra job under Spark
+  Connect to count the partitions.
+- It runs on PySpark 3.5 as well as on PySpark 4. Code that needs a newer API
+  keeps a 3.5 path beside it and picks one by feature, never by version. A
+  version check would miss the newer APIs that Databricks adds to its PySpark
+  3.5. ``SparkExecutor.run``, for example, checks the grouped data for
+  ``applyInArrow``. Where PySpark 3.5 takes only a literal, such as the value
+  that ``array_position`` looks up, the code passes no Column. In library code,
+  only the PySpark floor check in ``spark_att_gt`` reads the version.
+- It never sets a session configuration because serverless compute on
+  Databricks lets a session set only a few of them.
+- Kernels are module-level functions with NamedTuple states because
+  ``SparkExecutor`` pickles a kernel and the class of its state by reference.
+  Since ``LocalExecutor`` never pickles, a pickle round-trip test in
+  ``tests/did/`` checks every kernel of the engine.
+- Clusters stay whole in the unit table because the shuffle hashes on the
+  cluster alone and the ``coalesce`` after it merges only whole partitions. A
+  repartition by anything else, or a ``REBALANCE`` hint, would split clusters
+  and miscount them without an error.
+- The kernels keep their working memory bounded through the 4096-unit slices
+  and blocks of units and draws. A clustered task's sums still grow by one row
+  for each cluster. Serverless compute on Databricks needs that bound because
+  Databricks documents a cap of 1 GB on the memory of each Python UDF.
 
 .. _architecture-imports:
 

@@ -1,175 +1,325 @@
 .. _spark:
 
-Estimation on Spark
-===================
+Distributed estimation on Spark
+===============================
 
-When a panel sits in a Spark table, or holds more units than one machine can
-keep in memory, the question is how to estimate group-time effects without
-gathering its rows in one place. Collecting the table sends every row to the
-driver, the Python process that runs your code. Even an estimator that read the
-rows in place would fill the driver's memory if it kept each unit's influence
-function values for the standard errors.
+If your panel already sits in a Spark table or holds more units than one
+machine can keep in memory, collecting it for an in-memory fit can be slow or
+impossible. You can instead pass the Spark DataFrame to
+:func:`~moderndid.att_gt` just as you'd pass a pandas or polars DataFrame.
+Spark's executors then gather each unit's rows together and send the driver
+only statistics such as sums and counts whose size doesn't depend on the number
+of units. The driver, the Python process that runs your code, turns those into
+the same :class:`~moderndid.MPResult` that an in-memory fit returns.
 
-In this guide we pass a Spark DataFrame straight to :func:`~moderndid.att_gt`.
-Spark's executors do all the work on the rows and send the driver only
-summaries whose size doesn't depend on the number of units. You get back an
-:class:`~moderndid.MPResult` with the estimates that an in-memory fit gives.
-:func:`~moderndid.aggte`, :func:`~moderndid.honest_did`, the plots, and
-:func:`~moderndid.to_df` all take that result as they take any other.
+The question we'll keep coming back to is whether a Spark fit gives you the
+answer you'd get in memory. The county data from the :ref:`staggered DiD
+example <example_staggered_did>` is small enough to fit both ways and lets the
+first fit on this page answer that question directly. Because your own table
+may be too large for that, we'll then show how to check a sample of it before
+the full fit. We'll also point out where to collect the rows for an in-memory
+fit when you need more than balanced panels and the three estimators built into
+``att_gt``.
 
-When an in-memory fit is enough
--------------------------------
+When a Spark fit pays off
+-------------------------
 
-If the data fits comfortably in memory, an in-memory fit is simpler and
-usually faster, since every step on Spark pays for scheduling a job across the
-cluster. A Spark DataFrame that small can be collected to the driver first.
-Passing ``data.toArrow()`` to ``att_gt``, or ``data.toPandas()`` on PySpark
-3.5, gives an in-memory fit that also accepts the arguments a Spark fit
-rejects, such as ``panel=False`` and ``allow_unbalanced_panel=True``. Without a
-cluster, the ``n_jobs`` argument can spread the comparisons over several
-threads, as the :ref:`CPU parallelism guide <scaling>` shows.
+Even when your data already sits in Spark, a Spark fit isn't always the faster
+choice. Every step of the estimator runs as Spark jobs that take a fixed time
+to schedule whether the panel holds a thousand units or a hundred million. When
+we timed the county fit below on a laptop running Spark in local mode, it took
+about two seconds on Spark against a few hundredths of a second in memory. A
+Spark fit pays off once collecting the table to the driver would take a long
+time or run out of memory. That fixed cost is then small next to the cost of
+moving the rows.
 
-Setting up Spark
-----------------
+.. admonition:: Fit a small panel in memory
+   :class: tip
 
-You need Spark 3.5 or later, whether you run classic Spark, Spark Connect, or
-Databricks. With an older PySpark, the fit stops before Spark runs a job and
-names the version it found. On a laptop or a cluster you manage, the ``spark``
-extra installs PySpark together with the Spark Connect client. Running Spark
-on your own machine also needs Java 17 or 21 for Spark 4, or Java 8, 11, or 17
-for Spark 3.5. On Java 21, the Arrow library that Spark 3.5 bundles stops a fit
-at its first pass. Because Python 3.12 dropped the ``distutils`` module that
-PySpark 3.5 imports, an install of PySpark 3.5 that you manage also needs
-setuptools to provide it.
+   Passing ``data.toArrow()`` to ``att_gt``, or ``data.toPandas()`` on
+   open-source PySpark 3.5, collects a small Spark DataFrame for an in-memory
+   fit that accepts every argument. The :ref:`CPU parallelism guide <scaling>`
+   shows how ``n_jobs`` then spreads that fit over the cores of your machine.
+
+Getting ModernDiD onto the executors
+------------------------------------
+
+Since every executor imports ModernDiD to work through its share of the units,
+the package needs to be installed wherever the executors run and not only on
+the driver. The tabs below show the shortest route for each place you might run
+Spark. The :ref:`Spark setup guide <spark-setup>` goes through each route in
+detail and lists the setups we've tested.
 
 .. tab-set::
 
-   .. tab-item:: uv
+   .. tab-item:: Databricks notebook
 
-      .. code-block:: console
+      Install ModernDiD in the notebook's first cell and restart Python in the
+      next. On classic compute in dedicated access mode, that notebook-scoped
+      install reaches the executors as well.
 
-         uv add "moderndid[spark]"
+      .. code-block:: python
 
-   .. tab-item:: pip
+         %pip install moderndid==<version>
+
+      .. code-block:: python
+
+         dbutils.library.restartPython()
+
+   .. tab-item:: Your machine
+
+      The ``spark`` extra installs PySpark along with ModernDiD on your
+      machine. The setup guide names the Java versions that Spark needs.
 
       .. code-block:: console
 
          python -m pip install "moderndid[spark]"
 
-Since the executors import ModernDiD to run each step of the fit, the Python
-environment on every worker needs it too. You can install it on each worker or
-ship a packed environment to the executors, as the PySpark guide to `Python
-package management
-<https://spark.apache.org/docs/latest/api/python/tutorial/python_packaging.html>`_
-describes.
+      .. code-block:: python
+
+         from pyspark.sql import SparkSession
+
+         # Start Spark on this machine with two worker threads.
+         spark = SparkSession.builder.master("local[2]").getOrCreate()
+
+   .. tab-item:: Cluster or Spark Connect
+
+      A cluster you manage needs ModernDiD in the Python of every node or in a
+      packed environment that you ship to the executors. If the cluster runs a
+      Spark Connect server, your session connects to its address.
+
+      .. code-block:: python
+
+         from pyspark.sql import SparkSession
+
+         # Connect to the cluster's Spark Connect server.
+         spark = SparkSession.builder.remote("sc://host:15002").getOrCreate()
 
 .. admonition:: Match versions on the driver and executors
    :class: important
 
-   The driver and every executor need the same ModernDiD version and Python
-   minor version, such as 3.13. If they differ, the fit stops at its first
-   pass with an error that names the versions on both sides. If ``moderndid``
-   fails to import on the executors, the message quotes the import error
-   instead.
+   Each executor's Python needs the same ModernDiD version and Python minor
+   version as the driver. If an executor has no ModernDiD or a different
+   version, the fit stops with an error that quotes the import failure or
+   names both versions. A different Python stops it even sooner with PySpark's
+   own error.
 
-Because the first pass comes only after the shuffle that builds the unit table,
-a missing or mismatched install shows up late on a large panel. Fitting a small
-sample of units first checks a new cluster quickly.
+Fitting the county data both ways
+---------------------------------
 
-Running on Databricks
-^^^^^^^^^^^^^^^^^^^^^
-
-Since we haven't yet run a fit on Databricks, the steps in this section follow
-Databricks' documentation. On a cluster, choose Databricks Runtime 16.0 or
-later, either a 16.x runtime with Spark 3.5 or one from 17.0 on with Spark 4.
-On serverless compute, moderndid needs `environment version
-<https://docs.databricks.com/aws/en/release-notes/serverless/environment-version/>`_
-3 or later. The earlier runtimes and environment versions run Python 3.11 or
-older, below the 3.12 that moderndid needs.
-
-On a cluster, install ModernDiD as a `cluster library
-<https://docs.databricks.com/aws/en/libraries/cluster-libraries>`_ or with
-``%pip`` as a `notebook-scoped library
-<https://docs.databricks.com/aws/en/libraries/notebooks-python-libraries>`_. On
-serverless compute, which has no cluster libraries, use ``%pip``. Either kind
-of library reaches the executors as well as the notebook. Pin the version, as
-in ``%pip install moderndid==<version>``, to give every session the same one.
-Since ``%pip`` doesn't restart Python, a notebook that imported moderndid
-before the install keeps the old version on its driver. Put the ``%pip`` cell
-first or follow it with ``dbutils.library.restartPython()``.
-
-With Databricks Connect, the driver is the Python process on your own machine.
-Install the same moderndid version there as on the compute. Your local Python
-also needs the compute's minor version, as Databricks requires of `Python
-functions that run on its compute
-<https://docs.databricks.com/aws/en/dev-tools/databricks-connect/python/udf>`_.
-
-.. admonition:: The ``spark`` extra conflicts with Databricks
-   :class: warning
-
-   Databricks compute provides its own PySpark, as does Databricks Connect on
-   your machine. A second copy from the ``spark`` extra conflicts with either
-   one and can keep the Spark session from starting.
-
-Trying Spark on one machine
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Before you move to a cluster, you can run every call on this page in Spark's
-local mode.
-
-.. code-block:: python
-
-   from pyspark.sql import SparkSession
-
-   # Start Spark on this machine with two worker threads.
-   spark = SparkSession.builder.master("local[2]").getOrCreate()
-
-In a fresh Python process, ``SparkSession.builder.remote("local[2]").getOrCreate()``
-starts a local Spark Connect server instead. That lets you check the code on
-this page under Spark Connect before you point it at a running server with an
-address such as ``sc://localhost:15002``. Since PySpark 3.5 doesn't bundle the
-Spark Connect server, a local server on 3.5 needs the server's package from
-Maven Central, as below.
-
-.. code-block:: python
-
-   import pyspark
-   from pyspark.sql import SparkSession
-
-   # On PySpark 3.5, add the Spark Connect server package of the same version.
-   package = f"org.apache.spark:spark-connect_2.12:{pyspark.__version__}"
-   builder = SparkSession.builder.config("spark.jars.packages", package)
-   spark = builder.remote("local[2]").getOrCreate()
-
-.. admonition:: Point Spark at your Python
-   :class: tip
-
-   Local Spark starts its Python workers with the interpreter that
-   ``PYSPARK_PYTHON`` names, or with ``python3`` from your path. If a local fit
-   reports that the executors run another Python or can't import
-   ``moderndid``, set ``PYSPARK_PYTHON`` to ``sys.executable`` before you
-   create the session.
-
-Preparing the data
-------------------
-
-The data takes the usual long format of ``att_gt``, one row for each unit in
-each period. In the code below, ``SparkSession.builder.getOrCreate()`` returns
-the session that is already running, such as a Databricks notebook's own
-session or the local session from the setup above. We load the county data on
-minimum wages into a Spark DataFrame. Since only a Spark DataFrame is fit on
-the executors, convert a pandas-on-Spark DataFrame with its ``to_spark()``
-method first.
+To compare the two fits on equal terms, we'll fit the county data both ways
+with one specification. Leaving out the staggered DiD example's bootstrap gives
+both fits analytic standard errors that should agree up to rounding.
 
 .. code-block:: python
 
    import moderndid as did
    from pyspark.sql import SparkSession
 
-   spark = SparkSession.builder.getOrCreate()
+   # active returns the session that's already running, such as a notebook's.
+   spark = SparkSession.active()
+
+   # The county data as a polars DataFrame and as a Spark DataFrame.
+   local = did.load_mpdta()
+   data = spark.createDataFrame(local.to_pandas())
+
+   spec = dict(
+       # The columns for log teen employment, the year, the county, and its cohort.
+       yname="lemp",
+       tname="year",
+       idname="countyreal",
+       gname="first.treat",
+       # Never-treated comparisons, doubly robust and adjusted for log population.
+       control_group="nevertreated",
+       xformla="~lpop",
+       est_method="dr",
+       # Measure effects from the year before adoption and seed the band's draws.
+       base_period="universal",
+       random_state=7,
+   )
+
+   # The same call fits the data in memory and on the executors.
+   in_memory = did.att_gt(local, **spec)
+   result = did.att_gt(data, **spec)
+
+Joining the two results on cohort and year lines up each in-memory estimate and
+standard error with its Spark counterpart in the column ending in ``_spark``.
+For the 2004 cohort printed below, you should see each pair of columns match.
+
+.. code-block:: python
+
+   # Pair each estimate and standard error with its Spark counterpart.
+   columns = ["group", "time", "att", "se"]
+   pairs = did.to_df(in_memory).select(columns).join(
+       did.to_df(result).select(columns), on=["group", "time"], suffix="_spark"
+   )
+   print(pairs.drop_nans().filter(group=2004))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         shape: (4, 6)
+         ┌───────┬──────┬───────────┬──────────┬───────────┬──────────┐
+         │ group ┆ time ┆ att       ┆ se       ┆ att_spark ┆ se_spark │
+         │ ---   ┆ ---  ┆ ---       ┆ ---      ┆ ---       ┆ ---      │
+         │ i64   ┆ i64  ┆ f64       ┆ f64      ┆ f64       ┆ f64      │
+         ╞═══════╪══════╪═══════════╪══════════╪═══════════╪══════════╡
+         │ 2004  ┆ 2004 ┆ -0.01453  ┆ 0.022129 ┆ -0.01453  ┆ 0.022129 │
+         │ 2004  ┆ 2005 ┆ -0.076422 ┆ 0.028671 ┆ -0.076422 ┆ 0.028671 │
+         │ 2004  ┆ 2006 ┆ -0.140448 ┆ 0.035378 ┆ -0.140448 ┆ 0.035378 │
+         │ 2004  ┆ 2007 ┆ -0.106904 ┆ 0.032886 ┆ -0.106904 ┆ 0.032886 │
+         └───────┴──────┴───────────┴──────────┴───────────┴──────────┘
+
+Across all twelve effects, the estimates and standard errors of the two fits
+differ by less than :math:`10^{-16}`. That's no more than the rounding you'd
+get from adding the same numbers in a different order. A fit that runs at all
+also tells you that ModernDiD reached the executors that ran its tasks. On a
+cluster, though, a panel as small as the county data may keep all of that work
+on a single executor. If the call fails instead, look up its message in the
+:ref:`troubleshooting section <spark-troubleshooting>` of the setup guide.
+
+.. admonition:: Tested on a Databricks cluster
+   :class: note
+
+   Our test cluster on Azure Databricks ran Runtime 16.4 LTS ML on four
+   Standard_E16ads_v5 workers with 64 cores in all. On a generated panel of 100
+   million units over ten periods, a billion rows, a doubly robust fit without a
+   band took about 200 seconds. A joint test found its estimates consistent with
+   the effects we planted in the panel (p = 0.107). Fits of 200,000 units under
+   seven specifications also matched their in-memory counterparts to within
+   about :math:`10^{-14}` in relative terms.
+
+What a Spark fit does differently
+---------------------------------
+
+Most of what you'd ask of ``att_gt`` in memory works on Spark too. Sampling
+weights, a cluster variable besides ``idname``, both comparison groups, both
+base periods, and anticipation all work with any of the three built-in
+estimators. A few arguments aren't supported for a Spark DataFrame, though.
+Rather than let a long fit fail partway through, ``att_gt`` raises a ValueError
+for each of them before Spark runs a job and tells you what to pass instead.
+
+- ``panel=False`` (repeated cross-sections)
+- ``allow_unbalanced_panel=True`` (units missing from some periods)
+- A callable ``est_method`` (anything besides ``"dr"``, ``"ipw"``, and ``"reg"``)
+- Any ``backend`` (the executors always compute with NumPy)
+- ``n_jobs`` other than 1 (Spark already runs the work in parallel)
+
+If your data really is a repeated cross-section, an in-memory fit with
+``panel=False`` needs its rows on the driver. So does an in-memory fit that
+uses a callable ``est_method`` or passes ``allow_unbalanced_panel=True`` to
+keep the units missing from some periods. Any other function that takes data,
+such as :func:`~moderndid.ddd`, :func:`~moderndid.cont_did`, or
+:func:`~moderndid.core.panel.diagnose_panel`, needs the rows on the driver too.
+You can collect the rows with the same ``toArrow()`` or ``toPandas()`` call as
+a small panel.
+
+The result looks just like an in-memory one unless you reach for its unit-level
+values. Since an in-memory result's ``influence_func``, ``G``, and, in a
+weighted fit, ``weights_ind`` each hold a value for every unit, all three are
+None on a Spark result. In their place, ``influence_moments`` holds an
+:class:`~moderndid.InfluenceMoments` with the sums over units that ``aggte``
+reads. Because the result holds only NumPy arrays and plain Python values that
+don't grow with the number of units, you can pickle it and aggregate it later
+in a Python process without PySpark.
+
+.. _spark-bootstrap:
+
+Why the bootstrap standard errors differ
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To see the one place where a Spark fit's numbers differ from those of an
+in-memory fit, we'll refit both ways with the 10,000 seeded draws that the
+staggered DiD example uses.
+
+.. code-block:: python
+
+   # Refit both ways with 10,000 seeded bootstrap draws.
+   boot = spec | {"boot": True, "biters": 10000}
+   in_memory_boot = did.att_gt(local, **boot)
+   result_boot = did.att_gt(data, **boot)
+
+   # Pair the estimates and standard errors as before.
+   boot_pairs = did.to_df(in_memory_boot).select(columns).join(
+       did.to_df(result_boot).select(columns), on=["group", "time"], suffix="_spark"
+   )
+   print(boot_pairs.drop_nans().filter(group=2004))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         shape: (4, 6)
+         ┌───────┬──────┬───────────┬──────────┬───────────┬──────────┐
+         │ group ┆ time ┆ att       ┆ se       ┆ att_spark ┆ se_spark │
+         │ ---   ┆ ---  ┆ ---       ┆ ---      ┆ ---       ┆ ---      │
+         │ i64   ┆ i64  ┆ f64       ┆ f64      ┆ f64       ┆ f64      │
+         ╞═══════╪══════╪═══════════╪══════════╪═══════════╪══════════╡
+         │ 2004  ┆ 2004 ┆ -0.01453  ┆ 0.022457 ┆ -0.01453  ┆ 0.023326 │
+         │ 2004  ┆ 2005 ┆ -0.076422 ┆ 0.029357 ┆ -0.076422 ┆ 0.030115 │
+         │ 2004  ┆ 2006 ┆ -0.140448 ┆ 0.037045 ┆ -0.140448 ┆ 0.037629 │
+         │ 2004  ┆ 2007 ┆ -0.106904 ┆ 0.034483 ┆ -0.106904 ┆ 0.033868 │
+         └───────┴──────┴───────────┴──────────┴───────────┴──────────┘
+
+Although the estimates still match to every printed digit, the standard errors
+now differ slightly from one fit to the other. For the 2004 cohort in 2004, the
+standard error is 0.0225 in memory and 0.0233 on Spark. Across all twelve
+effects, the two fits' standard errors differ by at most about 0.001.
+
+This happens because the two fits use the seed differently. In each draw, the
+multiplier bootstrap gives each unit, or each cluster in a clustered fit, a
+random sign. An in-memory fit takes those signs from one random stream in the
+order of its units. Since a Spark table keeps no fixed order of its rows, a
+Spark fit computes each sign from the seed, the draw, and the identifier of the
+unit or cluster instead. The two fits therefore end up with different but
+equally valid draws from the same bootstrap distribution. The gap between their
+standard errors is the noise of a finite number of draws and shrinks as you
+raise ``biters``.
+
+Because the signs follow the identifiers rather than where each unit sits, a
+Spark fit gives the same standard errors, up to rounding, however Spark splits
+the data. The same holds whether the fit runs on classic Spark or through Spark
+Connect. The simultaneous bands of the default ``cband=True`` come from the
+same draws and don't depend on the split either. The :ref:`architecture guide
+<architecture-shard-draws>` shows how a Spark fit computes the signs.
+
+.. admonition:: The seed of an unseeded fit
+   :class: note
+
+   Without a ``random_state``, a fit picks its own seed and stores it in
+   ``influence_moments.random_state`` so that a later Spark fit can reproduce
+   the draws.
+
+.. _spark-prepare:
+
+Preparing your table
+--------------------
+
+Your own panel will most likely come from a table that ``spark.read.table``
+loads or from a query. If you work with a pandas-on-Spark DataFrame instead,
+convert it with its ``to_spark()`` method before you fit it. From PySpark 4.2
+on, ``att_gt`` would otherwise quietly collect it to the driver and fit it in
+memory.
+
+.. admonition:: Save an expensive query first
+   :class: tip
+
+   Since a fit reads the data twice, it also runs the query behind the data
+   twice. When that query is expensive, such as a join of large tables, save
+   its result to a table before the fit or persist it where the session allows.
+
+Like an in-memory fit, a Spark fit reads long data with one row for each unit
+in each period. Since the fit checks the column types in the table's schema
+before it reads a single row, we'll print that schema first.
+
+.. code-block:: python
 
    # The county data stands in for a table that spark.read.table would load.
-   data = spark.createDataFrame(did.load_mpdta().to_pandas())
    data.printSchema()
 
 .. container:: cell_output
@@ -186,24 +336,31 @@ method first.
           |-- first.treat: long (nullable = true)
           |-- treat: long (nullable = true)
 
-Every column holds numbers, as ``att_gt`` requires of the outcome, period,
-unit, and cohort columns. In a Spark fit, sampling weights and covariates must
-hold numbers too. Because the fit checks these types against the schema, a
-column of the wrong type stops it before Spark runs a single job. Units
-observed more than once in a period stop the fit with an error. Rows with
-missing values and units that miss a period drop out with a warning, just as
-the :ref:`data guide <data-for-estimation>` describes.
+You can see that each column of the county data holds a long or a double. A
+Spark fit needs numbers in the sampling weights and covariates as well as in
+the outcome, period, unit, and cohort columns that any fit requires. If any of
+them holds something else, the fit stops before Spark runs a job.
 
-A Spark fit also takes the decimal columns that warehouse tables often hold. It
-reads decimal periods and cohorts as doubles and reads a decimal identifier or
-cluster with no fraction digits and at most 18 digits as a 64-bit integer. Any
-other decimal identifier or cluster stops the fit before Spark runs a job. Its
-error asks you to cast the column to bigint or to code its values as integers
-first.
+The decimal columns that warehouse tables often hold pass that check too. A
+Spark fit reads a decimal unit identifier or cluster as a 64-bit integer. Its
+type must therefore have no fraction digits and at most 18 digits, such as
+decimal(18,0).
+Even when it holds only small whole numbers, a column of a wider type such as
+decimal(38,0) fails that check until you cast it to bigint.
 
-As with an in-memory fit, a transformed covariate or a derived cluster
-variable goes into the data as a column of its own before the fit. Spark's
-column functions can add such a column without collecting any rows.
+.. admonition:: Collected decimal values break an in-memory fit
+   :class: warning
+
+   A decimal outcome that ``toPandas()`` or ``toArrow()`` collects leaves the
+   effects of an in-memory fit NaN. A decimal covariate or weight stops that
+   fit with an error. Since the Spark fit reads those columns as doubles
+   anyway, casting them to double before you collect rows for an in-memory fit
+   or the sample check below fixes both without changing its estimates.
+
+As in an in-memory fit, a transformed covariate or a derived cluster goes into
+the data as a column of its own. You can make such a column with Spark's column
+functions without collecting any rows. With the state code below, passing
+``clustervars=["state"]`` would cluster the standard errors by state.
 
 .. code-block:: python
 
@@ -212,59 +369,32 @@ column functions can add such a column without collecting any rows.
    # The leading digits of a county FIPS code are its state's code.
    data = data.withColumn("state", F.floor(F.col("countyreal") / 1000))
 
-Passing ``clustervars=["state"]`` to ``att_gt`` would then cluster the standard
-errors by state.
-
-Unlike a cluster variable, the unit identifier must hold numbers. Spark's
-``xxhash64`` function turns an identifier stored as text into a 64-bit integer,
-as below for the county number cast to text.
+If your table stores the unit identifier as text, the type check stops the fit
+and asks you to convert it. Spark's ``xxhash64`` function turns such an
+identifier into a 64-bit integer.
 
 .. code-block:: python
 
-   # Code a text identifier as a 64-bit integer for idname.
+   # Casting the county number to text mimics an identifier stored as text.
    text = data.withColumn("county", F.col("countyreal").cast("string"))
    coded = text.withColumn("county_code", F.xxhash64("county"))
 
-Passing ``idname="county"`` itself would stop the fit before Spark runs a job
-with the in-memory error
-``idname = 'county' is not numeric. Please convert it``. With
-``idname="county_code"``, the fit gives the same estimates as one on
-``countyreal``, though its bootstrap draws differ because they follow the codes.
-Two identifiers that shared a code would repeat (unit, period) pairs and stop
-the fit with an error rather than merge silently.
+Passing the coded column as ``idname="county_code"`` gives the same estimates
+as ``countyreal``. Because the bootstrap signs follow the identifiers, its
+bootstrap standard errors move slightly. If two identifiers ever shared a code,
+they would repeat (unit, period) pairs and stop the fit with an error rather
+than quietly merge two units into one.
 
-Fitting on the executors
-------------------------
-
-We reuse the specification of the
-:ref:`staggered DiD example <example_staggered_did>` unchanged. It uses the
-doubly robust estimator with log population as a covariate, never-treated
-counties as the comparison group, and a universal base period. With 10,000
-seeded bootstrap draws, every run gives the same simultaneous bands up to
-rounding.
+Because a Spark fit takes only balanced panels, it drops every unit that misses
+a period and warns you how many it dropped. Counting those units before the fit
+tells you how much of your table it will use.
 
 .. code-block:: python
 
-   # Collect the arguments in one dictionary for the checks below to reuse.
-   spec = dict(
-       yname="lemp",
-       tname="year",
-       idname="countyreal",
-       gname="first.treat",
-       control_group="nevertreated",
-       xformla="~lpop",
-       est_method="dr",
-       base_period="universal",
-       anticipation=0,
-       boot=True,
-       biters=10000,
-       cband=True,
-       random_state=7,
-   )
-
-   # The executors fit every comparison where the rows live.
-   result = did.att_gt(data, **spec)
-   print(result)
+   # Count the counties observed in fewer years than the panel has.
+   n_years = data.select("year").distinct().count()
+   incomplete = data.groupBy("countyreal").count().filter(F.col("count") < F.lit(n_years))
+   print(incomplete.count())
 
 .. container:: cell_output
 
@@ -272,438 +402,131 @@ rounding.
 
       .. code-block:: text
 
-         ==============================================================================
-          Group-Time Average Treatment Effects
-         ==============================================================================
+         0
 
-         ┌───────┬──────┬──────────┬────────────┬──────────────────────────┐
-         │ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Simult. Conf. Band] │
-         ├───────┼──────┼──────────┼────────────┼──────────────────────────┤
-         │  2004 │ 2003 │   0.0000 │         NA │ NA                       │
-         │  2004 │ 2004 │  -0.0145 │     0.0233 │ [-0.0752,  0.0462]       │
-         │  2004 │ 2005 │  -0.0764 │     0.0301 │ [-0.1548,  0.0019]       │
-         │  2004 │ 2006 │  -0.1404 │     0.0376 │ [-0.2383, -0.0426] *     │
-         │  2004 │ 2007 │  -0.1069 │     0.0339 │ [-0.1950, -0.0188] *     │
-         │  2006 │ 2003 │   0.0067 │     0.0309 │ [-0.0737,  0.0870]       │
-         │  2006 │ 2004 │   0.0062 │     0.0191 │ [-0.0434,  0.0558]       │
-         │  2006 │ 2005 │   0.0000 │         NA │ NA                       │
-         │  2006 │ 2006 │   0.0010 │     0.0201 │ [-0.0512,  0.0532]       │
-         │  2006 │ 2007 │  -0.0413 │     0.0200 │ [-0.0933,  0.0107]       │
-         │  2007 │ 2003 │   0.0063 │     0.0249 │ [-0.0585,  0.0711]       │
-         │  2007 │ 2004 │   0.0330 │     0.0215 │ [-0.0230,  0.0890]       │
-         │  2007 │ 2005 │   0.0284 │     0.0187 │ [-0.0201,  0.0770]       │
-         │  2007 │ 2006 │   0.0000 │         NA │ NA                       │
-         │  2007 │ 2007 │  -0.0288 │     0.0170 │ [-0.0730,  0.0155]       │
-         └───────┴──────┴──────────┴────────────┴──────────────────────────┘
+With no county missing a year, the fit keeps all 500 of them. On your own
+table, the fit would drop every unit that this query counts and any unit with a
+missing value in a column it reads.
 
-         ------------------------------------------------------------------------------
-          Signif. codes: '*' confidence band does not cover 0
+.. _spark-sample-check:
 
-          P-value for pre-test of parallel trends assumption:  0.2327
+Checking a sample before the full fit
+-------------------------------------
 
-         ------------------------------------------------------------------------------
-          Data Info
-         ------------------------------------------------------------------------------
-          Control Group:  Never Treated
-          Anticipation Periods:  0
-
-         ------------------------------------------------------------------------------
-          Estimation Details
-         ------------------------------------------------------------------------------
-          Estimation Method:  Doubly Robust
-
-         ------------------------------------------------------------------------------
-          Inference
-         ------------------------------------------------------------------------------
-          Significance level: 0.05
-          Bootstrap standard errors
-         ==============================================================================
-          Reference: Callaway and Sant'Anna (2021)
-
-Every point estimate in the table and the pre-test p-value of 0.2327 match the
-staggered DiD example to the printed digits. To check a fit on your own data,
-you can fit a sample of its units both ways and compare the results. Sample
-whole units rather than rows, because a unit that loses a period drops out of
-both fits.
-
-.. code-block:: python
-
-   # Keep all the rows of about one county in twenty.
-   sample = data.filter(F.xxhash64("countyreal") % 20 == 0)
-
-Since the hash depends only on the identifier, the filter keeps or drops all of
-a unit's rows together. On the county data, it keeps 22 of the 500 counties
-with all five years each. A fit on so few counties warns that some cohorts are
-small. The county panel itself is small enough for the check below to fit all
-of it in memory.
+Your own table comes with no in-memory fit to compare against. You can make one
+by fitting a sample of its units both on Spark and in memory. Sampling single
+rows would leave units incomplete and drop them from both fits. We'll instead
+filter on a hash of the identifier so that each unit keeps or loses all of its
+rows together.
 
 .. code-block:: python
 
    import numpy as np
 
-   # Fit the specification in memory for comparison.
-   in_memory = did.att_gt(did.load_mpdta(), **spec)
+   # Keep about one county in four along with all of its rows.
+   sample = data.filter(F.xxhash64("countyreal") % 4 == 0)
 
-   # Stop with an error unless the estimates and their analytic covariance agree.
-   np.testing.assert_allclose(result.att_gt, in_memory.att_gt, rtol=1e-10, atol=1e-12)
-   np.testing.assert_allclose(
-       result.vcov_analytical, in_memory.vcov_analytical, rtol=1e-10, atol=1e-12
-   )
+   # Fit the sample on Spark and again in memory after collecting it.
+   on_spark = did.att_gt(sample, **spec)
+   in_memory = did.att_gt(sample.toPandas(), **spec)
 
-   # Compare the critical values of the two simultaneous bands.
-   print(round(result.critical_value, 4), round(in_memory.critical_value, 4))
+   # Stop with an error if the two fits disagree.
+   np.testing.assert_allclose(on_spark.att_gt, in_memory.att_gt)
+   np.testing.assert_allclose(on_spark.se_gt, in_memory.se_gt)
 
-.. container:: cell_output
+The filter keeps 120 of the 500 counties in the county data and all five years
+of each. Both fits of that sample agree on every estimate and standard error to
+about :math:`10^{-16}`. A panel of millions of units needs a larger divisor to
+keep the sample small enough to collect. Once the sample agrees, the same call
+on the whole table gives you the full fit.
 
-   .. container:: output stream
+.. admonition:: Leave the bootstrap out of the check
+   :class: important
 
-      .. code-block:: text
+   Because the two fits draw different bootstrap signs, their bootstrap
+   standard errors differ by design and would fail the second assertion. Run the check
+   with a specification that leaves out ``boot=True``, such as ``spec``.
 
-         2.6014 2.6178
+Continuing the analysis
+-----------------------
 
-Passing both assertions means that the estimates and their analytic covariance
-agree to rounding. The critical values of 2.6014 and 2.6178 differ because the
-two fits use different bootstrap draws, as the section on
-:ref:`bootstrap draws on Spark <spark-bootstrap>` explains.
-
-What the result holds
----------------------
-
-The result fills every field that the reports, plots, and aggregations read.
-Unlike an in-memory fit, it leaves ``influence_func``, ``G``, and
-``weights_ind`` as None, since each of them has one entry per unit. In their
-place, ``influence_moments`` holds sums over units as an
-:class:`~moderndid.InfluenceMoments`. Each unit adds one row that holds its
-influence function value for every group-time effect, its sampling weight in
-the column of its treated cohort, and a constant 1. The Gram matrix ``gram``
-adds up the outer products of those rows. The bootstrap sums in
-``bootstrap_sums`` add up the rows times each draw's random signs.
+Since :func:`~moderndid.aggte`, :func:`~moderndid.to_df`, and the plots take a
+Spark fit's result the same way they take an in-memory one, the analysis goes
+on just as it would in memory. Below, we average the effects into an event
+study and bound its adoption-year effect with :func:`~moderndid.honest_did`
+from the ``didhonest`` extra. Because restarting Python clears the fitted
+result, add that extra to the first cell's ``%pip install`` on Databricks.
 
 .. code-block:: python
 
-   # Show the sums that replace the influence functions.
-   moments = result.influence_moments
-   print(result.influence_func, moments.gram.shape, moments.bootstrap_sums.shape)
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         None (19, 19) (10000, 19)
-
-The Gram matrix has a row for each of the 15 group-time effects in the table,
-each of the 3 treated cohorts, and a constant. Because its size depends on the
-effects rather than on the 500 counties, it stays this small however many
-units the panel holds. The bootstrap sums have one row for each of the 10,000
-draws. Since the result holds only NumPy arrays and plain Python values, you
-can pickle it and aggregate it later in a session without Spark.
-
-From these sums, :func:`~moderndid.aggte` computes the standard errors and
-bands of an aggregation, such as the event study below.
-
-.. code-block:: python
-
-   # Average the effects by event time and show them as a table.
+   # Average the effects by event time and bound the adoption-year effect.
    event_study = did.aggte(result, type="dynamic")
-   print(did.to_df(event_study))
+   sensitivity = did.honest_did(event_study, event_time=0, sensitivity_type="smoothness")
 
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         shape: (7, 6)
-         ┌────────────┬───────────┬──────────┬───────────┬───────────┬──────────────────┐
-         │ event_time ┆ att       ┆ se       ┆ ci_lower  ┆ ci_upper  ┆ treatment_status │
-         │ ---        ┆ ---       ┆ ---      ┆ ---       ┆ ---       ┆ ---              │
-         │ i64        ┆ f64       ┆ f64      ┆ f64       ┆ f64       ┆ str              │
-         ╞════════════╪═══════════╪══════════╪═══════════╪═══════════╪══════════════════╡
-         │ -4         ┆ 0.006296  ┆ 0.024915 ┆ -0.055751 ┆ 0.068344  ┆ Pre              │
-         │ -3         ┆ 0.02686   ┆ 0.018227 ┆ -0.01853  ┆ 0.072251  ┆ Pre              │
-         │ -2         ┆ 0.023244  ┆ 0.014801 ┆ -0.013616 ┆ 0.060104  ┆ Pre              │
-         │ 0          ┆ -0.02106  ┆ 0.012012 ┆ -0.050973 ┆ 0.008853  ┆ Post             │
-         │ 1          ┆ -0.053003 ┆ 0.016583 ┆ -0.094301 ┆ -0.011705 ┆ Post             │
-         │ 2          ┆ -0.140448 ┆ 0.037629 ┆ -0.234156 ┆ -0.046741 ┆ Post             │
-         │ 3          ┆ -0.106904 ┆ 0.033868 ┆ -0.191245 ┆ -0.022563 ┆ Post             │
-         └────────────┴───────────┴──────────┴───────────┴───────────┴──────────────────┘
-
-The event study also keeps its analytic covariance in ``vcov_analytical``. For
-its sensitivity analysis, :func:`~moderndid.honest_did` reads that covariance
-in place of the influence functions.
-
-.. code-block:: python
-
-   # Compute robust intervals for the adoption-year effect under smoothness bounds.
-   sensitivity = did.honest_did(
-       event_study,
-       event_time=0,
-       sensitivity_type="smoothness",
-       m_vec=[0.0, 0.01, 0.02],
-       method="FLCI",
-   )
-   print(sensitivity.robust_ci)
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         shape: (3, 5)
-         ┌───────────┬──────────┬────────┬─────────┬──────┐
-         │ lb        ┆ ub       ┆ method ┆ delta   ┆ m    │
-         │ ---       ┆ ---      ┆ ---    ┆ ---     ┆ ---  │
-         │ f64       ┆ f64      ┆ str    ┆ str     ┆ f64  │
-         ╞═══════════╪══════════╪════════╪═════════╪══════╡
-         │ -0.050609 ┆ 0.0058   ┆ FLCI   ┆ DeltaSD ┆ 0.0  │
-         │ -0.046257 ┆ 0.0352   ┆ FLCI   ┆ DeltaSD ┆ 0.01 │
-         │ -0.052246 ┆ 0.053837 ┆ FLCI   ┆ DeltaSD ┆ 0.02 │
-         └───────────┴──────────┴────────┴─────────┴──────┘
-
-These intervals match those of the in-memory event study to every printed
-digit, since both start from the same analytic covariance. The
-:ref:`sensitivity analysis example <example_honest_did>` explains how to read
-intervals like these.
-
-The fit's own ``vcov_analytical`` gives standard errors for contrasts that
-``aggte`` doesn't report. For fixed weights :math:`a` on the group-time
-effects, such as the difference between two of them, the analytic standard
-error is :math:`\sqrt{a'Va/n}` for :math:`V` the result's ``vcov_analytical``
-and :math:`n` its ``n_units``. Since :math:`V` sums within clusters when the fit
-clusters, that standard error is then cluster-robust.
-
-Since the units stay on the executors, ``aggte`` can't make new bootstrap
-draws from a Spark result and reuses the fit's draws instead. Asking it for
-more draws than the fit stored, for another seed, or for draws by unit from a
-clustered fit raises a ValueError that says what to refit.
+The :ref:`sensitivity analysis example <example_honest_did>` shows how to read
+the intervals that ``honest_did`` returns. The only difference you might run
+into is that ``aggte`` can't make new bootstrap draws without unit-level values
+and reuses the draws that the fit stored instead.
 
 .. admonition:: Ask for enough bootstrap draws up front
    :class: tip
 
-   Set ``biters`` in ``att_gt`` to the largest number of draws any later
-   aggregation will use. An aggregation with a smaller ``biters`` reads the
-   fit's first draws. Because a fit with both ``boot=False`` and
-   ``cband=False`` stores no draws at all, passing ``boot=True`` or
-   ``cband=True`` to its aggregations raises an error.
+   Set ``biters`` in ``att_gt`` to the most draws any later aggregation will
+   use. Asking ``aggte`` for more draws than the fit stored, for another seed,
+   or for unit-level draws from a clustered fit raises a ValueError that says
+   what to refit.
 
-.. _spark-bootstrap:
+If you need a contrast that ``aggte`` doesn't report, such as the difference
+between two effects, the tip in the :ref:`influence functions background
+<background-influence-functions-contrasts>` gives its standard error for a
+Spark fit.
 
-Bootstrap draws on Spark
-------------------------
+Tuning a large fit
+------------------
 
-The multiplier bootstrap multiplies each unit's influence function by a random
-sign in every draw, or each cluster's sum when the fit clusters. On Spark, each
-sign depends only on the seed, the draw, and the value of its unit's or
-cluster's identifier, never on which partition or executor holds the unit. A
-fixed ``random_state`` therefore gives every unit the same signs on any
-partitioning of the data, in classic Spark and Spark Connect alike. Since the
-sums over units add up in another order when the partitions change, the
-standard errors, the bands, and the Gram matrix agree to rounding rather than
-bit for bit. Differences of that size stay well below the digits that the
-reports print.
+How long a fit takes depends on the estimator, the clustering, the bootstrap
+draws, and a few Spark settings you can change. Outcome regression is the
+quickest of the three estimators because it estimates no propensity scores.
 
-Because the county panel fits in one partition of the unit table, the check
-below fits a generated panel of 40,000 units instead. Two settings of
-``spark.sql.shuffle.partitions`` split its unit table differently.
+Of Spark's own settings, the one you're most likely to change is
+``spark.sql.shuffle.partitions``. It sets how many partitions Spark makes when
+it gathers each unit's rows together and defaults to 200 (``auto`` on
+serverless compute). On one machine, 200 partitions can take longer than
+everything else a small fit does. Setting the value to a few per core, as
+below, shortens that step.
 
 .. code-block:: python
 
-   # Generate a panel of 40,000 units, enough for a unit table of several partitions.
-   generated = did.gen_did_scalable(
-       40000, n_periods=3, n_cohorts=2, n_covariates=4, random_state=7
-   )["data"]
-   panel = spark.createDataFrame(generated.to_pandas())
-   demo = dict(
-       yname="y", tname="time", idname="id", gname="group", xformla="~cov1", boot=True, random_state=7
-   )
-
-   # Fit the panel under two shuffle settings that split the unit table differently.
-   spark.conf.set("spark.sql.shuffle.partitions", "2")
-   two = did.att_gt(panel, **demo)
-   spark.conf.set("spark.sql.shuffle.partitions", "8")
-   eight = did.att_gt(panel, **demo)
-
-   # Stop with an error unless the standard errors agree.
-   np.testing.assert_allclose(two.se_gt, eight.se_gt, rtol=1e-12)
-
-   # Compare the critical values of the two fits.
-   print(round(two.critical_value, 4), round(eight.critical_value, 4))
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         2.238 2.238
-
-The first setting splits the unit table into 2 partitions and the second into 5
-that hold different sets of units. Both fits agree on every standard error to
-rounding and print the same critical value of 2.238.
-
-On the county data, an in-memory fit draws its signs in the order of its units.
-With the same ``random_state=7``, it therefore gets a different set of signs
-that is just as valid. Its bootstrap standard errors differ from those of the
-Spark fit in the third decimal, such as 0.0225 against 0.0233 for the 2004
-cohort in 2004.
-
-Since both fits estimate the same bootstrap distribution, neither answer is
-more accurate than the other. Their gap is the noise of a finite number of
-draws and narrows as ``biters`` grows.
-
-Because the signs follow the identifier's value, a unit identifier stored as
-integers gives the same draws as one stored as floats or decimals that hold the
-same numbers. A cluster variable may hold strings as well as numbers, although a
-cluster named ``"17"`` draws other signs than one numbered ``17``. Without a
-``random_state``, the fit draws a seed and stores it in
-``influence_moments.random_state`` so that a later Spark fit can reproduce its
-draws.
-
-How a fit runs
---------------
-
-The fit starts by building a unit table from the long data and leaves the data
-itself where it is. A first aggregation by period and cohort counts the missing
-values and finds the periods, cohorts, and weight totals. A single shuffle then
-gathers each unit's rows into one row that holds its outcome, weight, and
-covariates in every period. These two steps and the schema checks before them
-reproduce every check and warning of the in-memory preprocessing. The fit
-persists the unit table and releases it when it returns or when any error,
-even an interrupt, stops it.
-
-Each later step of the estimator runs as a pass over that table. A pass sends a
-small function to every partition of the table. Each task applies it to its
-units and returns statistics of a fixed size, such as counts, sums, maxima, and
-the triangular factors of QR decompositions. An error inside a task reaches
-you as PySpark's own exception with the worker's Python traceback in its
-message. The passes of a fit come in four kinds and run in this order.
-
-- A first pass collects the counts, weight sums, and QR factors that every
-  fit starts from.
-- One pass per iteration of the logit updates all the propensity score fits at
-  once.
-- Once every fit is final, a pass sums the parts of every effect and of its
-  influence function.
-- A last pass sums the outer products and bootstrap draws that stand in for
-  the influence functions.
-
-A doubly robust or inverse probability fit makes three passes plus one for
-each iteration of its slowest logit. Each logit stops after 100 iterations at
-most, as the in-memory binomial fit does. Since a logit whose propensity scores
-separate the treated units from the comparison units can take a few dozen
-iterations, a single such cell can add a few dozen passes to the fit. An
-outcome regression fit needs no logit and makes three passes. The doubly
-robust fit of the county data above makes nine passes. Spark runs the whole
-fit, preprocessing included, as 15 jobs. With ``est_method="reg"`` and nothing
-else changed, the fit takes three passes and nine jobs. The number of passes
-doesn't grow with the number of units or group-time effects. The
-:ref:`architecture guide <architecture-shards>` describes the kernels and
-executors behind these passes.
-
-Tuning a fit
-------------
-
-The shuffle that builds the unit table splits it into as many partitions as
-``spark.sql.shuffle.partitions`` sets, 200 by default. On Databricks serverless
-compute, the documented default is ``auto`` instead. Before the passes start,
-the fit merges them into partitions of about a megabyte each. Each pass then
-runs one task per megabyte of the table, up to the number that setting allows.
-
-For a panel of modest size on one machine, the shuffle's 200 tasks can take
-longer than all of the passes. Setting the value near the number of cores, as
-below, shortens that step. On a cluster, a panel of many millions of units
-needs a value large enough to give every core a few tasks per pass.
-
-.. code-block:: python
-
-   # Use fewer shuffle partitions for a small panel on one machine.
+   # A few shuffle partitions per core suit a small panel on one machine.
    spark.conf.set("spark.sql.shuffle.partitions", "8")
 
-Persisting the unit table spares every pass from repeating the shuffle. When a
-session refuses to persist it, as Databricks documents for `serverless compute
-<https://docs.databricks.com/aws/en/compute/serverless/limitations>`_, the fit
-tries a local checkpoint instead. If the session refuses the checkpoint too, a
-warning says that each pass of the fit rebuilds the table from the data.
+On a laptop, that setting brings the county fit on Spark from about two seconds
+down to under one. A cluster calls for the same few partitions per core, such
+as 192 for 64 cores.
 
-.. admonition:: Save an expensive query first
+Even with the default ``boot=False``, the default ``cband=True`` makes a fit
+draw ``biters`` random signs for each unit or cluster and keep their sums for
+the bands of later aggregations. Their cost grows in step with the number of
+draws you ask for. When no aggregation will need them, passing
+both ``boot=False`` and ``cband=False`` skips the draws and leaves every
+aggregation with analytic standard errors.
+
+.. admonition:: Use fewer draws for very large designs
    :class: tip
 
-   The fit reads its data twice, in the first aggregation and in the shuffle
-   that builds the unit table. When the DataFrame comes from an expensive
-   query, such as a join of large tables, write it to a table, or persist it if
-   the session allows, before the fit.
+   With about a thousand group-time effects, such as 25 cohorts over 40
+   periods, 10,000 draws can push the sums bound for the driver past the 1 GiB
+   that ``spark.driver.maxResultSize`` allows by default in open-source Spark.
+   Before Spark 4.1, Spark Connect also needs each task's sums to fit in one
+   message of at most 128 MiB by default. Fewer draws bring the sums back under
+   whatever limits your setup uses.
 
-In the last pass, each task returns its sums in one payload of about
-:math:`8L(L + B)` bytes, where :math:`B` is ``biters`` and :math:`L` counts the
-group-time effects, the treated cohorts, and a constant. With :math:`L = 19`
-and 10,000 draws, the county fit above sends about 1.5 MB per task. A design
-with 25 cohorts over 40 periods has an :math:`L` near 1,000 and would send
-about 88 MB per task at 10,000 draws. When a pass has more than 16 tasks, a
-second stage combines their payloads in groups before they reach the driver.
-For :math:`P` tasks, each combining task holds a group of up to about
-:math:`2\sqrt{P}` payloads at once. Since open-source PySpark 3.5 passes each
-group through pandas, its combining tasks hold three copies of those payloads,
-two in Arrow and one in pandas. Because a pass of 16 tasks or fewer skips that
-stage, the driver collects up to 16 payloads, or about :math:`\sqrt{P}` of them
-once :math:`P` passes 256. Their total must stay under the 1 GB that
-``spark.driver.maxResultSize`` allows by default. Sixteen payloads of the
-larger design would come to about 1.4 GB. Under Spark Connect, each payload
-must also fit in one message of at most 128 MiB by default. A design that large
-needs fewer draws, or more memory and a larger result limit. On serverless
-compute, whose documented settings include neither, fewer draws are the only
-remedy.
+Because a clustered fit never splits a cluster between cores, each step of the
+estimator keeps at most one core busy for each cluster. A fit clustered by 50
+states, for example, keeps no more than 50 cores busy in any of those steps,
+however many cores the Spark cluster has. If one state held most of the units,
+every step would wait on the core working through it.
 
-.. admonition:: Skip draws you won't use
-   :class: tip
-
-   Even when ``boot=False``, the default ``cband=True`` makes the last pass
-   draw ``biters`` random signs for every unit or cluster. If neither the fit
-   nor its aggregations need bootstrap standard errors or a simultaneous band,
-   passing both ``boot=False`` and ``cband=False`` skips those draws and makes
-   a large panel fit faster.
-
-A clustered fit partitions the unit table by cluster rather than by unit.
-Every task then holds whole clusters and can sum within them itself. What
-reaches the driver doesn't grow with the number of clusters. The cost is that
-a pass never splits a cluster across tasks. On a panel large enough to fill
-many partitions, clustering by state would leave no more tasks with work in
-each pass than there are states. If one state had most of the units, every pass
-would wait on its task.
-
-What needs an in-memory fit
----------------------------
-
-Spark takes balanced panels and the three built-in estimators of ``att_gt``.
-Units missing from any period drop out with the warning an in-memory fit gives
-under its default ``allow_unbalanced_panel=False``. Sampling weights, a cluster variable
-besides ``idname``, both comparison groups, both base periods, and
-anticipation all work on Spark. Each argument below raises a ValueError that
-says what to pass instead.
-
-- ``panel=False``, for a repeated cross-section.
-- ``allow_unbalanced_panel=True``, for an unbalanced panel.
-- A callable ``est_method``, in place of ``"dr"``, ``"ipw"``, or ``"reg"``.
-- Any ``backend``, since the executors always compute with NumPy.
-- ``n_jobs`` other than 1, since Spark already runs each pass in parallel.
-
-Two error messages that a Spark fit shares with the in-memory checks still
-suggest ``panel=False``. They appear when no unit is observed in more than one
-period or when balancing the panel drops every unit. On Spark, either one
-usually means that ``idname`` doesn't pick out the same unit in every period.
-If the data is a repeated cross-section after all, collect it and fit it in
-memory with ``panel=False``.
-
-Among the estimators, only ``att_gt`` fits a Spark DataFrame where its rows
-live. Other functions that take data, such as :func:`~moderndid.ddd`,
-:func:`~moderndid.cont_did`, and :func:`~moderndid.core.panel.diagnose_panel`,
-collect every row on the driver. Converting the DataFrame first with
-``data.toArrow()``, or with ``data.toPandas()`` on PySpark 3.5, works with any
-of them. From PySpark 4.2 on, these functions also read a Spark DataFrame
-directly through its Arrow stream.
-
-The test suite runs fits like these on a local cluster with separate executor
-processes and on a Docker cluster. The :ref:`testing guide <testing-spark>`
-shows how to run both setups on your own machine.
+For a look at how a Spark fit computes its estimates and draws without
+collecting the units, the :ref:`architecture guide <architecture-shards>`
+follows one from the inside.

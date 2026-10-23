@@ -110,9 +110,9 @@ analysis.
 Besides the ``spark`` extra, running Spark on your own machine needs Java.
 Java 17 works with both Spark 3.5 and Spark 4. On Databricks, leave out the
 ``spark`` extra, since the runtime already provides PySpark. The
-:doc:`Spark guide <spark>` says which Databricks runtimes to choose and shows
-how to install ``moderndid`` on the executors of a Databricks cluster or one
-you manage.
+:doc:`Spark setup guide <spark_setup>` says which Databricks runtimes to choose
+and shows how to install ``moderndid`` on the executors of a Databricks cluster
+or one you manage.
 
 Check the installation
 -----------------------

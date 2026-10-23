@@ -290,7 +290,9 @@ both settings when the distinction matters to your analysis.
 
 `aggte` inherits those inference settings and the fit's `random_state` unless
 you override them. That seed matters even under analytical standard errors,
-since `aggte` can still draw a bootstrap for simultaneous bands. While the
+since `aggte` can still draw a bootstrap for simultaneous bands. Aggregations of
+a fit on a Spark DataFrame reuse the draws that the fit stored and refuse
+another seed. While the
 overall scalar summary has its own pointwise uncertainty, the curve's
 simultaneous critical value applies only to the collection of event-time
 estimates.

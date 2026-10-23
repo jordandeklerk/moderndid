@@ -65,8 +65,8 @@ def spark_att_gt(
     if all(part.isdigit() for part in release) and tuple(int(part) for part in release) < (3, 5):
         raise ValueError(
             f"pyspark {pyspark.__version__} is installed. A fit of att_gt on a Spark DataFrame needs pyspark 3.5 or "
-            "later. Upgrade pyspark or, on Databricks, choose Databricks Runtime 16 or later, as the Spark guide of "
-            "the moderndid docs describes."
+            "later. Upgrade pyspark or, on Databricks, choose Databricks Runtime 16.4 LTS or later. The Spark setup "
+            "guide of the moderndid docs says which runtimes to choose."
         )
     if not panel:
         raise ValueError(

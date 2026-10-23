@@ -201,10 +201,13 @@ bootstrap changes between runs unless you seed it. Because
 {func}`~moderndid.aggte` draws a bootstrap for its simultaneous bands even when
 `boot=False`, those bands change between runs too. If you pass an integer
 `random_state` to {func}`~moderndid.att_gt`, every `aggte` call on the result
-reuses it and draws the same bootstrap. A NumPy generator object gives different
-draws on each call, since it continues its sequence instead of restarting.
-{func}`~moderndid.agg_ddd` and {func}`~moderndid.cont_did` each need their own
-`random_state`, since `agg_ddd` doesn't reuse the seed you gave
+reuses it and draws the same bootstrap. Since a NumPy generator object continues
+its sequence instead of restarting, it gives different draws on each call. A fit
+on a Spark DataFrame instead stores its draws for every later `aggte` call to
+reuse. The {ref}`Spark guide <spark-bootstrap>` explains why its bootstrap
+standard errors differ slightly from those of an in-memory fit with the same
+seed. {func}`~moderndid.agg_ddd` and {func}`~moderndid.cont_did` each need
+their own `random_state`, since `agg_ddd` doesn't reuse the seed you gave
 {func}`~moderndid.ddd` and `cont_did` always bootstraps its dose-response
 standard errors.
 {ref}`Simultaneous bands and the multiplier bootstrap <background-did-bootstrap>`
@@ -306,10 +309,11 @@ The base install runs {func}`~moderndid.npiv`, the panel utilities, and the core
 estimators, such as {func}`~moderndid.att_gt`, {func}`~moderndid.ddd`, and
 {func}`~moderndid.did_multiplegt`. A function whose extra is missing raises an
 `ImportError` that names the extra and the commands that install it, such as
-the `didcont` extra for {func}`~moderndid.cont_did`. Because the `gpu` extra
-needs CUDA, `"moderndid[all]"` leaves it out and adds every estimator extra and
-plotting. {doc}`Installation <user_guide/installation>` lists every extra along
-with fixes for common install failures.
+the `didcont` extra for {func}`~moderndid.cont_did`. Since the `gpu` extra needs
+CUDA and the `spark` extra installs PySpark, `"moderndid[all]"` leaves both out
+and adds every estimator extra and plotting.
+{doc}`Installation <user_guide/installation>` lists every extra along with
+fixes for common install failures.
 
 ### How do I speed up estimation on a large panel?
 
@@ -322,4 +326,6 @@ plan to report. With an NVIDIA GPU and the `gpu` extra, `backend="cupy"` runs
 `att_gt`, `ddd`, and {func}`~moderndid.cont_did` through supported GPU
 calculations. {ref}`GPU acceleration <gpu>` explains how to benchmark the full
 call with its preparation and data transfers to find out whether it helps your
-specification.
+specification. For a panel that sits in a Spark table or holds more units than
+one machine can keep in memory, the {ref}`Spark guide <spark>` shows how
+`att_gt` fits a Spark DataFrame on the cluster's executors.

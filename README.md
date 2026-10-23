@@ -162,12 +162,16 @@ result = did.att_gt(
 
 ### Spark clusters
 
-With the `spark` extra, `att_gt` takes a Spark DataFrame and fits it on the
-cluster without gathering its rows on one machine. That suits a panel that
-already sits in a Spark table or holds more units than one machine can keep in
-memory. The
+Passed a Spark DataFrame, `att_gt` fits it on the cluster without gathering its
+rows on one machine. That suits a panel that already sits in a Spark table or
+holds more units than one machine can keep in memory. Since Databricks runtimes
+already include PySpark, you need the `spark` extra only where you run Spark
+yourself. The
 [Spark guide](https://moderndid.readthedocs.io/en/latest/user_guide/spark.html)
-covers setting up Spark and the options a Spark fit supports.
+walks through a fit and the options a Spark fit supports. The
+[Spark setup guide](https://moderndid.readthedocs.io/en/latest/user_guide/spark_setup.html)
+shows how to install ModernDiD on Databricks, a cluster you manage, or your own
+machine.
 
 ```python
 from pyspark.sql import SparkSession

@@ -137,6 +137,8 @@ The results of :func:`~moderndid.att_gt` and :func:`~moderndid.aggte` already st
 per unit, or per observation for repeated cross-sections. Without the bootstrap or clustering, the
 standard errors they report are exactly this formula.
 
+.. _background-influence-functions-contrasts:
+
 Covariances and averages
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -166,7 +168,8 @@ term for the aggregations in :func:`~moderndid.aggte`.
    square root, and divide by :math:`n`, the number of rows in the array. With clustering, sum the
    contributions within each cluster before squaring and still divide by :math:`n`. For a fit on a
    Spark DataFrame, which keeps no ``influence_func``, the same standard error is
-   :math:`\sqrt{a'Va/n}` for :math:`V` its ``vcov_analytical`` and :math:`n` its ``n_units``.
+   :math:`\sqrt{a'Va/n}` for :math:`V` its ``vcov_analytical``, which already sums within any
+   clusters, and :math:`n` its ``n_units``.
 
 Clustered sampling
 ~~~~~~~~~~~~~~~~~~
