@@ -4,7 +4,7 @@ description = "Scalable, GPU-accelerated difference-in-differences for Python."
 channels = ["conda-forge"]
 name = "moderndid"
 platforms = ["linux-64", "osx-arm64", "osx-64"]
-version = "0.3.1"
+version = "0.4.0"
 
 [tasks]
 
@@ -175,9 +175,12 @@ flit = ">=3.4,<4"
 
 [feature.build.pypi-dependencies]
 moderndid = { path = ".", editable = true }
+build = ">=1.2"
 
 [feature.build.tasks]
-package = "flit build"
+# Since `flit build` packs every file that git tracks with this environment's flit, the task builds in an isolated
+# environment with the flit_core that pyproject.toml asks for, as the publish workflow does.
+package = "python -m build"
 
 [feature.validation]
 platforms = ["linux-64", "osx-arm64", "osx-64"]

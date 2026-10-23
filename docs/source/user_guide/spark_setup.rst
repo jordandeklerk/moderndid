@@ -86,8 +86,9 @@ Databricks recommends installing a `notebook-scoped library
 Since ``%pip`` doesn't restart Python by itself, the restart in the second cell
 is what makes the notebook load the newer SciPy and statsmodels that the
 install brings. Following Databricks' advice to pin versions, write the release
-you want in place of ``<version>``. If you'd rather install a commit from
-GitHub, as our run did, put its hash after the repository's address.
+you want, 0.4.0 or later, in place of ``<version>``. If you'd rather install a
+commit from GitHub, as our run did, put its hash after the repository's
+address.
 
 .. code-block:: python
 
