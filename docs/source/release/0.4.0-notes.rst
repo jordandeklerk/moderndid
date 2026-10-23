@@ -1,0 +1,212 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.4.0 release notes
+=============================
+
+ModernDiD 0.4.0 lets ``att_gt`` estimate staggered DiD on a Spark cluster.
+Passed a Spark DataFrame, it computes the group-time effects on the executors
+without gathering the rows on one machine. Every in-memory estimator also reads
+decimal columns now, such as the ones in rows collected from warehouse tables.
+Estimates and standard errors that 0.3.1 computed don't change. Code written
+for 0.3.1 keeps working unless it passes ``dropna`` to ``agg_ddd`` or
+``compute_aggte``.
+
+Python 3.12, 3.13, and 3.14 are supported in this release.
+
+
+Upgrading from 0.3.1
+====================
+
+* ``agg_ddd`` and ``compute_aggte`` take ``na_rm`` in place of ``dropna``, the
+  name that ``aggte`` already used. Code that still passes ``dropna`` to either
+  function now fails with an error.
+
+  (`#385 <https://github.com/jordandeklerk/moderndid/pull/385>`__)
+
+* Since statsmodels 0.14.4 fails to import under SciPy 1.18 and 0.14.5 fails
+  under pandas 3, ModernDiD now requires statsmodels 0.14.6 or later along with
+  narwhals 1.31 or later.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+
+New features
+============
+
+Staggered DiD on Spark
+----------------------
+
+* ``att_gt`` accepts a Spark DataFrame and fits it on the cluster. Since each
+  pass of the fit runs on the executors and sends only sums back to the
+  driver, no machine ever holds the whole panel. The fit runs on PySpark 3.5 or
+  later, in a classic session or through Spark Connect. Its estimates match an
+  in-memory fit of the same panel to rounding.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+* ``aggte`` and ``honest_did`` work from the result of a Spark fit. In place of
+  each unit's influence function, that result keeps sums in a new
+  ``influence_moments`` field that holds an ``InfluenceMoments``.
+  ``AGGTEResult`` also gains ``vcov_analytical``, the asymptotic covariance
+  matrix of its effects, for in-memory and Spark fits alike.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+* Since a Spark fit keys each bootstrap draw to its unit or cluster, the draws
+  don't depend on how Spark partitions the data. They differ from the draws of
+  an in-memory fit with the same ``random_state``. Aggregations of a Spark fit
+  reuse the draws that the fit stored.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+* A Spark fit keeps the default balanced panel and refuses ``panel=False``,
+  ``allow_unbalanced_panel=True``, a callable ``est_method``, a ``backend``,
+  and ``n_jobs`` other than 1.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+* The new ``spark`` extra installs PySpark with the Spark Connect client.
+  Since PySpark warns that it doesn't yet fully support pandas 3, the extra
+  also keeps pandas below version 3. On Databricks, where the runtime brings
+  its own PySpark, ModernDiD installs without the extra.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__,
+  `#403 <https://github.com/jordandeklerk/moderndid/pull/403>`__)
+
+Machine learning DiD results
+----------------------------
+
+* ``to_df``, ``plot_gt``, and ``plot_event_study`` accept the results of
+  ``didml`` and ``aggte_didml``. The ``didml`` functions also appear in
+  ``moderndid.__all__``.
+
+  (`#399 <https://github.com/jordandeklerk/moderndid/pull/399>`__)
+
+
+Fixes
+=====
+
+* Every in-memory estimator reads decimal outcome, covariate, weight, and
+  treatment columns as doubles. In 0.3.1, a decimal outcome left ``att_gt``
+  with no effects. The same column stopped ``etwfe``, ``cont_did``, ``ddd``,
+  and ``drdid`` with an error, as a decimal control did in ``did_multiplegt``.
+  ``het_prep`` now hands decimal covariates to ``blp_eventtimes`` as numbers
+  rather than as categories. Unit identifiers, periods, cohorts, and clusters
+  keep their decimal type.
+
+  (`#403 <https://github.com/jordandeklerk/moderndid/pull/403>`__)
+
+* On Databricks Runtime 17.3 LTS, ``pip install moderndid`` upgraded SciPy to
+  1.18 but kept statsmodels 0.14.4. Since that statsmodels fails to import
+  under SciPy 1.18, ``import moderndid`` failed too. The statsmodels 0.14.6
+  floor above fixes the import on that runtime.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+* ModernDiD reads pandas DataFrames older than 2.2, such as the pandas 1.5 of
+  Databricks Runtime 16.4 LTS. Since those versions lack the Arrow PyCapsule
+  interface that 0.3.1 relied on, ``load_mpdta`` and any pandas input failed
+  there.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+
+Documentation
+=============
+
+* Two new guides cover Spark. :doc:`Setting up Spark <../user_guide/spark_setup>`
+  shows how to install ModernDiD on Databricks, on a cluster you manage, or on
+  your own machine. It also lists the setups where a fit has run and explains
+  setup errors by the message they show. :doc:`Distributed estimation on Spark
+  <../user_guide/spark>` walks through a fit and checks it against an in-memory
+  fit. The :doc:`architecture page <../dev/architecture>` explains how a fit
+  runs on shards.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__,
+  `#401 <https://github.com/jordandeklerk/moderndid/pull/401>`__)
+
+* Each example page has buttons that open it as a notebook in Colab or molab.
+  The comparison notebooks now run in Colab and open without saved outputs.
+
+  (`#382 <https://github.com/jordandeklerk/moderndid/pull/382>`__,
+  `#383 <https://github.com/jordandeklerk/moderndid/pull/383>`__)
+
+* The API reference documents every exported name under the ``moderndid``
+  namespace and shows each result's fields and methods on its class page. The
+  User Guide index now groups its pages by topic. The estimator overview opens
+  with a map from study designs to the estimators that fit them.
+
+  (`#386 <https://github.com/jordandeklerk/moderndid/pull/386>`__,
+  `#387 <https://github.com/jordandeklerk/moderndid/pull/387>`__)
+
+* Every guide and example page was trimmed to say each thing once. Figures on
+  every page now fill the width of the text column. Besides a new landing page
+  design, the docs give shorter FAQ answers and keep the sidebar's other
+  sections open.
+
+  (`#388 <https://github.com/jordandeklerk/moderndid/pull/388>`__,
+  `#389 <https://github.com/jordandeklerk/moderndid/pull/389>`__,
+  `#390 <https://github.com/jordandeklerk/moderndid/pull/390>`__,
+  `#393 <https://github.com/jordandeklerk/moderndid/pull/393>`__,
+  `#394 <https://github.com/jordandeklerk/moderndid/pull/394>`__,
+  `#395 <https://github.com/jordandeklerk/moderndid/pull/395>`__,
+  `#396 <https://github.com/jordandeklerk/moderndid/pull/396>`__,
+  `#397 <https://github.com/jordandeklerk/moderndid/pull/397>`__,
+  `#398 <https://github.com/jordandeklerk/moderndid/pull/398>`__)
+
+
+Infrastructure
+==============
+
+* CI tests an install without any extra and an install with only the
+  ``plots`` extra.
+
+  (`#384 <https://github.com/jordandeklerk/moderndid/pull/384>`__)
+
+* CI runs the Spark tests on PySpark 4.2 and 3.5, each in a classic session
+  and through Spark Connect. PySpark 4.2 also runs them on a standalone Spark
+  cluster in Docker.
+
+  (`#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__)
+
+* The ETWFE tests that assert a fit raises no warnings ignore the pandas 3.1
+  deprecations that pyfixest raises in its own code.
+
+  (`#402 <https://github.com/jordandeklerk/moderndid/pull/402>`__)
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull requests merged
+====================
+
+A total of 24 pull requests were merged for this release, of which 20 are
+feature or fix PRs (excluding automated dependency and changelog updates).
+
+* `#403 <https://github.com/jordandeklerk/moderndid/pull/403>`__: BUG: read decimal value columns as doubles in every estimator and fix pandas version
+* `#402 <https://github.com/jordandeklerk/moderndid/pull/402>`__: TEST: ignore pyfixest's pandas 3.1 deprecations in the ETWFE warning tests
+* `#401 <https://github.com/jordandeklerk/moderndid/pull/401>`__: DOC: split the Spark guide in two and rewrite the shard engine section
+* `#400 <https://github.com/jordandeklerk/moderndid/pull/400>`__: ENH: run att_gt on Spark DataFrames
+* `#399 <https://github.com/jordandeklerk/moderndid/pull/399>`__: ENH: support didml results in to_df and the plots
+* `#398 <https://github.com/jordandeklerk/moderndid/pull/398>`__: DOC: drop the window frame and search prompt from the landing page
+* `#397 <https://github.com/jordandeklerk/moderndid/pull/397>`__: DOC: draw figures at the column width
+* `#396 <https://github.com/jordandeklerk/moderndid/pull/396>`__: DOC: trim the continuous treatment, fracking, dynamic balancing, and NPIV examples
+* `#395 <https://github.com/jordandeklerk/moderndid/pull/395>`__: DOC: set the footer wordmark in the block letters
+* `#394 <https://github.com/jordandeklerk/moderndid/pull/394>`__: DOC: landing page redesign
+* `#393 <https://github.com/jordandeklerk/moderndid/pull/393>`__: DOC: trim the DiD example pages and their check outputs
+* `#390 <https://github.com/jordandeklerk/moderndid/pull/390>`__: DOC: shorten the FAQ answers and keep sidebar sections open
+* `#389 <https://github.com/jordandeklerk/moderndid/pull/389>`__: DOC: trim the guide pages, restore full-width text, and center the landing logo
+* `#388 <https://github.com/jordandeklerk/moderndid/pull/388>`__: DOC: cap the prose width and tidy callouts, equations, and tables
+* `#387 <https://github.com/jordandeklerk/moderndid/pull/387>`__: DOC: reorganize the API reference and redesign the landing page
+* `#386 <https://github.com/jordandeklerk/moderndid/pull/386>`__: DOC: reorganize the index pages and merge the Development and Contributing tabs
+* `#385 <https://github.com/jordandeklerk/moderndid/pull/385>`__: MAINT: rename ``dropna`` to ``na_rm`` in ``agg_ddd`` and ``compute_aggte``
+* `#384 <https://github.com/jordandeklerk/moderndid/pull/384>`__: MAINT: test installs without the extras in CI
+* `#383 <https://github.com/jordandeklerk/moderndid/pull/383>`__: BUG: fix the R comparison notebooks in Colab and drop their saved outputs
+* `#382 <https://github.com/jordandeklerk/moderndid/pull/382>`__: DOC: add runnable Colab and molab notebooks for the examples
