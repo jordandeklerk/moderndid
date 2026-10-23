@@ -32891,6 +32891,7 @@ packages:
   - cupy-cuda12x[ctk]>=14.0 ; extra == 'gpu'
   - plotnine>=0.14.0 ; extra == 'plots'
   - pyspark[connect]>=3.5 ; extra == 'spark'
+  - pandas<3 ; extra == 'spark'
   - duckdb>=1.1 ; extra == 'test'
   - pytest ; extra == 'test'
   - pytest-benchmark ; extra == 'test'

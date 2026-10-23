@@ -161,7 +161,8 @@ Your own machine
 Spark's local mode runs every fit in the Spark guide on one machine without a
 cluster. That makes it the quickest way to try a Spark fit. Outside Databricks,
 the ``spark`` extra installs the latest PySpark along with the Spark Connect
-client.
+client. Since PySpark warns that it doesn't yet fully support pandas 3, the
+extra also keeps pandas below version 3.
 
 .. tab-set::
 

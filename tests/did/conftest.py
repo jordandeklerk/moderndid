@@ -124,6 +124,21 @@ def mpdta_negative_weight_missing_outcome(mpdta_pop_weighted):
 
 
 @pytest.fixture
+def mpdta_decimal_values(mpdta_pop_weighted):
+    """Weighted mpdta with one missing outcome that stores the outcome and covariate and weights as decimals."""
+    county = mpdta_pop_weighted.filter(pl.col("first.treat") == 2004)["countyreal"].min()
+    row = (pl.col("countyreal") == county) & (pl.col("year") == 2005)
+    holed = mpdta_pop_weighted.with_columns(pl.when(row).then(None).otherwise(pl.col("lemp")).alias("lemp"))
+    return holed.with_columns(pl.col("lemp", "lpop", "pop").cast(pl.Decimal(18, 6)))
+
+
+@pytest.fixture
+def mpdta_large_ids(mpdta_data):
+    """mpdta with 2**53 added to each county code."""
+    return mpdta_data.with_columns((pl.col("countyreal") + 2**53).alias("countyreal"))
+
+
+@pytest.fixture
 def mpdta_nan_cohort(mpdta_data):
     counties = mpdta_data.filter(pl.col("first.treat") == 2007)["countyreal"].unique().sort().head(10)
     return mpdta_data.with_columns(

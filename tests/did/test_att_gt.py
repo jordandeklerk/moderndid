@@ -1181,6 +1181,61 @@ def test_att_gt_checks_weights_after_dropping_missing_rows(mpdta_negative_weight
     np.testing.assert_array_equal(result.se_gt, expected.se_gt)
 
 
+@pytest.mark.parametrize("convert", [pl.DataFrame.clone, pl.DataFrame.to_pandas], ids=["polars", "pandas"])
+def test_att_gt_reads_decimal_outcome_covariate_and_weights_as_doubles(mpdta_decimal_values, convert):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "weightsname": "pop",
+        "random_state": 7,
+    }
+    floats = mpdta_decimal_values.with_columns(pl.col("lemp", "lpop", "pop").cast(pl.Float64))
+
+    with warnings.catch_warnings(record=True) as expected_record:
+        warnings.simplefilter("always")
+        expected = att_gt(convert(floats), **spec)
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = att_gt(convert(mpdta_decimal_values), **spec)
+
+    messages = [str(warning.message) for warning in record]
+    assert messages == [str(warning.message) for warning in expected_record]
+    assert "Dropped 1 rows from original data due to missing values" in messages
+    assert result.n_units == 499
+    np.testing.assert_array_equal(result.groups, expected.groups)
+    np.testing.assert_array_equal(result.times, expected.times)
+    np.testing.assert_allclose(result.att_gt, expected.att_gt, rtol=1e-12)
+    np.testing.assert_allclose(result.se_gt, expected.se_gt, rtol=1e-12)
+
+
+def test_att_gt_keeps_decimal_unit_ids_above_two_to_the_53_apart(mpdta_large_ids):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "random_state": 7}
+    decimal_ids = mpdta_large_ids.with_columns(pl.col("countyreal").cast(pl.Decimal(38, 0)))
+
+    result = att_gt(decimal_ids, **spec)
+    expected = att_gt(mpdta_large_ids, **spec)
+
+    assert mpdta_large_ids["countyreal"].cast(pl.Float64).n_unique() < 500
+    assert result.n_units == expected.n_units == 500
+    np.testing.assert_array_equal(result.groups, expected.groups)
+    np.testing.assert_array_equal(result.times, expected.times)
+    np.testing.assert_allclose(result.att_gt, expected.att_gt, rtol=1e-12)
+    np.testing.assert_allclose(result.se_gt, expected.se_gt, rtol=1e-12)
+
+
+@pytest.mark.parametrize("mpdta_bad_weights", ["one negative"], indirect=True)
+@pytest.mark.parametrize("dtype", [pl.Float64, pl.Decimal(18, 6)], ids=["float", "decimal"])
+def test_att_gt_rejects_negative_decimal_weights_like_float_weights(mpdta_bad_weights, dtype):
+    data = mpdta_bad_weights.with_columns(pl.col("w").cast(dtype))
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        att_gt(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat", weightsname="w")
+
+
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 def test_att_gt_without_never_treated_leaves_latest_cohort_out(mpdta_without_never_treated, base_period):
     result = att_gt(

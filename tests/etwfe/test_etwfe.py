@@ -903,6 +903,18 @@ def test_etwfe_checks_weights_after_dropping_rows_with_missing_values(mpdta_extr
     _assert_same_fit(mod, _fit(mpdta_extra.filter(~row), xformla="~ x", weightsname="w"))
 
 
+def test_etwfe_reads_decimal_outcome_controls_and_weights_as_doubles(mpdta_extra):
+    decimal = mpdta_extra.with_columns(pl.col("lemp", "w").cast(pl.Decimal(18, 6)), pl.col("x").cast(pl.Decimal(18, 0)))
+    floats = decimal.with_columns(pl.col("lemp", "w", "x").cast(pl.Float64))
+
+    result = _fit(decimal, xformla="~ x", weightsname="w")
+    expected = _fit(floats, xformla="~ x", weightsname="w")
+
+    assert result.gt_pairs == expected.gt_pairs
+    np.testing.assert_allclose(result.coefficients, expected.coefficients, rtol=1e-12)
+    np.testing.assert_allclose(result.std_errors, expected.std_errors, rtol=1e-12)
+
+
 @pytest.mark.parametrize(
     "argument,renamed,kwargs",
     [

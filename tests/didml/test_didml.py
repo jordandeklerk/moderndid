@@ -16,9 +16,11 @@ from moderndid import (
     aggte_didml,
     amle_weights,
     att_gt,
+    blp_eventtimes,
     clan_glhtest,
     clan_ttest,
     didml,
+    dynamic_cates,
     het_prep,
     lnw_did,
     summary_didml,
@@ -347,6 +349,19 @@ def test_didml_drops_infinite_outcome_like_a_missing_one(
     np.testing.assert_allclose(result.drdid_benchmark, expected.drdid_benchmark, rtol=1e-10, atol=0)
 
 
+def test_didml_reads_decimal_outcome_as_doubles(mpdta_short, mpdta_spec, didml_options):
+    decimal = mpdta_short.with_columns(pl.col("lemp").cast(pl.Decimal(18, 6)))
+    floats = decimal.with_columns(pl.col("lemp").cast(pl.Float64))
+
+    result = didml(decimal, **mpdta_spec, **didml_options)
+    expected = didml(floats, **mpdta_spec, **didml_options)
+
+    np.testing.assert_array_equal(result.groups, expected.groups)
+    np.testing.assert_array_equal(result.times, expected.times)
+    np.testing.assert_allclose(result.att_gt, expected.att_gt, rtol=1e-12)
+    np.testing.assert_allclose(result.se_gt, expected.se_gt, rtol=1e-12)
+
+
 def test_didml_rejects_weights_without_positive_mean(mpdta_zero_weights, mpdta_spec, didml_options):
     message = "The weights variable 'w' must be non-negative with a positive mean."
 
@@ -449,6 +464,22 @@ def test_het_prep_keeps_treated_rows_with_period_and_event_dummies(het_panel, he
     assert merged["dynamic_cate"].to_list() == [0.0, 0.3, 0.4, 0.1, 0.5, 0.6]
     assert merged["e_1"].to_list() == [1, 0, 0, 1, 0, 0]
     assert merged["e1"].to_list() == [0, 0, 1, 0, 0, 1]
+
+
+def test_blp_eventtimes_reads_decimal_covariates_from_het_prep_as_doubles(mpdta_data, mpdta_analytic_fit):
+    cates = dynamic_cates(mpdta_analytic_fit)
+    decimal = mpdta_data.with_columns(pl.col("lpop").cast(pl.Decimal(18, 6)))
+    floats = decimal.with_columns(pl.col("lpop").cast(pl.Float64))
+    keys = {"idname": "countyreal", "tname": "year", "gname": "first.treat"}
+
+    result = blp_eventtimes(het_prep(decimal, cates, **keys), n_periods=1, rhs_formula="lpop")
+    expected = blp_eventtimes(het_prep(floats, cates, **keys), n_periods=1, rhs_formula="lpop")
+
+    assert list(result.coefs) == list(expected.coefs) == ["Intercept", "lpop"]
+    np.testing.assert_allclose(
+        np.vstack(list(result.coefs.values())), np.vstack(list(expected.coefs.values())), rtol=1e-12
+    )
+    np.testing.assert_allclose(np.vstack(list(result.ses.values())), np.vstack(list(expected.ses.values())), rtol=1e-12)
 
 
 @pytest.mark.parametrize("event_time", [0, 1])

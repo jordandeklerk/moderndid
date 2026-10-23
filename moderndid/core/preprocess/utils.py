@@ -76,6 +76,38 @@ def nonfinite_to_null(data, keep_infinite=()):
     )
 
 
+def decimal_to_float(data, names):
+    """Turn the named decimal columns into doubles.
+
+    NumPy holds decimal values as Python objects that its arithmetic and the
+    regressions reject. The outcome, covariate, weight, and treatment columns
+    therefore become doubles before an estimator reads them. A null stays a
+    null.
+
+    Unit ids, periods, cohorts, and clusters keep their decimal type. Since a
+    double holds whole numbers exactly only up to :math:`2^{53}`, two unit ids
+    above that bound could become one unit.
+
+    Parameters
+    ----------
+    data : pl.DataFrame
+        Input data.
+    names : sequence of str
+        Names of the columns to read as doubles. A None or a name that is not a
+        column of the data is skipped.
+
+    Returns
+    -------
+    pl.DataFrame
+        The data with every named decimal column cast to Float64.
+    """
+    schema = data.schema
+    decimals = [name for name in dict.fromkeys(names) if name in schema and schema[name].is_decimal()]
+    if not decimals:
+        return data
+    return data.with_columns(pl.col(decimals).cast(pl.Float64))
+
+
 def make_balanced_panel(data, idname, tname):
     """Make balanced panel.
 

@@ -8,6 +8,7 @@ import pytest
 from polars.testing import assert_frame_equal
 
 from moderndid import aggte, att_gt, preprocess_did
+from moderndid.core.dataframe import to_polars
 from moderndid.did.shards.layout import shard_from_arrow
 from moderndid.did.shards.local import shards_from_did_data
 from tests.helpers import importorskip
@@ -172,6 +173,30 @@ def test_att_gt_on_spark_draws_for_decimal_clusters_as_for_the_same_integer_code
     np.testing.assert_allclose(moments.bootstrap_sums, expected.bootstrap_sums, rtol=1e-12, atol=1e-10)
     assert moments.n_clusters == 50
     assert np.nanmax(np.abs(distributed.se_gt / analytic - 1)) > 1e-3
+
+
+@pytest.mark.parametrize("collector", ["to_pandas", "to_arrow"])
+def test_att_gt_on_spark_matches_att_gt_on_collected_decimal_outcome_covariate_and_weights(
+    request, mpdta_with_decimal_values, to_spark, assert_same_fit, collector
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "weightsname": "pop",
+        "random_state": 7,
+    }
+    frame = to_spark(mpdta_with_decimal_values)
+    collected = request.getfixturevalue(collector)(frame)
+
+    distributed = att_gt(frame, **spec)
+    memory = att_gt(collected, **spec)
+
+    assert [frame.schema[name].dataType.simpleString() for name in ("lemp", "lpop", "pop")] == ["decimal(18,6)"] * 3
+    assert [to_polars(collected).schema[name].is_decimal() for name in ("lemp", "lpop", "pop")] == [True] * 3
+    assert_same_fit(distributed, memory, 1e-12)
 
 
 @pytest.mark.parametrize(

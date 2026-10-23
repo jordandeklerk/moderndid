@@ -1,6 +1,7 @@
 """Tests for continuous treatment difference-in-differences estimation."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -611,6 +612,45 @@ def test_cont_did_drops_a_missing_dose_like_any_missing_value(contdid_one_missin
     np.testing.assert_array_equal(result.att_d_se, expected.att_d_se)
     assert result.overall_att == expected.overall_att
     assert result.overall_acrt == expected.overall_acrt
+
+
+@pytest.mark.parametrize(
+    "data_fixture, options",
+    [
+        ("contdid_data", {"degree": 2, "num_knots": 0}),
+        ("contdid_two_period_data", {"dose_est_method": "cck"}),
+    ],
+    ids=["parametric", "cck"],
+)
+def test_cont_did_reads_decimal_outcome_and_dose_as_doubles(request, data_fixture, options):
+    decimal = request.getfixturevalue(data_fixture).with_columns(pl.col("Y", "D").cast(pl.Decimal(18, 6)))
+    floats = decimal.with_columns(pl.col("Y", "D").cast(pl.Float64))
+    spec = {
+        "yname": "Y",
+        "tname": "period",
+        "idname": "id",
+        "gname": "G",
+        "dname": "D",
+        "target_parameter": "level",
+        "aggregation": "dose",
+        "biters": 10,
+        "random_state": 42,
+        **options,
+    }
+
+    with warnings.catch_warnings(record=True) as expected_record:
+        warnings.simplefilter("always")
+        expected = cont_did(data=floats, **spec)
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = cont_did(data=decimal, **spec)
+
+    assert [str(warning.message) for warning in record] == [str(warning.message) for warning in expected_record]
+    np.testing.assert_array_equal(result.dose, expected.dose)
+    np.testing.assert_allclose(result.overall_att, expected.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att_se, expected.overall_att_se, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d, expected.att_d, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d_se, expected.att_d_se, rtol=1e-12)
 
 
 def test_cont_did_covariates_not_supported(contdid_data):

@@ -14,6 +14,7 @@ from moderndid.core.preprocess import (
 from moderndid.core.preprocess import (
     make_balanced_panel as _make_balanced_panel,
 )
+from moderndid.core.preprocess.utils import decimal_to_float
 from moderndid.core.preprocess.validators import _reserved_name_errors, check_columns
 from moderndid.core.preprocessing import preprocess_cont_did
 from moderndid.cupy.backend import get_backend, to_device, to_numpy, use_backend
@@ -804,6 +805,9 @@ def _estimate_cck(cont_did_data, original_data, random_state=None):
 
     ptep = _build_pte_params(cont_did_data, gt_type="att")
 
+    # Since pte_default prepares the raw data itself, a decimal outcome or dose becomes a double here as in
+    # preprocessing. cont_did has already rejected weights and covariates.
+    original_data = decimal_to_float(original_data, [config.yname, config.dname])
     overall_att_res = pte_default(
         yname=config.yname,
         gname=config.gname,
