@@ -7,7 +7,7 @@ import polars as pl
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.constants import ROW_ID_COLUMN, WEIGHTS_COLUMN
-from moderndid.core.preprocess.utils import get_column_terms
+from moderndid.core.preprocess.utils import decimal_to_float, get_column_terms
 from moderndid.core.preprocess.validators import _reserved_name_errors, check_columns
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
@@ -260,6 +260,8 @@ def ddd(
     }
     data = to_polars(data)
     check_columns(data, **named_columns)
+    # Since the routes compare cohorts with periods and test them for infinity, a decimal cohort becomes a double.
+    data = decimal_to_float(data, [gname])
     covariate_terms = get_column_terms(xformla) if xformla else []
     # Since the cross-section routes number the rows in an internal column, no named column may take its name.
     reserved = _reserved_name_errors(named_columns | {"xformla": covariate_terms}, (ROW_ID_COLUMN,))

@@ -84,7 +84,7 @@ def decimal_to_float(data, names):
     therefore become doubles before an estimator reads them. A null stays a
     null.
 
-    Unit ids, periods, cohorts, and clusters keep their decimal type. Since a
+    Unit ids, periods, and clusters keep their decimal type. Since a
     double holds whole numbers exactly only up to :math:`2^{53}`, two unit ids
     above that bound could become one unit.
 

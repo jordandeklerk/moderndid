@@ -11,7 +11,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import ddd, ddd_mp
+from moderndid import ddd, ddd_mp, ddd_mp_rc
 from moderndid.didtriple.container import DDDMultiPeriodResult
 
 
@@ -605,3 +605,17 @@ def test_ddd_mp_result_holds_unit_partition(mp_ddd_data, dtype):
     assert result.unit_partition.dtype == np.int64
     np.testing.assert_array_equal(result.unit_partition, units["partition"].to_numpy())
     np.testing.assert_array_equal(result.unit_groups, units["group"].to_numpy())
+
+
+@pytest.mark.parametrize("estimator, data_fixture", [(ddd_mp, "mp_ddd_data"), (ddd_mp_rc, "mp_rcs_data")])
+def test_ddd_mp_reads_a_decimal_cohort_with_fraction_digits_as_doubles(request, estimator, data_fixture):
+    data = request.getfixturevalue(data_fixture)
+    decimal = data.with_columns(pl.col("group").cast(pl.Decimal(10, 2)))
+    spec = {"y_col": "y", "time_col": "time", "id_col": "id", "group_col": "group", "partition_col": "partition"}
+
+    result = estimator(data=decimal, **spec)
+    expected = estimator(data=data, **spec)
+
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+    np.testing.assert_array_equal(result.groups, expected.groups)

@@ -158,6 +158,14 @@ def every_option_panel():
     )
 
 
+@pytest.fixture
+def disjoint_pair_panel(every_option_panel):
+    """Every-option panel whose never-treated units 40 and 41 observe disjoint periods."""
+    unit = pl.col("id")
+    late = pl.col("time") > 3
+    return every_option_panel.filter(~(((unit == 40) & late) | ((unit == 41) & ~late)))
+
+
 @pytest.fixture(scope="module")
 def fit_every_option(every_option_panel):
     """Function that fits did_multiplegt with every option on the panel after renaming some of its columns."""

@@ -1283,6 +1283,75 @@ def test_did_multiplegt_reads_decimal_outcome_controls_weights_and_het_covariate
     )
 
 
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+@pytest.mark.parametrize("options", [{}, {"cluster": "id"}, {"boot": True, "biters": 20, "random_state": 7}])
+@pytest.mark.parametrize(
+    "dtype, offset",
+    [(pl.UInt64, 2**53), (pl.Decimal(18, 0), 2**53), (pl.Decimal(38, 0), 2**100), (pl.Int128, 2**100)],
+)
+@pytest.mark.parametrize("data_fixture", ["every_option_panel", "disjoint_pair_panel"])
+def test_did_multiplegt_keeps_apart_unit_ids_that_share_a_double(request, data_fixture, dtype, offset, options):
+    data = request.getfixturevalue(data_fixture)
+    step = pl.when(pl.col("id") == 41).then(81).otherwise(2 * pl.col("id"))
+    relabeled = data.with_columns((step.cast(pl.Int128) + offset).cast(dtype).alias("id"))
+    spec = {"yname": "y", "tname": "time", "idname": "id", "dname": "d", "effects": 2, "placebo": 1, **options}
+
+    result = did_multiplegt(relabeled, **spec)
+    expected = did_multiplegt(data, **spec)
+
+    assert relabeled["id"].cast(pl.Float64).n_unique() < relabeled["id"].n_unique()
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(result.placebos.estimates, expected.placebos.estimates)
+    np.testing.assert_array_equal(result.placebos.std_errors, expected.placebos.std_errors)
+
+
+@pytest.mark.filterwarnings("ignore:predict_het_hc2bm has no effect:UserWarning")
+def test_did_multiplegt_clusters_heterogeneity_on_a_128_bit_unit_id(every_option_panel):
+    relabeled = every_option_panel.with_columns(pl.col("id").cast(pl.Int128) + 2**100)
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "dname": "d",
+        "cluster": "id",
+        "effects": 2,
+        "predict_het": (["het"], [-1]),
+        "predict_het_hc2bm": True,
+    }
+
+    result = did_multiplegt(relabeled, **spec)
+    expected = did_multiplegt(every_option_panel, **spec)
+
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(
+        [het.std_errors for het in result.heterogeneity], [het.std_errors for het in expected.heterogeneity]
+    )
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_did_multiplegt_reads_unit_ids_of_digits_as_numbers(every_option_panel):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "dname": "d",
+        "effects": 2,
+        "placebo": 1,
+        "boot": True,
+        "biters": 50,
+        "random_state": 7,
+    }
+    text = every_option_panel.with_columns(pl.col("id").cast(pl.String))
+
+    result = did_multiplegt(text, **spec)
+    expected = did_multiplegt(every_option_panel, **spec)
+
+    assert text.sort("id")["id"].to_list() != text.sort(pl.col("id").cast(pl.Int64))["id"].to_list()
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+
+
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])
 @pytest.mark.parametrize("boot", [False, True])
 def test_non_finite_cluster_counts_as_missing(weighted_clustered_panel, value, boot):
