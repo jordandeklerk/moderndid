@@ -718,7 +718,8 @@ def _preprocess_multiple_periods(
     _raise_errors(errors)
     columns = [yname, tname, idname, gname, pname, cluster, weightsname, *(covariates or [])]
     data = data.select(list(dict.fromkeys(column for column in columns if column is not None)))
-    data = decimal_to_float(data, [yname, pname, weightsname, *(covariates or [])])
+    # Since the cells compare cohorts with periods, a decimal cohort becomes a double along with the value columns.
+    data = decimal_to_float(data, [yname, gname, pname, weightsname, *(covariates or [])])
     data = MissingDataHandler().transform(data, config)
 
     # Because the missing-data step has run, a single missing value can't decide what these checks find.

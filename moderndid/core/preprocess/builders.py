@@ -446,7 +446,8 @@ class PreprocessDataBuilder:
 
         cluster = None
         if self._config.cluster and self._config.cluster in time_invariant_data.columns:
-            cluster = time_invariant_data[self._config.cluster].to_numpy()
+            # Since NumPy holds no 128-bit integers, the clusters reach it as dense codes in the order of their labels.
+            cluster = time_invariant_data[self._config.cluster].rank("dense").to_numpy()
 
         weights = time_invariant_data[WEIGHTS_COLUMN].to_numpy()
 

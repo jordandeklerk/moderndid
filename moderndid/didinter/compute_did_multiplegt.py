@@ -297,7 +297,8 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
 
     df = df.sort([gname, tname])
     unit_rows = df.filter(pl.col("first_obs_by_gp") == 1)
-    unit_clusters = unit_rows[config.cluster] if config.cluster else None
+    # Since NumPy holds no 128-bit integers, the clusters reach it as dense codes in the order of their labels.
+    unit_clusters = unit_rows[config.cluster].rank("dense") if config.cluster else None
     directions = [d for d in DIDInterConfigUpdater.switcher_directions(config) if (df["S_g"] == d).any()]
 
     use_placebo_mask = horizon_type == "placebo" and (config.same_switchers_pl or config.trends_lin)
@@ -1228,7 +1229,7 @@ def _compute_heterogeneity(df, config):
     # Since a row the balancer inserted has no cluster, the Bell-McCaffrey blocks read each group's observed cluster.
     # Filling the cluster column itself would move the estimates when it is also a covariate or in trends_nonparam.
     if config.cluster and config.predict_het_hc2bm:
-        df = df.with_columns(pl.col(config.cluster).min().over(gname).alias(".cluster_het"))
+        df = df.with_columns(pl.col(config.cluster).min().over(gname).rank("dense").alias(".cluster_het"))
 
     df = df.sort([gname, tname])
     df = df.with_columns(pl.arange(0, pl.len()).over(gname).alias(".gr_id"))

@@ -1149,6 +1149,35 @@ def test_ddd_reads_decimal_outcome_partition_covariates_and_weights_as_doubles(r
     np.testing.assert_allclose(result.se, expected.se, rtol=1e-12)
 
 
+@pytest.mark.parametrize(
+    "data_fixture, gname, panel",
+    [
+        ("two_period_df", "state", True),
+        ("two_period_rcs_data", "state", False),
+        ("multi_period_df", "group", True),
+        ("multi_period_df", "group", False),
+    ],
+)
+def test_ddd_reads_a_decimal_cohort_as_doubles(request, data_fixture, gname, panel):
+    data = request.getfixturevalue(data_fixture)
+    decimal = data.with_columns(pl.col(gname).cast(pl.Decimal(18, 0)))
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id" if panel else None,
+        "gname": gname,
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2",
+        "panel": panel,
+    }
+
+    result = ddd(data=decimal, **spec)
+    expected = ddd(data=data, **spec)
+
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+
+
 @pytest.mark.parametrize(("column", "argument"), [("y", "yname"), ("cov2", "xformla")])
 @pytest.mark.parametrize("reserved", [".w", "_post", "_subgroup"])
 def test_ddd_2period_rejects_reserved_column_names(two_period_df, column, argument, reserved):

@@ -885,9 +885,12 @@ class DIDInterColumnSelector(BaseTransformer):
 
         df = df.select(cols_to_keep)
 
-        for col in [config.tname, config.gname, config.dname]:
+        for col in [config.tname, config.dname]:
             if col in df.columns and df[col].dtype not in (pl.Float64, pl.Float32, pl.Int64, pl.Int32):
                 df = df.with_columns(pl.col(col).cast(pl.Float64))
+        # Since a double holds whole numbers exactly only up to 2**53, a numeric unit id keeps its own type.
+        if config.gname in df.columns and not df[config.gname].dtype.is_numeric():
+            df = df.with_columns(pl.col(config.gname).cast(pl.Float64))
 
         return decimal_to_float(df, [config.yname, config.weightsname, *covariate_names, *het_covariates])
 
