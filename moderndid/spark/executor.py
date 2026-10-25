@@ -9,35 +9,38 @@ from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
 from moderndid import _version
-from moderndid.did.shards.partials import combine_partials, empty_partial
+from moderndid.did.shards.partials import combine_partials, empty_partial, finalize_keyed
 
 
 class SparkExecutor:
     """Run each pass of a sharded fit as one Spark action over the unit table.
 
-    Every task applies the kernel to its partition of the unit table,
-    finalizes the keyed sums, and returns one row of statistics unless its
-    partition is empty. On the first pass and whenever the tasks of the
-    previous pass returned more than 16 rows, a second stage combines the rows
-    in groups before the driver collects them. The executor counts its passes
-    in ``n_passes``.
+    Every task applies the kernel to its partition of the unit table and
+    returns one row of statistics unless its partition is empty. With
+    ``whole_clusters``, each task finalizes its keyed sums first. Otherwise the
+    driver finalizes them after combining every row. On the first pass and
+    whenever the tasks of the previous pass returned more than 16 rows, a
+    second stage combines the rows in groups before the driver collects them.
+    The executor counts its passes in ``n_passes``.
 
     Parameters
     ----------
     unit_table : pyspark.sql.DataFrame
         Table with one row for each unit in the layout that
-        :func:`~moderndid.did.shards.layout.shard_from_arrow` reads. In a
-        clustered fit, each partition must hold all the units of its clusters.
+        :func:`~moderndid.did.shards.layout.shard_from_arrow` reads.
     n_periods : int
         Number of time periods T.
     n_covariates : int
         Number of covariates p, not counting the intercept.
+    whole_clusters : bool, default=False
+        Whether each partition holds all the units of its clusters.
     """
 
-    def __init__(self, unit_table, n_periods, n_covariates):
+    def __init__(self, unit_table, n_periods, n_covariates, whole_clusters=False):
         self.unit_table = unit_table
         self.n_periods = n_periods
         self.n_covariates = n_covariates
+        self.whole_clusters = whole_clusters
         self.n_passes = 0
         self._n_tasks = None
 
@@ -73,6 +76,7 @@ class SparkExecutor:
             self.n_periods,
             self.n_covariates,
             arrow_schema,
+            self.whole_clusters,
         )
         frame = self.unit_table.mapInArrow(task, _spark_schema())
         if self._n_tasks is None or self._n_tasks > 16:
@@ -97,7 +101,7 @@ class SparkExecutor:
         for row in sorted(rows, key=lambda row: row["part"]):
             statistics = pickle.loads(row["payload"])
             partial = statistics if partial is None else combine_partials(partial, statistics)
-        return empty_partial() if partial is None else partial
+        return empty_partial() if partial is None else finalize_keyed(partial)
 
 
 def _arrow_schema():
@@ -128,15 +132,16 @@ def _spark_schema():
     )
 
 
-def _shard_task(payload, version, python, n_periods, n_covariates, arrow_schema):
+def _shard_task(payload, version, python, n_periods, n_covariates, arrow_schema, whole_clusters):
     """Return the ``mapInArrow`` function that one task of a pass runs on its partition.
 
     The function unpickles the kernel and its state from ``payload``, applies
-    the kernel to chunks of the partition, and returns one row of statistics
-    with the keyed sums finalized. An empty partition returns no row. On an
-    executor whose moderndid or Python version differs from the driver's, it
-    applies no kernel and returns only a report of the versions and any
-    import error.
+    the kernel to chunks of the partition, and returns one row of statistics.
+    It finalizes the keyed sums of the row only when ``whole_clusters`` says
+    that the partition holds all the units of its clusters. An empty partition
+    returns no row. On an executor whose moderndid or Python version differs
+    from the driver's, it applies no kernel and returns only a report of the
+    versions and any import error.
     """
 
     def task(batches):
@@ -167,7 +172,9 @@ def _shard_task(payload, version, python, n_periods, n_covariates, arrow_schema)
                 statistics = kernel(shard_from_arrow(batch.slice(start, 4096), n_periods, n_covariates), state)
                 partial = statistics if partial is None else combine_partials(partial, statistics)
         if partial is not None:
-            blob = pickle.dumps(finalize_keyed(partial), protocol=pickle.HIGHEST_PROTOCOL)
+            if whole_clusters:
+                partial = finalize_keyed(partial)
+            blob = pickle.dumps(partial, protocol=pickle.HIGHEST_PROTOCOL)
             row = {"part": part, "n": 1, "version": found, "python": found_python, "error": None, "payload": blob}
             yield pa.RecordBatch.from_pylist([row], schema=arrow_schema)
 

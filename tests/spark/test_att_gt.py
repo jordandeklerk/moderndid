@@ -203,7 +203,7 @@ def test_att_gt_on_spark_bootstraps_like_the_shard_engine_however_the_input_is_p
     )
 
 
-def test_att_gt_on_spark_keeps_each_cluster_whole_on_a_unit_table_of_several_partitions(
+def test_att_gt_on_spark_spreads_few_clusters_over_the_partitions_of_the_unit_table(
     large_clustered_panel, to_spark, unit_table_of, att_gt_on_shards, assert_same_fit
 ):
     columns = {
@@ -216,7 +216,7 @@ def test_att_gt_on_spark_keeps_each_cluster_whole_on_a_unit_table_of_several_par
     }
     spec = {**columns, "boot": True, "biters": 199, "random_state": 3}
 
-    unit_table, *_ = unit_table_of(large_clustered_panel, **columns)
+    unit_table, *_, whole_clusters = unit_table_of(large_clustered_panel, **columns)
     partitions = unit_table.select(F.spark_partition_id().alias("part"), "cluster")
     n_partitions = partitions.select("part").distinct().count()
     parts_per_cluster = partitions.groupBy("cluster").agg(F.count_distinct("part").alias("parts"))
@@ -227,7 +227,8 @@ def test_att_gt_on_spark_keeps_each_cluster_whole_on_a_unit_table_of_several_par
     moments, expected = distributed.influence_moments, local.influence_moments
 
     assert n_partitions >= 2
-    assert split_clusters == 0
+    assert not whole_clusters
+    assert split_clusters > 0
     assert parts_per_cluster.count() == moments.n_clusters == 50
     np.testing.assert_array_equal(distributed.groups, memory.groups)
     np.testing.assert_array_equal(distributed.times, memory.times)
@@ -236,6 +237,79 @@ def test_att_gt_on_spark_keeps_each_cluster_whole_on_a_unit_table_of_several_par
     assert_same_fit(distributed, local, 1e-12)
     np.testing.assert_allclose(moments.cluster_gram, expected.cluster_gram, rtol=1e-12, atol=1e-9)
     np.testing.assert_allclose(moments.bootstrap_sums, expected.bootstrap_sums, rtol=1e-12, atol=1e-10)
+
+
+@pytest.mark.parametrize(
+    "cluster_dtype",
+    [pl.Int64, pl.String, pl.Decimal(18, 0)],
+    ids=["integer_clusters", "text_clusters", "decimal_clusters"],
+)
+def test_att_gt_on_spark_keeps_each_cluster_whole_once_the_clusters_are_many(
+    large_clustered_panel, to_spark, unit_table_of, assert_same_fit, monkeypatch, cluster_dtype
+):
+    data = large_clustered_panel.with_columns(pl.col("cluster").cast(cluster_dtype))
+    columns = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~cov1",
+        "clustervars": ["cluster"],
+    }
+    spec = {**columns, "boot": True, "biters": 199, "random_state": 3}
+    frame = to_spark(data)
+
+    spread_table, *_, spread_is_whole = unit_table_of(data, **columns)
+    spread_parts = spread_table.select(F.spark_partition_id().alias("part"), "cluster")
+    spread_parts_per_cluster = spread_parts.groupBy("cluster").agg(F.count_distinct("part").alias("parts"))
+    spread_split_clusters = spread_parts_per_cluster.filter(F.col("parts") > 1).count()
+    spread = att_gt(frame, **spec)
+    monkeypatch.setattr("moderndid.spark.preprocess._spread_clusters", lambda n_clusters, n_columns: False)
+    whole_table, *_, whole_is_whole = unit_table_of(data, **columns)
+    whole_parts = whole_table.select(F.spark_partition_id().alias("part"), "cluster")
+    n_whole_partitions = whole_parts.select("part").distinct().count()
+    whole_parts_per_cluster = whole_parts.groupBy("cluster").agg(F.count_distinct("part").alias("parts"))
+    whole_split_clusters = whole_parts_per_cluster.filter(F.col("parts") > 1).count()
+    whole = att_gt(frame, **spec)
+    moments, expected = whole.influence_moments, spread.influence_moments
+
+    assert (spread_is_whole, whole_is_whole) == (False, True)
+    assert spread_split_clusters > 0
+    assert n_whole_partitions >= 2
+    assert whole_split_clusters == 0
+    assert moments.n_clusters == expected.n_clusters == 50
+    np.testing.assert_allclose(moments.gram, expected.gram, rtol=1e-12, atol=1e-10)
+    np.testing.assert_allclose(moments.cluster_gram, expected.cluster_gram, rtol=1e-12, atol=1e-9)
+    np.testing.assert_allclose(moments.bootstrap_sums, expected.bootstrap_sums, rtol=1e-12, atol=1e-10)
+    assert_same_fit(whole, spread, 1e-12)
+
+
+def test_att_gt_on_spark_keeps_clusters_whole_once_spreading_them_would_pass_the_budget(
+    finely_clustered_panel, to_spark, unit_table_of, assert_same_fit
+):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~cov1",
+        "clustervars": ["cluster"],
+        "est_method": "reg",
+    }
+
+    unit_table, *_, whole_clusters = unit_table_of(finely_clustered_panel, **spec)
+    partitions = unit_table.select(F.spark_partition_id().alias("part"), "cluster")
+    n_partitions = partitions.select("part").distinct().count()
+    parts_per_cluster = partitions.groupBy("cluster").agg(F.count_distinct("part").alias("parts"))
+    split_clusters = parts_per_cluster.filter(F.col("parts") > 1).count()
+    distributed = att_gt(to_spark(finely_clustered_panel), cband=False, **spec)
+    memory = att_gt(finely_clustered_panel, cband=False, **spec)
+
+    assert whole_clusters
+    assert n_partitions >= 2
+    assert split_clusters == 0
+    assert distributed.influence_moments.n_clusters == finely_clustered_panel["cluster"].n_unique() == 10000
+    assert_same_fit(distributed, memory, 1e-12)
 
 
 def test_att_gt_on_spark_bootstrap_draws_one_multiplier_for_each_cluster_like_the_shard_engine(

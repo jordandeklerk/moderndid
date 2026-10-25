@@ -59,10 +59,11 @@ def build_unit_table(data, config):
     one shuffle of the long data. No row of the data reaches the driver.
 
     The unit table follows the layout that
-    :func:`~moderndid.did.shards.layout.shard_from_arrow` reads. In a clustered
-    fit every partition holds all the units of its clusters. When the session
-    refuses to persist the table of all units and to checkpoint it, a warning
-    says that each pass of the fit rebuilds it.
+    :func:`~moderndid.did.shards.layout.shard_from_arrow` reads. A clustered fit
+    with few clusters spreads the units of each cluster over the partitions.
+    One with many clusters keeps every cluster within one partition. When the
+    session refuses to persist the table of all units and to checkpoint it, a
+    warning says that each pass of the fit rebuilds it.
 
     Parameters
     ----------
@@ -83,6 +84,8 @@ def build_unit_table(data, config):
         - **n_obs**: Number of rows of the balanced panel
         - **cluster_counts**: Pair of the number of clusters and a dict from each cohort to the number of
           clusters of its units, or None without a cluster variable besides the unit identifier
+        - **whole_clusters**: Whether every partition holds all the units of its clusters, or False without a
+          cluster variable besides the unit identifier
         - **cached**: Persisted table to unpersist once the fit ends, or None when the session refused to persist it
     """
     frame = schema_frame(data)
@@ -101,7 +104,7 @@ def build_unit_table(data, config):
 
     flags = [_missing(name, types[name], keep_infinite=name == config.gname) for name in names]
     kept = ~reduce(operator.or_, flags)
-    facts = _long_facts(data, config, flags, kept)
+    facts = _long_facts(data, config, flags, kept, cluster)
 
     if facts["kept"] < facts["rows"]:
         if facts["kept"] == 0:
@@ -124,13 +127,24 @@ def build_unit_table(data, config):
         latest = remaining[-1]
         periods = [period for period in periods if period < latest - config.anticipation]
     coerced = latest if config.control_group == ControlGroup.NEVER_TREATED else None
+    # Because a unit's row of moments holds a column for each cell, each treated cohort, and the constant, this count
+    # bounds the sums that a task keeps for each cluster.
+    n_treated = sum(cohort != NEVER_TREATED_VALUE for cohort in remaining)
+    n_columns = n_treated * len(periods) + n_treated + 1
+    whole_clusters = cluster is not None and not _spread_clusters(facts["clusters"], n_columns)
 
     # Since the weights check raises only after the structural checks, a mean that is not positive must not stop the
     # shuffle that runs those checks first.
     mean_weight = facts["weight_sum"] / facts["kept"] if weighted else 1.0
     long = _kept_rows(data, config, kept, periods, mean_weight if mean_weight > 0 else 1.0, cluster, covariates, types)
     table = _unit_rows(
-        long, len(periods), weighted, cluster is not None, len(covariates), (last_start, early_until, coerced)
+        long,
+        len(periods),
+        weighted,
+        cluster is not None,
+        whole_clusters,
+        len(covariates),
+        (last_start, early_until, coerced),
     )
     # Since a refused persist is caught below, an analysis error in the table surfaces here first.
     _ = table.schema
@@ -192,8 +206,8 @@ def build_unit_table(data, config):
 
         layout = [UNIT, COHORT, OUTCOME] + [WEIGHT] * weighted + [COVARIATE] * bool(covariates)
         layout += [CLUSTER] * (cluster is not None)
-        # Since a persisted table keeps all its shuffle partitions, the unit table merges them to about a megabyte
-        # each, as adaptive execution would. That spares each pass a task per partition and keeps every cluster whole.
+        # Since a persisted table keeps all its shuffle partitions, merging them to about a megabyte each, as adaptive
+        # execution would, spares each pass a task per partition. Merging whole partitions keeps whole clusters whole.
         unit_bytes = 8 * len(periods) * (1 + weighted + len(covariates)) + 64
         n_partitions = max(1, math.ceil(n_units * unit_bytes / 2**20))
         unit_table = table.filter(F.col("keep")).select(*layout).coalesce(n_partitions)
@@ -202,7 +216,7 @@ def build_unit_table(data, config):
         # releases it here.
         _release(cached, error)
         raise
-    return unit_table, config, cohort_counts, n_units * len(periods), cluster_counts, cached
+    return unit_table, config, cohort_counts, n_units * len(periods), cluster_counts, whole_clusters, cached
 
 
 def _column(name):
@@ -269,8 +283,11 @@ def _missing(name, dtype, keep_infinite):
     return missing
 
 
-def _long_facts(data, config, flags, kept):
+def _long_facts(data, config, flags, kept, cluster):
     """Aggregate the long data by period and cohort into the counts that preprocessing needs.
+
+    With a cluster column, the aggregation becomes a rollup whose grand total
+    also estimates the number of clusters.
 
     Parameters
     ----------
@@ -282,6 +299,8 @@ def _long_facts(data, config, flags, kept):
         Missing-value marks of the selected columns in their order.
     kept : pyspark.sql.Column
         True for each row without a missing value.
+    cluster : str or None
+        Name of the cluster column besides the unit identifier.
 
     Returns
     -------
@@ -294,6 +313,8 @@ def _long_facts(data, config, flags, kept):
         - **groups**: Sorted pairs of the period and the float cohort that the kept rows hold
         - **weight_sum**: Sum of the sampling weights of the kept rows
         - **negative_weights**: Number of kept rows with a negative sampling weight
+        - **clusters**: Approximate number of distinct clusters among the kept rows, or None without a cluster
+          variable besides the unit identifier
     """
     aggregates = [F.count(F.lit(1)).alias("rows"), F.count(F.when(kept, 1)).alias("kept")]
     aggregates += [F.count(F.when(flag, 1)).alias(f"missing{index}") for index, flag in enumerate(flags)]
@@ -303,7 +324,21 @@ def _long_facts(data, config, flags, kept):
             F.sum(F.when(kept, weight)).alias("weight_sum"),
             F.count(F.when(kept & (weight < 0), 1)).alias("negative_weights"),
         ]
-    rows = data.groupBy(_column(config.tname).alias("t"), _column(config.gname).alias("g")).agg(*aggregates).collect()
+    keys = [_column(config.tname).alias("t"), _column(config.gname).alias("g")]
+    clusters = None
+    if cluster is None:
+        rows = data.groupBy(*keys).agg(*aggregates).collect()
+    else:
+        # Since a cluster such as a state holds units of several cohorts, only the grand total, at grouping level 3,
+        # counts each cluster once. An estimate is enough because the count only picks the layout of the unit table.
+        aggregates += [
+            F.approx_count_distinct(F.when(kept, _column(cluster))).alias("clusters"),
+            F.grouping_id().alias("level"),
+        ]
+        levels = data.rollup(*keys).agg(*aggregates).collect()
+        # Because a rollup of no rows returns no grand total either, empty data counts no clusters.
+        clusters = next((row["clusters"] for row in levels if row["level"] == 3), 0)
+        rows = [row for row in levels if row["level"] == 0]
 
     kept_rows = [row for row in rows if row["kept"] > 0]
     weighted = config.weightsname is not None
@@ -314,7 +349,15 @@ def _long_facts(data, config, flags, kept):
         "groups": sorted((row["t"], float(row["g"])) for row in kept_rows),
         "weight_sum": math.fsum(row["weight_sum"] for row in kept_rows) if weighted else 0.0,
         "negative_weights": sum(row["negative_weights"] for row in kept_rows) if weighted else 0,
+        "clusters": clusters,
     }
+
+
+def _spread_clusters(n_clusters, n_columns):
+    """Tell whether a clustered fit can spread the units of each cluster over all the partitions."""
+    # Since each task then returns a row of n_columns sums for every cluster it touched, 2**17 sums keep each task's
+    # rows near a megabyte.
+    return n_clusters * n_columns <= 2**17
 
 
 def _kept_rows(data, config, kept, periods, mean_weight, cluster, covariates, types):
@@ -352,7 +395,7 @@ def _kept_rows(data, config, kept, periods, mean_weight, cluster, covariates, ty
     return data.filter(kept).select(*columns)
 
 
-def _unit_rows(long, n_periods, weighted, clustered, n_covariates, cohorts):
+def _unit_rows(long, n_periods, weighted, clustered, whole_clusters, n_covariates, cohorts):
     """Collect the rows of each unit into one row of the table of all units.
 
     Since the summary also counts the units that preprocessing drops, every unit
@@ -364,13 +407,21 @@ def _unit_rows(long, n_periods, weighted, clustered, n_covariates, cohorts):
     The ``cohorts`` triple holds the latest start of a treated cohort, the latest
     cohort that counts as treated in the first period, and the cohort that
     becomes never-treated for lack of never-treated units or None. A cohort of 0
-    or one that starts after the latest start becomes infinite.
+    or one that starts after the latest start becomes infinite. With
+    ``whole_clusters``, every partition holds all the units of its clusters.
     """
     last_start, early_until, coerced = cohorts
     fields = ["i", "y"] + ["w"] * weighted + [f"x{position}" for position in range(n_covariates)]
-    # Since each task finalizes its own cluster sums, the shuffle hashes on the cluster alone and the later merge only
-    # coalesces whole partitions. Any other repartition or a REBALANCE would split clusters and silently miscount them.
-    grouped = long.repartition("c").groupBy("c", "id") if clustered else long.groupBy("id")
+    if whole_clusters:
+        # Since each task then finalizes its own cluster sums, the shuffle hashes on the cluster alone and the later
+        # merge only coalesces whole partitions. Any other repartition or a REBALANCE would silently miscount clusters.
+        grouped = long.repartition("c").groupBy("c", "id")
+    elif clustered:
+        # Because hashing on the cluster alone would run a fit of few clusters as a few unequal tasks, hashing on the
+        # unit too spreads each cluster's units over the partitions. The driver then finalizes the cluster sums.
+        grouped = long.groupBy("c", "id")
+    else:
+        grouped = long.groupBy("id")
     units = grouped.agg(
         F.count(F.lit(1)).alias("n_rows"),
         F.min("g").alias("g_min"),
