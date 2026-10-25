@@ -1,0 +1,80 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.4.1 release notes
+=============================
+
+ModernDiD 0.4.1 is a patch release that fixes how ``did_multiplegt`` and
+``ddd`` read identifier, cluster, and cohort columns. ``did_multiplegt`` no
+longer merges two units whose large numeric identifiers round to the same
+double. ``ddd`` now reads a decimal cohort column, such as the ones in rows
+collected from warehouse tables. The release also lets a clustered ``att_gt``
+fit on Spark use every task when the clusters are few. Code written for 0.4.0
+keeps working in 0.4.1 without changes.
+
+Python 3.12, 3.13, and 3.14 are supported in this release.
+
+
+Fixes
+=====
+
+* ``did_multiplegt`` read a unit identifier as a double unless it was a signed
+  32-bit or 64-bit integer or already a float. Above :math:`2^{53}`, where
+  consecutive doubles sit at least two apart, two unsigned 64-bit or decimal
+  identifiers could round to the same double and merge their units into one. A balanced panel failed
+  with an error about repeated rows. An unbalanced panel could return wrong
+  estimates without any error. Numeric identifiers now keep their own type and
+  stay exact at every size. Identifiers stored as text still pass through
+  doubles. If your text identifiers run longer than 15 digits, cast them to
+  integers before a fit.
+
+  (`#407 <https://github.com/jordandeklerk/moderndid/pull/407>`__)
+
+* Since NumPy has no 128-bit integer type, a cluster column of 128-bit integers
+  stopped ``did_multiplegt`` with an error in 0.4.0. The estimator now numbers
+  the clusters in the order of their labels before NumPy reads them.
+
+  (`#407 <https://github.com/jordandeklerk/moderndid/pull/407>`__)
+
+* ``ddd``, ``ddd_mp``, and ``ddd_mp_rc`` read a decimal cohort column as
+  doubles, as ``att_gt`` already does. In 0.4.0 they stopped with a
+  ``TypeError`` on panels and repeated cross-sections alike. Unit
+  identifiers, periods, and clusters still keep their decimal type in all three.
+
+  (`#407 <https://github.com/jordandeklerk/moderndid/pull/407>`__)
+
+
+Performance improvements
+========================
+
+* A clustered ``att_gt`` fit on Spark now uses every task when its clusters are
+  few. In 0.4.0 the fit kept all the units of a cluster on one task. A fit
+  clustered by 50 states therefore ran on at most 50 tasks of unequal size.
+  Each task now takes a share of every cluster instead of whole clusters. The
+  driver then combines the pieces of each cluster before it computes the
+  clustered standard errors. Since spreading many clusters would send the
+  driver a row of sums for every cluster from every task, a fit with many
+  clusters keeps each cluster on one task as before. The tuning section of
+  :doc:`Distributed estimation on Spark <../user_guide/spark>` says where the
+  fit switches. Estimates and standard errors stay the same as in 0.4.0 up to
+  rounding.
+
+  (`#406 <https://github.com/jordandeklerk/moderndid/pull/406>`__)
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull requests merged
+====================
+
+A total of 3 pull requests were merged for this release, of which 2 are feature
+or fix PRs (excluding an automated changelog update).
+
+* `#407 <https://github.com/jordandeklerk/moderndid/pull/407>`__: BUG: read decimal cohorts in ddd and keep large unit ids exact in did_multiplegt
+* `#406 <https://github.com/jordandeklerk/moderndid/pull/406>`__: ENH: spread clustered Spark fits over every task when clusters are few
