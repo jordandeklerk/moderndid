@@ -1,3 +1,19 @@
+<a id="v0.4.1"></a>
+# [v0.4.1](https://github.com/jordandeklerk/moderndid/releases/tag/v0.4.1) - 2026-10-25
+
+<!-- Release notes generated using configuration in .github/release.yml at v0.4.1 -->
+
+## What's Changed
+* BUG: read decimal cohorts in ddd and keep large unit ids exact in did_multiplegt by [@jordandeklerk](https://github.com/jordandeklerk) in [#407](https://github.com/jordandeklerk/moderndid/pull/407)
+* ENH: spread clustered Spark fits over every task when clusters are few by [@jordandeklerk](https://github.com/jordandeklerk) in [#406](https://github.com/jordandeklerk/moderndid/pull/406)
+* REL: prepare release v0.4.1 by [@jordandeklerk](https://github.com/jordandeklerk) in [#408](https://github.com/jordandeklerk/moderndid/pull/408)
+
+
+**Full Changelog**: https://github.com/jordandeklerk/moderndid/compare/v0.4.0...v0.4.1
+
+[Changes][v0.4.1]
+
+
 <a id="v0.4.0"></a>
 # [v0.4.0](https://github.com/jordandeklerk/moderndid/releases/tag/v0.4.0) - 2026-10-23
 
@@ -461,6 +477,7 @@
 [Changes][v0.0.1]
 
 
+[v0.4.1]: https://github.com/jordandeklerk/moderndid/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/jordandeklerk/moderndid/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/jordandeklerk/moderndid/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/jordandeklerk/moderndid/compare/v0.2.0...v0.3.0
