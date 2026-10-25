@@ -247,6 +247,15 @@ def large_clustered_panel():
 
 
 @pytest.fixture(scope="session")
+def finely_clustered_panel():
+    """Generated panel of 20000 units over five periods with 10000 clusters of two units and a standardized outcome."""
+    data = gen_did_scalable(20000, n_periods=5, n_cohorts=3, n_covariates=4, random_state=42)["data"]
+    return data.with_columns(
+        (pl.col("y") - pl.col("y").mean()) / pl.col("y").std(), ((pl.col("id") - 1) // 2).alias("cluster")
+    )
+
+
+@pytest.fixture(scope="session")
 def small_scalable_panel():
     """Generated panel of 50 units over three periods with a standardized outcome."""
     data = gen_did_scalable(50, n_periods=3, n_cohorts=2, n_covariates=4, random_state=42)["data"]

@@ -990,7 +990,9 @@ the sums of a fit on shards.
 
 For :math:`B` draws and the :math:`L` entries of :math:`z_i`, each row that
 ``moments_kernel`` returns takes about :math:`8L(L + B)` bytes. A clustered fit
-adds another :math:`8L^2` bytes for its cluster Gram matrix. The
+that keeps whole clusters adds another :math:`8L^2` bytes for its cluster Gram
+matrix. One that spreads its clusters adds about :math:`8(L + 1)` bytes for
+each cluster the task touched instead. The
 :ref:`troubleshooting section <spark-troubleshooting>` of the setup guide
 covers the limits these rows can reach.
 
@@ -1078,8 +1080,15 @@ table with one row for each unit and gives ``fit_att_gt_on_shards`` a
 .. code-block:: python
 
    # From spark_att_gt, where data is a Spark DataFrame.
-   unit_table, config, cohort_counts, n_obs, cluster_counts, cached = build_unit_table(data, config)
-   executor = SparkExecutor(unit_table, config.time_periods_count, len(_covariate_names(config)))
+   unit_table, config, cohort_counts, n_obs, cluster_counts, whole_clusters, cached = (
+       build_unit_table(data, config)
+   )
+   executor = SparkExecutor(
+       unit_table,
+       config.time_periods_count,
+       len(_covariate_names(config)),
+       whole_clusters=whole_clusters,
+   )
    result = fit_att_gt_on_shards(
        executor, config, cohort_counts, random_state, estimation_params, cluster_counts=cluster_counts
    )
@@ -1093,16 +1102,22 @@ persist, the fit unpersists the cached table when it returns or when any error,
 an interrupt included, stops it.
 
 ``SparkExecutor.run`` applies a kernel to each partition of the unit table
-through ``mapInArrow``. Each task reads
-its partition in slices of at most 4096 units and turns every slice into a
-``Shard`` with ``shard_from_arrow``. Since a clustered fit keeps each cluster
-within one partition, every task finalizes its own keyed sums and returns them
-as one row. Each row also carries the task's moderndid and Python versions for
-the driver to check. If a mismatched executor raised an error instead, the
-driver would see a ``PythonException`` rather than one that says what to
-install. On the first pass and after any pass whose tasks returned more than 16
-rows, a grouped stage combines the rows of the :math:`P` tasks in about
-:math:`\sqrt{P}` groups before the driver collects them.
+through ``mapInArrow``. Each task reads its partition in slices of at most 4096
+units and turns every slice into a ``Shard`` with ``shard_from_arrow``. Each
+task returns its statistics as one row. Each row also carries the task's
+moderndid and Python versions for the driver to check. If a mismatched executor
+raised an error instead, the driver would see a ``PythonException`` rather than
+one that says what to install. When the unit table keeps every cluster within
+one partition, as it does for a fit with many clusters, each task finalizes its
+own keyed sums first. With few clusters, the table spreads each cluster over
+the partitions instead. The driver then finalizes the keyed sums once it has
+combined every row. Since each task's keyed sums hold a row of :math:`z_i` for
+every cluster it touched, ``build_unit_table`` spreads clusters only while
+their approximate count times a bound on the length of :math:`z_i` stays within
+:math:`2^{17}`, about a megabyte of sums. On the first pass and after any pass
+whose tasks returned more than 16 rows, a grouped stage combines the rows of
+the :math:`P` tasks in about :math:`\sqrt{P}` groups before the driver
+collects them.
 
 ``att_gt`` recognizes a Spark DataFrame by its class without importing PySpark
 and hands it to ``spark_att_gt`` before any step that reads the data.
@@ -1187,10 +1202,12 @@ keeps to six rules that the ``LocalExecutor`` tests mostly can't check.
   ``SparkExecutor`` pickles a kernel and the class of its state by reference.
   Since ``LocalExecutor`` never pickles, a pickle round-trip test in
   ``tests/did/`` checks every kernel of the engine.
-- Clusters stay whole in the unit table because the shuffle hashes on the
-  cluster alone and the ``coalesce`` after it merges only whole partitions. A
-  repartition by anything else, or a ``REBALANCE`` hint, would split clusters
-  and miscount them without an error.
+- Since a ``SparkExecutor`` built with ``whole_clusters=True`` finalizes the
+  keyed sums in each task, its unit table must keep every cluster whole.
+  ``build_unit_table`` does so by hashing its shuffle on the cluster alone and
+  merging only whole partitions afterwards. A repartition by anything else, or
+  a ``REBALANCE`` hint, would split clusters and miscount them without an
+  error.
 - The kernels keep their working memory bounded through the 4096-unit slices
   and blocks of units and draws. A clustered task's sums still grow by one row
   for each cluster. Serverless compute on Databricks needs that bound because

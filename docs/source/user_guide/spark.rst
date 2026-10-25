@@ -517,11 +517,15 @@ aggregation with analytic standard errors.
    message of at most 128 MiB by default. Fewer draws bring the sums back under
    whatever limits your setup uses.
 
-Because a clustered fit never splits a cluster between cores, each step of the
-estimator keeps at most one core busy for each cluster. A fit clustered by 50
-states, for example, keeps no more than 50 cores busy in any of those steps,
-however many cores the Spark cluster has. If one state held most of the units,
-every step would wait on the core working through it.
+When a clustered fit has few clusters, it spreads the units of each cluster
+over every core. A fit clustered by 50 states therefore keeps all of your cores
+busy, however unequal the states are in size. In exchange, each core sends the
+driver a row of sums for every cluster it touched. The fit keeps each cluster
+on one core instead once the number of clusters, multiplied by the number of
+treated cohorts and by one more than the number of periods, passes about
+130,000. With five treated cohorts over ten periods, that happens at about
+2,300 clusters. A cluster that holds most of the units then makes every step of
+the estimator wait on the core working through it.
 
 For a look at how a Spark fit computes its estimates and draws without
 collecting the units, the :ref:`architecture guide <architecture-shards>`

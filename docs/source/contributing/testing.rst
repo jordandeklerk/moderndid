@@ -365,8 +365,9 @@ compares their results at a tolerance such as 1e-12.
 Most Spark tests fit a unit table of one partition, since ``build_unit_table``
 merges its partitions to about a megabyte each and a test panel rarely fills
 more than one. To reach several partitions, repartition the table that the
-``unit_table_of`` fixture returns, by cluster in a clustered fit, as
-``test_executor.py`` does. A panel whose unit table passes a megabyte, such as
+``unit_table_of`` fixture returns, as ``test_executor.py`` does. Only a
+``SparkExecutor`` built with ``whole_clusters=True`` needs that repartition to
+hash on the cluster. A panel whose unit table passes a megabyte, such as
 ``large_clustered_panel``, gets more than one partition from
 ``build_unit_table`` itself. The eight shuffle partitions of the session
 fixture change how long a fit takes rather than what it estimates.

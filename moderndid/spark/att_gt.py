@@ -125,7 +125,7 @@ def spark_att_gt(
         est_method=EstimationMethod(est_method),
         base_period=BasePeriod(base_period),
     )
-    unit_table, config, cohort_counts, n_obs, cluster_counts, cached = build_unit_table(data, config)
+    unit_table, config, cohort_counts, n_obs, cluster_counts, whole_clusters, cached = build_unit_table(data, config)
     try:
         if clustervars is not None and idname in clustervars:
             clustervars = [name for name in clustervars if name != idname]
@@ -147,7 +147,9 @@ def spark_att_gt(
             "n_units": config.id_count,
             "n_obs": n_obs,
         }
-        executor = SparkExecutor(unit_table, config.time_periods_count, len(_covariate_names(config)))
+        executor = SparkExecutor(
+            unit_table, config.time_periods_count, len(_covariate_names(config)), whole_clusters=whole_clusters
+        )
         result = fit_att_gt_on_shards(
             executor, config, cohort_counts, random_state, estimation_params, cluster_counts=cluster_counts
         )

@@ -9,11 +9,16 @@ from polars.testing import assert_frame_equal
 
 from moderndid import aggte, att_gt, preprocess_did
 from moderndid.core.dataframe import to_polars
+from moderndid.core.preprocess import DIDConfig
 from moderndid.did.shards.layout import shard_from_arrow
 from moderndid.did.shards.local import shards_from_did_data
 from tests.helpers import importorskip
 
 importorskip("pyspark")
+
+from pyspark.sql import functions as F
+
+from moderndid.spark.preprocess import _long_facts, _spread_clusters
 
 pytestmark = pytest.mark.spark
 
@@ -43,6 +48,26 @@ def test_att_gt_on_spark_raises_the_errors_of_att_gt(request, to_spark, data_fix
     data = request.getfixturevalue(data_fixture)
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", **options}
     frame = to_spark(data)
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        att_gt(data, **spec)
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        att_gt(frame, **spec)
+
+
+@pytest.mark.parametrize("spread", [True, False], ids=["spread_clusters", "whole_clusters"])
+def test_att_gt_on_spark_rejects_a_cluster_that_varies_within_a_unit_in_either_layout(
+    mpdta_with_states, to_spark, monkeypatch, spread
+):
+    moved = (pl.col("countyreal") == 8001) & (pl.col("year") == 2007)
+    data = mpdta_with_states.with_columns(pl.when(moved).then(99).otherwise(pl.col("state")).alias("state"))
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "clustervars": ["state"]}
+    message = (
+        "Validation failed:\nDiD cannot handle time-varying cluster variables at the moment. "
+        "Please check your cluster variable."
+    )
+    frame = to_spark(data)
+    monkeypatch.setattr("moderndid.spark.preprocess._spread_clusters", lambda n_clusters, n_columns: spread)
 
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         att_gt(data, **spec)
@@ -280,7 +305,9 @@ def test_build_unit_table_sets_the_facts_of_the_in_memory_preprocessing(
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", **options}
 
     did_data, memory_warnings = record_warnings(preprocess_did, data, panel=True, allow_unbalanced_panel=False, **spec)
-    (_, config, cohort_counts, n_obs, cluster_counts), spark_warnings = record_warnings(unit_table_of, data, **spec)
+    (_, config, cohort_counts, n_obs, cluster_counts, whole_clusters), spark_warnings = record_warnings(
+        unit_table_of, data, **spec
+    )
     expected = did_data.config
 
     assert spark_warnings == memory_warnings
@@ -299,6 +326,7 @@ def test_build_unit_table_sets_the_facts_of_the_in_memory_preprocessing(
     assert_frame_equal(cohort_counts, did_data.cohort_counts)
     assert n_obs == len(did_data.data)
     assert cluster_counts is None
+    assert whole_clusters is False
 
 
 def test_build_unit_table_counts_the_clusters_of_all_units_and_of_each_cohort(mpdta_with_state_names, unit_table_of):
@@ -312,7 +340,29 @@ def test_build_unit_table_counts_the_clusters_of_all_units_and_of_each_cohort(mp
 
     units = preprocess_did(mpdta_with_state_names, panel=True, allow_unbalanced_panel=False, **spec).time_invariant_data
     per_cohort = units.group_by("first.treat").agg(pl.col("state").n_unique())
-    *_, cluster_counts = unit_table_of(mpdta_with_state_names, **spec)
+    *_, cluster_counts, _ = unit_table_of(mpdta_with_state_names, **spec)
 
     assert cluster_counts == (units["state"].n_unique(), dict(per_cohort.iter_rows()))
     assert cluster_counts[0] == 29
+
+
+def test_long_facts_counts_each_cluster_of_the_kept_rows_once_across_periods_and_cohorts(
+    large_clustered_panel, to_spark
+):
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="group", clustervars=["cluster"])
+    frame = to_spark(large_clustered_panel)
+    kept = (F.col("cluster") > 10 * (F.col("time") - 1)) & (F.col("cluster") <= 10 * (F.col("time") + 1))
+    window = (pl.col("cluster") > 10 * (pl.col("time") - 1)) & (pl.col("cluster") <= 10 * (pl.col("time") + 1))
+    n_kept_clusters = large_clustered_panel.filter(window)["cluster"].n_unique()
+
+    facts = _long_facts(frame, config, [~kept], kept, "cluster")
+    unclustered = _long_facts(frame, config, [~kept], kept, None)
+
+    np.testing.assert_allclose(facts["clusters"], n_kept_clusters, rtol=0.1)
+    assert unclustered["clusters"] is None
+    assert {**facts, "clusters": None} == unclustered
+
+
+def test_spread_clusters_bounds_the_sums_of_every_cluster_in_a_task():
+    assert _spread_clusters(2**17 // 9, 9)
+    assert not _spread_clusters(2**17 // 9 + 1, 9)
