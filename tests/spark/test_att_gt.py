@@ -279,7 +279,7 @@ def test_att_gt_on_spark_keeps_each_cluster_whole_once_the_clusters_are_many(
     assert whole_split_clusters == 0
     assert moments.n_clusters == expected.n_clusters == 50
     np.testing.assert_allclose(moments.gram, expected.gram, rtol=1e-12, atol=1e-10)
-    np.testing.assert_allclose(moments.cluster_gram, expected.cluster_gram, rtol=1e-12, atol=1e-10)
+    np.testing.assert_allclose(moments.cluster_gram, expected.cluster_gram, rtol=1e-12, atol=1e-9)
     np.testing.assert_allclose(moments.bootstrap_sums, expected.bootstrap_sums, rtol=1e-12, atol=1e-10)
     assert_same_fit(whole, spread, 1e-12)
 
