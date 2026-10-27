@@ -4,6 +4,7 @@ import pickle
 import re
 import warnings
 from dataclasses import replace
+from importlib import import_module
 from itertools import pairwise
 
 import numpy as np
@@ -14,7 +15,6 @@ from statsmodels.tools.sm_exceptions import PerfectSeparationWarning, SingularMa
 
 from moderndid import aggte, att_gt, drdid_panel, preprocess_did
 from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
-from moderndid.did.mboot import _mboot_from_draws
 from moderndid.did.shards import kernels
 from moderndid.did.shards.container import CellSumsState, FitState, MomentsState, Shard, SummaryState
 from moderndid.did.shards.driver import fit_att_gt_on_shards
@@ -24,17 +24,17 @@ from moderndid.did.shards.local import LocalExecutor, shards_from_did_data
 from moderndid.did.shards.plan import plan_cells
 
 
-def _assert_same_fit(sharded, memory, tolerance=1e-12):
+def _assert_same_fit(sharded, memory):
     np.testing.assert_array_equal(sharded.groups, memory.groups)
     np.testing.assert_array_equal(sharded.times, memory.times)
     assert (sharded.groups.dtype, sharded.times.dtype) == (memory.groups.dtype, memory.times.dtype)
     assert sharded.n_units == memory.n_units
-    np.testing.assert_allclose(sharded.att_gt, memory.att_gt, rtol=tolerance, atol=tolerance)
-    np.testing.assert_allclose(sharded.se_gt, memory.se_gt, rtol=tolerance, atol=tolerance)
-    np.testing.assert_allclose(sharded.vcov_analytical, memory.vcov_analytical, rtol=tolerance, atol=tolerance)
-    np.testing.assert_allclose(sharded.critical_value, memory.critical_value, rtol=tolerance)
+    np.testing.assert_allclose(sharded.att_gt, memory.att_gt, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.se_gt, memory.se_gt, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.vcov_analytical, memory.vcov_analytical, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.critical_value, memory.critical_value, rtol=1e-12)
     wald = [np.nan if result.wald_stat is None else result.wald_stat for result in (sharded, memory)]
-    np.testing.assert_allclose(wald[0], wald[1], rtol=tolerance)
+    np.testing.assert_allclose(wald[0], wald[1], rtol=1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
@@ -150,6 +150,82 @@ def test_att_gt_on_shards_matches_att_gt_without_covariates(mpdta_data, att_gt_o
     memory = att_gt(mpdta_data, **spec)
     sharded = att_gt_on_shards(mpdta_data, 3, **spec)
 
+    _assert_same_fit(sharded, memory)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+@pytest.mark.parametrize("base_period", ["varying", "universal"])
+def test_att_gt_on_shards_matches_att_gt_with_a_covariate_that_varies_over_time(
+    mpdta_varying_covariate, att_gt_on_shards, est_method, base_period
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~x",
+        "est_method": est_method,
+        "control_group": "notyettreated",
+        "base_period": base_period,
+        "random_state": 7,
+    }
+
+    memory = att_gt(mpdta_varying_covariate, **spec)
+    sharded = att_gt_on_shards(mpdta_varying_covariate, 3, **spec)
+
+    assert mpdta_varying_covariate.group_by("countyreal").agg(pl.col("x").n_unique())["x"].min() == 5
+    _assert_same_fit(sharded, memory)
+
+
+@pytest.mark.parametrize("est_method, n_extreme", [("dr", 12), ("ipw", 0)])
+def test_att_gt_on_shards_matches_att_gt_with_outlying_comparison_units(
+    mpdta_outlying_controls, att_gt_on_shards, est_method, n_extreme
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~x",
+        "weightsname": "w",
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    with warnings.catch_warnings(record=True) as memory_warnings:
+        warnings.simplefilter("always")
+        memory = att_gt(mpdta_outlying_controls, **spec)
+    with warnings.catch_warnings(record=True) as shard_warnings:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(mpdta_outlying_controls, 3, **spec)
+
+    assert [str(w.message) for w in memory_warnings] == [
+        "Extreme weight ratios detected. Results may be numerically unstable."
+    ] * n_extreme
+    assert [(w.category, str(w.message)) for w in shard_warnings] == [
+        (w.category, str(w.message)) for w in memory_warnings
+    ]
+    _assert_same_fit(sharded, memory)
+
+
+def test_att_gt_on_shards_treats_clusters_of_one_county_each_as_counties_like_att_gt(
+    mpdta_county_clusters, att_gt_on_shards
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "clustervars": ["countyreal", "county_cluster"],
+        "random_state": 7,
+    }
+
+    memory = att_gt(mpdta_county_clusters, **spec)
+    sharded = att_gt_on_shards(mpdta_county_clusters, 3, **spec)
+
+    assert sharded.influence_moments.n_clusters == 500
+    assert memory.wald_stat > 0
     _assert_same_fit(sharded, memory)
 
 
@@ -390,19 +466,18 @@ def test_att_gt_on_shards_warns_like_att_gt_when_regression_covariates_are_colli
     assert [(w.category, str(w.message)) for w in shard_warnings] == [
         (w.category, str(w.message)) for w in memory_warnings
     ]
-    _assert_same_fit(sharded, memory, tolerance=1e-10)
+    _assert_same_fit(sharded, memory)
 
 
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
-def test_att_gt_on_shards_matches_att_gt_when_propensity_covariates_are_collinear(
-    mpdta_collinear_covariates, att_gt_on_shards, base_period
+def test_att_gt_on_shards_with_a_collinear_propensity_covariate_matches_att_gt_without_it(
+    mpdta_shifted_covariate, att_gt_on_shards, base_period
 ):
     spec = {
         "yname": "lemp",
         "tname": "year",
         "idname": "countyreal",
         "gname": "first.treat",
-        "xformla": "~lpop + lpop2",
         "est_method": "ipw",
         "base_period": base_period,
         "random_state": 7,
@@ -410,21 +485,20 @@ def test_att_gt_on_shards_matches_att_gt_when_propensity_covariates_are_collinea
 
     with warnings.catch_warnings(record=True) as memory_warnings:
         warnings.simplefilter("always")
-        warnings.simplefilter("ignore", SingularMatrixWarning)
-        memory = att_gt(mpdta_collinear_covariates, **spec)
+        memory = att_gt(mpdta_shifted_covariate, xformla="~lpop", **spec)
     with warnings.catch_warnings(record=True) as shard_warnings:
         warnings.simplefilter("always")
-        sharded = att_gt_on_shards(mpdta_collinear_covariates, 3, **spec)
+        sharded = att_gt_on_shards(mpdta_shifted_covariate, 3, xformla="~lpop + lpop_shifted", **spec)
 
     assert [str(w.message) for w in memory_warnings] == []
     assert [str(w.message) for w in shard_warnings] == []
-    _assert_same_fit(sharded, memory, tolerance=1e-10)
+    _assert_same_fit(sharded, memory)
 
 
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 @pytest.mark.parametrize("n_shards", [1, 7])
 def test_att_gt_on_shards_bootstrap_finishes_keyed_draws_of_the_influence_function(
-    mpdta_data, att_gt_on_shards, base_period, n_shards
+    monkeypatch, draws_from_weights, mpdta_data, att_gt_on_shards, base_period, n_shards
 ):
     spec = {
         "yname": "lemp",
@@ -433,26 +507,25 @@ def test_att_gt_on_shards_bootstrap_finishes_keyed_draws_of_the_influence_functi
         "gname": "first.treat",
         "xformla": "~lpop",
         "base_period": base_period,
+        "boot": True,
+        "biters": 499,
     }
     units = preprocess_did(mpdta_data, allow_unbalanced_panel=False, **spec).time_invariant_data["countyreal"]
+    signs = keyed_rademacher(canonical_keys(units.to_numpy()), 20261020, 499).T
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
 
-    memory = att_gt(mpdta_data, cband=False, **spec)
-    sharded = att_gt_on_shards(
-        mpdta_data, n_shards, shard_seed=n_shards, boot=True, biters=499, random_state=20261020, **spec
-    )
-    draws = keyed_rademacher(canonical_keys(units.to_numpy()), 20261020, 499).T @ memory.influence_func
-    expected = _mboot_from_draws(draws / np.sqrt(memory.n_units), np.sqrt(memory.n_units), 0.05, skip_small_scales=True)
+    memory = att_gt(mpdta_data, **spec)
+    sharded = att_gt_on_shards(mpdta_data, n_shards, shard_seed=n_shards, random_state=20261020, **spec)
 
-    np.testing.assert_allclose(
-        sharded.se_gt, np.where(np.isnan(memory.se_gt), np.nan, expected["se"]), rtol=1e-12, atol=1e-12
-    )
-    np.testing.assert_allclose(sharded.critical_value, expected["crit_val"], rtol=1e-12)
+    assert np.isfinite(sharded.se_gt).sum() == 12
+    np.testing.assert_allclose(sharded.se_gt, memory.se_gt, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.critical_value, memory.critical_value, rtol=1e-12)
 
 
 @pytest.mark.parametrize("dtype", [pl.Int64, pl.String])
 @pytest.mark.parametrize("n_shards", [1, 7])
 def test_att_gt_on_shards_bootstrap_draws_one_keyed_multiplier_for_each_cluster(
-    mpdta_with_states, att_gt_on_shards, dtype, n_shards
+    monkeypatch, draws_from_weights, mpdta_with_states, att_gt_on_shards, dtype, n_shards
 ):
     data = mpdta_with_states.with_columns(pl.col("state").cast(dtype))
     spec = {
@@ -462,26 +535,37 @@ def test_att_gt_on_shards_bootstrap_draws_one_keyed_multiplier_for_each_cluster(
         "gname": "first.treat",
         "xformla": "~lpop",
         "clustervars": ["countyreal", "state"],
+        "boot": True,
+        "biters": 499,
     }
     units = preprocess_did(data, allow_unbalanced_panel=False, **spec).time_invariant_data
+    signs = keyed_rademacher(canonical_keys(np.unique(units["state"].to_numpy())), 20261020, 499).T
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
 
     with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
-        memory = att_gt(data, cband=False, **spec)
+        memory = att_gt(data, **spec)
     with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
-        sharded = att_gt_on_shards(
-            data, n_shards, shard_seed=n_shards, boot=True, biters=499, random_state=20261020, **spec
-        )
-    clusters, codes = np.unique(units["state"].to_numpy(), return_inverse=True)
-    sums = np.column_stack([np.bincount(codes, weights=column) for column in memory.influence_func.T])
-    draws = keyed_rademacher(canonical_keys(clusters), 20261020, 499).T @ sums
-    expected = _mboot_from_draws(
-        draws / np.sqrt(len(clusters)), memory.n_units / np.sqrt(len(clusters)), 0.05, skip_small_scales=True
-    )
+        sharded = att_gt_on_shards(data, n_shards, shard_seed=n_shards, random_state=20261020, **spec)
 
-    np.testing.assert_allclose(
-        sharded.se_gt, np.where(np.isnan(memory.se_gt), np.nan, expected["se"]), rtol=1e-12, atol=1e-12
-    )
-    np.testing.assert_allclose(sharded.critical_value, expected["crit_val"], rtol=1e-12)
+    assert np.isfinite(sharded.se_gt).sum() == 12
+    np.testing.assert_allclose(sharded.se_gt, memory.se_gt, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.critical_value, memory.critical_value, rtol=1e-12)
+
+
+def test_att_gt_on_shards_critical_value_skips_cells_with_a_small_bootstrap_scale(
+    monkeypatch, draws_from_weights, did_offsetting_cohort_data, att_gt_on_shards
+):
+    spec = {"yname": "y", "tname": "t", "idname": "id", "gname": "g", "xformla": "~1", "boot": True, "biters": 999}
+    units = preprocess_did(did_offsetting_cohort_data, allow_unbalanced_panel=False, **spec).time_invariant_data["id"]
+    signs = keyed_rademacher(canonical_keys(units.to_numpy()), 7, 999).T
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
+
+    memory = att_gt(did_offsetting_cohort_data, **spec)
+    sharded = att_gt_on_shards(did_offsetting_cohort_data, 3, random_state=7, **spec)
+
+    assert 2 < memory.critical_value < 7
+    np.testing.assert_allclose(sharded.critical_value, memory.critical_value, rtol=1e-12)
+    np.testing.assert_allclose(sharded.se_gt, memory.se_gt, rtol=1e-12, atol=1e-12)
 
 
 @pytest.mark.parametrize("n_shards", [1, 7])
@@ -514,13 +598,13 @@ def test_att_gt_on_shards_moments_sum_the_unit_rows_of_the_influence_function(
     cluster_rows = np.column_stack([np.bincount(codes, weights=column) for column in rows.T])
 
     np.testing.assert_array_equal(moments.cohorts, [2004, 2006, 2007])
-    np.testing.assert_allclose(moments.gram, rows.T @ rows, rtol=1e-12, atol=1e-10)
-    np.testing.assert_allclose(moments.cluster_gram, cluster_rows.T @ cluster_rows, rtol=1e-12, atol=1e-10)
+    np.testing.assert_allclose(moments.gram, rows.T @ rows, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(moments.cluster_gram, cluster_rows.T @ cluster_rows, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(
         moments.bootstrap_sums,
         keyed_rademacher(canonical_keys(clusters), 3, 199).T @ cluster_rows,
         rtol=1e-12,
-        atol=1e-10,
+        atol=1e-12,
     )
     assert (moments.n_clusters, moments.random_state) == (29, 3)
     assert sharded.influence_func is None
@@ -548,13 +632,13 @@ def test_att_gt_on_shards_moments_cover_a_shard_of_thousands_of_units(large_scal
     cluster_rows = np.column_stack([np.bincount(codes, weights=column) for column in rows.T])
 
     assert memory.n_units == 2500
-    np.testing.assert_allclose(moments.gram, rows.T @ rows, rtol=1e-12, atol=1e-10)
-    np.testing.assert_allclose(moments.cluster_gram, cluster_rows.T @ cluster_rows, rtol=1e-12, atol=1e-10)
+    np.testing.assert_allclose(moments.gram, rows.T @ rows, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(moments.cluster_gram, cluster_rows.T @ cluster_rows, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(
         moments.bootstrap_sums,
         keyed_rademacher(canonical_keys(clusters), 3, 99).T @ cluster_rows,
         rtol=1e-12,
-        atol=1e-10,
+        atol=1e-12,
     )
 
 
@@ -577,61 +661,70 @@ def test_att_gt_on_shards_bootstrap_sums_hold_the_keyed_draws_of_every_block_of_
         sharded.influence_moments.bootstrap_sums,
         keyed_rademacher(canonical_keys(units.to_numpy()), 5, biters).T @ rows,
         rtol=1e-12,
-        atol=1e-10,
+        atol=1e-12,
     )
 
 
-def test_att_gt_on_shards_derives_its_seed_from_a_seed_sequence_a_bit_generator_or_a_large_integer(
-    mpdta_data, att_gt_on_shards
+@pytest.mark.parametrize(
+    "make, value, other",
+    [
+        (np.random.SeedSequence, 3, 4),
+        (np.random.PCG64, 4, 5),
+        (np.random.default_rng, 3, 4),
+        (int, 2**64, 2**64 + 1),
+        (int, 2**64 + 5, 2**64 + 6),
+    ],
+    ids=["seed_sequence", "bit_generator", "generator", "two_to_the_64", "above_two_to_the_64"],
+)
+def test_att_gt_on_shards_derives_its_seed_from_a_seed_sequence_a_bit_generator_a_generator_or_a_large_integer(
+    mpdta_data, att_gt_on_shards, make, value, other
 ):
-    spec = {
-        "yname": "lemp",
-        "tname": "year",
-        "idname": "countyreal",
-        "gname": "first.treat",
-        "boot": True,
-        "biters": 99,
-    }
-    expected = [
-        int(np.random.default_rng(seed).integers(2**64, dtype=np.uint64))
-        for seed in (np.random.SeedSequence(3), np.random.PCG64(4), 2**64 + 5)
-    ]
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "xformla": "~lpop"}
+    units = preprocess_did(mpdta_data, allow_unbalanced_panel=False, **spec).time_invariant_data["countyreal"]
 
-    fits = [
-        att_gt_on_shards(mpdta_data, 3, random_state=seed, **spec)
-        for seed in (np.random.SeedSequence(3), np.random.PCG64(4), 2**64 + 5)
-    ]
-    event_study = aggte(fits[0], type="dynamic")
-
-    assert [fit.influence_moments.random_state for fit in fits] == expected
-    assert [fit.estimation_params["random_state"] for fit in fits] == expected
-    assert event_study.estimation_params["random_state"] == expected[0]
-
-
-def test_att_gt_on_shards_stores_the_seed_it_draws_from_a_generator(mpdta_data, att_gt_on_shards):
-    spec = {
-        "yname": "lemp",
-        "tname": "year",
-        "idname": "countyreal",
-        "gname": "first.treat",
-        "xformla": "~lpop",
-        "boot": True,
-        "biters": 99,
-    }
-
-    first = att_gt_on_shards(mpdta_data, 3, random_state=np.random.default_rng(3), **spec)
-    again = att_gt_on_shards(mpdta_data, 7, shard_seed=1, random_state=np.random.default_rng(3), **spec)
-    other = att_gt_on_shards(mpdta_data, 3, random_state=np.random.default_rng(4), **spec)
-    event_study = aggte(first, type="dynamic")
-    seed = first.influence_moments.random_state
+    memory = att_gt(mpdta_data, cband=False, **spec)
+    fit = att_gt_on_shards(mpdta_data, 3, boot=True, biters=99, random_state=make(value), **spec)
+    again = att_gt_on_shards(mpdta_data, 7, shard_seed=1, boot=True, biters=99, random_state=make(value), **spec)
+    another = att_gt_on_shards(mpdta_data, 3, boot=True, biters=99, random_state=make(other), **spec)
+    event_study = aggte(fit, type="dynamic")
+    seed = fit.influence_moments.random_state
+    cohorts = np.asarray(memory.G, dtype=float)
+    rows = np.column_stack(
+        [memory.influence_func, *(cohorts == g for g in (2004, 2006, 2007)), np.ones(memory.n_units)]
+    )
 
     assert isinstance(seed, int)
     assert 0 <= seed < 2**64
-    assert first.estimation_params["random_state"] == seed
-    assert event_study.estimation_params["random_state"] == seed
+    assert (fit.estimation_params["random_state"], event_study.estimation_params["random_state"]) == (seed, seed)
     assert again.influence_moments.random_state == seed
-    assert other.influence_moments.random_state != seed
-    np.testing.assert_allclose(again.se_gt, first.se_gt, rtol=1e-12)
+    assert another.influence_moments.random_state != seed
+    np.testing.assert_allclose(
+        fit.influence_moments.bootstrap_sums,
+        keyed_rademacher(canonical_keys(units.to_numpy()), seed, 99).T @ rows,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(again.se_gt, fit.se_gt, rtol=1e-12)
+
+
+def test_att_gt_on_shards_draws_from_an_integer_seed_below_2_to_the_64_as_given(mpdta_data, att_gt_on_shards):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "xformla": "~lpop"}
+    units = preprocess_did(mpdta_data, allow_unbalanced_panel=False, **spec).time_invariant_data["countyreal"]
+
+    memory = att_gt(mpdta_data, cband=False, **spec)
+    fit = att_gt_on_shards(mpdta_data, 3, boot=True, biters=99, random_state=2**64 - 1, **spec)
+    cohorts = np.asarray(memory.G, dtype=float)
+    rows = np.column_stack(
+        [memory.influence_func, *(cohorts == g for g in (2004, 2006, 2007)), np.ones(memory.n_units)]
+    )
+
+    assert (fit.influence_moments.random_state, fit.estimation_params["random_state"]) == (2**64 - 1, 2**64 - 1)
+    np.testing.assert_allclose(
+        fit.influence_moments.bootstrap_sums,
+        keyed_rademacher(canonical_keys(units.to_numpy()), 2**64 - 1, 99).T @ rows,
+        rtol=1e-12,
+        atol=1e-12,
+    )
 
 
 @pytest.mark.parametrize(
@@ -826,7 +919,9 @@ def test_aggte_on_shards_leaves_out_failed_cells_like_aggte_in_memory(
 
 
 @pytest.mark.parametrize("n_shards", [1, 7])
-def test_aggte_bootstrap_on_shards_finishes_keyed_draws_of_the_event_study(mpdta_data, att_gt_on_shards, n_shards):
+def test_aggte_bootstrap_on_shards_finishes_keyed_draws_of_the_event_study(
+    monkeypatch, draws_from_weights, mpdta_data, att_gt_on_shards, n_shards
+):
     spec = {
         "yname": "lemp",
         "tname": "year",
@@ -836,23 +931,23 @@ def test_aggte_bootstrap_on_shards_finishes_keyed_draws_of_the_event_study(mpdta
         "base_period": "universal",
     }
     units = preprocess_did(mpdta_data, allow_unbalanced_panel=False, **spec).time_invariant_data["countyreal"]
+    signs = keyed_rademacher(canonical_keys(units.to_numpy()), 20261020, 250).T
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
 
-    memory = aggte(att_gt(mpdta_data, cband=False, **spec), type="dynamic", cband=False)
+    memory = aggte(att_gt(mpdta_data, cband=False, **spec), type="dynamic", boot=True, biters=250, cband=True)
     sharded_fit = att_gt_on_shards(
         mpdta_data, n_shards, shard_seed=n_shards, boot=True, biters=499, random_state=20261020, **spec
     )
     sharded = aggte(sharded_fit, type="dynamic", biters=250)
-    signs = keyed_rademacher(canonical_keys(units.to_numpy()), 20261020, 250).T / np.sqrt(len(units))
-    by_event = _mboot_from_draws(signs @ memory.influence_func, np.sqrt(len(units)), 0.05)
-    overall = _mboot_from_draws(signs @ memory.influence_func_overall[:, None], np.sqrt(len(units)), 0.05)
 
-    np.testing.assert_allclose(sharded.se_by_event, by_event["se"], rtol=1e-12, atol=1e-12)
-    np.testing.assert_allclose(sharded.critical_values, by_event["crit_val"], rtol=1e-12)
-    np.testing.assert_allclose(sharded.overall_se, overall["se"][0], rtol=1e-12)
+    assert np.isfinite(sharded.se_by_event).sum() == 7
+    np.testing.assert_allclose(sharded.se_by_event, memory.se_by_event, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.critical_values, memory.critical_values, rtol=1e-12)
+    np.testing.assert_allclose(sharded.overall_se, memory.overall_se, rtol=1e-12)
 
 
 def test_aggte_on_a_clustered_shard_fit_draws_its_band_from_the_stored_cluster_draws(
-    mpdta_with_states, att_gt_on_shards
+    monkeypatch, draws_from_weights, mpdta_with_states, att_gt_on_shards
 ):
     spec = {
         "yname": "lemp",
@@ -863,21 +958,49 @@ def test_aggte_on_a_clustered_shard_fit_draws_its_band_from_the_stored_cluster_d
         "clustervars": ["countyreal", "state"],
     }
     units = preprocess_did(mpdta_with_states, allow_unbalanced_panel=False, **spec).time_invariant_data
+    signs = keyed_rademacher(canonical_keys(np.unique(units["state"].to_numpy())), 11, 399).T
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
 
     with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
-        memory = aggte(att_gt(mpdta_with_states, cband=False, **spec), type="dynamic", cband=False)
+        memory_fit = att_gt(mpdta_with_states, cband=False, **spec)
     with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
         sharded_fit = att_gt_on_shards(mpdta_with_states, 7, biters=399, random_state=11, **spec)
     with pytest.warns(UserWarning, match="^Used bootstrap procedure to compute simultaneous confidence band$"):
+        memory = aggte(memory_fit, type="dynamic", biters=399, cband=True)
+    with pytest.warns(UserWarning, match="^Used bootstrap procedure to compute simultaneous confidence band$"):
         sharded = aggte(sharded_fit, type="dynamic")
-    clusters, codes = np.unique(units["state"].to_numpy(), return_inverse=True)
-    sums = np.column_stack([np.bincount(codes, weights=column) for column in memory.influence_func.T])
-    draws = keyed_rademacher(canonical_keys(clusters), 11, 399).T @ sums / np.sqrt(len(clusters))
-    band = _mboot_from_draws(draws, len(units) / np.sqrt(len(clusters)), 0.05)
 
+    assert 2 < memory.critical_values[0] < 7
     np.testing.assert_allclose(sharded.se_by_event, memory.se_by_event, rtol=1e-12, atol=1e-12)
-    np.testing.assert_allclose(sharded.critical_values, band["crit_val"], rtol=1e-12)
-    assert band["crit_val"] > 2
+    np.testing.assert_allclose(sharded.critical_values, memory.critical_values, rtol=1e-12)
+
+
+def test_aggte_bootstrap_on_a_clustered_shard_fit_finishes_the_stored_cluster_draws(
+    monkeypatch, draws_from_weights, mpdta_with_states, att_gt_on_shards
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "clustervars": ["countyreal", "state"],
+    }
+    units = preprocess_did(mpdta_with_states, allow_unbalanced_panel=False, **spec).time_invariant_data
+    signs = keyed_rademacher(canonical_keys(np.unique(units["state"].to_numpy())), 11, 399).T
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
+
+    with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
+        memory_fit = att_gt(mpdta_with_states, cband=False, **spec)
+    with pytest.warns(UserWarning, match="^The units fall in only 29 clusters"):
+        sharded_fit = att_gt_on_shards(mpdta_with_states, 7, boot=True, biters=399, random_state=11, **spec)
+    memory = aggte(memory_fit, type="dynamic", boot=True, biters=399, cband=True)
+    sharded = aggte(sharded_fit, type="dynamic")
+
+    assert np.isfinite(sharded.se_by_event).sum() == len(sharded.event_times)
+    np.testing.assert_allclose(sharded.se_by_event, memory.se_by_event, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.critical_values, memory.critical_values, rtol=1e-12)
+    np.testing.assert_allclose(sharded.overall_se, memory.overall_se, rtol=1e-12)
 
 
 def test_aggte_on_shards_rejects_more_draws_than_the_fit_stored(mpdta_data, att_gt_on_shards):
@@ -985,6 +1108,55 @@ def test_aggte_on_shards_without_stored_draws_rejects_the_bootstrap(mpdta_data, 
         aggte(sharded, type="dynamic", **{option: True})
 
 
+@pytest.mark.parametrize("aggregation, cband", [("dynamic", False), ("simple", True)])
+def test_aggte_on_shards_without_stored_draws_gives_analytic_results_when_it_needs_no_draws(
+    mpdta_data, att_gt_on_shards, aggregation, cband
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "cband": False,
+    }
+
+    memory = aggte(att_gt(mpdta_data, **spec), type=aggregation, cband=cband)
+    sharded_fit = att_gt_on_shards(mpdta_data, 3, **spec)
+    sharded = aggte(sharded_fit, type=aggregation, cband=cband)
+
+    assert sharded_fit.influence_moments.bootstrap_sums is None
+    np.testing.assert_allclose(sharded.overall_att, memory.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(sharded.overall_se, memory.overall_se, rtol=1e-12)
+
+
+def test_aggte_on_shards_draws_by_county_from_a_fit_whose_clusters_hold_one_county_each(
+    monkeypatch, draws_from_weights, mpdta_county_clusters, att_gt_on_shards
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "clustervars": ["countyreal", "county_cluster"],
+    }
+    units = preprocess_did(mpdta_county_clusters, allow_unbalanced_panel=False, **spec).time_invariant_data
+    signs = keyed_rademacher(canonical_keys(units["county_cluster"].to_numpy()), 7, 1000).T
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(signs))
+
+    memory_fit = att_gt(mpdta_county_clusters, cband=False, **spec)
+    sharded_fit = att_gt_on_shards(mpdta_county_clusters, 3, random_state=7, **spec)
+    with pytest.warns(UserWarning, match="^Used bootstrap procedure to compute simultaneous confidence band$"):
+        memory = aggte(memory_fit, type="dynamic", clustervars=[], biters=1000, cband=True)
+    with pytest.warns(UserWarning, match="^Used bootstrap procedure to compute simultaneous confidence band$"):
+        sharded = aggte(sharded_fit, type="dynamic", clustervars=[])
+
+    assert 2 < memory.critical_values[0] < 7
+    np.testing.assert_allclose(sharded.se_by_event, memory.se_by_event, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(sharded.critical_values, memory.critical_values, rtol=1e-12)
+
+
 @pytest.mark.parametrize(
     "data_fixture, columns",
     [
@@ -1068,6 +1240,28 @@ def test_fit_att_gt_on_shards_rejects_shards_of_another_panel(mpdta_data):
         )
 
 
+def test_fit_att_gt_on_shards_rejects_shards_with_a_cohort_that_the_cohort_counts_leave_out(mpdta_data):
+    did_data = preprocess_did(
+        mpdta_data, yname="lemp", tname="year", idname="countyreal", gname="first.treat", allow_unbalanced_panel=False
+    )
+    executor = LocalExecutor(shards_from_did_data(did_data, 3, random_state=0))
+
+    with pytest.raises(
+        RuntimeError,
+        match=re.escape(
+            "A shard holds a unit whose cohort the panel's cohort counts leave out. Rebuild the shards from the "
+            "panel that set the cohort counts."
+        ),
+    ):
+        fit_att_gt_on_shards(
+            executor,
+            did_data.config,
+            did_data.cohort_counts.filter(pl.col("cohort") != 2006),
+            0,
+            {"bootstrap": False, "uniform_bands": False},
+        )
+
+
 @pytest.mark.parametrize("random_state", [-1, 1.5, True, "7"])
 def test_fit_att_gt_on_shards_rejects_a_seed_that_a_generator_cannot_take_before_any_pass(mpdta_data, random_state):
     did_data = preprocess_did(
@@ -1093,21 +1287,21 @@ def test_fit_att_gt_on_shards_rejects_a_seed_that_a_generator_cannot_take_before
     assert executor.n_passes == 0
 
 
-@pytest.mark.parametrize("n_shards", [1, 3, 7])
-def test_shards_from_did_data_puts_each_unit_whole_into_one_shard(mpdta_with_states, n_shards):
+@pytest.mark.parametrize("n_shards", [1, np.int64(3), 7])
+def test_shards_from_did_data_puts_each_unit_whole_into_one_shard(mpdta_varying_covariate, n_shards):
     did_data = preprocess_did(
-        mpdta_with_states,
+        mpdta_varying_covariate,
         yname="lemp",
         tname="year",
         idname="countyreal",
         gname="first.treat",
-        xformla="~lpop",
+        xformla="~x",
         clustervars=["countyreal", "state"],
         allow_unbalanced_panel=False,
     )
-    outcomes = mpdta_with_states.pivot(on="year", index="countyreal", values="lemp", sort_columns=True)
-    covariates = mpdta_with_states.pivot(on="year", index="countyreal", values="lpop", sort_columns=True)
-    counties = mpdta_with_states.filter(pl.col("year") == 2003).sort("countyreal")
+    outcomes = mpdta_varying_covariate.pivot(on="year", index="countyreal", values="lemp", sort_columns=True)
+    covariates = mpdta_varying_covariate.pivot(on="year", index="countyreal", values="x", sort_columns=True)
+    counties = mpdta_varying_covariate.filter(pl.col("year") == 2003).sort("countyreal")
 
     shards = shards_from_did_data(did_data, n_shards, random_state=5)
     keys = np.concatenate([shard.unit_keys for shard in shards])
@@ -1132,6 +1326,25 @@ def test_shards_from_did_data_puts_each_unit_whole_into_one_shard(mpdta_with_sta
     np.testing.assert_array_equal(
         np.concatenate([shard.cluster_keys for shard in shards])[order], canonical_keys(counties["state"].to_numpy())
     )
+
+
+def test_shards_from_did_data_leaves_out_covariates_and_clusters_the_fit_does_not_use(mpdta_data):
+    did_data = preprocess_did(
+        mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~1",
+        clustervars=["countyreal"],
+        allow_unbalanced_panel=False,
+    )
+
+    shards = shards_from_did_data(did_data, 3, random_state=5)
+
+    assert [(shard.weights is None, shard.covariates is None, shard.cluster_keys is None) for shard in shards] == [
+        (True, True, True)
+    ] * 3
 
 
 @pytest.mark.parametrize("n_shards", [0, -1, 1.5, True])
@@ -1234,12 +1447,15 @@ def test_shard_from_arrow_reads_a_table_of_several_batches_like_one_batch():
     from_table = shard_from_arrow(table, 2, 1)
 
     assert table.column("y").num_chunks == 3
-    for field in Shard._fields:
-        np.testing.assert_array_equal(getattr(from_table, field), getattr(from_batch, field))
+    np.testing.assert_equal(from_table._asdict(), from_batch._asdict())
     np.testing.assert_array_equal(from_table.covariates[:, :, 0], [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8]])
 
 
-@pytest.mark.parametrize("outcomes", [[[1.0, 2.0], [3.0]], [[1.0, 2.0], None]], ids=["short_list", "null_list"])
+@pytest.mark.parametrize(
+    "outcomes",
+    [[[1.0, 2.0], [3.0]], [[1.0, 2.0], None], [[1.0, 2.0, 3.0, 4.0], None]],
+    ids=["short_list", "null_list", "null_list_beside_a_long_list"],
+)
 def test_shard_from_arrow_rejects_a_list_column_without_one_value_per_period(outcomes):
     table = pa.table({"unit": [1, 2], "cohort": [3.0, np.inf], "y": outcomes})
 
@@ -1297,8 +1513,9 @@ def test_shard_kernels_pickle_by_reference_with_their_states_and_statistics(mpdt
     assert sorted(kernel.__name__ for kernel, _ in passes) == sorted(
         name for name in vars(kernels) if name.endswith("_kernel")
     )
-    for (kernel, state), (restored_kernel, restored_state), result in zip(passes, restored, statistics, strict=True):
-        assert restored_kernel is kernel
-        assert type(restored_state) is type(state)
-        np.testing.assert_equal(restored_state._asdict(), state._asdict())
-        np.testing.assert_equal(result._asdict(), kernel(shard, state)._asdict())
+    assert [kernel for kernel, _ in restored] == [kernel for kernel, _ in passes]
+    assert [type(state) for _, state in restored] == [type(state) for _, state in passes]
+    np.testing.assert_equal([state._asdict() for _, state in restored], [state._asdict() for _, state in passes])
+    np.testing.assert_equal(
+        [result._asdict() for result in statistics], [kernel(shard, state)._asdict() for kernel, state in passes]
+    )

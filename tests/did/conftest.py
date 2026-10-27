@@ -605,3 +605,361 @@ def rcs_df():
             "g": [0, 3, 3, 0, 3, 3],
         }
     )
+
+
+@pytest.fixture
+def mean_change_cells():
+    """Function that returns each cell's weighted difference in mean outcome changes and its unit influence function."""
+
+    def estimate(data, cells, weightsname=None, yname="lemp", tname="year", idname="countyreal", gname="first.treat"):
+        units = data.unique(idname).sort(idname)
+        cohorts = units[gname].to_numpy()
+        att = np.zeros(len(cells))
+        influence = np.zeros((units.height, len(cells)))
+        for k, (cohort, later, earlier, comparison) in enumerate(cells):
+            rows = {period: data.filter(pl.col(tname) == period).sort(idname) for period in (later, earlier)}
+            change = rows[later][yname].to_numpy() - rows[earlier][yname].to_numpy()
+            weight = rows[min(later, earlier)][weightsname].to_numpy() if weightsname else np.ones(units.height)
+            for side, sign in ((cohorts == cohort, 1.0), (np.isin(cohorts, comparison), -1.0)):
+                mean = np.sum(weight[side] * change[side]) / np.sum(weight[side])
+                att[k] += sign * mean
+                influence[side, k] = sign * units.height * weight[side] * (change[side] - mean) / np.sum(weight[side])
+        return att, influence
+
+    return estimate
+
+
+@pytest.fixture
+def period_mean_cells():
+    """Function that returns each cell's difference in four period means and its influence function by row or unit."""
+
+    def estimate(data, cells, idname=None, yname="lemp", tname="year", gname="first.treat"):
+        rows = data.sort(idname) if idname else data
+        n_obs = rows[idname].n_unique() if idname else rows.height
+        y, periods, cohorts = (rows[column].to_numpy() for column in (yname, tname, gname))
+        att = np.zeros(len(cells))
+        influence = np.zeros((rows.height, len(cells)))
+        for k, (cohort, later, earlier, comparison) in enumerate(cells):
+            treated = cohorts == cohort
+            compared = np.isin(cohorts, comparison)
+            for side, sign in (
+                (treated & (periods == later), 1.0),
+                (treated & (periods == earlier), -1.0),
+                (compared & (periods == later), -1.0),
+                (compared & (periods == earlier), 1.0),
+            ):
+                mean = y[side].mean()
+                att[k] += sign * mean
+                influence[side, k] = sign * n_obs * (y[side] - mean) / side.sum()
+        if idname is None:
+            return att, influence
+        unit = np.unique(rows[idname].to_numpy(), return_inverse=True)[1]
+        return att, np.stack([np.bincount(unit, weights=column) for column in influence.T], axis=1)
+
+    return estimate
+
+
+@pytest.fixture
+def collinear_pretrend_panel():
+    """Panel whose treated cohorts follow exact trends so that two pre-treatment cells share an influence function."""
+    rng = np.random.default_rng(3)
+    cohorts = np.r_[np.zeros(30), np.full(20, 3), np.full(20, 4)]
+    level = rng.normal(size=cohorts.size)
+    noise = rng.normal(size=(4, cohorts.size))
+    return pl.concat(
+        [
+            pl.DataFrame(
+                {
+                    "id": np.arange(cohorts.size),
+                    "t": t,
+                    "g": cohorts,
+                    "y": level + np.where(cohorts == 0, noise[t - 1], 0.5 * t) + ((cohorts > 0) & (t >= cohorts)),
+                }
+            )
+            for t in (1, 2, 3, 4)
+        ]
+    )
+
+
+@pytest.fixture
+def weighted_unit_period_panel(unit_period_panel):
+    """Two-period panel of five units with unit weights w and a covariate x that varies over time except for unit 5."""
+    return unit_period_panel.with_columns(
+        pl.Series("x", [0.5, 1.5, -1.0, 2.0, 0.0, 3.0, 4.0, -2.0, 1.0, 1.0]),
+        pl.Series("w", [1.0, 1.0, 3.0, 3.0, 1.0, 1.0, 3.0, 3.0, 2.0, 2.0]),
+    )
+
+
+@pytest.fixture
+def mpdta_cohort_switched_off(mpdta_data):
+    """mpdta in which county 17005 of the 2004 cohort reads as never treated in 2007."""
+    row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2007)
+    return mpdta_data.with_columns(pl.when(row).then(0).otherwise(pl.col("first.treat")).alias("first.treat"))
+
+
+@pytest.fixture
+def mpdta_varying_covariate(mpdta_with_states):
+    """mpdta with states and a covariate that differs in every year of each county."""
+    return mpdta_with_states.with_columns(
+        (pl.col("lpop") + 0.2 * ((pl.col("countyreal") + pl.col("year")) % 5)).alias("x")
+    )
+
+
+@pytest.fixture
+def mpdta_outlying_controls(mpdta_data):
+    """Weighted mpdta in which a few never-treated counties lie far from the rest in the covariate or the weight."""
+    never = pl.col("first.treat") == 0
+    below = never & (pl.col("countyreal") % 40 == 0)
+    above = never & (pl.col("countyreal") % 40 == 20)
+    light = never & (pl.col("countyreal") % 40 == 10)
+    covariate = (pl.col("first.treat") > 0).cast(pl.Float64) + pl.col("countyreal").cast(pl.Float64).sin()
+    return mpdta_data.with_columns(
+        pl.when(below).then(covariate - 10).when(above).then(covariate + 10).otherwise(covariate).alias("x"),
+        pl.when(above)
+        .then(0.0)
+        .when(light)
+        .then(1e-7 * pl.col("lpop").exp())
+        .otherwise(pl.col("lpop").exp())
+        .alias("w"),
+    )
+
+
+@pytest.fixture
+def mpdta_shifted_covariate(mpdta_data):
+    """mpdta with a covariate that is lpop plus 0.3."""
+    return mpdta_data.with_columns((pl.col("lpop") + 0.3).alias("lpop_shifted"))
+
+
+@pytest.fixture
+def mpdta_county_clusters(mpdta_data):
+    """mpdta with a cluster variable that gives each county a cluster of its own."""
+    return mpdta_data.with_columns((10 * pl.col("countyreal")).alias("county_cluster"))
+
+
+@pytest.fixture
+def mpdta_cells():
+    """Function that lists each mpdta cell as its cohort and period and base period and comparison cohorts."""
+
+    def cells(base_period="varying", control_group="nevertreated", anticipation=0):
+        cohorts = [group for group in (2004, 2006, 2007) if group > 2003 + anticipation]
+        listed = []
+        for group in cohorts:
+            for period in range(2003 if base_period == "universal" else 2004, 2008):
+                base = period - 1 if base_period == "varying" and period < group else group - 1 - anticipation
+                later = max(period, base) + anticipation
+                not_yet = [other for other in cohorts if other > later and other != group]
+                listed.append((group, period, base, [0, *not_yet] if control_group == "notyettreated" else [0]))
+        return listed
+
+    return cells
+
+
+@pytest.fixture
+def four_means():
+    """Function that computes a weighted difference in mean changes and the share of each row in its derivative."""
+
+    def compute(y, treated, control, later, earlier, weights):
+        att = 0.0
+        share = np.zeros(len(y))
+        parts = ((treated & later, 1), (treated & earlier, -1), (control & later, -1), (control & earlier, 1))
+        for part, sign in parts:
+            mean = np.sum(weights[part] * y[part]) / np.sum(weights[part])
+            att += sign * mean
+            share += sign * part * weights * (y - mean) / np.sum(weights[part])
+        return att, share
+
+    return compute
+
+
+@pytest.fixture
+def cells_from_weighted_means(four_means):
+    """Function that computes the ATT and influence function of mpdta cells from weighted means of lemp."""
+
+    def compute(rows, keys, cells, weights="pop"):
+        lemp = rows["lemp"].to_numpy()
+        year = rows["year"].to_numpy()
+        cohort = rows["first.treat"].to_numpy()
+        row_of = {key: position for position, key in enumerate(keys.iter_rows())}
+        positions = np.array([row_of[key] for key in rows.select(keys.columns).iter_rows()])
+        atts = []
+        columns = []
+        for group, period, base, controls in cells:
+            att, share = four_means(
+                lemp, cohort == group, np.isin(cohort, controls), year == period, year == base, rows[weights].to_numpy()
+            )
+            atts.append(att)
+            columns.append(len(row_of) * np.bincount(positions, weights=share, minlength=len(row_of)))
+        return np.array(atts), np.column_stack(columns)
+
+    return compute
+
+
+@pytest.fixture
+def cells_from_estimator():
+    """Function that runs a 2x2 estimator on the units of each mpdta cell and spreads its influence function."""
+
+    def compute(rows, keys, cells, estimator, panel=True, weights="pop"):
+        row_of = {key: position for position, key in enumerate(keys.iter_rows())}
+        atts = []
+        columns = []
+        for group, period, base, controls in cells:
+            if period == base:
+                atts.append(0.0)
+                columns.append(np.zeros(len(row_of)))
+                continue
+            cell = rows.filter(pl.col("first.treat").is_in([group, *controls]) & pl.col("year").is_in([period, base]))
+            if panel:
+                at_period = cell.filter(pl.col("year") == period).sort("countyreal")
+                at_base = cell.filter(pl.col("year") == base).sort("countyreal")
+                units = at_period if period < base else at_base
+                outcomes = {"y1": at_period["lemp"].to_numpy(), "y0": at_base["lemp"].to_numpy()}
+            else:
+                units = cell
+                outcomes = {"y": cell["lemp"].to_numpy(), "post": (cell["year"] == period).cast(pl.Int64).to_numpy()}
+            fit = estimator(
+                **outcomes,
+                d=(units["first.treat"] == group).cast(pl.Float64).to_numpy(),
+                covariates=np.column_stack([np.ones(units.height), units["lpop"].to_numpy()]),
+                i_weights=None if weights is None else units[weights].to_numpy(),
+                influence_func=True,
+            )
+            positions = [row_of[key] for key in units.select(keys.columns).iter_rows()]
+            column = np.zeros(len(row_of))
+            column[positions] = len(row_of) / len(positions) * fit.att_inf_func
+            atts.append(fit.att)
+            columns.append(column)
+        return np.array(atts), np.column_stack(columns)
+
+    return compute
+
+
+@pytest.fixture
+def mpdta_atts_with_scaled_unit_weights(mpdta_pop_weighted):
+    """Function that refits the mpdta cells after scaling the pop weight of each county by its own factor."""
+
+    def refit(units, factors, **spec):
+        scaled = mpdta_pop_weighted.with_columns(pl.col("pop") * pl.col("countyreal").replace_strict(units, factors))
+        return np.array([cell.att for cell in compute_att_gt(preprocess_did(scaled, **spec)).attgt_list])
+
+    return refit
+
+
+@pytest.fixture
+def rcs_with_empty_cell_periods():
+    """Repeated cross sections whose cohort 3 misses period 2 and whose never-treated rows miss periods 1 and 4."""
+    rng = np.random.default_rng(13)
+    present = {3: [1, 3, 4, 5], 5: [1, 2, 3, 4, 5], 0: [2, 3, 5]}
+    cohort, period = np.array([(g, t) for g, periods in present.items() for t in periods for _ in range(30)]).T
+    return pl.DataFrame(
+        {"t": period, "g": cohort, "y": period + (cohort > 0) * (period >= cohort) + rng.normal(size=len(period))}
+    )
+
+
+@pytest.fixture
+def zero_weight_outlier_panel():
+    """Panel whose one comparison unit beyond the covariate range of the treated units has zero weight."""
+    return _balanced_panel(
+        np.r_[np.full(40, 3), np.zeros(61)],
+        np.r_[np.ones(100), 0.0],
+        np.r_[np.linspace(0, 2, 40), np.linspace(-1, 1, 60), 8.0],
+        3,
+        lambda ids, t, g, x: x + t + np.sin(ids + 2 * t) + ((g == 3) & (t == 3)),
+    )
+
+
+@pytest.fixture
+def mpdta_cohort_sizes(mpdta_data):
+    """Number of counties in each treated cohort of mpdta."""
+    counties = mpdta_data.filter((pl.col("year") == 2003) & (pl.col("first.treat") > 0))
+    return dict(counties.group_by("first.treat").len().iter_rows())
+
+
+@pytest.fixture
+def weighted_staggered_panel():
+    """Panel of 30 units over five periods with unequal weights and ids ordered by cohort with never-treated last."""
+    noise = np.random.default_rng(13).normal(size=150)
+    return _balanced_panel(
+        np.repeat([3, 4, 5, 0], [5, 8, 6, 11]),
+        0.5 + 2 * np.random.default_rng(14).random(30),
+        np.zeros(30),
+        5,
+        lambda ids, t, g, x: np.sin(ids) + 0.3 * t + noise + ((g > 0) & (t >= g)) * (0.5 + 0.4 * (t - g) + 0.2 * g),
+    )
+
+
+@pytest.fixture
+def draws_from_leading_weights():
+    """Turn fixed multiplier weights into a draw function that reads the leading rows and columns it needs."""
+
+    def build(weights):
+        def draws(inf_func, biters, random_state=None):
+            return weights[:biters, : inf_func.shape[0]] @ inf_func / inf_func.shape[0]
+
+        return draws
+
+    return build
+
+
+@pytest.fixture
+def rademacher_weights():
+    """Build fixed Rademacher multipliers with one row for each draw and one column for each unit."""
+
+    def build(n_draws, n_units):
+        return np.where(np.random.default_rng(11).random((n_draws, n_units)) < 0.5, 1.0, -1.0)
+
+    return build
+
+
+@pytest.fixture
+def influence_vector(request):
+    """Influence function of 300 units with the shape or distribution that the scenario names."""
+    rng = np.random.default_rng(3)
+    vectors = {
+        "constant": lambda: np.full(300, 5.0),
+        "linear_trend": lambda: np.linspace(0, 10, 300),
+        "high_variance": lambda: rng.normal(0, 100, 300),
+        "low_variance": lambda: rng.normal(0, 0.01, 300),
+        "normal": lambda: rng.standard_normal(300),
+        "uniform": lambda: rng.uniform(-np.sqrt(3), np.sqrt(3), 300),
+        "t3": lambda: rng.standard_t(3, 300),
+        "t10": lambda: rng.standard_t(10, 300),
+        "chi2": lambda: rng.chisquare(5, 300) - 5,
+        "exponential": lambda: rng.exponential(1, 300) - 1,
+    }
+    return vectors[request.param]()
+
+
+@pytest.fixture
+def weighted_cohorts_mp_result():
+    """Hand-built att_gt result with cohorts of unequal size and weight whose units share shocks by index mod 20."""
+    rng = np.random.default_rng(42)
+    n_units = 200
+    cohorts = np.repeat([2004, 2006, 2007, np.inf], [30, 50, 80, 40])
+    weights = rng.uniform(0.5, 1.5, n_units) * np.repeat([3.0, 1.0, 0.5, 1.0], [30, 50, 80, 40])
+    influence_func = rng.normal(size=(n_units, 12)) + 2 * rng.normal(size=(20, 12))[np.arange(n_units) % 20]
+    influence_func -= influence_func.mean(axis=0)
+    vcov = influence_func.T @ influence_func / n_units
+    return mp(
+        groups=np.repeat([2004, 2006, 2007], 4),
+        times=np.tile([2004, 2005, 2006, 2007], 3),
+        att_gt=rng.normal(size=12),
+        vcov_analytical=vcov,
+        se_gt=np.sqrt(np.diag(vcov) / n_units),
+        critical_value=1.96,
+        influence_func=influence_func,
+        n_units=n_units,
+        estimation_params={"bootstrap": False, "uniform_bands": False},
+        G=cohorts,
+        weights_ind=weights,
+    )
+
+
+@pytest.fixture
+def reweighted_mp_result():
+    """Rescale the unit weights of an att_gt result and move its cells along their influence functions to match."""
+
+    def rebuild(result, multipliers):
+        moved = result.att_gt + (multipliers - 1) @ result.influence_func / result.n_units
+        return result._replace(att_gt=moved, weights_ind=result.weights_ind * multipliers)
+
+    return rebuild

@@ -29,7 +29,8 @@ def test_combine_partials_of_row_blocks_gives_the_sums_and_maxima_of_all_rows():
     np.testing.assert_array_equal(combined.maxima["largest"], rows.max(axis=0))
 
 
-def test_combine_partials_keeps_the_statistics_that_only_one_side_holds():
+@pytest.mark.parametrize("second_first", [False, True], ids=["first_then_second", "second_then_first"])
+def test_combine_partials_keeps_the_statistics_that_only_one_side_holds(second_first):
     first = Partial(sums={"units": np.array(3.0)}, maxima={"largest": np.array([1.0, 5.0])}, factors={}, keyed={})
     second = Partial(
         sums={"weights": np.array([2.0, 4.0])},
@@ -38,16 +39,12 @@ def test_combine_partials_keeps_the_statistics_that_only_one_side_holds():
         keyed={"cluster": (np.array([7], dtype=np.uint64), np.array([[1.0, 2.0]]))},
     )
 
-    combined = combine_partials(first, second)
-    reversed_order = combine_partials(second, first)
+    combined = combine_partials(second, first) if second_first else combine_partials(first, second)
 
-    for result in (combined, reversed_order):
-        assert set(result.sums) == {"units", "weights"}
-        assert set(result.maxima) == {"largest", "smallest"}
-        np.testing.assert_array_equal(result.sums["weights"], [2.0, 4.0])
-        np.testing.assert_array_equal(result.maxima["largest"], [1.0, 5.0])
-        np.testing.assert_array_equal(result.factors["design"][0], np.eye(2))
-        np.testing.assert_array_equal(result.keyed["cluster"][1], [[1.0, 2.0]])
+    np.testing.assert_equal(combined.sums, {"units": 3.0, "weights": [2.0, 4.0]})
+    np.testing.assert_equal(combined.maxima, {"largest": [1.0, 5.0], "smallest": [-1.0]})
+    np.testing.assert_equal(combined.factors, {"design": (np.eye(2), np.ones((2, 1)))})
+    np.testing.assert_equal(combined.keyed, {"cluster": ([7], [[1.0, 2.0]])})
 
 
 @pytest.mark.parametrize(
@@ -150,3 +147,16 @@ def test_finalize_keyed_of_shards_that_hold_whole_clusters_adds_up():
 
     assert combined.sums["cluster_count"] == 8
     np.testing.assert_allclose(combined.sums["cluster_gram"], sums.T @ sums, rtol=1e-12, atol=1e-12)
+
+
+def test_finalize_keyed_adds_the_clusters_it_finishes_to_those_finished_before():
+    sums = np.random.default_rng(13).normal(size=(8, 3))
+    keys = np.arange(8, dtype=np.uint64)
+    finished = finalize_keyed(Partial(sums={}, maxima={}, factors={}, keyed={"cluster": (keys[:3], sums[:3])}))
+    pending = Partial(sums={}, maxima={}, factors={}, keyed={"cluster": (keys[3:], sums[3:])})
+
+    finalized = finalize_keyed(combine_partials(finished, pending))
+
+    assert finalized.keyed == {}
+    assert finalized.sums["cluster_count"] == 8
+    np.testing.assert_allclose(finalized.sums["cluster_gram"], sums.T @ sums, rtol=1e-12, atol=1e-12)

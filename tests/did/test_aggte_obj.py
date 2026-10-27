@@ -1,5 +1,7 @@
 """Tests for aggregate treatment effect (AGGTE) result objects."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -28,7 +30,7 @@ def test_aggte_dynamic():
     event_times = np.array([-2, -1, 0, 1, 2, 3])
     att_by_event = np.array([0.1, 0.2, 1.5, 1.8, 2.0, 1.9])
     se_by_event = np.array([0.15, 0.16, 0.25, 0.3, 0.35, 0.4])
-    critical_values = np.array([2.2, 2.2, 2.2, 2.2, 2.2, 2.2])
+    critical_values = np.array([2.2, 2.3, 2.4, 2.5, 2.6, 2.7])
 
     result = aggte(
         overall_att=1.6,
@@ -44,33 +46,30 @@ def test_aggte_dynamic():
     )
 
     assert result.aggregation_type == "dynamic"
-    assert len(result.event_times) == 6
-    assert len(result.att_by_event) == 6
-    assert len(result.se_by_event) == 6
-    assert len(result.critical_values) == 6
-    assert result.min_event_time == -2
-    assert result.max_event_time == 3
+    np.testing.assert_array_equal(result.event_times, event_times)
+    np.testing.assert_array_equal(result.att_by_event, att_by_event)
+    np.testing.assert_array_equal(result.se_by_event, se_by_event)
+    np.testing.assert_array_equal(result.critical_values, critical_values)
+    assert (result.min_event_time, result.max_event_time, result.balanced_event_threshold) == (-2, 3, 2)
 
 
-def test_aggte_validation():
-    with pytest.raises(ValueError, match="Invalid aggregation_type"):
-        aggte(
-            overall_att=1.0,
-            overall_se=0.2,
-            aggregation_type="invalid",
-        )
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (
+            {"aggregation_type": "invalid"},
+            "Invalid aggregation_type: invalid. Must be one of 'simple', 'dynamic', 'group', 'calendar'.",
+        ),
+        ({"att_by_event": np.array([1.0, 1.5])}, "att_by_event must have same length as event_times."),
+        ({"se_by_event": np.array([0.2, 0.3])}, "se_by_event must have same length as event_times."),
+        ({"critical_values": np.array([2.0, 2.0])}, "critical_values must have same length as event_times."),
+    ],
+)
+def test_aggte_validation(arguments, message):
+    spec = {"overall_att": 1.25, "overall_se": 0.3, "aggregation_type": "dynamic", "event_times": np.array([0, 1, 2])}
 
-    event_times = np.array([0, 1, 2])
-    att_by_event = np.array([1.0, 1.5])
-
-    with pytest.raises(ValueError, match="att_by_event must have same length"):
-        aggte(
-            overall_att=1.25,
-            overall_se=0.3,
-            aggregation_type="dynamic",
-            event_times=event_times,
-            att_by_event=att_by_event,
-        )
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        aggte(**{**spec, **arguments})
 
 
 def test_aggte_with_estimation_params():
@@ -113,29 +112,26 @@ def test_aggte_formatting_simple():
         },
     )
 
-    formatted = format_aggte_result(result)
+    lines = format_aggte_result(result).splitlines()
+    rows = [line.replace(" ", "").split("│")[1:-1] for line in lines if line.startswith("│")]
 
-    assert "Aggregate Treatment Effects" in formatted
-    assert "Overall ATT:" in formatted
-    assert "1.2340" in formatted
-    assert "0.4560" in formatted
-    assert "Control Group: Not Yet Treated" in formatted
-    assert "Anticipation Periods: 2" in formatted
-    assert "Estimation Method: Inverse Probability Weighting" in formatted
+    assert " Aggregate Treatment Effects" in lines
+    assert " Overall ATT:" in lines
+    assert rows == [["ATT", "Std.Error", "[95%Conf.Interval]"], ["1.2340", "0.4560", "[0.3403,2.1277]*"]]
+    assert " Control Group: Not Yet Treated" in lines
+    assert " Anticipation Periods: 2" in lines
+    assert " Estimation Method: Inverse Probability Weighting" in lines
 
 
 def test_aggte_formatting_dynamic():
-    event_times = np.array([-1, 0, 1, 2])
-    att_by_event = np.array([0.2, 1.5, 1.8, 1.6])
-    se_by_event = np.array([0.3, 0.25, 0.28, 0.35])
-
     result = aggte(
         overall_att=1.5,
         overall_se=0.2,
         aggregation_type="dynamic",
-        event_times=event_times,
-        att_by_event=att_by_event,
-        se_by_event=se_by_event,
+        event_times=np.array([-1, 0, 1, 2]),
+        att_by_event=np.array([0.2, 1.5, 1.8, 1.6]),
+        se_by_event=np.array([0.3, 0.25, 0.28, 0.35]),
+        critical_values=np.full(4, 2.5),
         estimation_params={
             "alpha": 0.10,
             "bootstrap": True,
@@ -144,14 +140,21 @@ def test_aggte_formatting_dynamic():
         },
     )
 
-    formatted = format_aggte_result(result)
+    lines = format_aggte_result(result).splitlines()
+    rows = [line.replace(" ", "").split("│")[1:-1] for line in lines if line.startswith("│")]
 
-    assert "Aggregate Treatment Effects (Event Study)" in formatted
-    assert "Overall summary of ATT's based on event-study/dynamic aggregation:" in formatted
-    assert "Dynamic Effects:" in formatted
-    assert "Event time" in formatted
-    assert "[90% Simult. Conf. Band]" in formatted
-    assert all(str(e) in formatted for e in event_times)
+    assert " Aggregate Treatment Effects (Event Study)" in lines
+    assert " Overall summary of ATT's based on event-study/dynamic aggregation:" in lines
+    assert " Dynamic Effects:" in lines
+    assert rows == [
+        ["ATT", "Std.Error", "[90%Conf.Interval]"],
+        ["1.5000", "0.2000", "[1.1710,1.8290]*"],
+        ["Eventtime", "Estimate", "Std.Error", "[90%Simult.Conf.Band]"],
+        ["-1", "0.2000", "0.3000", "[-0.5500,0.9500]"],
+        ["0", "1.5000", "0.2500", "[0.8750,2.1250]*"],
+        ["1", "1.8000", "0.2800", "[1.1000,2.5000]*"],
+        ["2", "1.6000", "0.3500", "[0.7250,2.4750]*"],
+    ]
 
 
 def test_aggte_formatting_group():
@@ -171,11 +174,21 @@ def test_aggte_formatting_group():
         },
     )
 
-    formatted = format_aggte_result(result)
+    lines = format_aggte_result(result).splitlines()
+    rows = [line.replace(" ", "").split("│")[1:-1] for line in lines if line.startswith("│")]
 
-    assert "Aggregate Treatment Effects (Group/Cohort)" in formatted
-    assert "Group Effects:" in formatted
-    assert "Group" in formatted
+    assert " Aggregate Treatment Effects (Group/Cohort)" in lines
+    assert " Overall summary of ATT's based on group/cohort aggregation:" in lines
+    assert " Group Effects:" in lines
+    assert rows == [
+        ["ATT", "Std.Error", "[95%Conf.Interval]"],
+        ["1.5000", "0.2500", "[1.0100,1.9900]*"],
+        ["Group", "Estimate", "Std.Error", "[95%PointwiseConf.Band]"],
+        ["2000", "1.2000", "0.3000", "[0.6120,1.7880]*"],
+        ["2001", "1.5000", "0.3500", "[0.8140,2.1860]*"],
+        ["2002", "1.8000", "0.4000", "[1.0160,2.5840]*"],
+    ]
+    assert " Control Group: Never Treated" in lines
 
 
 @pytest.mark.parametrize(
@@ -218,10 +231,20 @@ def test_aggte_display_methods():
         se_by_event=np.array([0.4, 0.5, 0.6]),
     )
 
-    str_output = str(result)
-    repr_output = repr(result)
+    report = format_aggte_result(result)
+    lines = report.splitlines()
+    rows = [line.replace(" ", "").split("│")[1:-1] for line in lines if line.startswith("│")]
 
-    assert isinstance(str_output, str)
-    assert isinstance(repr_output, str)
-    assert "Aggregate Treatment Effects (Calendar Time)" in str_output
-    assert "Time Effects:" in str_output
+    assert str(result) == report
+    assert repr(result) == report
+    assert " Aggregate Treatment Effects (Calendar Time)" in lines
+    assert " Overall summary of ATT's based on calendar time aggregation:" in lines
+    assert " Time Effects:" in lines
+    assert rows == [
+        ["ATT", "Std.Error", "[95%Conf.Interval]"],
+        ["2.0000", "0.5000", "[1.0200,2.9800]*"],
+        ["Time", "Estimate", "Std.Error", "[95%PointwiseConf.Band]"],
+        ["2020", "1.8000", "0.4000", "[1.0160,2.5840]*"],
+        ["2021", "2.0000", "0.5000", "[1.0200,2.9800]*"],
+        ["2022", "2.2000", "0.6000", "[1.0240,3.3760]*"],
+    ]
