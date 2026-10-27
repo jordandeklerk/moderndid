@@ -97,8 +97,8 @@ def create_sensitivity_results_sm(
     and is the default when no additional shape restrictions are imposed. Since the FLCI
     ignores sign and shape restrictions, the default switches to the conditional FLCI hybrid
     (C-F) when ``bias_direction`` or ``monotonicity_direction`` is given. The conditional and
-    hybrid methods invert a test over a grid of candidate values. Their bounds are points of
-    that grid.
+    hybrid methods invert the moment inequality test of [2]_ over a grid of candidate values.
+    Their bounds are points of that grid.
 
     See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
     function applied to event study estimates from outside moderndid.
@@ -166,6 +166,10 @@ def create_sensitivity_results_sm(
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+
+    .. [2] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for linear
+        conditional moment inequalities. Review of Economic Studies, 90(6),
+        2763-2791.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -178,11 +182,10 @@ def create_sensitivity_results_sm(
 
     if m_vec is None:
         if num_pre_periods == 1:
-            # With only one pre-period, we can't estimate second differences
-            # so use a simple range based on the pre-period variance
+            # One pre-period leaves no second difference to estimate. m_vec instead runs up to the pre-period
+            # coefficient's standard error.
             m_vec = np.linspace(0, np.sqrt(sigma[0, 0]), 10)
         else:
-            # Use a data-driven upper bound based on pre-treatment variation
             m_ub = compute_delta_sd_upperbound_m(
                 betahat=betahat,
                 sigma=sigma,
@@ -229,7 +232,7 @@ def create_sensitivity_results_sm(
             )
         elif method in ["Conditional", "C-F", "C-LF"]:
             hybrid_flag = {
-                "Conditional": "ARP",  # Andrews, Roth, Pakes (2022)
+                "Conditional": "ARP",  # Conditional test without a hybrid
                 "C-F": "FLCI",  # Conditional + FLCI hybrid
                 "C-LF": "LF",  # Conditional + Least Favorable hybrid
             }[method]
@@ -298,7 +301,8 @@ def create_sensitivity_results_rm(
     When :math:`\bar{M} = 1`, no change after treatment can exceed the largest one before it.
 
     The function computes one confidence interval for each value of :math:`\bar{M}`. Both
-    methods invert a test over a grid of candidate values. Their bounds are points of that grid.
+    methods invert the moment inequality test of [2]_ over a grid of candidate values. Their
+    bounds are points of that grid.
 
     See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
     function applied to event study estimates from outside moderndid.
@@ -364,6 +368,10 @@ def create_sensitivity_results_rm(
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+
+    .. [2] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for linear
+        conditional moment inequalities. Review of Economic Studies, 90(6),
+        2763-2791.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -381,8 +389,6 @@ def create_sensitivity_results_rm(
         raise ValueError("method must be 'Conditional' or 'C-LF'")
 
     if m_bar_vec is None:
-        # Default grid for relative magnitude parameter
-        # 0 = parallel trends, 1 = same magnitude violations allowed, 2 = twice as large
         m_bar_vec = np.linspace(0, 2, 10)
 
     hybrid_flag = "ARP" if method == "Conditional" else "LF"

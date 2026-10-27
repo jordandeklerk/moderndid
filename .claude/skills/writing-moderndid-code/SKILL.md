@@ -22,7 +22,7 @@ Reviews of this repository keep finding the same problems, so check every new or
 - Checks and errors: `ValueError` or `TypeError` rather than a bare `Exception`, a message that names the argument and its value and says what to pass, no suppressed warning, and no silent NaN or empty result for an edge case.
 - Placement: result types in `container.py` with Attributes and `#:` comments, a formatter registered with `attach_format`, a converter in `_DISPATCH`, and the export steps and API page for every new public name.
 - Docstrings: a summary line with no comma, no Latin abbreviation, no Raises section, no pointer to its own sections such as "See Notes", Returns bullets as `- **name**: description`, long math in a `.. math::` display in Notes, authors only in an entry point's References, and no mention of R.
-- Code: imports at the top, no module-level constant for a one-off number, and comments that say why.
+- Code: imports at the top, no module-level constant for a one-off number, and comments that say why in plain sentences without a template opener such as "Since X, Y".
 - Tests: a module docstring, flat functions with fixtures in `conftest.py`, no comments, inline imports, or module constants, `np.random.default_rng` rather than `np.random.seed`, `match=` on every `pytest.raises`, `random_state` on every call that bootstraps, and expected values computed independently.
 
 ## Package layout
@@ -83,7 +83,7 @@ Most families leave their formatters and converters out of both `__all__` lists,
 
 ## Comments
 
-A comment explains why in one or two lines, most often as "Since X, Y", as in `# Since a missing value must not pick the route, the routing reads the rows that the missing-data step keeps.` (`didtriple/ddd.py`). There are no section dividers, no TODO markers, and no field comments except the `#:` lines in containers.
+A comment explains why in one or two lines and states the reason as a plain fact, as in `# Rows that differ only in the sign of a zero share a key because adding 0.0 turns -0.0 into 0.0.` (`did/shards/layout.py`). Its opener follows from its subject. A run of comments that open with one template, such as "Since X, Y" or "As in X, Y", reads as machine-written. So does a comment that narrates what the next line does. There are no section dividers, no TODO markers, and no field comments except the `#:` lines in containers.
 
 ## Docstrings
 

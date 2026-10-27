@@ -20,8 +20,8 @@ def setup(app):
     """Register Python lexers that tag each name with its role."""
     app.add_lexer("python", partial(_Python, stripnl=False))
     app.add_lexer("pycon", partial(_PythonConsole, stripnl=False))
-    # IPython's highlighting extension stores lexer instances, which Sphinx prefers over any
-    # registered lexer, so notebook cells need new instances in their place.
+    # Sphinx prefers the lexer instances that IPython's highlighting extension stores over any registered lexer.
+    # Notebook cells need new instances in their place.
     for language in ("ipython", "ipython3"):
         lexer = IPyLexer()
         lexer.add_filter(_Roles())

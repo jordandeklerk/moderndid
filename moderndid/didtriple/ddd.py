@@ -260,16 +260,16 @@ def ddd(
     }
     data = to_polars(data)
     check_columns(data, **named_columns)
-    # Since the routes compare cohorts with periods and test them for infinity, a decimal cohort becomes a double.
+    # A decimal cohort becomes a double because the routes compare cohorts with periods and test them for infinity.
     data = decimal_to_float(data, [gname])
     covariate_terms = get_column_terms(xformla) if xformla else []
-    # Since the cross-section routes number the rows in an internal column, no named column may take its name.
+    # The cross-section routes number the rows in an internal column. No named column may take its name.
     reserved = _reserved_name_errors(named_columns | {"xformla": covariate_terms}, (ROW_ID_COLUMN,))
     if reserved:
         raise ValueError("\n".join(reserved))
 
-    # Since a missing value must not pick the route, the routing reads the rows that the missing-data step keeps.
-    # The route's own missing-data step still drops the rows with a missing value and warns once.
+    # The routing reads the rows that the missing-data step keeps because a missing value must not pick the route. The
+    # route's own missing-data step still drops the rows with a missing value and warns once.
     complete = _complete_rows(data, [yname, tname, idname, gname, pname, cluster, weightsname, *covariate_terms], gname)
     is_rcs = detect_rcs_mode(complete, tname, idname, panel, allow_unbalanced_panel)
 
@@ -411,6 +411,6 @@ def ddd(
             cluster=ddd_data.cluster,
         )
 
-    # Since the two-period estimators work on arrays, the report learns the column names here.
+    # The two-period estimators work on arrays. The report learns the column names here.
     named_cluster = cluster if result.args.get("cluster") else None
     return result._replace(args=result.args | {"yname": yname, "pname": pname, "cluster": named_cluster})

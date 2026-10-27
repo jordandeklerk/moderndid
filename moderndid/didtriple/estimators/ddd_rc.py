@@ -233,7 +233,7 @@ def ddd_rc(
         "biters": biters,
         "alpha": alpha,
         "trim_level": trim_level,
-        # Since a cluster array carries no column name, the report can only say that the standard errors cluster.
+        # A cluster array carries no column name. The report can only say that the standard errors cluster.
         "cluster": True if _clusters_group_units(cluster) else None,
     }
 
@@ -333,7 +333,7 @@ def _ddd_rc_2period(
         cluster=cluster,
         panel=panel,
     )
-    # Since these routes skip the preprocessing pipeline, its missing-data step runs here.
+    # These routes skip the preprocessing pipeline but still run its missing-data step here.
     data = MissingDataHandler().transform(DDDColumnSelector().transform(data, config), config)
 
     # A panel's unit id names one row per period even when the unbalanced panel takes the cross-section route.
@@ -361,7 +361,7 @@ def _ddd_rc_2period(
     y = data[yname].to_numpy()
     post = (data[tname] == t1).cast(pl.Int64).to_numpy()
 
-    # Since the indicator never becomes a column of the data, no column the call names can be overwritten.
+    # The indicator never becomes a column of the data. No column the call names can be overwritten.
     treat_arr = data.select((pl.col(gname) != 0) & pl.col(gname).is_finite()).to_series().to_numpy()
     partition = data[pname].to_numpy()
 
@@ -642,7 +642,7 @@ def _wboot_ddd_rc(
     ndarray
         Bootstrap estimates of shape (biters,).
     """
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y, post, subgroup, covariates, i_weights = map(to_numpy, (y, post, subgroup, covariates, i_weights))
     rng = np.random.default_rng(random_state)
     n = len(y)

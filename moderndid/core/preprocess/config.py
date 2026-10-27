@@ -267,7 +267,7 @@ class EtwfeConfig(ConfigMixin):
     n_units: int = 0
     n_obs: int = 0
 
-    # Internal state set during prepare_etwfe_data / build_etwfe_formula
+    # Internal state that set_references and prepare_etwfe_data fill. etwfe sets _formula from build_etwfe_formula.
     _gref_min_flag: bool = False
     _ctrls: list = field(default_factory=list)
     _xvar_dm_cols: list = field(default_factory=list)

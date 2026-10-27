@@ -20,7 +20,7 @@ try:
 except ImportError as err:
     HAS_CUPY = False
     cp = None
-    # Since find_spec locates a package without running it, it tells a broken CuPy install from a missing one.
+    # find_spec tells a broken CuPy install from a missing one because it locates a package without running it.
     _CUPY_IMPORT_ERROR = err if importlib.util.find_spec("cupy") is not None else None
 
 __all__ = [

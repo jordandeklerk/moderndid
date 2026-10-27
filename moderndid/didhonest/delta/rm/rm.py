@@ -169,7 +169,6 @@ def compute_conditional_cs_rm(
 
     col_idx = 0
     for s in s_values:
-        # (+) restriction
         cs_plus = _compute_conditional_cs_rm_fixed_s(
             s=s,
             max_positive=True,
@@ -191,7 +190,6 @@ def compute_conditional_cs_rm(
         all_accepts[:, col_idx] = cs_plus["accept"]
         col_idx += 1
 
-        # (-) restriction
         cs_minus = _compute_conditional_cs_rm_fixed_s(
             s=s,
             max_positive=False,
@@ -213,7 +211,6 @@ def compute_conditional_cs_rm(
         all_accepts[:, col_idx] = cs_minus["accept"]
         col_idx += 1
 
-    # Take union: accept if any (s, sign) combination accepts
     accept = np.any(all_accepts, axis=1).astype(float)
     grid = np.linspace(grid_lb, grid_ub, grid_points)
 
@@ -382,14 +379,13 @@ def _create_relative_magnitudes_constraint_matrix(
     total_periods = num_pre_periods + num_post_periods + 1
     a_tilde = create_first_differences_matrix(num_pre_periods, num_post_periods)
 
-    # Since column num_pre_periods + s holds delta_s, this row picks delta_s - delta_{s-1}.
+    # Column num_pre_periods + s holds delta_s. This row picks delta_s - delta_{s-1}.
     v_max_diff = np.zeros(total_periods)
     v_max_diff[(num_pre_periods + s - 1) : (num_pre_periods + s + 1)] = [-1, 1]
 
     if not max_positive:
         v_max_diff = -v_max_diff
 
-    # Bounds: 1*v_max_diff for pre-periods, Mbar*v_max_diff for post-periods
     a_ub = np.vstack(
         [
             np.tile(v_max_diff, (num_pre_periods, 1)),
@@ -397,8 +393,6 @@ def _create_relative_magnitudes_constraint_matrix(
         ]
     )
 
-    # Construct A: |a_tilde * delta| <= a_ub * delta
-    # This becomes: a_tilde * delta <= a_ub * delta and -a_tilde * delta <= -(-a_ub) * delta
     A = np.vstack([a_tilde - a_ub, -a_tilde - a_ub])
 
     zero_rows = np.all(np.abs(A) <= 1e-10, axis=1)
@@ -619,7 +613,6 @@ def _compute_conditional_cs_rm_fixed_s(
         )
         return {"grid": result.theta_grid, "accept": result.accept_grid.astype(float)}
 
-    # Multiple post-periods case
     result = compute_arp_nuisance_ci(
         betahat=betahat,
         sigma=sigma,

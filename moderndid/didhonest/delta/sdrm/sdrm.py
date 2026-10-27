@@ -143,12 +143,10 @@ def compute_conditional_cs_sdrm(
     grid = np.linspace(grid_lb, grid_ub, grid_points)
     n_s = len(s_values)
 
-    # Compute CS for all (s, sign) combinations
     all_cs_pos = np.zeros((grid_points, n_s))
     all_cs_neg = np.zeros((grid_points, n_s))
 
     for i, s in enumerate(s_values):
-        # Positive maximum
         cs_pos = _compute_conditional_cs_sdrm_fixed_s(
             s=s,
             max_positive=True,
@@ -169,7 +167,6 @@ def compute_conditional_cs_sdrm(
         )
         all_cs_pos[:, i] = cs_pos["accept"]
 
-        # Negative maximum
         cs_neg = _compute_conditional_cs_sdrm_fixed_s(
             s=s,
             max_positive=False,
@@ -190,7 +187,6 @@ def compute_conditional_cs_sdrm(
         )
         all_cs_neg[:, i] = cs_neg["accept"]
 
-    # Take union: accept if ANY (s, sign) accepts
     accept_pos = np.max(all_cs_pos, axis=1)
     accept_neg = np.max(all_cs_neg, axis=1)
     accept = np.maximum(accept_pos, accept_neg)
@@ -259,7 +255,7 @@ def compute_identified_set_sdrm(
     l_vec = np.asarray(l_vec).flatten()
 
     min_s = -(num_pre_periods - 2)
-    # Since the second difference at s = 0 ends at the reference period, it is a pre-period one too.
+    # The second difference at s = 0 ends at the reference period. It counts as a pre-period one too.
     s_values = range(min_s, 1)
 
     all_bounds = []
@@ -415,7 +411,6 @@ def _compute_conditional_cs_sdrm_fixed_s(
         d_sdrm = d_sdrm[post_period_rows]
 
     if num_post_periods == 1:
-        # Single post-period: use no-nuisance parameter method
         return _compute_cs_sdrm_no_nuisance(
             betahat=betahat,
             sigma=sigma,
@@ -432,7 +427,6 @@ def _compute_conditional_cs_sdrm_fixed_s(
             seed=seed,
         )
 
-    # Multiple post-periods: use nuisance parameter method
     hybrid_list = {"hybrid_kappa": hybrid_kappa}
 
     if hybrid_flag == "FLCI":

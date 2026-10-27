@@ -171,9 +171,8 @@ def cv_lasso_with_oof(
             X_pen_train_centered = X_pen_train_res - train_mean_X[None, :]
             y_train_centered = y_train_res - train_mean_y
 
-            # When every alpha on the path exceeds the fold's largest score, as in a propensity fold without treated
-            # rows, zero coefficients solve the lasso exactly. Since the solver's tolerance scales with a constant
-            # response and falls to zero, it would otherwise report a convergence failure at every alpha.
+            # Zero coefficients are exact when every alpha exceeds the fold's largest score. A constant response, as in
+            # a propensity fold without treated rows, would give the solver a zero tolerance that no alpha meets.
             fold_alpha_max = float(np.max(np.abs(X_pen_train_centered.T @ y_train_centered))) / train_idx.size
             if fold_alpha_max <= alphas.min():
                 coefs_path = np.zeros((pen_idx.size, alphas.size))
@@ -222,7 +221,6 @@ def cv_lasso_with_oof(
 
         threshold = cv_errors[min_idx] + se[min_idx]
 
-        # Largest alpha with CV error within one SE of the minimum
         candidate_mask = (cv_errors <= threshold) & finite_cols
         chosen_idx = int(np.argmax(np.where(candidate_mask, alphas, -np.inf)))
 

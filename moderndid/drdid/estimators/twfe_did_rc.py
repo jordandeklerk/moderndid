@@ -217,20 +217,17 @@ def _fit_twfe_regression(y, post, d, x, i_weights, n):
             att = wls_results.params[3] / scale[3]
             residuals = wls_results.resid
 
-        # Elements for influence function
         x_prime_x = design_matrix.T @ (i_weights[:, np.newaxis] * design_matrix) / n
         x_prime_x_inv = _scaled_inverse(
             x_prime_x,
             "The regression design matrix is singular. Consider removing covariates that are constant or collinear.",
         )
 
-        # Influence function of the TWFE regression
         influence_reg = (i_weights[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
 
         selection_theta = np.zeros(design_matrix.shape[1])
         selection_theta[3] = 1  # d:post interaction is at index 3
 
-        # Influence function of the ATT
         att_inf_func = influence_reg @ selection_theta
 
     except (np.linalg.LinAlgError, ValueError) as e:

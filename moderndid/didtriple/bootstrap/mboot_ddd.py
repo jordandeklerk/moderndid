@@ -121,7 +121,7 @@ def mboot_ddd(
         else:
             se_full[ndg_dim] = b_sigma * np.sqrt(n_eff) / n
 
-        # Since a column with a negligible or NaN scale has no deviation to compare, every draw ignores it.
+        # A column with a negligible or NaN scale has no deviation to compare. Every draw ignores it.
         usable = np.isfinite(b_sigma)
         if usable.any():
             b_t = np.max(np.abs(bres_clean[:, usable] / b_sigma[usable]), axis=1)
@@ -190,7 +190,7 @@ def wboot_ddd(
     ndarray
         Bootstrap estimates of shape (biters,).
     """
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y1, y0, subgroup, covariates, i_weights = map(to_numpy, (y1, y0, subgroup, covariates, i_weights))
     rng = np.random.default_rng(random_state)
     n = len(subgroup)

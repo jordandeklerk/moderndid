@@ -121,13 +121,12 @@ def _fit_pscore_ipt(D, X, iw, quantiles):
     if quantiles is not None:
         X_processed = _add_quantile_constraints(X_processed, quantiles, iw)
 
-    # Since the optimizer stops on a tolerance that depends on the scale of each covariate, it runs on columns near
-    # unit scale. The propensity scores do not depend on that scale.
+    # The optimizer runs on columns near unit scale because it stops on a tolerance that depends on the scale of each
+    # covariate. The propensity scores do not depend on that scale.
     X_processed = _scaled_columns(X_processed)
     n_obs, k_features = X_processed.shape
     init_gamma = _get_initial_gamma(D, X_processed, iw, k_features)
 
-    # Try trust-constr optimization first
     try:
         opt_cal_results = scipy.optimize.minimize(
             lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[0],
@@ -145,7 +144,6 @@ def _fit_pscore_ipt(D, X, iw, quantiles):
     except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError) as e:
         warnings.warn(f"trust-constr optimization failed: {e}. Using IPT algorithm.", UserWarning)
 
-        # Try IPT optimization
         try:
             opt_ipt_results = scipy.optimize.minimize(
                 lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[0],
@@ -163,7 +161,6 @@ def _fit_pscore_ipt(D, X, iw, quantiles):
             warnings.warn(f"IPT optimization failed: {e_ipt}. Using initial logit estimates.", UserWarning)
             gamma_cal = init_gamma
 
-            # Validate logit fallback
             try:
                 logit_model_refit = sm.GLM(D, X_processed, family=sm.families.Binomial(), freq_weights=iw)
                 logit_results_refit = logit_model_refit.fit(start_params=init_gamma, maxiter=100)
@@ -172,7 +169,6 @@ def _fit_pscore_ipt(D, X, iw, quantiles):
             except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError):
                 warnings.warn("Checking convergence of fallback Logit model failed.", UserWarning)
 
-    # Compute propensity scores
     pscore_linear = X_processed @ gamma_cal
     pscore = scipy.special.expit(pscore_linear)
 
@@ -303,8 +299,8 @@ def _remove_collinear_columns(X):
         return X, []
 
     norms = np.linalg.norm(X, axis=0)
-    # Since the rank tolerance scales with the largest column, unit-norm columns keep a covariate measured on a
-    # large scale from passing for collinear.
+    # The rank tolerance scales with the largest column. Unit-norm columns keep a covariate on a small scale from
+    # passing for collinear beside one on a large scale.
     _, R, P = scipy.linalg.qr(X / np.where(norms > 0, norms, 1.0), mode="economic", pivoting=True)
 
     diag_R = np.abs(np.diag(R))
@@ -364,11 +360,9 @@ def _weighted_quantile(values, q, weights):
     sorted_values = values[sorted_idx]
     sorted_weights = weights[sorted_idx]
 
-    # Cumulative weights
     cum_weights = np.cumsum(sorted_weights)
     total_weight = cum_weights[-1]
 
-    # Find quantile position
     quantile_weight = q * total_weight
     idx = np.searchsorted(cum_weights, quantile_weight)
 
@@ -377,13 +371,11 @@ def _weighted_quantile(values, q, weights):
     if idx >= len(sorted_values):
         return sorted_values[-1]
 
-    # Linear interpolation between adjacent values
     w_below = cum_weights[idx - 1]
     w_above = cum_weights[idx]
 
     if w_above == w_below:
         return sorted_values[idx]
 
-    # Interpolation factor
     alpha = (quantile_weight - w_below) / (w_above - w_below)
     return sorted_values[idx - 1] + alpha * (sorted_values[idx] - sorted_values[idx - 1])

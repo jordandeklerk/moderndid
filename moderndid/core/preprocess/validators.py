@@ -251,7 +251,7 @@ class PrePostColumnValidator(BaseValidator):
         if not isinstance(config, TwoPeriodDIDConfig):
             return self._create_result(errors, warnings)
 
-        # Since the formula engine evaluates a transformed term such as I(x**2), only the plain terms are checked here.
+        # The formula engine evaluates a transformed term such as I(x**2). Only the plain terms are checked here.
         column_terms = []
         if config.xformla and config.xformla != "~1":
             column_terms = get_column_terms(config.xformla)
@@ -278,7 +278,7 @@ class PrePostColumnValidator(BaseValidator):
             if config.yname in data_columns and not _is_numeric_dtype(df[config.yname]):
                 errors.append(f"yname = '{config.yname}' is not numeric. Please convert it")
 
-            # Since a transformed term such as I(x**2) still reads its columns, the check covers them too.
+            # The check also covers the columns that a transformed term such as I(x**2) reads.
             formula_columns = []
             if config.xformla and config.xformla != "~1":
                 formula_columns = get_formula_columns(config.xformla, data_columns)
@@ -446,7 +446,7 @@ class DIDInterTreatmentValidator(BaseValidator):
         errors = []
         warnings = []
 
-        # Since the intertemporal estimator keeps rows with a missing treatment, only the observed values count.
+        # The intertemporal estimator keeps rows with a missing treatment. Only the observed values count.
         treatment_changes = df.group_by(config.gname).agg(
             pl.col(config.dname).drop_nulls().n_unique().alias("n_unique")
         )

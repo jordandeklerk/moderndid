@@ -87,7 +87,6 @@ class TestAttGtBackendParam:
             backend="numpy",
         )
 
-        # Backend must still be numpy after the call
         assert get_backend() is np
         assert result is not None
 

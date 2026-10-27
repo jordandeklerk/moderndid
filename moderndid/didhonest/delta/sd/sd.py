@@ -131,7 +131,6 @@ def compute_conditional_cs_sd(
     else:
         rows_for_arp = None
 
-    # Handle special case of single post-period
     if num_post_periods == 1:
         return _compute_cs_sd_no_nuisance(
             betahat=betahat,
@@ -311,18 +310,14 @@ def _create_sd_constraint_matrix(
     ndarray
         Constraint matrix A of shape (2*(num_constraints), num_periods).
     """
-    # First construct the positive moments matrix
-    # Each row represents one second difference constraint
     num_constraints = num_pre_periods + num_post_periods - 1
     total_periods = num_pre_periods + num_post_periods + 1
 
     A_positive = create_second_differences_matrix(num_constraints, total_periods)
 
-    # If drop_zero_period, remove the column for period 0
     if drop_zero_period:
         A_positive = np.delete(A_positive, num_pre_periods, axis=1)
 
-    # If requested, remove constraints that only involve pre-periods
     if post_period_moments_only and num_post_periods > 1:
         post_period_start = num_pre_periods if drop_zero_period else num_pre_periods + 1
         post_period_indices = np.arange(post_period_start, A_positive.shape[1])

@@ -51,7 +51,7 @@ def mboot_did(
     rng = xp.random.default_rng(random_state)
 
     sqrt5 = np.sqrt(5)
-    # Since CuPy's Generator.binomial rejects a NumPy scalar probability, the probability is a Python float.
+    # The probability is a Python float because CuPy's Generator.binomial rejects a NumPy scalar probability.
     probability = float((1 + sqrt5) / (2 * sqrt5))
     bootstrap_estimates = np.empty(biters)
     # Batches of about 16 million weights bound the memory a large sample needs.

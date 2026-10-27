@@ -309,7 +309,7 @@ def _ddd_mp_rc(
         if result is None or result[0] is None:
             continue
         att_entry, inf_data, se_val = result
-        # Since a skipped cell takes no column, each kept cell's column sits at its position among the estimates.
+        # A skipped cell takes no column. Each kept cell's column sits at its position among the estimates.
         column = len(attgt_list)
         attgt_list.append(att_entry)
         if inf_data is not None:
@@ -334,7 +334,7 @@ def _ddd_mp_rc(
     cluster_vals = None
     if cluster is not None:
         cluster_vals = data[cluster].to_numpy()
-        # Since only the eligible units of an enabling cohort are treated, they alone count toward its clusters.
+        # Only the eligible units of an enabling cohort are treated. They alone count toward its clusters.
         obs_cohorts = np.where(obs_partition == 1, obs_groups, 0)
         warn_few_clusters(cluster_vals, {g: cluster_vals[obs_cohorts == g] for g in np.unique(groups_array)})
 
@@ -355,7 +355,7 @@ def _ddd_mp_rc(
         "boot": boot,
         "biters": biters if boot else None,
         "cband": cband if boot else None,
-        # Since clusters of one unit each leave the standard errors at the unit level, the report names none.
+        # Clusters of one unit each leave the standard errors at the unit level. The report then names none.
         "cluster": cluster if _clusters_group_units(cluster_vals) else None,
         "alpha": alpha,
         "trim_level": trim_level,

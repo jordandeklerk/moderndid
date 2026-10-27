@@ -114,7 +114,7 @@ def python_rows(estimator, result):
     if estimator == "agg_ddd":
         return aggregation_rows(result, result.egt, result.att_egt, result.se_egt)
     if estimator == "cont_did":
-        # Since the two bootstraps use independent draws, the influence functions give deterministic standard errors.
+        # The two bootstraps use independent draws. The influence functions give deterministic standard errors.
         influence_functions = (
             np.asarray(result.overall_att_inf_func),
             np.asarray(result.overall_acrt_inf_func),
@@ -163,7 +163,7 @@ def averaged_cohorts(fitted, aggregation):
     """Count the cohorts that each output of a triple-difference aggregation averages."""
     groups = np.asarray(fitted.groups)
     events = np.asarray(fitted.times) - groups
-    # Since every cohort's base-period effect is fixed at zero, that cell adds nothing to a cohort-share term.
+    # Every cohort's base-period effect is fixed at zero. That cell adds nothing to a cohort-share term.
     cohorts = {event: set(groups[(events == event) & (events != -1)]) for event in np.unique(events)}
     if aggregation == "dynamic":
         counts = {f"{event:.0f}": len(members) for event, members in cohorts.items()}
@@ -189,7 +189,7 @@ def known_differences(estimator, aggregation, keys, cohorts=None):
             "and scale each ACRT cell by its size instead of its treated count.",
         )
     if estimator == "agg_ddd":
-        # Since every cohort of make_panel is half eligible, shares of eligible units and of all units give the same
+        # Every cohort of make_panel is half eligible. Shares of eligible units and of all units then give the same
         # estimates. A workload whose cohorts differ in eligible share would need its multi-cohort estimates here.
         reason = (
             "The reference counts every unit of an enabling cohort in the cohort shares instead of only the "
@@ -322,7 +322,7 @@ def run_case(estimator, profile, aggregation, repeats):
         else:
             check_estimate(estimator, result)
         extracted = python_rows(estimator, result)
-        # Since make_aggregation binds the fitted ddd result as the first argument, the call carries its cohorts.
+        # The call carries its cohorts because make_aggregation binds the fitted ddd result as the first argument.
         cohorts = averaged_cohorts(call.args[0], aggregation) if estimator == "agg_ddd" else None
         row["python_cells"] = len(extracted[0])
         seconds = []

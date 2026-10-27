@@ -89,8 +89,7 @@ def load_acemoglu():
 
     df = to_polars(data)
 
-    # Convert string Unit identifiers to numeric for compatibility with
-    # estimators that require numeric panel IDs.
+    # Some estimators require numeric panel IDs.
     if df["Unit"].dtype == pl.String:
         units = sorted(df["Unit"].unique().to_list())
         unit_map = {u: i for i, u in enumerate(units)}

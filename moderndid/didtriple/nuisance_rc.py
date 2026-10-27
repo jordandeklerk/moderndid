@@ -332,7 +332,6 @@ def _compute_did_rc(
         mean_w_cont_post = None
 
     else:
-        # DR or IPW estimator
         mean_w_cont_pre = xp.mean(w_cont_pre)
         mean_w_cont_post = xp.mean(w_cont_post)
 
@@ -569,7 +568,7 @@ def _compute_inf_func_rc(
 
         inf_treat_or_post = asy_lin_rep_ols_post @ treat_moment_post
         inf_treat_or_pre = asy_lin_rep_ols_pre @ treat_moment_pre
-        # Since the pre-period mean enters each component with a minus sign, so does its regression's estimation effect.
+        # The pre-period mean enters each component with a minus sign. So does its regression's estimation effect.
         inf_treat_or = inf_treat_or_post - inf_treat_or_pre
 
         cont_reg_moment_post = -xp.mean((w_cont_post * sub_post)[:, None] * sub_covariates, axis=0) / mean_w_cont_post
@@ -603,7 +602,7 @@ def _compute_inf_func_rc(
 
 def _invert_gram(xp, gram):
     """Invert a small Gram matrix on the host and take the pseudo-inverse when it is nearly singular."""
-    # Since NumPy decides and inverts on the host, a GPU run takes the branch and values of a CPU run.
+    # NumPy decides and inverts on the host. A GPU run therefore takes the branch and values of a CPU run.
     gram = to_numpy(gram)
     s = np.linalg.svd(gram, compute_uv=False)
     cond = s[0] / s[-1] if s[-1] > 0 else float("inf")

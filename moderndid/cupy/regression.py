@@ -44,7 +44,7 @@ def cupy_wls(y, X, weights, return_condition_number=False):
         beta = xp.asarray(np.linalg.lstsq(r, effects, rcond=1e-15)[0])
         fitted = X @ beta
         if return_condition_number:
-            # Since Q has orthonormal columns, R has the singular values of the weighted design.
+            # R has the singular values of the weighted design because Q has orthonormal columns.
             return beta, fitted, float(np.linalg.cond(r))
         return beta, fitted
     except Exception as e:
@@ -127,8 +127,8 @@ def cupy_logistic_irls(y, X, weights, max_iter=100, tol=1e-8, return_converged=F
             deviance = new_deviance
             if converged:
                 break
-        # Since the iterations keep rounding-level singular values of a collinear design as the CPU fit does,
-        # the coefficients solve the last system again with the 1e-15 cutoff of cupy_wls.
+        # The iterations keep rounding-level singular values of a collinear design as the CPU fit does. The coefficients
+        # then solve the last system again with the 1e-15 cutoff of cupy_wls.
         if max_iter > 0:
             beta = xp.asarray(np.linalg.lstsq(r, effects, rcond=1e-15)[0])
         mu = 1 / (1 + xp.exp(-(X @ beta)))
@@ -153,7 +153,7 @@ def _reduced_system(xp, X, weights, response):
 def _binomial_deviance(xp, y, mu, weights):
     """Return the weighted binomial deviance with each log ratio floored at machine precision."""
     eps = np.finfo(np.float64).eps
-    # Since a fitted probability can round to exactly zero or one, the offsets keep each ratio finite.
+    # A fitted probability can round to exactly zero or one. The offsets keep each ratio finite.
     success = xp.maximum(y / (mu + 1e-20), eps)
     failure = xp.maximum((1 - y) / (1 - mu + 1e-20), eps)
     return float(xp.sum(2 * weights * (y * xp.log(success) + (1 - y) * xp.log(failure))))

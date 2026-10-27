@@ -323,8 +323,8 @@ def didml(
         idname=idname,
         gname=gname,
         xformla=xformla if xformla is not None else "~1",
-        # Since preprocessing builds the outcome tensor only for a balanced panel and every cell reads it,
-        # units missing from any period are dropped as att_gt does by default.
+        # Every cell reads the outcome tensor that preprocessing builds only for a balanced panel. Units missing from
+        # any period are dropped, as att_gt does by default.
         allow_unbalanced_panel=False,
         weightsname=weightsname,
         alpha=alpha,
@@ -544,8 +544,8 @@ def _pretest_wald(att_values, vcov, groups, times, anticipation, n_draws=None):
     if n_draws is None:
         return wald_stat, round(1 - scipy.stats.chi2.cdf(wald_stat, n_pre), 5)
 
-    # Since a covariance from n_draws draws carries their sampling noise, the statistic is Hotelling's T-squared,
-    # a scaled F, rather than a chi-square.
+    # A covariance from n_draws draws carries their sampling noise. The statistic is therefore Hotelling's T-squared, a
+    # scaled F, rather than a chi-square.
     scaled = wald_stat * (n_draws - n_pre) / (n_pre * (n_draws - 1))
     return wald_stat, round(float(scipy.stats.f.sf(scaled, n_pre, n_draws - n_pre)), 5)
 
@@ -557,8 +557,8 @@ def _build_unit_period_index(dp):
     tname = dp.config.tname
     gname = dp.config.gname
 
-    # Since the per-cell tensors slice the data in (tname, gname, idname) order, the first
-    # time-period block of that sort gives the unit order of every sparse-matrix row.
+    # The per-cell tensors slice the data in (tname, gname, idname) order. The first time-period block of that sort
+    # gives the unit order of every sparse-matrix row.
     first_period_block = dp.data.sort([tname, gname, idname]).slice(0, n_units)
     unit_ids = first_period_block[idname].to_numpy()
 

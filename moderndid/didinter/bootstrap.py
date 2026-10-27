@@ -85,8 +85,7 @@ def cluster_bootstrap(
     tname = config.tname
     bs_group = config.cluster if config.cluster else gname
 
-    # Since the full-sample estimate counts a NaN or infinite cluster as missing,
-    # such a cluster must not enter the draws.
+    # A NaN or infinite cluster counts as missing in the full-sample estimate and must not enter the draws.
     data = nonfinite_to_null(DIDInterColumnSelector().transform(data, config)).filter(pl.col(bs_group).is_not_null())
     data = data.with_columns(
         (pl.col(bs_group).min().over(gname).rank("dense") - 1).cast(pl.Int64).alias(".boot_cluster")
@@ -112,15 +111,15 @@ def cluster_bootstrap(
 
     steps = DataTransformerPipeline.get_didinter_pipeline().transformers
     # Every step before FgVariationFilter reads one group at a time, apart from the period ranks, the baseline treatment
-    # ranks, and the normalized weights. Since a draw copies whole groups, each copy gets the rows of its group.
+    # ranks, and the normalized weights. A draw copies whole groups. Each copy gets the rows of its group.
     n_group_steps = next(i for i, step in enumerate(steps) if isinstance(step, FgVariationFilter))
     raw_rows = _ClusterRows(data, cluster_index, unit_index, n_clusters, n_units, gname)
 
-    # Since a group's rows without a period have no set order, every draw of a panel with such rows runs every step.
+    # A group's rows without a period have no set order. Every draw of a panel with such rows runs every step.
     preprocessed_rows = cluster_periods = None
     if not data[tname].has_nulls():
-        # Like each draw, these steps leave out the cluster. Since preprocessing records the periods in the
-        # configuration, they get a copy of it.
+        # These steps leave out the cluster as each draw does. They get a copy of the configuration because
+        # preprocessing records the periods in it.
         preprocessed_rows = raw_rows.preprocess(steps[:n_group_steps], replace(config, cluster=None))
         period_index = data[tname].rank("dense").cast(pl.Int64).to_numpy() - 1
         cluster_periods = np.zeros((n_clusters, period_index.max() + 1), dtype=bool)
@@ -128,14 +127,14 @@ def cluster_bootstrap(
 
     def estimate(sampled_ids):
         """Estimate one draw from the clusters it samples."""
-        # Since the full sample passed the weight check, a draw can fail it only when none of its weights is
-        # positive. Like a draw without switchers, such a draw has no estimates and drops out of the standard errors.
+        # The full sample passed the weight check. A draw can fail it only when none of its weights is positive. Such a
+        # draw has no estimates and drops out of the standard errors as a draw without switchers does.
         if positive_weight is not None and not positive_weight[sampled_ids].any():
             return None
         if preprocessed_rows is None or not cluster_periods[sampled_ids].any(axis=0).all():
             return compute_func(raw_rows.draw(sampled_ids), config, steps)
         df = preprocessed_rows.draw(sampled_ids).sort([gname, tname])
-        # Since the dense rank of the baseline treatments depends on the groups in the draw, each draw ranks its own.
+        # Each draw ranks its own baseline treatments because their dense rank depends on the groups in the draw.
         df = df.with_columns(pl.col("d_sq").rank("dense").cast(pl.Int64).alias("d_sq_int"))
         return compute_func(df, config, steps[n_group_steps:])
 
@@ -186,7 +185,7 @@ def cluster_bootstrap(
 def _draws_per_chunk(n_clusters, n_jobs):
     """Return how many draws to generate and estimate at a time."""
     n_threads = (os.cpu_count() or 1) if n_jobs == -1 else n_jobs
-    # Since each draw holds an id per cluster, chunks of 2**22 ids bound memory. Between 8 and 64 draws per thread keep
+    # Chunks of 2**22 ids bound memory because each draw holds an id per cluster. Between 8 and 64 draws per thread keep
     # the threads busy and the queue short enough that a failing draw or Ctrl-C does not wait long.
     return min(max((1 << 22) // n_clusters, 8 * n_threads), 64 * n_threads)
 
@@ -215,7 +214,7 @@ class _ClusterRows:
         frame = self.frame.with_columns(pl.Series(self.gname, self.units))
         for step in steps:
             frame = step.transform(frame, config)
-        # Since the normalized weights depend on a draw's rows and no later step reads them, the draws go without them.
+        # The normalized weights depend on a draw's rows and no later step reads them. The draws go without them.
         frame = frame.drop(WEIGHTS_COLUMN, strict=False)
         unit_cluster = np.empty(self.n_units, dtype=np.int64)
         unit_cluster[self.units] = np.repeat(np.arange(len(self.counts)), self.counts)

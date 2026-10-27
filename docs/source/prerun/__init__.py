@@ -25,7 +25,7 @@ def stored(name, compute):
     """
     path = Path(__file__).with_name(f"{name}.pkl")
     if not path.exists():
-        # Read the Docs stops a build at fifteen minutes, so it never runs the slow estimators.
+        # Read the Docs stops a build at fifteen minutes. A build there never runs the slow estimators.
         if os.environ.get("READTHEDOCS") == "True":
             raise FileNotFoundError(f"{path.name} is missing. Build the docs locally to save it, then commit it")
         result = compute()

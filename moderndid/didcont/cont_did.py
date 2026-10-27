@@ -349,7 +349,7 @@ def cont_did(
 
     if clustervars is not None:
         cluster_names = [clustervars] if isinstance(clustervars, str) else list(clustervars)
-        # Since the standard errors treat each unit as an independent observation, clustering by idname changes nothing.
+        # The standard errors treat each unit as an independent observation. Clustering by idname changes nothing.
         other_clusters = [name for name in cluster_names if name != idname]
         if other_clusters:
             warnings.warn(
@@ -556,8 +556,8 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     distinct_doses = len(np.unique(positive_doses))
     coefficients = degree + len(cell_knots) + 1
 
-    # Since the binary ATT needs no spline, a cell without a unique spline fit still reports it. The two counts
-    # let the warning tell a cohort with one dose from a cohort whose doses nearly coincide.
+    # A cell without a unique spline fit still reports the binary ATT because that effect needs no spline. The two
+    # counts let the warning tell a cohort with one dose from a cohort whose doses nearly coincide.
     no_curve = AttgtResult(
         attgt=np.nan,
         inf_func=np.full(n_cell, np.nan),
@@ -782,8 +782,7 @@ def _estimate_cck(cont_did_data, original_data, random_state=None):
     )
 
     att_d = cck_res.h
-    # npiv treats the comparison mean as known. Since ATT(d) subtracts the estimated mean, the variance
-    # of that mean adds to npiv's.
+    # npiv treats the comparison mean as known. The variance of the estimated mean that ATT(d) subtracts adds to npiv's.
     n_control = int(np.sum(dose == 0))
     se_m0 = np.sqrt(np.sum((dy[dose == 0] - m0) ** 2)) / n_control
     att_d_se = np.sqrt(to_numpy(cck_res.asy_se) ** 2 + se_m0**2)
@@ -805,8 +804,8 @@ def _estimate_cck(cont_did_data, original_data, random_state=None):
 
     ptep = _build_pte_params(cont_did_data, gt_type="att")
 
-    # Since pte_default prepares the raw data itself, a decimal outcome or dose becomes a double here as in
-    # preprocessing. cont_did has already rejected weights and covariates.
+    # pte_default prepares the raw data itself. A decimal outcome or dose becomes a double here, as in preprocessing.
+    # cont_did has already rejected weights and covariates.
     original_data = decimal_to_float(original_data, [config.yname, config.dname])
     overall_att_res = pte_default(
         yname=config.yname,
@@ -828,7 +827,7 @@ def _estimate_cck(cont_did_data, original_data, random_state=None):
     w_treated = dose[dose > 0]
     n_breaks = cck_res.j_x_segments + 1
 
-    # Since npiv separates tied quantile knots by a tiny amount, the basis here does the same to match its coefficients.
+    # npiv separates tied quantile knots by a tiny amount. The basis here does the same to match its coefficients.
     knots = np.quantile(w_treated, np.linspace(0, 1, n_breaks))
     knots = knots + np.linspace(0, 1e-10 * (np.max(w_treated) - np.min(w_treated)), n_breaks)
     spline_dosage_result = gsl_bs(

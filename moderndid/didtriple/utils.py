@@ -219,7 +219,7 @@ def _logit_cov_params(xp, covariates, weights, ps):
     clipped = xp.clip(ps, eps, 1 - eps)
     root = xp.sqrt(weights * clipped * (1 - clipped))
     triangular = to_numpy(xp.linalg.qr(root[:, None] * covariates, mode="r"))
-    # Since the triangular factor has the singular values of the weighted design, its pseudo-inverse treats a
-    # rank-deficient design as the CPU fit does rather than inverting rounding noise.
+    # The triangular factor has the singular values of the weighted design. Its pseudo-inverse treats a rank-deficient
+    # design as the CPU fit does rather than inverting rounding noise.
     inverse = np.linalg.pinv(triangular)
     return xp.asarray(inverse @ inverse.T)

@@ -198,8 +198,8 @@ def test_mp_formatting_explains_the_missing_pre_test_of_a_clustered_fit(estimati
         estimation_params=estimation_params,
     )
     explanation = [
-        " Since a Wald test on a cluster-robust covariance rejects too often at",
-        " realistic cluster counts, no pre-test of parallel trends is reported.",
+        " No pre-test of parallel trends is reported, because a Wald test on a",
+        " cluster-robust covariance rejects too often at realistic cluster counts.",
         " Use the bootstrap's uniform bands over the pre-treatment cells instead.",
     ]
 

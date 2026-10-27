@@ -22,8 +22,8 @@ def format_dyn_balancing_result(result):
     params = result.estimation_params
     alpha = params.get("alpha", 0.05)
     conf_level = int((1 - alpha) * 100)
-    # Since the robust quantile equals the Gaussian one only when the setting is off, a result
-    # built without the setting still reveals it.
+    # The robust quantile equals the Gaussian one only when the setting is off. A result built without the setting still
+    # reveals it.
     robust = params.get("robust_quantile", result.robust_quantile != result.gaussian_quantile)
 
     se = result.se

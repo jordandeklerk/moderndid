@@ -74,8 +74,8 @@ def format_aggte_result(result):
             lines.append(" Time Effects:")
             col1_header = "Time"
 
-        # aggte draws its simultaneous bands from a bootstrap even without boot=True, and it clears
-        # uniform_bands when it falls back to pointwise intervals, so the flag alone decides the label.
+        # aggte draws its simultaneous bands from a bootstrap even without boot=True. It clears uniform_bands when it
+        # falls back to pointwise intervals. The flag alone therefore decides the label.
         uniform_bands = result.estimation_params.get("uniform_bands", False)
         cb_label = "Simult. Conf. Band" if uniform_bands else "Pointwise Conf. Band"
 
@@ -164,10 +164,10 @@ def format_mp_result(result):
         lines.append("")
         lines.append(f" P-value for pre-test of parallel trends assumption:  {result.wald_pvalue:.4f}")
     elif extract_clustervar(result.estimation_params) is not None:
-        # Since a missing pre-test would read as an oversight, the report says why a clustered fit has none.
+        # A missing pre-test would read as an oversight. The report says why a clustered fit has none.
         lines.append("")
-        lines.append(" Since a Wald test on a cluster-robust covariance rejects too often at")
-        lines.append(" realistic cluster counts, no pre-test of parallel trends is reported.")
+        lines.append(" No pre-test of parallel trends is reported, because a Wald test on a")
+        lines.append(" cluster-robust covariance rejects too often at realistic cluster counts.")
         lines.append(" Use the bootstrap's uniform bands over the pre-treatment cells instead.")
 
     lines.extend(format_section_header("Data Info"))

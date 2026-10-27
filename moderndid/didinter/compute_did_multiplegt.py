@@ -55,8 +55,8 @@ def compute_did_multiplegt(preprocessed, data, n_jobs=1):
 
     df, coefficients = compute_control_coefficients(df, config, n_groups)
 
-    # Since a group's first row carries its influence function, clustering needs the cluster of each row the
-    # balancer inserted. The heterogeneity regressions read the column as observed.
+    # Clustering needs the cluster of each row the balancer inserted because a group's first row carries its influence
+    # function. The heterogeneity regressions read the column as observed.
     het_df = df
     if config.cluster:
         cluster = pl.col(config.cluster)
@@ -163,10 +163,10 @@ def compute_did_multiplegt(preprocessed, data, n_jobs=1):
     heterogeneity = _compute_heterogeneity(het_df, config)
 
     groups = preprocessed.time_invariant_data
-    # Since S_g holds floats, is_in needs the directions as floats too.
+    # The directions become floats for is_in because S_g holds floats.
     directions = [float(d) for d in DIDInterConfigUpdater.switcher_directions(config)]
-    # Since groups that switch in the direction left out are controls until they switch, they count as units
-    # but not as switchers.
+    # Groups that switch in the direction left out are controls until they switch. They count as units but not as
+    # switchers.
     switches = (groups["F_g"] != float("inf")) & groups["S_g"].is_in(directions)
 
     return DIDInterResult(
@@ -209,7 +209,7 @@ def _compute_bootstrap_estimates(df, config, steps):
     if config.placebo > 0:
         nan_result["placebos"] = np.full(config.placebo, np.nan)
 
-    # Since point estimates never use the cluster, a draw leaves it out. Preprocessing records the draw's periods in
+    # The cluster stays out of a draw because point estimates never use it. Preprocessing records the draw's periods in
     # this copy rather than in a configuration that other draws share.
     config = replace(config, cluster=None)
     for step in steps:
@@ -297,7 +297,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
 
     df = df.sort([gname, tname])
     unit_rows = df.filter(pl.col("first_obs_by_gp") == 1)
-    # Since NumPy holds no 128-bit integers, the clusters reach it as dense codes in the order of their labels.
+    # NumPy holds no 128-bit integers. The clusters reach it as dense codes in the order of their labels.
     unit_clusters = unit_rows[config.cluster].rank("dense") if config.cluster else None
     directions = [d for d in DIDInterConfigUpdater.switcher_directions(config) if (df["S_g"] == d).any()]
 
@@ -451,7 +451,7 @@ def _estimate_horizon(
             (pl.col(yname).shift(2 * horizon).over(gname) - pl.col(yname).shift(horizon).over(gname)).alias(diff_col)
         )
 
-    # Since the treatment paths only set the cohorts of the variance, point estimates skip them.
+    # Point estimates skip the treatment paths because those only set the cohorts of the variance.
     if not point_only:
         df = build_treatment_paths(df, horizon, config)
 
@@ -475,7 +475,7 @@ def _estimate_horizon(
     df = df.with_columns((pl.col(never_col) * pl.col("weight_gt")).alias(never_w_col))
     df = df.with_columns(pl.col(never_w_col).sum().over(_get_group_vars(config)).alias(f".n_control_{horizon}"))
 
-    # Since the adjustment leaves missing outcome differences missing, the flags of each pass do not depend on it.
+    # The flags of each pass do not depend on the adjustment because it leaves missing outcome differences missing.
     if coefficients:
         df = apply_control_adjustment(df, config, horizon, coefficients, horizon_type)
 
@@ -619,8 +619,7 @@ def _compute_direction_pass(
         & pl.col(n_control_col).is_not_null()
     )
 
-    # Since a placebo switcher must also count toward the effect at the same lag, its outcome at F_g - 1 + l
-    # must be observed.
+    # A placebo switcher must also count toward the effect at the same lag. It needs an observed outcome at F_g - 1 + l.
     if horizon_type == "placebo":
         base_cond = base_cond & pl.col(yname).is_not_null()
 
@@ -641,7 +640,7 @@ def _compute_direction_pass(
     df = df.with_columns(pl.col(dist_w_col).sum().over(group_vars).alias(n_treated_col))
 
     switcher_filter = (pl.col(dist_col) == 1.0) & pl.col(diff_col).is_not_null() & switcher_mask
-    # Since a point estimate only needs to know whether the pass has switchers, it skips counting them.
+    # A point estimate skips counting the switchers because it only needs to know whether the pass has any.
     if point_only:
         n_switchers_unweighted = None
         has_switchers = df.select(switcher_filter.any()).item()
@@ -674,7 +673,7 @@ def _compute_direction_pass(
     df = df.with_columns((pl.col(inf_temp_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_col))
 
     did_estimate = df.select(pl.col(inf_col).sum()).item() / n_groups
-    # Since only normalized effects divide by the treatment change, a point estimate skips it otherwise.
+    # Only normalized effects divide by the treatment change. A point estimate skips it otherwise.
     delta_d = None
     if config.normalized or not point_only:
         delta_d = _compute_delta_d(df, config, horizon, horizon_type, dist_col)
@@ -778,8 +777,8 @@ def _run_het_regression(het_sample, covariates, horizon, config):
     """
     y = het_sample[".prod_het"].to_numpy()
 
-    # Since the regression has one row per group, each group carries its user weight in its first period even when
-    # the outcome is missing there. A group without a weight in that period drops out.
+    # The regression has one row per group. Each group carries its user weight in its first period even when the outcome
+    # is missing there. A group without a weight in that period drops out.
     weightsname = getattr(config, "weightsname", None)
     if weightsname is not None:
         weights = het_sample[weightsname].cast(pl.Float64).fill_null(0.0).to_numpy()
@@ -834,7 +833,7 @@ def _run_het_regression(het_sample, covariates, horizon, config):
         cluster_col = getattr(config, "cluster", None)
         cluster_sizes = None
         if cluster_col:
-            # Since cluster ids can be strings or integers of any size, each cluster gets a code in sorted order.
+            # Each cluster gets a code in sorted order because cluster ids can be strings or integers of any size.
             _, cluster_codes, cluster_sizes = np.unique(
                 het_sample[".cluster_het"].to_numpy()[valid_mask], return_inverse=True, return_counts=True
             )
@@ -990,8 +989,8 @@ def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
     else:
         sum_by_unit = sum_by_unit.with_columns(pl.lit(1.0).alias("weight_gt"))
 
-    # Since polars does not fix the order of groups, unique rows, or join output, sorting the units makes both sums
-    # below add them in the same order on every run.
+    # Polars does not fix the order of groups, unique rows, or join output. Sorting the units makes both sums below add
+    # them in the same order on every run.
     if not sum_by_unit[gname].is_sorted():
         sum_by_unit = sum_by_unit.sort(gname)
 
@@ -1052,7 +1051,7 @@ def _compute_ate(effects_results, z_crit, n_groups, point_only=False):
             n_switchers=np.nan,
         )
 
-    # Since a horizon that no switcher reaches keeps a zero influence column, the columns line up with the horizons.
+    # The columns line up with the horizons because a horizon that no switcher reaches keeps a zero influence column.
     inf_func_unnorm = effects_results["influence_func_unnorm"]
     weighted_inf = np.zeros(inf_func_unnorm.shape[0])
     for column, weight in zip(inf_func_unnorm[:, valid_mask].T, weights, strict=True):
@@ -1184,7 +1183,7 @@ def _compute_heterogeneity(df, config):
 
     gname = config.gname
     tname = config.tname
-    # Since trends_lin differences the outcome, the regressions read the outcome in levels.
+    # The regressions read the outcome in levels because trends_lin differences it.
     outcome = ".outcome_levels" if config.trends_lin else config.yname
 
     valid_covariates = []
@@ -1226,8 +1225,8 @@ def _compute_heterogeneity(df, config):
         df = df.with_columns(pl.col(".Y_baseline_m2").mean().over(gname).alias(".Y_baseline_m2"))
         df = df.with_columns((pl.col(".feasible_het") & pl.col(".Y_baseline_m2").is_not_null()).alias(".feasible_het"))
 
-    # Since a row the balancer inserted has no cluster, the Bell-McCaffrey blocks read each group's observed cluster.
-    # Filling the cluster column itself would move the estimates when it is also a covariate or in trends_nonparam.
+    # The Bell-McCaffrey blocks read each group's observed cluster because a row the balancer inserted has none. Filling
+    # the cluster column itself would move the estimates when it is also a covariate or in trends_nonparam.
     if config.cluster and config.predict_het_hc2bm:
         df = df.with_columns(pl.col(config.cluster).min().over(gname).rank("dense").alias(".cluster_het"))
 

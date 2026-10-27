@@ -42,12 +42,10 @@ from .propensity.ipw_estimators import ipw_rc
 from .propensity.pscore_ipt import calculate_pscore_ipt
 
 __all__ = [
-    # Propensity score estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
     "calculate_pscore_ipt",
-    # DR-DiD estimators
     "drdid",
     "drdid_imp_local_rc",
     "drdid_imp_panel",
@@ -58,16 +56,11 @@ __all__ = [
     "ipw_did_panel",
     "ipw_did_rc",
     "ipw_rc",
-    # IPW DiD estimators
     "ipwdid",
-    # Data module
     "load_nsw",
-    # Bootstrapping functions
     "mboot_did",
     "mboot_twfep_did",
-    # Outcome regression estimators
     "ordid",
-    # Print function
     "print_did_result",
     "reg_did_panel",
     "reg_did_rc",
@@ -89,7 +82,6 @@ __all__ = [
     "wboot_std_ipw_rc",
     "wboot_twfe_panel",
     "wboot_twfe_rc",
-    # Regression functions
     "wols_panel",
     "wols_rc",
 ]

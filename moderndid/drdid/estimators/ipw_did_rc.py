@@ -144,7 +144,6 @@ def ipw_did_rc(
         influence_quantities,
     )
 
-    # Inference
     if not boot:
         se_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = ipw_att + 1.96 * se_att
@@ -285,13 +284,11 @@ def _get_influence_components(y, weights, pi_hat, lambda_hat, one_minus_lambda_h
     w_cont_pre = weights["w_cont_pre"]
     w_cont_post = weights["w_cont_post"]
 
-    # Elements of the influence function (summands)
     eta_treat_pre = w_treat_pre * y / (pi_hat * one_minus_lambda_hat)
     eta_treat_post = w_treat_post * y / (pi_hat * lambda_hat)
     eta_cont_pre = w_cont_pre * y / (pi_hat * one_minus_lambda_hat)
     eta_cont_post = w_cont_post * y / (pi_hat * lambda_hat)
 
-    # Estimator of each component
     att_treat_pre = np.mean(eta_treat_pre)
     att_treat_post = np.mean(eta_treat_post)
     att_cont_pre = np.mean(eta_cont_pre)
@@ -311,7 +308,6 @@ def _get_influence_components(y, weights, pi_hat, lambda_hat, one_minus_lambda_h
 
 def _get_influence_quantities(d, covariates, ps_fit, ps_weights, i_weights, n_units):
     """Compute quantities needed for influence function."""
-    # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
     ps_hessian = covariates.T @ (ps_weights[:, np.newaxis] * covariates)
     try:
@@ -330,7 +326,6 @@ def _compute_influence_function(
     post, d, covariates, i_weights, pi_hat, lambda_hat, one_minus_lambda_hat, influence_components, influence_quantities
 ):
     """Compute the influence function for IPW estimator."""
-    # Extract components
     eta_treat_pre = influence_components["eta_treat_pre"]
     eta_treat_post = influence_components["eta_treat_post"]
     eta_cont_pre = influence_components["eta_cont_pre"]
@@ -342,7 +337,6 @@ def _compute_influence_function(
 
     asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]
 
-    # Influence function of the treated components
     inf_treat_post1 = eta_treat_post - att_treat_post
     inf_treat_post2 = -(i_weights * d - pi_hat) * att_treat_post / pi_hat
     inf_treat_post3 = -(i_weights * post - lambda_hat) * att_treat_post / lambda_hat
@@ -353,7 +347,6 @@ def _compute_influence_function(
     inf_treat_pre3 = -(i_weights * (1 - post) - one_minus_lambda_hat) * att_treat_pre / one_minus_lambda_hat
     inf_treat_pre = inf_treat_pre1 + inf_treat_pre2 + inf_treat_pre3
 
-    # Influence function of control components
     inf_cont_post1 = eta_cont_post - att_cont_post
     inf_cont_post2 = -(i_weights * d - pi_hat) * att_cont_post / pi_hat
     inf_cont_post3 = -(i_weights * post - lambda_hat) * att_cont_post / lambda_hat
@@ -364,15 +357,11 @@ def _compute_influence_function(
     inf_cont_pre3 = -(i_weights * (1 - post) - one_minus_lambda_hat) * att_cont_pre / one_minus_lambda_hat
     inf_cont_pre = inf_cont_pre1 + inf_cont_pre2 + inf_cont_pre3
 
-    # Estimation effect from the propensity score parameters
-    # Derivative matrix (k x 1 vector)
     mom_logit_pre = -np.mean((eta_cont_pre)[:, np.newaxis] * covariates, axis=0)
     mom_logit_post = -np.mean((eta_cont_post)[:, np.newaxis] * covariates, axis=0)
 
-    # Now the influence function related to estimation effect of pscores
     inf_logit = asy_lin_rep_ps @ (mom_logit_post - mom_logit_pre)
 
-    # Get the influence function of the IPW estimator (put all pieces together)
     att_inf_func = (inf_treat_post - inf_treat_pre) - (inf_cont_post - inf_cont_pre) + inf_logit
 
     return att_inf_func

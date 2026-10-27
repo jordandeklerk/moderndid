@@ -266,8 +266,8 @@ def attgt_pte_aggregations(attgt_list, pte_params):
         groups = np.array([time_map.get(g, g) for g in groups])
         time_periods = np.array([time_map.get(t, t) for t in time_periods])
 
-    # The group-time table lists every cell, as the multiplier bootstrap's does. Since drop_nulls keeps NaN, a cell
-    # without an estimate needs its own filter to leave the aggregates.
+    # The group-time table lists every cell, as the multiplier bootstrap's does. A cell without an estimate needs its
+    # own filter to leave the aggregates because drop_nulls keeps NaN.
     attgt_results = attgt_df.select(["group", "time_period", "att"])
     attgt_df = attgt_df.filter(pl.col("att").is_not_nan())
 

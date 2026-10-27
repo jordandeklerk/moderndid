@@ -157,7 +157,7 @@ def set_references(config, data):
         "or one later than the last period."
     )
 
-    # Since no choice of gref helps a lone treated cohort, this check runs before those of gref.
+    # This check runs before those of gref because no choice of gref helps a lone treated cohort.
     if len(treated) == 1 and not never.any():
         raise ValueError(
             f"{no_control} Since cohort {latest} is the only treated cohort, no other cohort can serve as the "
@@ -256,7 +256,7 @@ def prepare_etwfe_data(data, config):
             pl.col(tname).cast(pl.Float64).alias("_t"),
         ]
     )
-    # Since the regression parses the names it is given, it reads user columns through copies with plain names.
+    # The regression parses the names it is given. It reads user columns through copies with plain names.
     copies = [
         (config.yname, _outcome_column(config)),
         (config.idname, "__etwfe_id"),
@@ -469,7 +469,7 @@ def run_etwfe_regression(formula, data, config, vcov=None, backend=None):
     if backend is not None and config.fe != "none":
         fit_kwargs["demeaner_backend"] = backend
 
-    # Since the plots module imports the etwfe containers, this module must load without pyfixest.
+    # The plots module imports the etwfe containers. This module must load without pyfixest.
     try:
         from pyfixest import feglm, feols, fepois
     except ModuleNotFoundError as e:
@@ -564,7 +564,7 @@ def compute_emfx(fit_data, config, coef_names, beta, vcov_matrix, agg_type="simp
     else:
         df = df.filter(post)
 
-    # Since a column of event times could overwrite a column the call names, they stay an expression.
+    # A column of event times could overwrite a column the call names. The event times stay an expression.
     event = (pl.col("_t") - pl.col("_g")).cast(pl.Int64)
     if agg_type == "event" and window is not None:
         df = df.filter((event >= window[0]) & (event <= window[1]))
@@ -970,7 +970,7 @@ def _build_xvar_dm_columns(df, config):
     if len(cats) > 1:
         cats = cats[1:]
 
-    # Since each category keeps its own column and year terms, the fit does not depend on which label sorts first.
+    # Each category keeps its own column and year terms. The fit then does not depend on which label sorts first.
     for i, cat in enumerate(cats):
         dummy = (pl.col(x_col) == cat).cast(pl.Float64)
         dm_name = _formula_name(f"{x_col}_{cat}_xdm", f"__etwfe_m{i}_xdm")

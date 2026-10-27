@@ -88,7 +88,7 @@ def compute_agg_ddd(
             "partition of every unit. Pass a result of ddd, ddd_mp, or ddd_mp_rc. A result saved by an earlier "
             "version needs a new fit."
         )
-    # Since an ineligible unit is never treated, its treatment cohort is 0 whatever its enabling cohort.
+    # An ineligible unit is never treated. Its treatment cohort is 0 whatever its enabling cohort.
     unit_cohorts = np.where(np.asarray(unit_partition) == 1, ddd_result.unit_groups, 0)
     unit_weights = (
         np.ones(len(unit_cohorts))
@@ -336,7 +336,7 @@ def _compute_group(
     for i, g in enumerate(glist_recoded):
         whichg = np.where((group == g) & (g <= t) & (t <= g + max_e))[0]
 
-        # Since a cohort without eligible units has no treated unit, it has no effect to average.
+        # Without eligible units, a cohort has no treated unit and no effect to average.
         if pg_obs[whichg].sum() > 0:
             selective_att_g[i] = np.mean(att[whichg])
             weights_g = pg_obs[whichg] / pg_obs[whichg].sum()
@@ -360,7 +360,7 @@ def _compute_group(
         cluster,
     )
 
-    # Like the other aggregations, the overall effect averages only the cohorts with a post-treatment effect.
+    # The overall effect averages only the cohorts with a post-treatment effect. The other aggregations do the same.
     valid = ~np.isnan(selective_att_g)
     if valid.any():
         weights_overall = pgg[valid] / pgg[valid].sum()
@@ -416,8 +416,8 @@ def _compute_calendar(
     cluster=None,
 ):
     """Compute calendar time ATT aggregation."""
-    # A period enters only when one of its cells is treated. Since a cohort whose treated cells all failed keeps its
-    # earlier cells, it would otherwise add periods with nothing to average.
+    # A period enters only when one of its cells is treated. A cohort whose treated cells all failed keeps its earlier
+    # cells and would otherwise add periods with nothing to average.
     has_treated_cell = np.array([np.any((t == t1) & (group <= t1)) for t1 in tlist_recoded], dtype=bool)
     calendar_tlist = tlist_recoded[has_treated_cell]
 
@@ -427,7 +427,7 @@ def _compute_calendar(
     for i, t1 in enumerate(calendar_tlist):
         whicht = np.where((t == t1) & (group <= t))[0]
 
-        # As in the event study, a period whose cohorts all have a share of 0 has no effect.
+        # Here and in the event study, a period whose cohorts all have a share of 0 has no effect.
         if pg_obs[whicht].sum() > 0:
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
@@ -465,7 +465,7 @@ def _compute_calendar(
         else:
             calendar_se = _compute_se(calendar_inf_func, n, False, biters, alpha, random_state, cluster)
     else:
-        # Since the calendar aggregation ignores max_e, the warning must not name it as the cause.
+        # The calendar aggregation ignores max_e. The warning must not name it as the cause.
         _warn_without_post_treatment_effects(t - group, np.inf)
         calendar_att = np.nan
         calendar_se = np.nan

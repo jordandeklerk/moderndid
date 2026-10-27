@@ -409,7 +409,6 @@ class SplineBase(ABC):
         """X index property."""
         return self.get_x_index()
 
-    # methods
     @abstractmethod
     def basis(self, complete_basis=True):
         """Compute basis matrix."""

@@ -30,9 +30,9 @@ def aggte(
 
     A fit on a Spark DataFrame keeps sums over its units in place of their influence
     functions. From those sums aggte computes the same analytic standard errors as for
-    an in-memory fit but returns no influence functions. Since the bootstrap reuses the
-    draws that the fit stored, a call that asks for more draws, another seed, or draws
-    by unit from a clustered fit raises an error.
+    an in-memory fit but returns no influence functions. The bootstrap reuses the draws
+    that the fit stored. A call that asks for more draws, another seed, or draws by unit
+    from a clustered fit therefore raises an error.
 
     See the :ref:`staggered DiD example <example_staggered_did>` for event study,
     cohort, and overall aggregations of the minimum wage effects.
@@ -146,9 +146,9 @@ def aggte(
         \theta_{W}^O = \frac{1}{\kappa} \sum_{g \in \mathcal{G}} \sum_{t=2}^{\mathcal{T}}
         \mathbf{1}\{g \le t\} \, ATT(g, t) \, P(G = g \mid G \le \mathcal{T}),
 
-    where :math:`\kappa` makes the weights sum to one. Since a group contributes one
-    term for each period after it is treated, groups treated earlier receive more
-    weight than in :math:`\theta_{sel}^O`. The :ref:`staggered DiD background
+    where :math:`\kappa` makes the weights sum to one. A group contributes one term for
+    each period after it is treated. Groups treated earlier therefore receive more weight
+    than in :math:`\theta_{sel}^O`. The :ref:`staggered DiD background
     <background-did>` develops these weights and the influence function of an
     aggregate.
 

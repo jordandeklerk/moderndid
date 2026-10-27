@@ -116,8 +116,7 @@ def pte(
         Results object depending on gt_type.
     """
     _check_event_time_window(min_e, max_e, balance_e)
-    # Since the empirical path aggregates every event time without balancing, these options would otherwise be
-    # dropped silently.
+    # The empirical path aggregates every event time without balancing. It would otherwise drop these options silently.
     event_time_options = _event_time_options(min_e, max_e, balance_e)
     if boot_type == "empirical" and event_time_options:
         raise ValueError(
@@ -126,8 +125,8 @@ def pte(
         )
 
     setup_options = _options_for(setup_pte_fun, kwargs)
-    # Since a setup function never sees an option that it doesn't name, its settings would keep their own value of any
-    # option they record. The cells would then follow that value where the subset function follows the option.
+    # A setup function never sees an option that it doesn't name. Its settings would keep their own value of any option
+    # they record. The cells would then follow that value where the subset function follows the option.
     unhonored = [name for name in kwargs if name not in setup_options and name in PTEParams._fields]
     if unhonored:
         listed = _and_list([f"{name}={kwargs[name]!r}" for name in unhonored])
@@ -152,8 +151,8 @@ def pte(
     )
 
     res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, **kwargs)
-    # Since the empirical bootstrap below runs whenever every influence function is NaN, cells without an
-    # estimate are reported before any branch.
+    # The empirical bootstrap below runs whenever every influence function is NaN. Cells without an estimate are
+    # reported before any branch.
     _check_cell_estimates(res, ptep, gt_type, kwargs.get("aggregation", "dose"))
 
     aggregation = kwargs.get("aggregation", "dose")
@@ -405,8 +404,8 @@ def _bootstrap_draw_params(data, ptep, **kwargs):
     PTEParams
         The estimate's settings with the resampled data and the cohorts that the draw contains.
     """
-    # A draw reruns the estimate's cells, knots, and dose grid on resampled units. Since the draw
-    # renumbers units in the id column, the working id column has to follow it.
+    # A draw reruns the estimate's cells, knots, and dose grid on resampled units. The working id column copies the id
+    # column again because the draw renumbers units there.
     data = data.with_columns(pl.col(ptep.idname).alias("id"))
     g_list = np.asarray(ptep.g_list)
     if "G" in data.columns:
@@ -683,9 +682,8 @@ def setup_pte(
     sorted_original_time_periods = np.sort(original_time_periods)
     time_map = {orig: i + 1 for i, orig in enumerate(sorted_original_time_periods)}
 
-    # The "G" and "period" columns hold positions from here on, even when the input names one of them. Results
-    # and cohort shares read the data's own labels from separate columns. Since no period is 0, never-treated
-    # units keep G=0, the code that the subset functions read.
+    # "G" and "period" hold positions from here on, even when the input names one of them. Results and cohort shares
+    # read labels from separate columns. Never-treated units keep G=0 for the subset functions because no period is 0.
     data = data.with_columns(
         pl.Series("period", _map_to_idx(period_series, time_map)),
         pl.Series("G", _map_to_idx(g_series, time_map)),
@@ -706,7 +704,7 @@ def setup_pte(
     g_list = recoded_groups[np.isin(recoded_groups, t_list)]
     g_list = g_list[g_list >= (min_t_for_g + anticipation)]
 
-    # Since is_in compares only values of one type, both sides are compared as floats.
+    # is_in compares only values of one type. Both sides are compared as floats.
     groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1, dtype=float)
     data = data.filter(~pl.col("G").cast(pl.Float64).is_in(groups_to_drop))
 
@@ -917,8 +915,8 @@ def _process_pte_cell(
 
     extra_gt_returns = attgt_result.extra_gt_returns
     if isinstance(extra_gt_returns, dict) and "att_inf_func" in extra_gt_returns:
-        # Since dose cells also return the binary ATT influence function on the cell's rows, it takes the
-        # same rescaling as inf_func and keeps the full-sample row of each unit in the cell.
+        # Dose cells also return the binary ATT influence function on the cell's rows. It takes the same rescaling as
+        # inf_func and keeps the full-sample row of each unit in the cell.
         extra_gt_returns = {
             **extra_gt_returns,
             "att_inf_func": (n_units / n1) * extra_gt_returns["att_inf_func"],
@@ -970,9 +968,8 @@ def _build_pte_params(
     else:
         unit_weights = pl.lit(1.0)
 
-    # Since every working column comes from the input columns in one step, an input column that already has one of
-    # these names can't feed the wrong one. Since setup_pte codes never-treated units as G=0, they take that code here
-    # as well. One subset function then serves every setup.
+    # Every working column comes from the input columns in one step. An input column with one of these names can't feed
+    # the wrong one. Never-treated units take the G=0 code of setup_pte so that one subset function serves every setup.
     never_treated = pl.col(config.gname).is_infinite()
     data = data.with_columns(
         pl.when(never_treated).then(0).otherwise(pl.col(config.gname)).alias("G"),
@@ -1000,12 +997,12 @@ def _build_pte_params(
     g_list = groups[np.isin(groups, t_list)]
     g_list = g_list[g_list >= (min_t_for_g + anticipation)]
 
-    # Since is_in compares only values of one type, both sides are compared as floats.
+    # is_in compares only values of one type. Both sides are compared as floats.
     groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1, dtype=float)
     data = data.filter(~pl.col("G").cast(pl.Float64).is_in(groups_to_drop))
 
-    # Cells index periods by their position in "period" and "G". Since an input column may itself be named
-    # "G" or "period", results and cohort shares read the data's own period labels from separate columns.
+    # Cells index periods by their position in "period" and "G". An input column may itself be named "G" or "period".
+    # Results and cohort shares therefore read the data's own period labels from separate columns.
     period_labels = {position: period for period, position in cont_did_data.time_map.items()}
     data = data.with_columns(
         pl.col("period").replace(period_labels).alias(".period_label"),

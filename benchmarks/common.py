@@ -8,7 +8,7 @@ import numpy as np
 from benchmarks.cases import WORKLOADS, make_panel
 from moderndid import agg_ddd, aggte, att_gt, cont_did, ddd, did_multiplegt, drdid, ipwdid, ordid
 
-# Since an estimator that is not listed accepts every workload in cases.py, the table holds only the exceptions.
+# An estimator that is not listed accepts every workload in cases.py. The table holds only the exceptions.
 PROFILES = {
     "att_gt": (*WORKLOADS, "ipw", "reg"),
     "ddd": (*WORKLOADS, "ipw", "reg"),
@@ -18,7 +18,7 @@ PROFILES = {
     "ordid": ("small", "baseline", "rows", "covariates"),
 }
 
-# Since agg_ddd calls the dynamic aggregation eventstudy, each estimator's function keeps its own name for it.
+# agg_ddd calls the dynamic aggregation eventstudy. Each estimator's function keeps its own name for it.
 DYNAMIC_TYPES = {"att_gt": "dynamic", "ddd": "eventstudy"}
 
 
@@ -49,7 +49,7 @@ def make_estimator(estimator, profile):
         "boot": workload.boot,
     }
     if estimator in {"drdid", "ipwdid", "ordid"}:
-        # Since these functions take no random_state, they return before the bootstrap settings are added.
+        # These functions take no random_state. They return before the bootstrap settings are added.
         function = {"drdid": drdid, "ipwdid": ipwdid, "ordid": ordid}[estimator]
         kwargs.update(treatname="treated", panel=True)
         if estimator == "drdid":
@@ -66,7 +66,7 @@ def make_estimator(estimator, profile):
         )
     elif estimator == "cont_did":
         function = cont_did
-        # Since cont_did always bootstraps its dose curves, it takes no boot argument.
+        # cont_did takes no boot argument because it always bootstraps its dose curves.
         del kwargs["boot"]
         kwargs.update(
             gname="group", dname="dose", dvals=np.linspace(0.6, 1.9, 20), dose_est_method="parametric", cband=False

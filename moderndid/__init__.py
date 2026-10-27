@@ -5,28 +5,21 @@ from contextlib import suppress as _suppress
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
-# Version handling
 try:
     __version__ = version("moderndid")
 except PackageNotFoundError:
     __version__ = "unknown"
 
 __all__ = [
-    # GPU backend
     "HAS_CUPY",
-    # did module
     "AGGTEResult",
-    # Optional: didhonest (requires cvxpy and highspy)
     "APRCIResult",
     "ARPNuisanceCIResult",
     "ATTgtResult",
-    # Optional: didml (requires scikit-learn, cvxpy, econml, and xgboost)
     "BLPResult",
-    # Optional: didcont (requires formulaic)
     "BSpline",
     "CLANResult",
     "ComputeATTgtResult",
-    # didtriple module
     "DDDATTgtRCResult",
     "DDDATTgtResult",
     "DDDAggResult",
@@ -34,9 +27,7 @@ __all__ = [
     "DDDMultiPeriodResult",
     "DDDPanelResult",
     "DDDRCResult",
-    # Core preprocessing
     "DIDData",
-    # didinter module
     "DIDInterATEResult",
     "DIDInterEffectsResult",
     "DIDInterPlacebosResult",
@@ -52,7 +43,6 @@ __all__ = [
     "DeltaSDRMMResult",
     "DeltaSDRMResult",
     "DeltaSDResult",
-    # diddynamic module
     "DynBalancingHetResult",
     "DynBalancingHistoryResult",
     "DynBalancingResult",
@@ -67,11 +57,9 @@ __all__ = [
     "NPIVResult",
     "OriginalCSResult",
     "PTEParams",
-    # panel module
     "PanelDiagnostics",
     "SensitivityResult",
     "SplineBase",
-    # Version
     "__version__",
     "_get_first_difference",
     "_get_group",
@@ -80,12 +68,10 @@ __all__ = [
     "agg_ddd",
     "aggte",
     "aggte_didml",
-    # drdid module
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
     "amle_weights",
-    # panel module (lowercase)
     "are_varying",
     "assign_rc_ids",
     "att_gt",
@@ -139,7 +125,6 @@ __all__ = [
     "create_sensitivity_results_rm",
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
-    # Core data
     "data",
     "ddd",
     "ddd_mp",
@@ -181,7 +166,6 @@ __all__ = [
     "gen_ddd_scalable",
     "gen_did_scalable",
     "gen_simple_ddd_data",
-    # GPU backend
     "get_backend",
     "get_first_difference",
     "get_group",
@@ -224,7 +208,6 @@ __all__ = [
     "ordid",
     "panel_to_wide",
     "parse_formula",
-    # Optional: plots (requires plotnine)
     "plot_agg",
     "plot_dose_response",
     "plot_dyn_balancing",
@@ -255,7 +238,6 @@ __all__ = [
     "test_in_identified_set_flci_hybrid",
     "test_in_identified_set_lf_hybrid",
     "test_in_identified_set_max",
-    # Optional: plot themes (requires plotnine)
     "theme_minimal",
     "theme_moderndid",
     "theme_publication",
@@ -299,14 +281,12 @@ _submodules = [
     "plots",
 ]
 
-# Map attribute names to their module paths (for base/always-available imports)
+# Every install can import these names.
 _lazy_imports = {
-    # cupy.backend
     "HAS_CUPY": "moderndid.cupy.backend",
     "get_backend": "moderndid.cupy.backend",
     "set_backend": "moderndid.cupy.backend",
     "use_backend": "moderndid.cupy.backend",
-    # core.data
     "data": "moderndid.core",
     "load_cai2016": "moderndid.core.data",
     "load_ehec": "moderndid.core.data",
@@ -315,12 +295,10 @@ _lazy_imports = {
     "load_fracking": "moderndid.core.data",
     "load_mpdta": "moderndid.core.data",
     "load_nsw": "moderndid.core.data",
-    # core.preprocess
     "DIDData": "moderndid.core.preprocess",
     "preprocess_did": "moderndid.core.preprocess",
     "extract_vars_from_formula": "moderndid.core.preprocess.utils",
     "parse_formula": "moderndid.core.preprocess.utils",
-    # panel (core.panel)
     "PanelDiagnostics": "moderndid.core.panel",
     "are_varying": "moderndid.core.panel",
     "assign_rc_ids": "moderndid.core.panel",
@@ -336,7 +314,6 @@ _lazy_imports = {
     "panel_to_wide": "moderndid.core.panel",
     "scan_gaps": "moderndid.core.panel",
     "wide_to_panel": "moderndid.core.panel",
-    # did
     "AGGTEResult": "moderndid.did.container",
     "format_aggte_result": "moderndid.did.format",
     "ATTgtResult": "moderndid.did.compute_att_gt",
@@ -355,13 +332,11 @@ _lazy_imports = {
     "att_gt": "moderndid.did.att_gt",
     "compute_aggte": "moderndid.did.compute_aggte",
     "mboot": "moderndid.did.mboot",
-    # diddynamic
     "DynBalancingHetResult": "moderndid.diddynamic.container",
     "DynBalancingHistoryResult": "moderndid.diddynamic.container",
     "DynBalancingResult": "moderndid.diddynamic.container",
     "dyn_balancing": "moderndid.diddynamic.dyn_balancing",
     "load_acemoglu": "moderndid.core.data",
-    # drdid
     "drdid": "moderndid.drdid.drdid",
     "ipwdid": "moderndid.drdid.ipwdid",
     "ordid": "moderndid.drdid.ordid",
@@ -404,10 +379,8 @@ _lazy_imports = {
     "aipw_did_rc_imp2": "moderndid.drdid.propensity.aipw_estimators",
     "ipw_rc": "moderndid.drdid.propensity.ipw_estimators",
     "calculate_pscore_ipt": "moderndid.drdid.propensity.pscore_ipt",
-    # didinter
     "DIDInterResult": "moderndid.didinter.container",
     "did_multiplegt": "moderndid.didinter.did_multiplegt",
-    # didtriple
     "DDDATTgtRCResult": "moderndid.didtriple.container",
     "DDDATTgtResult": "moderndid.didtriple.container",
     "DDDAggResult": "moderndid.didtriple.container",
@@ -429,7 +402,6 @@ _lazy_imports = {
     "gen_simple_ddd_data": "moderndid.core.data",
     "mboot_ddd": "moderndid.didtriple.bootstrap",
     "wboot_ddd": "moderndid.didtriple.bootstrap",
-    # npiv (standalone, no extra deps)
     "MultivariateBasis": "moderndid.npiv",
     "NPIVResult": "moderndid.npiv",
     "compute_cck_ucb": "moderndid.npiv",
@@ -442,10 +414,8 @@ _lazy_imports = {
     "prodspline": "moderndid.npiv",
 }
 
-# Optional imports that require extra dependencies
-# Format: {name: (module_path, extra_name)}
+# Each name here maps to its module path and the extra it needs. pyproject.toml lists what each extra installs.
 _optional_imports = {
-    # didcont (requires formulaic)
     "PTEParams": ("moderndid.didcont", "didcont"),
     "_get_first_difference": ("moderndid.didcont", "didcont"),
     "_get_group": ("moderndid.didcont", "didcont"),
@@ -460,7 +430,6 @@ _optional_imports = {
     "setup_pte_cont": ("moderndid.didcont", "didcont"),
     "BSpline": ("moderndid.didcont.spline", "didcont"),
     "SplineBase": ("moderndid.didcont.spline", "didcont"),
-    # didhonest (requires cvxpy and highspy)
     "APRCIResult": ("moderndid.didhonest", "didhonest"),
     "ARPNuisanceCIResult": ("moderndid.didhonest", "didhonest"),
     "DeltaRMBResult": ("moderndid.didhonest", "didhonest"),
@@ -527,7 +496,6 @@ _optional_imports = {
     "test_in_identified_set_max": ("moderndid.didhonest", "didhonest"),
     "validate_conformable": ("moderndid.didhonest", "didhonest"),
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
-    # didml (requires cvxpy + econml + xgboost + scikit-learn)
     "BLPResult": ("moderndid.didml", "didml"),
     "CLANResult": ("moderndid.didml", "didml"),
     "DIDMLAggResult": ("moderndid.didml", "didml"),
@@ -550,14 +518,12 @@ _optional_imports = {
     "amle_weights": ("moderndid.didml", "didml"),
     "summary_didml": ("moderndid.didml", "didml"),
     "summary_didml_agg": ("moderndid.didml", "didml"),
-    # etwfe (requires pyfixest)
     "EtwfeResult": ("moderndid.etwfe", "etwfe"),
     "EmfxResult": ("moderndid.etwfe", "etwfe"),
     "etwfe": ("moderndid.etwfe", "etwfe"),
     "emfx": ("moderndid.etwfe", "etwfe"),
     "format_etwfe_result": ("moderndid.etwfe", "etwfe"),
     "format_emfx_result": ("moderndid.etwfe", "etwfe"),
-    # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),
     "plot_dyn_balancing": ("moderndid.plots", "plots"),
@@ -573,7 +539,7 @@ _optional_imports = {
     "theme_publication": ("moderndid.plots", "plots"),
 }
 
-# Aliased imports (different name in source module)
+# These public names differ from the names in their modules.
 _aliases = {
     "DIDInterATEResult": ("moderndid.didinter.container", "ATEResult"),
     "DIDInterEffectsResult": ("moderndid.didinter.container", "EffectsResult"),
@@ -584,7 +550,6 @@ _aliases = {
 
 
 def __getattr__(name: str) -> Any:
-    # Aliased imports
     if name in _aliases:
         module_path, attr_name = _aliases[name]
         module = _importlib.import_module(module_path)
@@ -596,14 +561,13 @@ def __getattr__(name: str) -> Any:
         module = _importlib.import_module(_lazy_imports[name])
         return getattr(module, name)
 
-    # Optional imports (require extra dependencies)
     if name in _optional_imports:
         module_path, extra = _optional_imports[name]
         try:
             module = _importlib.import_module(module_path)
             return getattr(module, name)
         except ImportError as e:
-            # Since the failed import can sit outside the extra, the message names the module that is missing.
+            # The failed import can sit outside the extra. The message names the module that is missing.
             cause = e if isinstance(e, ModuleNotFoundError) else e.__cause__
             missing = cause.name if isinstance(cause, ModuleNotFoundError) else None
             reason = (
@@ -623,8 +587,7 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module 'moderndid' has no attribute {name!r}")
 
 
-# Eagerly import names that shadow subpackages
-# This is needed because `from X import Y` bypasses __getattr__ when Y is a subpackage
+# Names that shadow a subpackage import eagerly because `from X import Y` bypasses __getattr__ when Y is a subpackage.
 from moderndid.drdid.drdid import drdid
 from moderndid.npiv.npiv import npiv
 

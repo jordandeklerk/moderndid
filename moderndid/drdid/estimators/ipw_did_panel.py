@@ -110,7 +110,7 @@ def ipw_did_panel(
 
     ps_fit, W = _compute_propensity_score(d, covariates, i_weights)
 
-    trim_ps = ps_fit < 1.01  # This effectively creates all True for treated units
+    trim_ps = ps_fit < 1.01  # Treated units are never trimmed because every score lies below 1.01.
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
     weights = _compute_weights(d, ps_fit, i_weights, trim_ps)
@@ -135,7 +135,6 @@ def ipw_did_panel(
         att_treat, att_cont, d, covariates, i_weights, ipw_att, influence_quantities
     )
 
-    # Inference
     if not boot:
         se_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = ipw_att + 1.96 * se_att
@@ -196,7 +195,6 @@ def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
 
     covariates = np.ones((n_units, 1)) if covariates is None else np.asarray(covariates)
 
-    # Weights
     if i_weights is None:
         i_weights = np.ones(n_units)
     else:
@@ -205,7 +203,6 @@ def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
             raise ValueError("i_weights must be non-negative.")
     i_weights = i_weights / np.mean(i_weights)
 
-    # Check if we have variation in treatment
     unique_d = np.unique(d)
     if len(unique_d) < 2:
         if unique_d[0] == 0:
@@ -275,7 +272,6 @@ def _compute_weights(d, ps_fit, i_weights, trim_ps):
 
 def _get_influence_quantities(d, covariates, ps_fit, i_weights, W, n_units):
     """Compute quantities needed for influence function."""
-    # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
 
     weighted_cov_matrix = covariates.T @ (W[:, np.newaxis] * covariates)
@@ -295,16 +291,12 @@ def _compute_influence_function(att_treat, att_cont, d, covariates, i_weights, i
     """Compute the influence function for IPW estimator."""
     asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]
 
-    # Leading term of the influence function: no estimation effect
     att_lin1 = att_treat - att_cont
 
-    # Derivative matrix (k x 1 vector)
     mom_logit = np.mean(att_cont[:, np.newaxis] * covariates, axis=0)
 
-    # Now the influence function related to estimation effect of pscores
     att_lin2 = asy_lin_rep_ps @ mom_logit
 
-    # Get the influence function of the IPW estimator (put all pieces together)
     mean_weight_d = np.mean(i_weights * d)
     att_inf_func = (att_lin1 - att_lin2 - i_weights * d * ipw_att) / mean_weight_d
 

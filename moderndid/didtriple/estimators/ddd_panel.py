@@ -249,7 +249,7 @@ def ddd_panel(
         "boot_type": boot_type,
         "biters": biters,
         "alpha": alpha,
-        # Since a cluster array carries no column name, the report can only say that the standard errors cluster.
+        # A cluster array carries no column name. The report can only say that the standard errors cluster.
         "cluster": True if _clusters_group_units(cluster) else None,
     }
 

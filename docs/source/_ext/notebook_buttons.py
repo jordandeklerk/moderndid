@@ -29,7 +29,7 @@ def _add_buttons(app, doctree, docname):
     if section == "user_guide":
         path, services = f"{name}.ipynb", ("Colab", "molab")
     elif section == "r_comparisons":
-        # Since molab can't run the second language the comparison notebooks call, they open in Colab alone.
+        # Molab can't run the second language the comparison notebooks call. They open in Colab alone.
         path, services = f"r_comparisons/{name}.ipynb", ("Colab",)
     else:
         return

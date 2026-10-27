@@ -735,7 +735,6 @@ def _optimize_flci_params(
     )
 
     if np.isnan(h_optimal):
-        # Fall back to grid search if bisection fails
         h_grid = np.linspace(h_min_variance, h_min_bias, num_points)
         ci_half_lengths = []
 

@@ -161,7 +161,7 @@ def npiv_j(
         k_w_segments_set = np.array([2, 4, 8, 16, 32, 64])
 
     if np.array_equal(to_numpy(x), to_numpy(w)):
-        # Since npiv_est gives the instrument basis the X degree and segments here, the influence matrices must match.
+        # The influence matrices must match because npiv_est gives the instrument basis the X degree and segments here.
         k_w_degree = j_x_degree
         k_w_segments_set = j_x_segments_set
     else:

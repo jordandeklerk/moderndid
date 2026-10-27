@@ -531,8 +531,8 @@ def test_att_gt_reports_no_wald_pretest_when_it_clusters(mpdta_data, boot):
     data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
     explanation = [
-        " Since a Wald test on a cluster-robust covariance rejects too often at",
-        " realistic cluster counts, no pre-test of parallel trends is reported.",
+        " No pre-test of parallel trends is reported, because a Wald test on a",
+        " cluster-robust covariance rejects too often at realistic cluster counts.",
         " Use the bootstrap's uniform bands over the pre-treatment cells instead.",
     ]
 

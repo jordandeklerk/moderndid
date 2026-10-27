@@ -56,8 +56,8 @@ def mboot(
 
     Write :math:`\psi_i` for row :math:`i` of ``inf_func``, :math:`n` for the
     number of rows, and :math:`G` for the number of clusters. Without clusters,
-    each row is its own cluster. Since all rows of cluster :math:`c` share one
-    multiplier :math:`V_c`, each draw perturbs the estimates by
+    each row is its own cluster. All rows of cluster :math:`c` share one
+    multiplier :math:`V_c`. Each draw therefore perturbs the estimates by
 
     .. math::
 
@@ -98,9 +98,9 @@ def _mboot(
 
     With ``keep_infinite_draws=True``, a draw that moves a column with zero scale
     stays in the sample with an infinite deviation. The critical value is then
-    infinite once more than ``alpha`` of the draws move such a column. Since no column
-    is screened out for a small scale, each one has a standard error and a place in
-    the maximum. A column that every draw leaves at zero has a standard error of
+    infinite once more than ``alpha`` of the draws move such a column. With no column
+    screened out for a small scale, each one has a standard error and a place in the
+    maximum. A column that every draw leaves at zero has a standard error of
     zero. The critical value is ``-inf`` when more than ``1 - alpha`` of the draws
     have no deviation to compare.
 
@@ -215,7 +215,7 @@ def _mboot_from_draws(bres, draw_scale, alpha=0.05, skip_small_scales=False, kee
 
     crit_val = np.nan
     if bres_clean.shape[1] > 0:
-        # Since a column with a negligible scale would swamp the maximum of every draw, the floor leaves it out.
+        # A column with a negligible scale would swamp the maximum of every draw. The floor leaves it out.
         floor = np.sqrt(np.finfo(float).eps) * 10 if skip_small_scales else 0
         # A column with a NaN or infinite scale has no deviation to compare.
         usable = np.isfinite(se_bootstrap) & (se_bootstrap > floor)

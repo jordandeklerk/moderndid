@@ -23,7 +23,7 @@ class APRCIResult(NamedTuple):
     theta_grid : ndarray
         Grid of theta values tested.
     accept_grid : ndarray
-        Boolean array indicating which theta values are in the identified set.
+        Boolean array indicating which theta values the test accepts into the confidence set.
     status : str
         Optimization status.
     """
@@ -36,7 +36,7 @@ class APRCIResult(NamedTuple):
     ci_length: float
     #: Grid of theta values tested.
     theta_grid: np.ndarray
-    #: Boolean array indicating which theta values are in the identified set.
+    #: Boolean array indicating which theta values the test accepts into the confidence set.
     accept_grid: np.ndarray
     #: Optimization status.
     status: str
@@ -384,7 +384,7 @@ def test_in_identified_set_flci_hybrid(
     Returns
     -------
     bool
-        True if null is NOT rejected (value is in identified set).
+        True if the test accepts the value into the confidence set.
 
     Notes
     -----
@@ -393,10 +393,8 @@ def test_in_identified_set_flci_hybrid(
     the least favorable approach, especially when :math:`\Delta` has special
     structure like smoothness restrictions.
     """
-    # First stage: test FLCI constraint
     flci_l = np.asarray(flci_l).flatten()
 
-    # Create constraints for |l'y| <= halflength
     A_firststage = np.vstack([flci_l, -flci_l])
     d_firststage = np.array([flci_halflength, flci_halflength])
 
@@ -473,7 +471,7 @@ def test_in_identified_set_lf_hybrid(
     Returns
     -------
     bool
-        True if null is NOT rejected (value is in identified set).
+        True if the test accepts the value into the confidence set.
     """
     if _precomputed is not None:
         A_tilde = _precomputed["A_tilde"]
@@ -488,12 +486,9 @@ def test_in_identified_set_lf_hybrid(
     max_location = np.argmax(normalized_moments)
     max_moment = normalized_moments[max_location]
 
-    # First stage test
     if max_moment > lf_cv:
         return False
 
-    # Second stage: condition on passing first stage
-    # Construct conditioning event as before
     T_B = selection_matrix([max_location + 1], size=len(normalized_moments), select="rows")
     iota = np.ones((len(normalized_moments), 1))
 

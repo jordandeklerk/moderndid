@@ -120,38 +120,24 @@ from .wrappers import (
 __all__ = [
     "APRCIResult",
     "ARPNuisanceCIResult",
-    # Wrapper utilities
     "DeltaMethodSelector",
-    # Delta RMB (relative magnitudes with bias restriction)
     "DeltaRMBResult",
-    # Delta RMM (relative magnitudes with monotonicity restriction)
     "DeltaRMMResult",
-    # Delta RM (relative magnitudes)
     "DeltaRMResult",
-    # Delta SDB (second differences with bias)
     "DeltaSDBResult",
-    # Delta SDM (second differences with monotonicity)
     "DeltaSDMResult",
-    # Delta SDRMB (second differences with relative magnitudes and bias)
     "DeltaSDRMBResult",
-    # Delta SDRMM (second differences with relative magnitudes and monotonicity)
     "DeltaSDRMMResult",
-    # Delta SDRM (second differences with relative magnitudes)
     "DeltaSDRMResult",
-    # Delta SD (second differences)
     "DeltaSDResult",
     "FLCIResult",
     "HonestDiDResult",
-    # Main sensitivity analysis functions
     "OriginalCSResult",
     "SensitivityResult",
     "affine_variance",
-    # Utility functions
     "basis_vector",
     "bin_factor",
-    # APR confidence intervals (no nuisance)
     "compute_arp_ci",
-    # APR confidence intervals (with nuisance)
     "compute_arp_nuisance_ci",
     "compute_bounds",
     "compute_conditional_cs_rm",
@@ -164,9 +150,7 @@ __all__ = [
     "compute_conditional_cs_sdrmb",
     "compute_conditional_cs_sdrmm",
     "compute_delta_sd_lowerbound_m",
-    # Delta SD bounds
     "compute_delta_sd_upperbound_m",
-    # Fixed-length confidence intervals (FLCI)
     "compute_flci",
     "compute_identified_set_rm",
     "compute_identified_set_rmb",
@@ -190,7 +174,6 @@ __all__ = [
     "estimate_lowerbound_m_conditional_test",
     "folded_normal_quantile",
     "get_delta_method",
-    # Main interface
     "honest_did",
     "lee_coefficient",
     "lp_conditional_test",
@@ -200,7 +183,6 @@ __all__ = [
     "test_in_identified_set",
     "test_in_identified_set_flci_hybrid",
     "test_in_identified_set_lf_hybrid",
-    # Conditional test functions
     "test_in_identified_set_max",
     "validate_conformable",
     "validate_symmetric_psd",

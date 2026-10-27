@@ -226,7 +226,7 @@ class PreprocessDataBuilder:
             warnings.warn(warning_msg)
             self._warnings.append(warning_msg)
 
-            # Since transform may run without validate, the comparison also accepts the option as a string.
+            # The comparison also accepts the option as a string because transform may run without validate.
             if (
                 isinstance(self._config, DIDConfig)
                 and NEVER_TREATED_VALUE in small_group_values
@@ -259,7 +259,7 @@ class PreprocessDataBuilder:
         if isinstance(self._config, EtwfeConfig):
             return self._build_etwfe_data()
         if isinstance(self._config, DIDConfig):
-            # DIDMLConfig is a DIDConfig subclass; reuses DIDData container.
+            # DIDMLConfig is a DIDConfig subclass and reuses the DIDData container.
             return self._build_did_data()
         if isinstance(self._config, ContDIDConfig):
             return self._build_cont_did_data()
@@ -417,7 +417,7 @@ class PreprocessDataBuilder:
         cluster = self._extract_cluster_variable(time_invariant_data)
         weights = self._extract_weights(time_invariant_data)
 
-        # Since the recoder replaced each period by its position, the time map leads back to the periods in the data.
+        # The recoder replaced each period by its position. The time map leads back to the periods in the data.
         periods = {position: period for period, position in (self._config.time_map or {}).items()}
         original_time_periods = np.array([periods.get(t, t) for t in self._config.time_periods])
 
@@ -446,7 +446,7 @@ class PreprocessDataBuilder:
 
         cluster = None
         if self._config.cluster and self._config.cluster in time_invariant_data.columns:
-            # Since NumPy holds no 128-bit integers, the clusters reach it as dense codes in the order of their labels.
+            # NumPy holds no 128-bit integers. The clusters reach it as dense codes in the order of their labels.
             cluster = time_invariant_data[self._config.cluster].rank("dense").to_numpy()
 
         weights = time_invariant_data[WEIGHTS_COLUMN].to_numpy()

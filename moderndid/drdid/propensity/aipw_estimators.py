@@ -221,7 +221,6 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights, trim_ps=None):
     aipw_0_pre = _weighted_sum(residual, w_cont_pre, "aipw_0_pre")
     aipw_0_post = _weighted_sum(residual, w_cont_post, "aipw_0_post")
 
-    # Calculate ATT
     terms_for_sum = [aipw_1_pre, aipw_1_post, aipw_0_pre, aipw_0_post]
     if any(np.isnan(term) for term in terms_for_sum):
         aipw_att = np.nan
@@ -343,7 +342,6 @@ def aipw_did_rc_imp2(
     else:
         normalized_weights = i_weights / mean_i_weights
 
-    # Intermediate weights
     w_treat_pre = trim_ps * normalized_weights * d * (1 - post)
     w_treat_post = trim_ps * normalized_weights * d * post
 
@@ -360,7 +358,6 @@ def aipw_did_rc_imp2(
     w_cont_pre = _divide_by_complement(trim_ps * normalized_weights * ps * (1 - d) * (1 - post), ps)
     w_cont_post = _divide_by_complement(trim_ps * normalized_weights * ps * (1 - d) * post, ps)
 
-    # Extra weights for efficiency
     w_d = trim_ps * normalized_weights * d
     w_dt1 = trim_ps * normalized_weights * d * post
     w_dt0 = trim_ps * normalized_weights * d * (1 - post)
@@ -381,7 +378,6 @@ def aipw_did_rc_imp2(
     att_d_pre = _weighted_sum(eff_term_pre_val, w_d, "att_d_pre")
     att_dt0_pre = _weighted_sum(eff_term_pre_val, w_dt0, "att_dt0_pre")
 
-    # ATT estimator
     terms_for_sum = [
         att_treat_post,
         att_treat_pre,
