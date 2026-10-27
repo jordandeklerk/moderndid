@@ -99,6 +99,25 @@ def unit_bootstrap_weights(monkeypatch):
     monkeypatch.setattr(np.random, "RandomState", UnitWeights)
 
 
+@pytest.fixture
+def preset_bootstrap_weights(monkeypatch):
+    """Hand the weighted bootstraps preset exponential draws one row per draw."""
+
+    def install(draws):
+        rows = iter(draws)
+
+        class PresetWeights:
+            def __init__(self, seed=None):
+                pass
+
+            def exponential(self, scale=1.0, size=None):
+                return next(rows)
+
+        monkeypatch.setattr(np.random, "RandomState", PresetWeights)
+
+    return install
+
+
 @pytest.fixture(scope="module")
 def trimmed_two_period_data():
     """Two-period draw in which several comparison units have propensity scores above 0.9."""
@@ -329,4 +348,115 @@ def regression_specs(two_period_specs):
         "wols_panel": {**panel_spec, "ps": ps},
         "ols_rc": cross_section_spec,
         "wols_rc": {**cross_section_spec, "ps": ps},
+    }
+
+
+@pytest.fixture(scope="module")
+def redundant_columns(two_covariate_design):
+    """Blocks of columns that add nothing to the covariates of two_period_specs keyed by how they repeat them."""
+    z = two_covariate_design["z"]
+    n = len(z)
+    return {
+        "duplicate": z[:, :1],
+        "intercept": np.full((n, 1), 3.0),
+        "zero": np.zeros((n, 1)),
+        "affine": 2 * z[:, :1] + 1,
+        "duplicate_and_zero": np.column_stack([z[:, 0], np.zeros(n)]),
+    }
+
+
+@pytest.fixture(scope="module")
+def propensity_designs():
+    """Designs and their weights keyed by how the later columns repeat the earlier ones."""
+    rng = np.random.default_rng(4)
+    n = 200
+    x1, x2 = rng.standard_normal((2, n))
+    ones = np.ones(n)
+    weights = rng.uniform(0.5, 1.5, n)
+    columns = {
+        "full_rank": [ones, x1, x2],
+        "duplicate": [ones, x1, x1, x2],
+        "intercept": [ones, x1, np.full(n, 3.0), x2],
+        "zero": [ones, x1, np.zeros(n), x2],
+        "twice": [ones, x1, 2 * x1, x2],
+        "affine": [ones, x1, x2, 2 * x1 + 1],
+        "large_affine": [ones, x1, x2, 1e7 * x1 + 3e9],
+        "two_redundant": [ones, x1, x1, x2, np.zeros(n)],
+    }
+    return {name: (np.column_stack(design), weights / weights.mean()) for name, design in columns.items()}
+
+
+@pytest.fixture(scope="module")
+def gram_screen_designs():
+    """Designs and their weights whose Gram matrices range from well conditioned to singular."""
+    pairs = []
+    for n in (40, 2000):
+        rng = np.random.default_rng(n)
+        ones = np.ones(n)
+        x1, x2, noise = rng.standard_normal((3, n))
+        year = rng.integers(2000, 2011, n).astype(float)
+        designs = [
+            np.column_stack([ones, x1, x1 * (1 + delta * noise), x2])
+            for delta in (1e-3, 1e-6, 1e-9, 1e-11, 1e-12, 1e-13, 1e-14, 1e-15, 0.0)
+        ]
+        designs += [np.column_stack([ones, level + x1, x2]) for level in (1e3, 1e5, 1e7, 1e9)]
+        designs += [
+            np.column_stack([ones, year, year**2]),
+            np.column_stack([ones, 1e-80 * x1, 1e-80 * x1]),
+            np.column_stack([ones, 1e-80 * x1, 1e-80 * (2 * x1 + 1)]),
+            np.column_stack([ones, 1e-82 * x1, 1e-82 * x2, 1e-82 * (x1 + x2)]),
+            np.column_stack([ones, 1e-80 * x1, 1e-80 * x2]),
+        ]
+        for weights in (rng.uniform(0.5, 1.5, n), np.where(rng.random(n) < 0.3, 0.0, 1.0)):
+            pairs += [(design, weights / weights.mean()) for design in designs]
+    return pairs
+
+
+@pytest.fixture(params=["constant_outcome", "linear_outcome", "two_rows_per_period"])
+def rc_exact_comparison_fit(request):
+    """Repeated cross-section arrays whose comparison regressions fit their rows exactly."""
+    rng = np.random.default_rng(14)
+    n_comparison = 2 if request.param == "two_rows_per_period" else 30
+    post = np.repeat([0, 1, 0, 1], [30, 30, n_comparison, n_comparison])
+    d = np.repeat([1, 1, 0, 0], [30, 30, n_comparison, n_comparison])
+    x = rng.integers(-3, 4, size=post.size).astype(float)
+    if request.param == "two_rows_per_period":
+        x[d == 0] = [0.0, 1.0, -1.0, 2.0]
+    y = 1 + x + d * post + rng.normal(size=post.size)
+    comparison = {
+        "constant_outcome": 1.0 + 1.5 * post,
+        "linear_outcome": 2 + 3 * x + post * (x - 1),
+        "two_rows_per_period": y,
+    }[request.param]
+    return {
+        "y": np.where(d == 0, comparison, y),
+        "post": post,
+        "d": d,
+        "covariates": np.column_stack([np.ones(post.size), x]),
+        "i_weights": rng.uniform(0.5, 1.5, size=post.size),
+    }
+
+
+@pytest.fixture(params=["constant_change", "linear_change", "two_comparison_units"])
+def panel_exact_comparison_fit(request):
+    """Panel arrays whose comparison regression fits the outcome changes of the comparison units exactly."""
+    rng = np.random.default_rng(15)
+    n_comparison = 2 if request.param == "two_comparison_units" else 40
+    d = np.repeat([1, 0], [40, n_comparison])
+    x = rng.integers(-3, 4, size=d.size).astype(float)
+    if request.param == "two_comparison_units":
+        x[d == 0] = [0.0, 1.0]
+    y0 = rng.integers(-5, 6, size=d.size).astype(float)
+    change = 0.5 + x + d + rng.normal(size=d.size)
+    comparison = {
+        "constant_change": np.full(d.size, 1.5),
+        "linear_change": 1 + 2 * x,
+        "two_comparison_units": change,
+    }[request.param]
+    return {
+        "y1": y0 + np.where(d == 1, change, comparison),
+        "y0": y0,
+        "d": d,
+        "covariates": np.column_stack([np.ones(d.size), x]),
+        "i_weights": rng.uniform(0.5, 1.5, size=d.size),
     }

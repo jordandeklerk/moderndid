@@ -16,10 +16,8 @@ Following a public call
 -----------------------
 
 We'll use a small staggered-adoption fit to follow the interfaces that a
-contributor encounters. It reuses the column names from the
-:doc:`first analysis <../user_guide/quickstart>` so you can focus on how the
-package prepares and stores the calculation. Analytical inference keeps the
-standard errors tied to the variance calculation that a later section inspects.
+contributor encounters. Analytical inference keeps the standard errors tied to
+the variance calculation that a later section inspects.
 
 .. code-block:: python
 
@@ -40,68 +38,34 @@ constructs a ``DIDConfig``, and passes the data through
 ``PreprocessDataBuilder``. The resulting ``DIDData`` goes to
 ``compute_att_gt`` for the group-time comparisons. Back in ``att_gt``, the
 influence functions supply inference before the function returns an
-``MPResult``.
-
-You can follow that path in the `did source directory
+``MPResult``. You can follow that path in the `did source directory
 <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/did>`_.
-The main files divide the work according to what you need to investigate.
 
-.. container:: architecture-table
-
-   .. list-table::
-      :widths: 35 65
-      :header-rows: 1
-
-      * - Location
-        - What happens there
-      * - ``core/preprocess/``
-        - Checks, transformations, configuration, and containers prepare the
-          sample for numerical work.
-      * - ``did/compute_att_gt.py``
-        - Each eligible group-time comparison produces an effect and its
-          influence function.
-      * - ``did/att_gt.py`` and ``did/mboot.py``
-        - The public function assembles effects and inference into ``MPResult``.
-          The bootstrap helper computes standard errors and critical values
-          from the influence functions.
-      * - ``did/compute_aggte.py``
-        - Aggregation combines the effects and their influence functions into
-          summaries for ``aggte`` to return.
-
-
-Other methods reuse whichever pieces suit the comparisons they make.
-The two-period
-``drdid`` entry point uses the builder to prepare panel or repeated
-cross-section arrays. ``did_multiplegt`` selects a pipeline that prepares
-switch dates and treatment histories. Multi-period ``ddd`` applies shared
-transformers directly in its own preparation function. The ``etwfe``
-implementation cleans its sample and constructs its regression in
-``etwfe/compute.py``.
+Other estimators reuse only the pieces their comparisons need, such as the
+builder in ``drdid`` or the shared transformers in multi-period ``ddd``.
 Array-based estimators and sensitivity routines can begin with numerical
 inputs instead of a panel container.
 
 Preparing the data
 ------------------
 
-Each effect is calculated on the sample that preprocessing leaves behind.
-The preprocessing code keeps the input names, the
-retained sample, and the numerical arrays together so each comparison can
-use an already prepared data layout. If you're tracing a change in the
-sample or the order of units, this is where to start.
+Each effect is calculated on the sample that preprocessing leaves behind. The
+preprocessing code keeps the input names, the retained sample, and the
+numerical arrays together so each comparison can use an already prepared data
+layout. If you're tracing a change in the sample or the order of units, this is
+where to start.
 
 From input names to a configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-At the data boundary, ``to_polars`` in ``core/dataframe.py`` passes
-a Polars DataFrame through directly and converts other accepted inputs
-through Narwhals. An input with an ``__arrow_c_stream__`` interface converts
-through that interface. An eager DataFrame without it, such as a pandas
-DataFrame older than 2.2, converts only when Narwhals supports its library.
-Being called a DataFrame is therefore not enough to make an arbitrary object
-valid input.
-Once the data reach this boundary, shared selection, filtering, joins, and
-sorting use Polars. Numerical estimators then work on arrays that an adapter
-prepares for their calculation or dependency.
+At the data boundary, ``to_polars`` in ``core/dataframe.py`` passes a Polars
+DataFrame through directly and converts other accepted inputs through
+Narwhals. An input with an ``__arrow_c_stream__`` interface converts through
+that interface. An eager DataFrame without it, such as a pandas DataFrame
+older than 2.2, converts only when Narwhals supports its library. Once the
+data reach this boundary, shared selection, filtering, joins, and sorting use
+Polars. Numerical estimators then work on arrays that an adapter prepares for
+their calculation or dependency.
 
 The public function records its choices in a configuration dataclass from
 ``core/preprocess/config.py``. While ``DIDConfig`` and ``ContDIDConfig`` share
@@ -145,22 +109,19 @@ plain string that ``att_gt`` accepts.
        .build()
    )
 
-Calling the builder directly is useful when you're investigating the
-prepared sample. An analysis should still enter through the public function
-so its argument checks, inference, and result construction also run.
+An analysis should still enter through the public function so its argument
+checks, inference, and result construction also run.
 
 Checks on the rows that remain
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The builder checks the specification before it checks the structure of
-the rows that remain after missing-data handling. ``with_config`` selects
-the validators and transformer pipeline for the configuration type. The
-builder's ``validate`` stage checks the named columns, their types,
-reserved names, the values of categorical options, and limits on arguments
-such as the number of cluster variables. Structural checks run later,
-immediately after ``MissingDataHandler`` in pipelines that contain it.
-That means a duplicate unit-period observation or a cohort that changes
-within a unit is assessed on the rows that survive missing-data handling.
+``with_config`` selects the validators and transformer pipeline for the
+configuration type. The builder's ``validate`` stage checks the named columns,
+their types, reserved names, the values of categorical options, and limits on
+arguments such as the number of cluster variables. Structural checks run
+later, immediately after ``MissingDataHandler`` in pipelines that contain it.
+That means a duplicate unit-period observation or a cohort that changes within
+a unit is assessed on the rows that survive missing-data handling.
 
 For ``DIDConfig``, ``DataTransformerPipeline.get_did_pipeline`` selects the
 following transformations and applies them in this order.
@@ -184,17 +145,13 @@ filters establish which units can enter a comparison. After panel
 balancing chooses the layout, the final sort puts units in the order
 that array construction expects.
 
-Because these decisions depend on the estimator, the intertemporal pipeline can
-retain missing outcomes or treatment values for later handling instead of
-dropping every incomplete row. Dynamic balancing also keeps missing
-outcomes, treatment values, and covariates for later handling while removing
-rows whose unit or period identifiers are missing. Its structural checks
-run after that removal, before pooling and filtering establish the
-histories available for estimation. Use the selected
-pipeline in `transformers.py
+Because these decisions depend on the estimator, the intertemporal and dynamic
+balancing pipelines keep rows with missing outcomes or treatment values for
+later handling instead of dropping them. Use the selected pipeline in
+`transformers.py
 <https://github.com/jordandeklerk/moderndid/blob/main/moderndid/core/preprocess/transformers.py>`_
-as the source for an ordering change rather than assuming every method
-runs the sequence above.
+as the source for an ordering change rather than assuming every method runs
+the sequence above.
 
 .. admonition:: Read the resolved configuration
    :class: tip
@@ -242,11 +199,9 @@ unit axis even though the retained data contain several rows per unit.
          First-period covariates: (500, 2)
          First-period weights: (500,)
 
-Across five periods, the 500 units account for the 2,500 retained rows.
-Each period's arrays hold one outcome per unit and two covariate columns for
-the intercept and ``lpop``. While matching shapes make these arrays
-compatible, only the layout check establishes that their positions refer to
-the same units.
+Across five periods, the 500 units account for the 2,500 retained rows. Each
+period's arrays hold one outcome per unit and two covariate columns for the
+intercept and ``lpop``.
 
 ``DIDData`` retains the processed Polars data and arrays alongside
 ``time_invariant_data``, summary counts, weights, and configuration. The field
@@ -267,13 +222,10 @@ help you choose what a numerical helper should accept for another design.
 Giving arguments a consistent meaning
 -------------------------------------
 
-As you move between estimators, familiar argument names should help you
-recognize what belongs in a specification. Most estimators share a name for
-the same idea, such as
-``yname`` for the outcome column, ``tname`` for the period, ``idname`` for
-the unit identifier, and ``weightsname`` for sampling weights.
-``xformla`` describes the covariates through a formula rather than naming
-a precomputed matrix.
+Most estimators share a name for the same idea, such as ``yname`` for the
+outcome column, ``tname`` for the period, ``idname`` for the unit identifier,
+and ``weightsname`` for sampling weights. ``xformla`` describes the covariates
+through a formula rather than naming a precomputed matrix.
 
 Treatment arguments need more context because different designs distinguish
 adoption dates from observed groups and doses. In ``att_gt`` and
@@ -292,12 +244,6 @@ that bootstraps. Because each method quantifies uncertainty differently,
 clustering may use ``clustervars``, ``cluster``, or the regression's ``vcov``
 specification.
 
-.. admonition:: Check the signature first
-   :class: tip
-
-   Before copying an option from another estimator or extending a function,
-   check its signature and preserve the meanings established by that interface.
-
 Computing effects and uncertainty
 ---------------------------------
 
@@ -310,19 +256,15 @@ between effects from different comparisons.
 
 The returned influence functions also carry information that an effect's
 standard error alone cannot supply. ``aggte`` combines the group-time
-influence functions and accounts for estimated aggregation weights where
-its target requires them. The multiplier bootstrap perturbs those
-contributions without refitting the nuisance models for every draw.
-Since a weighted bootstrap can repeat estimation on a resampled or
-reweighted sample, the inference path belongs to the method as well as
-the data layout.
+influence functions and accounts for estimated aggregation weights where its
+target requires them. The multiplier bootstrap perturbs those contributions
+without refitting the nuisance models for every draw.
 
-For ``att_gt``, the dense influence-function matrix :math:`\Psi` has one
-row per unit and one column per returned group-time effect. We can recover
-the unit-level analytical covariance and standard errors from the
-contributions stored in the fit. Keeping both divisions by :math:`n` visible
-helps distinguish
-the contribution variance from the covariance of the estimates.
+For ``att_gt``, the dense influence-function matrix :math:`\Psi` has one row
+per unit and one column per returned group-time effect. We can recover the
+unit-level analytical covariance and standard errors from the contributions
+stored in the fit. Keeping both divisions by :math:`n` visible helps
+distinguish the contribution variance from the covariance of the estimates.
 
 .. code-block:: python
 
@@ -350,11 +292,10 @@ the contribution variance from the covariance of the estimates.
 
 Each of the 12 columns corresponds to the effect labeled by ``result.groups``
 and ``result.times`` at that position. The standard errors agree because this
-fit uses analytical inference at the unit level. This calculation does not
-account for correlation between counties in the same state. Bootstrap
-inference can replace the reported standard errors and critical value without
-changing the meaning of ``vcov_analytical``. Its standard errors need not
-reproduce the analytical diagonal above.
+fit uses analytical inference at the unit level. Bootstrap inference can
+replace the reported standard errors and critical value without changing the
+meaning of ``vcov_analytical``. Its standard errors need not reproduce the
+analytical diagonal above.
 
 .. admonition:: Preserve the influence-function scale
    :class: important
@@ -368,14 +309,12 @@ reproduce the analytical diagonal above.
 Keeping results useful after estimation
 ---------------------------------------
 
-After a fit, the estimates are only part of what you'll need for
-aggregation or sensitivity analysis. ``MPResult`` holds the group and
-period labels, estimates, standard errors, critical value, analytical
-variance, and influence functions along with the metadata and unit-level
-information needed by aggregation. A fit on a Spark DataFrame holds
-``influence_moments`` in place of the influence functions and unit-level arrays.
-A dose-response curve or a sensitivity confidence set has a different
-collection of fields because it answers a different question.
+After a fit, the estimates are only part of what you'll need for aggregation
+or sensitivity analysis. ``MPResult`` holds the group and period labels,
+estimates, standard errors, critical value, analytical variance, and influence
+functions along with the metadata and unit-level information needed by
+aggregation. A fit on a Spark DataFrame holds ``influence_moments`` in place of
+the influence functions and unit-level arrays.
 
 Result containers commonly use ``NamedTuple`` classes in the estimator's
 ``container.py`` so downstream code can rely on explicit named fields.
@@ -420,10 +359,9 @@ calculation needs.
 Connecting a result to reports and plots
 ----------------------------------------
 
-When you print a result, turn it into a table, or plot it, you shouldn't
-need to know how its fields are stored. Formatting, conversion, plotting, and
-table interfaces connect results to each of those uses. Each connection is
-added where the result contains the statistical information that use needs.
+When you print a result, turn it into a table, or plot it, you shouldn't need
+to know how its fields are stored. Formatting, conversion, plotting, and table
+interfaces connect results to each of those uses.
 
 Printed reports
 ^^^^^^^^^^^^^^^
@@ -513,19 +451,18 @@ builders, effect names, and metadata labels used by these properties.
 ``build_coef_table_with_ci`` can use stored critical values for the fitted
 interval columns. Its ``t`` and ``p`` columns still use a pointwise normal
 approximation. For a fit with simultaneous bands, those columns therefore
-answer different inferential questions.
-The :doc:`publication tables guide <../user_guide/publication_tables>` shows
-how to present them. The adapters on ``DRDIDResult`` in ``drdid/container.py``
-provide another complete implementation when you're extending the interface.
+answer different inferential questions. The :doc:`publication tables guide
+<../user_guide/publication_tables>` shows how to present them. The adapters on
+``DRDIDResult`` in ``drdid/container.py`` provide another complete
+implementation when you're extending the interface.
 
 Data conversion and plotting
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To use fitted effects in another calculation, :func:`~moderndid.to_df`
-extracts Polars data through a converter in ``core/converters.py``.
-Each row of the group-time result retains the cohort and calendar period
-alongside the estimate and its uncertainty. You can inspect those labels
-without constructing a plot or going through the publication-table interface.
+extracts Polars data through a converter in ``core/converters.py``. Each row
+of the group-time result retains the cohort and calendar period alongside the
+estimate and its uncertainty.
 
 .. code-block:: python
 
@@ -577,18 +514,16 @@ describe both the coefficients and their joint uncertainty.
 and ``estimation_params``. The public ``honest_did`` wrapper checks those
 attributes before passing a result to its event-study implementation.
 
-Even with those attributes present, the result must describe the event
-study that the sensitivity calculation expects. That means
-``aggregation_type="dynamic"``, a two-dimensional influence
-matrix, and a universal base period when that setting is recorded. An event
-study without influence functions, such as an aggregation of a Spark fit,
-supplies its ``vcov_analytical`` instead and records ``n_units`` in its
-``estimation_params``.
-The event times must be consecutive on each side of the reference period
-and include at least one pre-treatment and one post-treatment coefficient.
-Before connecting a new result, check that its coefficients and
-uncertainty meet those requirements. The :doc:`sensitivity background <../background/didhonest>`
-explains why the common reference period matters.
+Even with those attributes present, the result must describe the event study
+that the sensitivity calculation expects. That means
+``aggregation_type="dynamic"``, a two-dimensional influence matrix, and a
+universal base period when that setting is recorded. An event study without
+influence functions, such as an aggregation of a Spark fit, supplies its
+``vcov_analytical`` instead and records ``n_units`` in its
+``estimation_params``. The event times must be consecutive on each side of the
+reference period and include at least one pre-treatment and one
+post-treatment coefficient. The :doc:`sensitivity background
+<../background/didhonest>` explains why the common reference period matters.
 
 .. admonition:: Record the clusters
    :class: important
@@ -605,10 +540,10 @@ Choosing how numerical work runs
 
 Once an estimator is correct, profiling can show whether its time goes to
 sample preparation, nuisance fits, array operations, or repeated inference.
-We'll look at the shared bootstrap helpers, parallel tasks, and GPU arrays
-separately because they affect different parts of the calculation. The
-:doc:`benchmarking` guide explains how to measure a change on a specified
-workload.
+We'll look at the shared bootstrap helpers, parallel tasks, GPU arrays, and
+fits on a cluster separately because they affect different parts of the
+calculation. The :doc:`benchmarking` guide explains how to measure a change on
+a specified workload.
 
 Shared bootstrap helpers
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -626,7 +561,10 @@ Three more helpers in the module serve the inference of ``did_multiplegt``.
 For its clustered variance, ``compute_cluster_sums`` adds up the influence
 functions within each cluster. The cluster bootstrap gathers each draw's rows
 with ``gather_bootstrap_indices`` and turns the draws into standard errors
-with ``compute_column_std``.
+with ``compute_column_std``. Two more, ``canonical_keys`` and
+``keyed_rademacher``, draw the multipliers of a fit on shards from the keys of
+its units or clusters, as :ref:`random draws on shards <dev-shard-draws>`
+explains.
 
 .. admonition:: Change both branches together
    :class: important
@@ -674,14 +612,13 @@ and the backend each task reads.
          [(2004, 2005, 'numpy'), (2007, 2007, 'numpy')]
 
 Both tasks inherit the selected backend because each runs in its own
-``contextvars.copy_context`` snapshot. Keeping returned results in input
-order lets an estimator attach each influence-function column to its
-group-time label even when tasks finish in a different order. Threads share
-data in one process and avoid serializing it for separate workers.
-Numerical dependencies can release the GIL during their calculations so
-several tasks can make progress in parallel.
-Assess worker counts on the workload you're changing because additional
-workers can compete with the threads used by BLAS.
+``contextvars.copy_context`` snapshot. Keeping returned results in input order
+lets an estimator attach each influence-function column to its group-time
+label even when tasks finish in a different order. Threads share data in one
+process and avoid serializing it for separate workers. Numerical dependencies
+can release the GIL during their calculations so several tasks can make
+progress in parallel. Assess worker counts on the workload you're changing
+because additional workers can compete with the threads used by BLAS.
 
 Array operations on a GPU
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -711,521 +648,34 @@ CUDA-specific dependencies.
    installation rather than treating a backend argument on one function as a
    package-wide guarantee.
 
-.. _architecture-shards:
-
-Fitting a panel held in shards
-------------------------------
-
-When a panel sits in a Spark DataFrame, the two things an in-memory fit leans
-on can't come to the driver. The rows of the panel may be too many for one
-machine. The influence function matrix ``psi`` from earlier on this page holds a
-row for every unit and may be too large as well. We made ``att_gt`` work on a cluster by
-rewriting it around one idea. Every quantity the estimator needs is a sum over
-units or something the driver can compute from such sums. Each block of units
-then computes its share wherever it lives, and the driver only adds the shares
-up. We'll rebuild the ``result`` from the start of this page out of three
-blocks of counties to show how that works. The :ref:`Spark guide <spark>` walks
-through such a fit from the user's side.
-
-Splitting the units into shards
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-A shard holds whole units, each with every period of its outcome, weights, and
-covariates. Any statistic that sums over units therefore adds up across shards
-however the units were split. The engine fits only
-balanced panels because each unit's row holds an outcome for every period.
-We'll split the prepared county panel into three shards with
-``shards_from_did_data``. The parity tests make their shards with the same
-function.
-
-.. code-block:: python
-
-   from moderndid.did.shards.local import shards_from_did_data
-
-   shards = shards_from_did_data(prepared, 3, random_state=0)
-
-   print("Units per shard:", [len(shard.unit_keys) for shard in shards])
-   print("Outcomes of the first shard:", shards[0].y.shape)
-   print("Covariates of the first shard:", shards[0].covariates.shape)
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         Units per shard: [167, 167, 166]
-         Outcomes of the first shard: (167, 5)
-         Covariates of the first shard: (167, 5, 1)
-
-Each of the 500 counties went whole to one shard and kept its outcome in all
-five years. The covariate array leaves out the intercept because the kernels
-add it back.
-
-Statistics that add up across shards
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-A kernel is how the engine computes a statistic on a shard. It takes one shard
-and the state of a pass and returns a ``Partial`` that holds the named
-statistics of the shard's units. An executor runs a kernel on every shard and combines the
-partials. The kernel below counts a shard's units and sums their outcomes in
-each year. ``LocalExecutor``, the executor for shards held in memory, adds up
-those sums across the three shards.
-
-.. code-block:: python
-
-   from moderndid.did.shards.container import Partial
-   from moderndid.did.shards.local import LocalExecutor
-
-
-   def outcome_sums(shard, state):
-       # Each shard counts its units and sums their outcomes in every period.
-       sums = {"units": len(shard.unit_keys), "outcomes": shard.y.sum(axis=0)}
-       return Partial(sums=sums, maxima={}, factors={}, keyed={})
-
-
-   # The executor runs the kernel on every shard and adds up the sums.
-   totals = LocalExecutor(shards).run(outcome_sums, None)
-   sharded_means = totals.sums["outcomes"] / totals.sums["units"]
-
-   # The same means from the prepared arrays, which hold every unit at once.
-   memory_means = np.array([outcomes.mean() for outcomes in prepared.outcomes_tensor])
-
-   print("Mean outcome by year:", np.round(sharded_means, 4))
-   print("Means agree:", np.allclose(sharded_means, memory_means))
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         Mean outcome by year: [5.7985 5.744  5.7535 5.7764 5.7903]
-         Means agree: True
-
-From the combined sums, the driver gets the mean outcome of each year. Those
-means match the ones from the prepared arrays that hold all 500 counties at
-once.
-
-Normal equations summed across shards would also give a regression. They drift
-from the in-memory coefficients as a design's condition number grows, though. Each
-shard therefore returns the QR factors :math:`(R, Q'B)` of its own rows
-instead. Stacking two pairs and factoring again gives the pair for all their
-rows in a tall-skinny QR factorization. Below, the first year's regression of
-the outcome on log population comes out the same from three shards as from all
-the counties at once.
-
-.. code-block:: python
-
-   def first_year_factors(shard, state):
-       # QR factors of the first year's regression of the outcome on log population.
-       design = np.column_stack([np.ones(len(shard.unit_keys)), shard.covariates[:, 0]])
-       q, r = np.linalg.qr(design)
-       return Partial(sums={}, maxima={}, factors={"ols": (r, q.T @ shard.y[:, [0]])}, keyed={})
-
-
-   # Stacking the three shards' factors and factoring again gives those of all the units.
-   r, qtb = LocalExecutor(shards).run(first_year_factors, None).factors["ols"]
-   sharded_coefficients = np.linalg.solve(r, qtb).ravel()
-
-   # The same regression on all 500 counties at once.
-   memory_coefficients = np.linalg.lstsq(
-       prepared.covariates_tensor[0], prepared.outcomes_tensor[0], rcond=None
-   )[0]
-
-   print("Coefficients:", np.round(sharded_coefficients, 4))
-   print("Coefficients agree:", np.allclose(sharded_coefficients, memory_coefficients))
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         Coefficients: [2.2067 1.0842]
-         Coefficients agree: True
-
-The driver solves the outcome regressions and each Newton step of the
-propensity score fits from factors merged this way. Partials also carry
-maxima, such as the largest weight, and keyed sums for statistics of each
-cluster. Since a shard can hold part of a cluster, a keyed sum adds the rows
-that share a cluster's key. The executor turns it into a Gram matrix only after
-every unit of the cluster has arrived. The rules for Spark code at the end of
-this section explain why the kernels that run on Spark live in an importable
-module.
-
-.. admonition:: A split cluster becomes two clusters
-   :class: warning
-
-   A keyed sum is final only once every unit of its key has arrived. If
-   ``finalize_keyed`` turns it into a Gram matrix before then, a cluster whose
-   units sit in two partials counts as two clusters.
-
-Passes of a fit
-^^^^^^^^^^^^^^^
-
-A whole fit of ``att_gt`` is a sequence of such passes over the shards.
-``fit_att_gt_on_shards`` runs each
-pass through an executor and solves on the driver what the next pass needs.
-Given ``LocalExecutor`` and the county shards, it rebuilds the ``result`` from
-the top of this page.
-
-.. code-block:: python
-
-   from moderndid.did.shards.driver import fit_att_gt_on_shards
-
-   # The fit runs every pass on the shards through the executor.
-   executor = LocalExecutor(shards)
-   settings = {"bootstrap": False, "uniform_bands": False}
-   sharded = fit_att_gt_on_shards(executor, prepared.config, prepared.cohort_counts, None, settings)
-
-   print("Passes over the shards:", executor.n_passes)
-   print(f"Largest gap in the effects: {np.abs(sharded.att_gt - result.att_gt).max():.1e}")
-   print(f"Largest gap in the standard errors: {np.abs(sharded.se_gt - result.se_gt).max():.1e}")
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         Passes over the shards: 9
-         Largest gap in the effects: 2.8e-17
-         Largest gap in the standard errors: 1.4e-17
-
-The effects and standard errors match the in-memory ``result`` up to the last
-bits of rounding. The doubly robust fit made the nine passes below in order.
-``irls_kernel`` ran once for each of the six iterations of its logits.
-
-.. code-block:: text
-
-   summary_kernel      counts, weight sums, and QR factors of the designs
-   irls_kernel         one pass for each iteration of the propensity score fits
-   cell_sums_kernel    the parts of every effect
-   moments_kernel      the sums over units that InfluenceMoments holds
-
-Before the first pass, ``plan_cells`` lists the group-time cells with the same
-``cell_spec`` that the in-memory fit uses. Cells that agree on the treated
-cohort, the comparison cohorts, and the earlier period use the same units,
-covariates, and weights. One propensity score fit and one regression design
-therefore serve all of them. On the county panel, the 12 cells share 8 fits.
-
-.. admonition:: Key new options into the shared fits
-   :class: important
-
-   A new option that changes which units, covariates, or weights a cell uses
-   belongs in that key. Leaving it out fails no test unless a parity test
-   covers the option.
-
-An outcome regression fit skips ``irls_kernel`` and makes three passes. The
-propensity score fits repeat the in-memory binomial fit iteration by iteration
-because each iteration whose scores separate the units adds a separation
-warning. In memory, each cell fits its logit twice, once in the overlap screen
-and once in its estimator. The engine therefore replays a shared fit's
-warnings once for every cell in the screen and again at the cell's estimator.
-Since each pass costs a Spark action, a new statistic that needs the final
-logit coefficients belongs in ``cell_sums_kernel`` or ``moments_kernel``.
-``_finish_att_gt`` then assembles the result just as it does for an in-memory
-fit.
-
-Inference from sums over units
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The influence functions behind the standard errors can't leave the shards
-either. The last pass sums each unit's row :math:`z_i` into an
-:class:`~moderndid.InfluenceMoments` instead. The row stacks the unit's
-influence function for every effect, its first-period sampling weight in its
-cohort's column, and a constant. With bootstrap draws, the pass also returns
-the sum :math:`S_b` for each draw :math:`b` of the multipliers
-:math:`v_{bi}`.
-
-.. math::
-
-   Z'Z = \sum_{i=1}^{n} z_i z_i', \qquad
-   S_b = \sum_{i=1}^{n} v_{bi} z_i, \qquad
-   \hat\sigma_c^2 = \frac{c'\,Z'Z\,c}{n^2}
-
-Since every aggregated influence function is a linear combination
-:math:`c'z_i` of each unit's row, the variance of any aggregation follows from
-:math:`Z'Z` alone. A clustered fit uses the Gram matrix of the cluster sums in
-its place. The first block of :math:`Z'Z` is the ``psi.T @ psi`` from earlier
-on this page. The shard fit's covariance and its event study therefore match
-the in-memory ones.
-
-.. code-block:: python
-
-   moments = sharded.influence_moments
-   k = len(result.att_gt)
-
-   # The influence functions fill the first k entries of each unit's row.
-   print("Length of each unit's row:", moments.gram.shape[0])
-   print("Covariance agrees:", np.allclose(moments.gram[:k, :k] / n, contribution_variance))
-
-   # An event study aggregates from those sums alone.
-   sharded_study = did.aggte(sharded, type="dynamic")
-   memory_study = did.aggte(result, type="dynamic")
-   print("Event study errors agree:", np.allclose(sharded_study.se_by_event, memory_study.se_by_event))
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         Length of each unit's row: 16
-         Covariance agrees: True
-         Event study errors agree: True
-
-Each row holds the 12 influence functions, the weights of the three treated
-cohorts, and the constant. ``_UnitLevelEvaluator`` and ``_MomentEvaluator``
-apply the same coefficient columns to the unit rows of an in-memory fit and to
-the sums of a fit on shards.
-
-.. admonition:: Change an aggregation through its coefficients
-   :class: important
-
-   A change to an aggregation belongs in its coefficient columns, never in code
-   that reads ``influence_func``, ``G``, or ``weights_ind`` directly. A fit on
-   shards leaves all three of those fields as None.
-
-For :math:`B` draws and the :math:`L` entries of :math:`z_i`, each row that
-``moments_kernel`` returns takes about :math:`8L(L + B)` bytes. A clustered fit
-that keeps whole clusters adds another :math:`8L^2` bytes for its cluster Gram
-matrix. One that spreads its clusters adds about :math:`8(L + 1)` bytes for
-each cluster the task touched instead. The
-:ref:`troubleshooting section <spark-troubleshooting>` of the setup guide
-covers the limits these rows can reach.
-
-.. _architecture-shard-draws:
-
-Random draws on shards
-^^^^^^^^^^^^^^^^^^^^^^
-
-In memory, ``multiplier_bootstrap`` draws the random sign of each unit, or of
-each cluster in a clustered fit, from one random stream in the order of the
-units or clusters. Since the way a Spark table's rows fall into partitions
-changes with the executors, adaptive query execution, and the data source, the
-table offers no such order.
-
-Each multiplier on shards is instead a pure function of the seed, the draw, and
-the key of its unit or cluster. ``canonical_keys`` turns each identifier into a
-64-bit key that depends only on its value. ``keyed_rademacher`` then turns the
-seed and each key into signs with the counter-based generator Philox4x32-10 of
-`Salmon et al. (2011) <https://doi.org/10.1145/2063384.2063405>`_. `Chamandy et
-al. (2012)
-<https://research.google/pubs/estimating-uncertainty-for-massive-data-streams/>`_
-key the bootstrap weights of each user in a sharded data stream to the user's
-identifier for the same reason.
-
-.. code-block:: python
-
-   from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
-
-   # The signs of the 500 counties in 1,000 draws from seed 7.
-   counties = prepared.time_invariant_data["countyreal"].to_numpy()
-   signs = keyed_rademacher(canonical_keys(counties), 7, 1000)
-
-   # The same seed with the counties reversed, stored as floats, or drawn 300 times.
-   reversed_signs = keyed_rademacher(canonical_keys(counties[::-1]), 7, 1000)
-   float_signs = keyed_rademacher(canonical_keys(counties.astype(float)), 7, 1000)
-   first_draws = keyed_rademacher(canonical_keys(counties), 7, 300)
-
-   print("Same signs in reverse order:", np.array_equal(signs[::-1], reversed_signs))
-   print("Same signs from float identifiers:", np.array_equal(signs, float_signs))
-   print("Same first 300 draws:", np.array_equal(signs[:, :300], first_draws))
-
-.. container:: cell_output
-
-   .. container:: output stream
-
-      .. code-block:: text
-
-         Same signs in reverse order: True
-         Same signs from float identifiers: True
-         Same first 300 draws: True
-
-Every partitioning and every rerun of a task therefore gives the same draws.
-An integer and a float that hold the same whole number share a key. A string
-takes its 8-byte BLAKE2b digest because Python salts its built-in ``hash`` anew
-in every process. Because draw :math:`b` always comes from block
-:math:`\lfloor b / 128 \rfloor`, an aggregation with a smaller ``biters`` sees
-the same signs as a fit run with that ``biters``.
-
-.. admonition:: Seeds by partition change the draws
-   :class: warning
-
-   A new random draw on shards takes its signs from ``keyed_rademacher`` on
-   ``canonical_keys``. It never seeds them by partition or by task, as Spark's
-   ``rand`` function does, or keys them by Python's ``hash`` of a string.
-
-Since ``keyed_rademacher`` computes Philox in NumPy's integer arithmetic rather
-than through a ``Generator``, the signs stay the same whatever NumPy version an
-executor runs. ``tests/core/test_bootstrap.py`` pins the generator to the
-known-answer vectors of the Random123 library. A change to the signs fails
-tests in that file and changes every bootstrap number that a Spark fit reports
-for a seed. Because ``aggte`` inherits ``cband`` and draws for its band even
-when ``boot=False``, the moments pass stores draws whenever the fit asks for
-the bootstrap or a uniform band. When only two periods remain, preprocessing
-turns the configuration's ``cband`` off. The driver reads both settings from
-the caller's ``estimation_params`` instead.
-
-Running the passes on Spark
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-On Spark, the same driver runs the same passes with another executor.
-``spark_att_gt`` builds a
-table with one row for each unit and gives ``fit_att_gt_on_shards`` a
-``SparkExecutor`` over it.
-
-.. code-block:: python
-
-   # From spark_att_gt, where data is a Spark DataFrame.
-   unit_table, config, cohort_counts, n_obs, cluster_counts, whole_clusters, cached = (
-       build_unit_table(data, config)
-   )
-   executor = SparkExecutor(
-       unit_table,
-       config.time_periods_count,
-       len(_covariate_names(config)),
-       whole_clusters=whole_clusters,
-   )
-   result = fit_att_gt_on_shards(
-       executor, config, cohort_counts, random_state, estimation_params, cluster_counts=cluster_counts
-   )
-
-``build_unit_table`` runs the in-memory ``validate`` stage and
-``ColumnSelector`` on an empty frame with the data's schema and repeats the
-later ``transform`` steps in Spark SQL. There, one aggregation and one shuffle
-gather each unit's rows into one row of the unit table. A change to those steps
-in memory therefore needs the same change there. If the session allows a
-persist, the fit unpersists the cached table when it returns or when any error,
-an interrupt included, stops it.
-
-``SparkExecutor.run`` applies a kernel to each partition of the unit table
-through ``mapInArrow``. Each task reads its partition in slices of at most 4096
-units and turns every slice into a ``Shard`` with ``shard_from_arrow``. Each
-task returns its statistics as one row. Each row also carries the task's
-moderndid and Python versions for the driver to check. If a mismatched executor
-raised an error instead, the driver would see a ``PythonException`` rather than
-one that says what to install. When the unit table keeps every cluster within
-one partition, as it does for a fit with many clusters, each task finalizes its
-own keyed sums first. With few clusters, the table spreads each cluster over
-the partitions instead. The driver then finalizes the keyed sums once it has
-combined every row. Since each task's keyed sums hold a row of :math:`z_i` for
-every cluster it touched, ``build_unit_table`` spreads clusters only while
-their approximate count times a bound on the length of :math:`z_i` stays within
-:math:`2^{17}`, about a megabyte of sums. On the first pass and after any pass
-whose tasks returned more than 16 rows, a grouped stage combines the rows of
-the :math:`P` tasks in about :math:`\sqrt{P}` groups before the driver
-collects them.
-
-``att_gt`` recognizes a Spark DataFrame by its class without importing PySpark
-and hands it to ``spark_att_gt`` before any step that reads the data.
-Otherwise ``check_columns`` would convert a PySpark 4.2 DataFrame through its
-``__arrow_c_stream__`` and collect the whole table to the driver.
-``spark_att_gt`` builds its ``DIDConfig`` and ``estimation_params`` by hand
-rather than through the in-memory preprocessing.
-
-.. admonition:: A new option needs the Spark path
-   :class: warning
-
-   Unless a new ``att_gt`` option also gets a place in ``spark_att_gt``, a
-   Spark fit ignores it without an error. Since the parity tests in
-   ``tests/did/`` never call ``spark_att_gt``, only the tests in
-   ``tests/spark/`` catch that gap.
-
-New data for each unit also needs a column that ``build_unit_table`` writes and
-``shard_from_arrow`` reads into the shard. Each new option needs a case in the
-option matrices of ``tests/did/test_shards.py`` and
-``tests/spark/test_att_gt.py`` as well.
-
-Agreement with the in-memory fit
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Because the two paths share the cell plan, the in-memory checks, and
-``_finish_att_gt`` but none of the estimators' algebra, agreement between them
-checks the engine's sums. Like the fit above, ``tests/did/test_shards.py`` runs
-the engine through ``LocalExecutor`` against the in-memory ``att_gt`` and
-``aggte``. Its option matrix of estimators, comparison groups, base periods,
-weights, clusters, and anticipation runs on three shards and compares the
-warnings in order. Each estimator also runs on one and seven shards to vary the
-split. The :ref:`testing guide <testing-spark>` covers the end-to-end tests
-that run on Spark itself.
-
-The parity tests work around the few behaviors below that the engine doesn't
-copy. A new warning from a dependency either gets a copy on the shard path or
-joins this list.
-
-- A decision within rounding of its threshold, such as the overlap screen at
-  0.999, can go the other way when the sums add up in another order.
-- The iteration count of an exactly collinear logit varies from run to run
-  inside statsmodels.
-- The warnings and errors of the Gaussian GLM in ``reg_did_panel``, NumPy's
-  RuntimeWarnings inside statsmodels, and the ``SingularMatrixWarning`` that
-  statsmodels 0.15 raises for a rank-deficient design have no copy.
-- A Spark fit lists the cohorts of its small-groups warning in ascending order
-  and stops before its first job on weights or covariates that aren't numbers.
-
-For a few in-memory checks, the driver builds stand-in arrays from the kernels'
-statistics, such as the treated and comparison weight totals for
-``_check_cell_weights``.
-
-.. admonition:: Keep the shard path in step
-   :class: important
-
-   A change to the in-memory estimators needs the same change on the shard
-   path. A check that starts reading more of its input than its stand-in holds
-   needs a new kernel statistic.
-
-Rules for Spark code
-^^^^^^^^^^^^^^^^^^^^
-
-The tests through ``LocalExecutor`` never reach finalizing in each task, the
-grouped stage, the PySpark 3.5 paths, the version check, or the cached table. A
-change to any of them needs a test in ``tests/spark/``. Code that runs on Spark
-keeps to six rules that the ``LocalExecutor`` tests mostly can't check.
-
-- It calls only DataFrame APIs that Spark Connect supports and never
-  ``sparkContext``, RDDs, or broadcast variables. The grouped stage uses
-  ``groupBy`` because ``repartition(k)`` would cost an extra job under Spark
-  Connect to count the partitions.
-- It runs on PySpark 3.5 as well as on PySpark 4. Code that needs a newer API
-  keeps a 3.5 path beside it and picks one by feature, never by version. A
-  version check would miss the newer APIs that Databricks adds to its PySpark
-  3.5. ``SparkExecutor.run``, for example, checks the grouped data for
-  ``applyInArrow``. Where PySpark 3.5 takes only a literal, such as the value
-  that ``array_position`` looks up, the code passes no Column. In library code,
-  only the PySpark floor check in ``spark_att_gt`` reads the version.
-- It never sets a session configuration because serverless compute on
-  Databricks lets a session set only a few of them.
-- Kernels are module-level functions with NamedTuple states because
-  ``SparkExecutor`` pickles a kernel and the class of its state by reference.
-  Since ``LocalExecutor`` never pickles, a pickle round-trip test in
-  ``tests/did/`` checks every kernel of the engine.
-- Since a ``SparkExecutor`` built with ``whole_clusters=True`` finalizes the
-  keyed sums in each task, its unit table must keep every cluster whole.
-  ``build_unit_table`` does so by hashing its shuffle on the cluster alone and
-  merging only whole partitions afterwards. A repartition by anything else, or
-  a ``REBALANCE`` hint, would split clusters and miscount them without an
-  error.
-- The kernels keep their working memory bounded through the 4096-unit slices
-  and blocks of units and draws. A clustered task's sums still grow by one row
-  for each cluster. Serverless compute on Databricks needs that bound because
-  Databricks documents a cap of 1 GB on the memory of each Python UDF.
+Fits on a cluster
+^^^^^^^^^^^^^^^^^
+
+When the data sit in a Spark DataFrame, ``att_gt`` fits them without bringing
+the units together on one machine. Every quantity the estimator needs is a sum
+over units or follows from such sums. Each block of units computes its share
+of those sums where it lives. Three guides follow that engine from the shards
+to the cluster.
+
+- :doc:`shards` rebuilds the fit from the top of this page out of three blocks
+  of counties.
+- :doc:`row_shards` carries the same idea over to repeated cross-sections and
+  unbalanced panels.
+- :doc:`spark_fits` runs the passes on Spark and sets out the rules for code
+  that runs there.
 
 .. _architecture-imports:
 
 Keeping imports and dependencies scoped
 ---------------------------------------
 
-For a user to reach your function or result type through ``moderndid``,
-its public name has to point to the module that defines it.
-The root ``__init__.py`` uses ``__getattr__`` to load most names from
-``_lazy_imports`` or ``_optional_imports`` when they're requested.
-The optional mapping pairs a module path with the extra needed for its
-dependencies so an import failure can name an installation command.
-Listing a name in ``__all__`` marks it as an intended export without
-establishing its lazy import route.
+For a user to reach your function or result type through ``moderndid``, its
+public name has to point to the module that defines it. The root
+``__init__.py`` uses ``__getattr__`` to load most names from ``_lazy_imports``
+or ``_optional_imports`` when they're requested. The optional mapping pairs a
+module path with the extra needed for its dependencies so an import failure
+can name an installation command. Listing a name in ``__all__`` marks it as an
+intended export without establishing its lazy import route.
 
 Some function names match estimator subpackages and are imported eagerly
 to make ``from moderndid import ...`` resolve to the function. Root

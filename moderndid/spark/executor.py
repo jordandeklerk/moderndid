@@ -1,4 +1,4 @@
-"""Execution of the passes of a sharded att_gt fit on a Spark unit table."""
+"""Execution of the passes of a sharded att_gt fit on a Spark table."""
 
 import pickle
 import sys
@@ -13,39 +13,36 @@ from moderndid.did.shards.partials import combine_partials, empty_partial, final
 
 
 class SparkExecutor:
-    """Run each pass of a sharded fit as one Spark action over the unit table.
+    """Run each pass of a sharded fit as one Spark action over a table.
 
-    Every task applies the kernel to its partition of the unit table and
-    returns one row of statistics unless its partition is empty. With
-    ``whole_clusters``, each task finalizes its keyed sums first. Otherwise the
-    driver finalizes them after combining every row. On the first pass and
-    whenever the tasks of the previous pass returned more than 16 rows, a
-    second stage combines the rows in groups before the driver collects them.
-    The executor counts its passes in ``n_passes``.
+    Like :class:`~moderndid.did.shards.local.LocalExecutor`, the executor has a
+    ``run`` method and counts its passes in ``n_passes``. With
+    ``whole_clusters``, each task finalizes the keyed sums of its partition.
+    Otherwise the driver finalizes them once it has combined every row. See the
+    :ref:`guide to fits on Spark <dev-spark-tasks>` for how the tasks of a pass
+    combine their rows.
 
     Parameters
     ----------
-    unit_table : pyspark.sql.DataFrame
-        Table with one row for each unit in the layout that
-        :func:`~moderndid.did.shards.layout.shard_from_arrow` reads.
-    n_periods : int
-        Number of time periods T.
-    n_covariates : int
-        Number of covariates p, not counting the intercept.
+    table : pyspark.sql.DataFrame
+        Unit table or row table of the fit.
+    read_shard : callable
+        Picklable function that reads a shard from a pyarrow RecordBatch of
+        rows of the table, such as
+        ``functools.partial(shard_from_arrow, n_periods=T, n_covariates=p)``.
     whole_clusters : bool, default=False
         Whether each partition holds all the units of its clusters.
     """
 
-    def __init__(self, unit_table, n_periods, n_covariates, whole_clusters=False):
-        self.unit_table = unit_table
-        self.n_periods = n_periods
-        self.n_covariates = n_covariates
+    def __init__(self, table, read_shard, whole_clusters=False):
+        self.table = table
+        self.read_shard = read_shard
         self.whole_clusters = whole_clusters
         self.n_passes = 0
         self._n_tasks = None
 
     def run(self, kernel, state):
-        """Apply a kernel to every shard of the unit table and combine the statistics.
+        """Apply a kernel to every shard of the table and combine the statistics.
 
         When an executor can't import moderndid or runs a moderndid version or
         Python minor version that differs from the driver's, the pass raises a
@@ -62,29 +59,27 @@ class SparkExecutor:
         Returns
         -------
         Partial
-            Statistics of all the units of the table with the keyed sums finalized.
+            Statistics of the whole table with the keyed sums finalized.
         """
-        # Since moderndid shipped to the executors as a zip has no package metadata, both sides compare the version
-        # string that the package itself holds.
+        # Both sides compare the version string that the package itself holds because moderndid shipped to the executors
+        # as a zip has no package metadata.
         version = _version.__version__
         python = "{}.{}".format(*sys.version_info[:2])
         arrow_schema = _arrow_schema()
         task = _shard_task(
-            pickle.dumps((kernel, state), protocol=pickle.HIGHEST_PROTOCOL),
+            pickle.dumps((kernel, state, self.read_shard), protocol=pickle.HIGHEST_PROTOCOL),
             version,
             python,
-            self.n_periods,
-            self.n_covariates,
             arrow_schema,
             self.whole_clusters,
         )
-        frame = self.unit_table.mapInArrow(task, _spark_schema())
+        frame = self.table.mapInArrow(task, _spark_schema())
         if self._n_tasks is None or self._n_tasks > 16:
-            # Since grouping task numbers by their integer square root gives about the root of their count in groups
-            # of at most twice that size, the second stage stays balanced without knowing the count in advance.
+            # Grouping task numbers by their integer square root gives about the root of their count in groups of at
+            # most twice that size. The second stage then stays balanced without knowing the count in advance.
             grouped = frame.groupBy(F.floor(F.sqrt(F.col("part"))))
             combine = _combine_task(version, python, arrow_schema)
-            # Since PySpark 3.5 has no grouped applyInArrow, its groups reach the same combine function through pandas.
+            # PySpark 3.5 has no grouped applyInArrow. There the groups reach the same combine function through pandas.
             if hasattr(grouped, "applyInArrow"):
                 frame = grouped.applyInArrow(combine, _spark_schema())
             else:
@@ -132,21 +127,16 @@ def _spark_schema():
     )
 
 
-def _shard_task(payload, version, python, n_periods, n_covariates, arrow_schema, whole_clusters):
+def _shard_task(payload, version, python, arrow_schema, whole_clusters):
     """Return the ``mapInArrow`` function that one task of a pass runs on its partition.
 
-    The function unpickles the kernel and its state from ``payload``, applies
-    the kernel to chunks of the partition, and returns one row of statistics.
-    It finalizes the keyed sums of the row only when ``whole_clusters`` says
-    that the partition holds all the units of its clusters. An empty partition
-    returns no row. On an executor whose moderndid or Python version differs
-    from the driver's, it applies no kernel and returns only a report of the
-    versions and any import error.
+    On an executor with another moderndid or Python version, the function
+    returns a report of the versions in place of statistics.
     """
 
     def task(batches):
         part = TaskContext.get().partitionId()
-        # Since an executor without moderndid or with another version must report itself rather than fail, the task
+        # An executor without moderndid or with another version must report itself rather than fail. The task therefore
         # imports moderndid only here and loads its modules only once the versions match.
         try:
             from moderndid._version import __version__ as found
@@ -160,16 +150,16 @@ def _shard_task(payload, version, python, n_periods, n_covariates, arrow_schema,
             yield pa.RecordBatch.from_pylist([report], schema=arrow_schema)
             return
 
-        from moderndid.did.shards.layout import shard_from_arrow
         from moderndid.did.shards.partials import combine_partials, finalize_keyed
 
-        kernel, state = pickle.loads(payload)
+        # The reader waits for the version check too because unpickling it imports its module.
+        kernel, state, read_shard = pickle.loads(payload)
         partial = None
         for batch in batches:
-            # Since a session may ignore the batch size and cap a UDF's memory at 1 GB, as Databricks documents for
-            # serverless compute, the kernel reads bounded chunks so its working memory doesn't grow with the partition.
+            # A session may ignore the batch size and cap a UDF's memory at 1 GB, as Databricks documents for serverless
+            # compute. The kernel reads bounded chunks so its working memory doesn't grow with the partition.
             for start in range(0, batch.num_rows, 4096):
-                statistics = kernel(shard_from_arrow(batch.slice(start, 4096), n_periods, n_covariates), state)
+                statistics = kernel(read_shard(batch.slice(start, 4096)), state)
                 partial = statistics if partial is None else combine_partials(partial, statistics)
         if partial is not None:
             if whole_clusters:
@@ -184,12 +174,8 @@ def _shard_task(payload, version, python, n_periods, n_covariates, arrow_schema,
 def _combine_task(version, python, arrow_schema):
     """Return the function that combines the rows of one group of tasks.
 
-    The function takes the rows of the group as a pyarrow Table and returns a
-    pyarrow Table of the combined rows. It folds the statistics in the order of
-    the task numbers. It unpickles one payload at a time so that the others
-    stay in their Arrow buffers. Rows whose versions differ from the driver's
-    pass through unchanged. An executor whose own versions differ returns only
-    its report.
+    Unless the combining executor runs another moderndid or Python version
+    itself, the group's version reports pass through to the driver.
     """
 
     def combine(table):
@@ -218,9 +204,11 @@ def _combine_task(version, python, arrow_schema):
         versions = table.column("version").to_pylist()
         pythons = table.column("python").to_pylist()
         errors = table.column("error").to_pylist()
+        # A group's payloads can be large. Each stays in its Arrow buffer until the loop reaches it.
         payloads = table.column("payload")
         result = []
         partial, first, n_tasks = None, None, 0
+        # Folding in task order makes the combined statistics independent of the order Spark delivers the rows in.
         for i in sorted(range(table.num_rows), key=parts.__getitem__):
             if (versions[i], pythons[i]) != (version, python):
                 result.append(
@@ -254,12 +242,7 @@ def _combine_task(version, python, arrow_schema):
 
 
 def _pandas_combine(combine, arrow_schema):
-    """Return the ``applyInPandas`` function that runs a combine function on the rows of one group.
-
-    The function turns the pandas DataFrame of the group into a pyarrow Table
-    of the Arrow schema, combines the rows, and returns the result as a pandas
-    DataFrame.
-    """
+    """Return the ``applyInPandas`` function that runs a combine function on the rows of one group."""
 
     def combine_frame(frame):
         table = pa.Table.from_pandas(frame, schema=arrow_schema, preserve_index=False)

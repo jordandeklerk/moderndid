@@ -1,4 +1,4 @@
-"""Preprocessing of a Spark DataFrame into the unit table of a sharded att_gt fit."""
+"""Preprocessing of a Spark DataFrame into the table that a sharded att_gt fit reads."""
 
 import math
 import operator
@@ -12,20 +12,29 @@ from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
 from moderndid.core.preprocess import PreprocessDataBuilder
-from moderndid.core.preprocess.constants import NEVER_TREATED_VALUE, ControlGroup, DataFormat
+from moderndid.core.preprocess.constants import NEVER_TREATED_VALUE, ROW_ID_COLUMN, ControlGroup, DataFormat
 from moderndid.core.preprocess.models import ValidationResult
 from moderndid.core.preprocess.transformers import ColumnSelector
 from moderndid.core.preprocess.utils import extract_vars_from_formula
-from moderndid.did.shards.layout import CLUSTER, COHORT, COVARIATE, OUTCOME, UNIT, WEIGHT
+from moderndid.did.shards.layout import (
+    CLUSTER,
+    COHORT,
+    COPY,
+    COVARIATE,
+    OUTCOME,
+    PERIOD,
+    RAW_WEIGHT,
+    UNIT,
+    WEIGHT,
+)
 
 
 def schema_frame(data):
     """Return an empty polars DataFrame with the columns of a Spark DataFrame.
 
-    Since the in-memory column checks need only the names of the columns and
-    whether each one holds numbers, they run on it without a Spark job. A
-    numeric column becomes Float64, a boolean column Boolean, and any other
-    column String.
+    The in-memory column checks need only the names of the columns and whether
+    each one holds numbers. They run on this frame without a Spark job. A numeric
+    column becomes Float64, a boolean column Boolean, and any other column String.
 
     Parameters
     ----------
@@ -49,21 +58,19 @@ def schema_frame(data):
 
 
 def build_unit_table(data, config):
-    """Build the unit table that a Spark fit of att_gt reads.
+    """Build the unit table that a Spark fit of att_gt on a panel reads.
 
-    The steps mirror the in-memory preprocessing of a balanced panel in their
-    order and with the same warnings and errors. Weights or covariates that are
-    not numbers also raise a ValueError before any job runs. So does a decimal
-    identifier or cluster with fraction digits or more than 18 digits. Apart
-    from the column checks on the schema, the steps take one aggregation and
-    one shuffle of the long data. No row of the data reaches the driver.
+    The steps mirror the in-memory preprocessing of a panel in their order and
+    with the same warnings and errors. Weights or covariates that are not
+    numbers also raise a ValueError before any job runs. So does a decimal
+    identifier or cluster with fraction digits or more than 18 digits.
 
-    The unit table follows the layout that
-    :func:`~moderndid.did.shards.layout.shard_from_arrow` reads. A clustered fit
-    with few clusters spreads the units of each cluster over the partitions.
-    One with many clusters keeps every cluster within one partition. When the
-    session refuses to persist the table of all units and to checkpoint it, a
-    warning says that each pass of the fit rebuilds it.
+    The table follows the layout that
+    :func:`~moderndid.did.shards.layout.shard_from_arrow` reads. With
+    ``config.allow_unbalanced_panel``, the fit keeps a unit with rows in only
+    some of its periods. If it keeps any, the table takes the layout that
+    :func:`~moderndid.did.shards.layout.row_shard_from_arrow` reads. As in
+    memory, the configuration then has ``panel`` False.
 
     Parameters
     ----------
@@ -77,64 +84,29 @@ def build_unit_table(data, config):
     tuple
         Tuple containing:
 
-        - **unit_table**: Spark DataFrame with one row for each unit of the balanced panel
+        - **unit_table**: Spark DataFrame with one row for each unit of the fit
         - **config**: The configuration with its computed fields set as the in-memory preprocessing sets them
-        - **cohort_counts**: Polars DataFrame of the number of units of each cohort in the columns ``cohort``
-          and ``cohort_size`` with the cohorts in increasing order
-        - **n_obs**: Number of rows of the balanced panel
-        - **cluster_counts**: Pair of the number of clusters and a dict from each cohort to the number of
-          clusters of its units, or None without a cluster variable besides the unit identifier
+        - **cohort_counts**: Number of units of each cohort in the columns that
+          :func:`~moderndid.did.shards.driver.fit_att_gt_on_shards` reads
+        - **n_obs**: Number of rows of the panel that the fit reads
+        - **cluster_counts**: Cluster counts as :func:`~moderndid.did.shards.driver.fit_att_gt_on_shards` reads
+          them, or None without a cluster variable besides the unit identifier
         - **whole_clusters**: Whether every partition holds all the units of its clusters, or False without a
           cluster variable besides the unit identifier
         - **cached**: Persisted table to unpersist once the fit ends, or None when the session refused to persist it
     """
-    frame = schema_frame(data)
-    PreprocessDataBuilder().with_data(frame).with_config(config).validate()
-
-    names = ColumnSelector().transform(frame, config).columns
-    types = {field.name: field.dataType for field in data.schema.fields}
-    covariates = _covariate_names(config)
-    cluster = next((name for name in config.clustervars if name != config.idname), None)
+    data, types, covariates, cluster, kept, facts = _prepare_long_data(data, config)
     weighted = config.weightsname is not None
-    _check_value_types(config, covariates, types)
-    casts = _decimal_casts(config, cluster, types)
-    if casts:
-        data = data.withColumns({name: _column(name).cast(dtype) for name, dtype in casts.items()})
-        types.update(casts)
-
-    flags = [_missing(name, types[name], keep_infinite=name == config.gname) for name in names]
-    kept = ~reduce(operator.or_, flags)
-    facts = _long_facts(data, config, flags, kept, cluster)
-
-    if facts["kept"] < facts["rows"]:
-        if facts["kept"] == 0:
-            columns = [f"'{name}'" for name, count in zip(names, facts["missing"], strict=True) if count > 0]
-            where = columns[0] if len(columns) == 1 else f"at least one of the columns {', '.join(columns)}"
-            raise ValueError(f"Every row has a missing value in {where}. No data is left to estimate from.")
-        warnings.warn(
-            f"Dropped {facts['rows'] - facts['kept']} rows from original data due to missing values", UserWarning
-        )
+    unbalanced = config.allow_unbalanced_panel
 
     groups = facts["groups"]
     last_start = max(period for period, _ in groups) + config.anticipation
     early_until = min(period for period, _ in groups) + config.anticipation
-    encoded = [(period, NEVER_TREATED_VALUE if g == 0 or g > last_start else g) for period, g in groups]
-    later = [(period, cohort) for period, cohort in encoded if cohort > early_until]
-    remaining = sorted({cohort for _, cohort in later})
-    periods = sorted({period for period, _ in later})
-    latest = None
-    if remaining and NEVER_TREATED_VALUE not in remaining:
-        latest = remaining[-1]
-        periods = [period for period in periods if period < latest - config.anticipation]
-    coerced = latest if config.control_group == ControlGroup.NEVER_TREATED else None
-    # Because a unit's row of moments holds a column for each cell, each treated cohort, and the constant, this count
-    # bounds the sums that a task keeps for each cluster.
-    n_treated = sum(cohort != NEVER_TREATED_VALUE for cohort in remaining)
-    n_columns = n_treated * len(periods) + n_treated + 1
-    whole_clusters = cluster is not None and not _spread_clusters(facts["clusters"], n_columns)
+    periods, remaining, coerced = _fit_periods(groups, config, last_start, early_until)
+    whole_clusters = _whole_clusters(cluster, facts["clusters"], remaining, periods)
 
-    # Since the weights check raises only after the structural checks, a mean that is not positive must not stop the
-    # shuffle that runs those checks first.
+    # The weights check raises only after the structural checks. A mean that is not positive must not stop the shuffle
+    # that runs those checks first.
     mean_weight = facts["weight_sum"] / facts["kept"] if weighted else 1.0
     long = _kept_rows(data, config, kept, periods, mean_weight if mean_weight > 0 else 1.0, cluster, covariates, types)
     table = _unit_rows(
@@ -145,13 +117,15 @@ def build_unit_table(data, config):
         whole_clusters,
         len(covariates),
         (last_start, early_until, coerced),
+        unbalanced,
     )
-    # Since a refused persist is caught below, an analysis error in the table surfaces here first.
+    # Reading the schema raises an analysis error in the table here. The handler for a refused persist below would hide
+    # it.
     _ = table.schema
-    # Because the unit table only views this table of all units, unpersisting the unit table wouldn't free the cache.
+    # The unit table only views this table of all units. Unpersisting the unit table wouldn't free the cache.
     table, cached = _persist(table)
     try:
-        rows = table.rollup(COHORT).agg(*_summary_aggregates(cluster is not None)).collect()
+        rows = table.rollup(COHORT).agg(*_summary_aggregates(cluster is not None, unbalanced)).collect()
         total = next(row.asDict() for row in rows if row["total"] == 1)
         per_cohort = sorted(
             ((row[COHORT], row.asDict()) for row in rows if row["total"] == 0 and row["units"] > 0),
@@ -161,62 +135,173 @@ def build_unit_table(data, config):
         errors = _structure_errors(total, long, config, cluster is not None)
         if errors:
             ValidationResult(is_valid=False, errors=errors).raise_if_invalid()
-
-        if weighted and (facts["negative_weights"] > 0 or mean_weight <= 0):
-            raise ValueError(f"The weights variable '{config.weightsname}' must be non-negative with a positive mean.")
-
-        negative = [cohort for _, cohort in groups if cohort < 0]
-        if negative:
-            raise ValueError(
-                f"gname = '{config.gname}' holds negative values such as {min(negative):g}. "
-                "It must hold 0 for never-treated units and the first treated period for the others. "
-                "Since 0 marks never-treated units, shift the periods so that the earliest one is positive."
-            )
-
-        if total["early"] > 0:
-            warnings.warn(f"Dropped {total['early']} units that were already treated in the first period", UserWarning)
-        if coerced is not None:
-            warnings.warn(
-                "No never-treated group is available. "
-                "The last treated cohort is being coerced as 'never-treated' units.",
-                UserWarning,
-            )
+        _check_weights_and_cohorts(config, facts, mean_weight)
+        _warn_early_and_coerced(total["early"], "units", coerced)
 
         n_units = total["units"]
-        if n_units < total["counted"]:
-            warnings.warn(f"Dropped {total['counted'] - n_units} units while converting to balanced panel", UserWarning)
-        if n_units == 0:
-            raise ValueError(
-                "All observations dropped while converting to balanced panel. "
-                "Consider setting panel=False and/or revisiting 'idname'"
-            )
+        if not unbalanced:
+            if n_units < total["counted"]:
+                warnings.warn(
+                    f"Dropped {total['counted'] - n_units} units while converting to balanced panel", UserWarning
+                )
+            if n_units == 0:
+                raise ValueError(
+                    "All observations dropped while converting to balanced panel. "
+                    "Consider setting panel=False and/or revisiting 'idname'"
+                )
+        # The in-memory fit switches a panel to the estimators of repeated cross-sections once some unit misses a
+        # period.
+        incomplete = unbalanced and total["complete"] < n_units
+        if incomplete:
+            config.panel = False
+        data_format = DataFormat.REPEATED_CROSS_SECTION if incomplete else DataFormat.PANEL
+        _update_config(config, periods, [cohort for cohort, _ in per_cohort], n_units, data_format)
+        _check_groups(config, per_cohort, len(covariates), rows_per_period=incomplete)
 
-        _update_config(config, periods, [cohort for cohort, _ in per_cohort], n_units)
-        _check_groups(config, per_cohort, len(covariates))
-
-        cohort_counts = pl.DataFrame(
-            {
-                "cohort": pl.Series([cohort for cohort, _ in per_cohort], dtype=pl.Float64),
-                "cohort_size": pl.Series([counts["units"] for _, counts in per_cohort], dtype=pl.UInt32),
-            }
-        )
+        cohort_counts = _cohort_counts(per_cohort, "units", pl.UInt32)
         cluster_counts = None
         if cluster is not None:
             cluster_counts = (total["clusters"], {cohort: counts["clusters"] for cohort, counts in per_cohort})
 
-        layout = [UNIT, COHORT, OUTCOME] + [WEIGHT] * weighted + [COVARIATE] * bool(covariates)
-        layout += [CLUSTER] * (cluster is not None)
-        # Since a persisted table keeps all its shuffle partitions, merging them to about a megabyte each, as adaptive
-        # execution would, spares each pass a task per partition. Merging whole partitions keeps whole clusters whole.
-        unit_bytes = 8 * len(periods) * (1 + weighted + len(covariates)) + 64
-        n_partitions = max(1, math.ceil(n_units * unit_bytes / 2**20))
+        n_rows = total["rows"] if incomplete else n_units * len(periods)
+        layout = [UNIT, COHORT] + [PERIOD] * incomplete + [OUTCOME] + [WEIGHT] * weighted
+        layout += [COVARIATE] * bool(covariates) + [CLUSTER] * (cluster is not None)
+        # A persisted table keeps all its shuffle partitions. Merging them to about a megabyte each, as adaptive
+        # execution would, spares each pass a task per partition without splitting a cluster.
+        row_bytes = 8 * (1 + weighted + len(covariates) + incomplete)
+        n_partitions = max(1, math.ceil((n_rows * row_bytes + 64 * n_units) / 2**20))
         unit_table = table.filter(F.col("keep")).select(*layout).coalesce(n_partitions)
     except BaseException as error:
-        # Since an interrupt or any failure before the fit takes over the table would leave it cached, every error
-        # releases it here.
+        # An interrupt or any failure before the fit takes over the table would leave it cached. Every error releases it
+        # here.
         _release(cached, error)
         raise
-    return unit_table, config, cohort_counts, n_units * len(periods), cluster_counts, whole_clusters, cached
+    return unit_table, config, cohort_counts, n_rows, cluster_counts, whole_clusters, cached
+
+
+def build_row_table(data, config, draws=False):
+    """Build the row table that a Spark fit of att_gt on repeated cross-sections reads.
+
+    As :func:`build_unit_table` does for a panel, the steps mirror the
+    in-memory preprocessing of repeated cross-sections in their order and with
+    the same warnings and errors. With an ``idname``, every row of an
+    identifier that holds a row treated in the first period leaves the fit.
+
+    The table follows the layout that
+    :func:`~moderndid.did.shards.layout.row_shard_from_arrow` reads. For an
+    unclustered fit that draws bootstrap multipliers, one shuffle numbers the
+    copies of identical rows for :func:`~moderndid.did.shards.layout.row_keys`.
+    For a clustered fit with many clusters, a shuffle by cluster keeps each
+    cluster within one partition. Any other fit lays out its rows without a
+    shuffle.
+
+    Parameters
+    ----------
+    data : pyspark.sql.DataFrame
+        Repeated cross-sections in long format.
+    config : DIDConfig
+        Configuration of the fit with the options that att_gt passes.
+    draws : bool, default=False
+        Whether the fit draws bootstrap multipliers, as ``boot`` or ``cband``
+        asks.
+
+    Returns
+    -------
+    tuple
+        Tuple containing:
+
+        - **row_table**: Spark DataFrame with one row for each observation of the fit
+        - **config**: The configuration with its computed fields set as the in-memory preprocessing sets them
+        - **cohort_counts**: Number of rows of each cohort in the columns that
+          :func:`~moderndid.did.shards.row_driver.fit_att_gt_on_row_shards` reads
+        - **n_obs**: Number of rows that the fit reads
+        - **cluster_counts**: Cluster counts as :func:`~moderndid.did.shards.row_driver.fit_att_gt_on_row_shards`
+          reads them, or None without a cluster variable besides the unit identifier
+        - **whole_clusters**: Whether every partition holds all the rows of its clusters, or False without a
+          cluster variable besides the unit identifier
+        - **cached**: Persisted table to unpersist once the fit ends, or None when the session refused to persist it
+    """
+    data, types, covariates, cluster, kept, facts = _prepare_long_data(data, config)
+    weighted = config.weightsname is not None
+    # A clustered fit draws one multiplier per cluster. Only an unclustered fit that draws needs row keys.
+    keyed = draws and cluster is None
+
+    groups = facts["groups"]
+    observed = sorted({period for period, _ in groups})
+    last_start = observed[-1] + config.anticipation
+    early_until = observed[0] + config.anticipation
+    # The in-memory fit raises the identifier error before the weights error. A mean weight that isn't positive
+    # therefore falls back to a scale of one rather than stop the aggregation that checks the identifiers.
+    mean_weight = facts["weight_sum"] / facts["kept"] if weighted else 1.0
+    scale = mean_weight if mean_weight > 0 else 1.0
+    long = _kept_rows(data, config, kept, None, scale, cluster, covariates, types, raw_weights=keyed and weighted)
+    early = _cohort_column(F.col("g"), last_start) <= F.lit(float(early_until))
+    some_early = any(_coded_cohort(g, last_start) <= early_until for _, g in groups)
+
+    n_early = 0
+    if config.idname is not None:
+        n_early = _check_identifiers(long, early if some_early else None, len(observed))
+    _check_weights_and_cohorts(config, facts, mean_weight)
+
+    rows = long
+    if config.idname is None:
+        counts = facts["group_counts"]
+        n_early = sum(count for (_, g), count in counts.items() if _coded_cohort(g, last_start) <= early_until)
+        if n_early > 0:
+            rows = long.filter(~early)
+    elif n_early > 0:
+        # A cohort can vary within an identifier of repeated cross-sections. The periods and cohorts left after dropping
+        # the identifiers treated in the first period come from the remaining rows.
+        rows = long.join(long.filter(early).select("id").distinct(), on="id", how="left_anti")
+        groups = sorted((row["t"], float(row["g"])) for row in rows.select("t", "g").distinct().collect())
+
+    periods, remaining, coerced = _fit_periods(groups, config, last_start, early_until)
+    whole_clusters = _whole_clusters(cluster, facts["clusters"], remaining, periods)
+    table = _row_rows(
+        rows, periods, (last_start, coerced), weighted, keyed, cluster is not None, whole_clusters, len(covariates)
+    )
+    # Reading the schema raises an analysis error in the table here. The handler for a refused persist below would hide
+    # it.
+    _ = table.schema
+    table, cached = _persist(table, "row table")
+    try:
+        aggregates = [F.count(F.lit(1)).alias("rows"), F.grouping(COHORT).alias("total")]
+        if cluster is not None:
+            aggregates.append(F.count_distinct(CLUSTER).alias("clusters"))
+        summary = table.rollup(COHORT).agg(*aggregates).collect()
+        # A rollup of no rows returns no grand total either. The default counts an empty table as no rows and no
+        # clusters.
+        total = next((row.asDict() for row in summary if row["total"] == 1), {"rows": 0, "clusters": 0})
+        per_cohort = sorted(
+            ((row[COHORT], row.asDict()) for row in summary if row["total"] == 0), key=lambda item: item[0]
+        )
+
+        _warn_early_and_coerced(n_early, "units" if config.idname is not None else "observations", coerced)
+        # Each row is its own observation even when idname names units that rows share. The in-memory fit does the same.
+        config.panel = False
+        config.true_repeated_cross_sections = True
+        config.idname = ROW_ID_COLUMN
+        n_rows = total["rows"]
+        cohorts = [cohort for cohort, _ in per_cohort]
+        _update_config(config, periods, cohorts, n_rows, DataFormat.REPEATED_CROSS_SECTION)
+        _check_groups(config, per_cohort, len(covariates), rows_per_period=True)
+
+        # A cohort can hold more than 2**32 - 1 rows at Spark scale.
+        cohort_counts = _cohort_counts(per_cohort, "rows", pl.UInt64)
+        cluster_counts = None
+        if cluster is not None:
+            cluster_counts = (total["clusters"], {cohort: counts["clusters"] for cohort, counts in per_cohort})
+
+        # Merging the persisted table's partitions to about a megabyte each spares every pass a task per partition. No
+        # cluster splits because whole partitions merge.
+        row_bytes = 8 * (1 + weighted + len(covariates)) + 64
+        row_table = table.coalesce(max(1, math.ceil(n_rows * row_bytes / 2**20)))
+    except BaseException as error:
+        # An interrupt or any failure before the fit takes over the table would leave it cached. Every error releases it
+        # here.
+        _release(cached, error, "row table")
+        raise
+    return row_table, config, cohort_counts, n_rows, cluster_counts, whole_clusters, cached
 
 
 def _column(name):
@@ -236,6 +321,43 @@ def _is_number(dtype):
     return isinstance(dtype, T.NumericType | T.BooleanType)
 
 
+def _prepare_long_data(data, config):
+    """Run the column checks and the missing-data step of the in-memory preprocessing on the long data.
+
+    The result holds the data with its decimal columns cast, the Spark type of
+    each column, the names of the covariates, the name of the cluster column or
+    None, the mark of the rows without a missing value, and the facts of
+    :func:`_long_facts`.
+    """
+    frame = schema_frame(data)
+    PreprocessDataBuilder().with_data(frame).with_config(config).validate()
+
+    names = ColumnSelector().transform(frame, config).columns
+    types = {field.name: field.dataType for field in data.schema.fields}
+    covariates = _covariate_names(config)
+    # att_gt never clusters on the unit identifier. config.idname still holds the caller's idname at this point.
+    cluster = next((name for name in config.clustervars if name != config.idname), None)
+    _check_value_types(config, covariates, types)
+    casts = _decimal_casts(config, cluster, types)
+    if casts:
+        data = data.withColumns({name: _column(name).cast(dtype) for name, dtype in casts.items()})
+        types.update(casts)
+
+    flags = [_missing(name, types[name], keep_infinite=name == config.gname) for name in names]
+    kept = ~reduce(operator.or_, flags)
+    facts = _long_facts(data, config, flags, kept, cluster)
+
+    if facts["kept"] < facts["rows"]:
+        if facts["kept"] == 0:
+            columns = [f"'{name}'" for name, count in zip(names, facts["missing"], strict=True) if count > 0]
+            where = columns[0] if len(columns) == 1 else f"at least one of the columns {', '.join(columns)}"
+            raise ValueError(f"Every row has a missing value in {where}. No data is left to estimate from.")
+        warnings.warn(
+            f"Dropped {facts['rows'] - facts['kept']} rows from original data due to missing values", UserWarning
+        )
+    return data, types, covariates, cluster, kept, facts
+
+
 def _check_value_types(config, covariates, types):
     """Reject weights and covariates that are not numbers before any job casts them."""
     if config.weightsname is not None and not _is_number(types[config.weightsname]):
@@ -247,10 +369,12 @@ def _check_value_types(config, covariates, types):
 
 def _decimal_casts(config, cluster, types):
     """Return the types that the fit reads its decimal columns as."""
-    # Since the shards would key a decimal by its text and a double is exact only to 2**53, decimal ids and clusters
-    # become 64-bit integers. A double holds the small values of decimal periods and cohorts exactly.
+    # Decimal ids and clusters become 64-bit integers because the shards would key a decimal by its text and a double is
+    # exact only to 2**53. A double holds the small values of decimal periods and cohorts exactly.
     casts = {name: T.DoubleType() for name in (config.tname, config.gname) if isinstance(types[name], T.DecimalType)}
-    keys = {config.idname: (f"idname='{config.idname}'", "units")}
+    keys = {}
+    if config.idname is not None:
+        keys[config.idname] = (f"idname='{config.idname}'", "units")
     if cluster is not None:
         keys[cluster] = (f"'{cluster}' in clustervars", "clusters")
     for name, (argument, members) in keys.items():
@@ -259,8 +383,8 @@ def _decimal_casts(config, cluster, types):
             continue
         if dtype.scale != 0 or dtype.precision > 18:
             raise ValueError(
-                f"{argument} is a {dtype.simpleString()} column. Since a Spark fit reads decimal identifiers and "
-                "clusters as 64-bit integers, they must have no fraction digits and at most 18 digits. Cast the column "
+                f"{argument} is a {dtype.simpleString()} column. A Spark fit reads decimal identifiers and "
+                "clusters as 64-bit integers. They must have no fraction digits and at most 18 digits. Cast the column "
                 f"to bigint or code the {members} as integers first."
             )
         casts[name] = T.LongType()
@@ -270,9 +394,8 @@ def _decimal_casts(config, cluster, types):
 def _missing(name, dtype, keep_infinite):
     """Mark the rows whose value in a column counts as missing.
 
-    A null counts as missing in every column. In a float column so do a NaN
-    and an infinity. Since an infinite cohort marks a never-treated unit,
-    ``keep_infinite`` lets the infinities stay.
+    An infinite cohort marks a never-treated unit. ``keep_infinite`` keeps the
+    infinities of a float column from counting as missing.
     """
     column = _column(name)
     missing = column.isNull()
@@ -286,13 +409,10 @@ def _missing(name, dtype, keep_infinite):
 def _long_facts(data, config, flags, kept, cluster):
     """Aggregate the long data by period and cohort into the counts that preprocessing needs.
 
-    With a cluster column, the aggregation becomes a rollup whose grand total
-    also estimates the number of clusters.
-
     Parameters
     ----------
     data : pyspark.sql.DataFrame
-        Panel data in long format.
+        Data in long format.
     config : DIDConfig
         Configuration of the fit.
     flags : list[pyspark.sql.Column]
@@ -311,6 +431,7 @@ def _long_facts(data, config, flags, kept, cluster):
         - **kept**: Number of rows without a missing value
         - **missing**: Number of missing values in each selected column
         - **groups**: Sorted pairs of the period and the float cohort that the kept rows hold
+        - **group_counts**: Dict from each pair of ``groups`` to its number of kept rows
         - **weight_sum**: Sum of the sampling weights of the kept rows
         - **negative_weights**: Number of kept rows with a negative sampling weight
         - **clusters**: Approximate number of distinct clusters among the kept rows, or None without a cluster
@@ -329,14 +450,14 @@ def _long_facts(data, config, flags, kept, cluster):
     if cluster is None:
         rows = data.groupBy(*keys).agg(*aggregates).collect()
     else:
-        # Since a cluster such as a state holds units of several cohorts, only the grand total, at grouping level 3,
-        # counts each cluster once. An estimate is enough because the count only picks the layout of the unit table.
+        # A cluster such as a state holds units of several cohorts. Only the grand total, at grouping level 3, counts
+        # each cluster once. An estimate is enough because the count only picks the layout of the unit table.
         aggregates += [
             F.approx_count_distinct(F.when(kept, _column(cluster))).alias("clusters"),
             F.grouping_id().alias("level"),
         ]
         levels = data.rollup(*keys).agg(*aggregates).collect()
-        # Because a rollup of no rows returns no grand total either, empty data counts no clusters.
+        # A rollup of no rows returns no grand total either. The default counts no clusters for empty data.
         clusters = next((row["clusters"] for row in levels if row["level"] == 3), 0)
         rows = [row for row in levels if row["level"] == 0]
 
@@ -347,78 +468,113 @@ def _long_facts(data, config, flags, kept, cluster):
         "kept": sum(row["kept"] for row in rows),
         "missing": [sum(row[f"missing{index}"] for row in rows) for index in range(len(flags))],
         "groups": sorted((row["t"], float(row["g"])) for row in kept_rows),
+        "group_counts": {(row["t"], float(row["g"])): row["kept"] for row in kept_rows},
         "weight_sum": math.fsum(row["weight_sum"] for row in kept_rows) if weighted else 0.0,
         "negative_weights": sum(row["negative_weights"] for row in kept_rows) if weighted else 0,
         "clusters": clusters,
     }
 
 
+def _coded_cohort(cohort, last_start):
+    """Return a float cohort as never-treated when it is 0 or starts after the latest start."""
+    return NEVER_TREATED_VALUE if cohort == 0 or cohort > last_start else cohort
+
+
+def _cohort_column(raw, last_start):
+    """Return a cohort column that is never-treated where the cohort is 0 or starts after the latest start."""
+    return F.when((raw == 0) | (raw > F.lit(float(last_start))), F.lit(NEVER_TREATED_VALUE)).otherwise(raw)
+
+
+def _fit_periods(groups, config, last_start, early_until):
+    """Return the periods and the cohorts of the fit and the cohort that becomes never-treated or None.
+
+    When no unit is never-treated, the periods from ``anticipation`` periods
+    before the latest cohort's start onward leave the fit here and in memory.
+    """
+    encoded = [(period, _coded_cohort(g, last_start)) for period, g in groups]
+    later = [(period, cohort) for period, cohort in encoded if cohort > early_until]
+    remaining = sorted({cohort for _, cohort in later})
+    periods = sorted({period for period, _ in later})
+    latest = None
+    if remaining and NEVER_TREATED_VALUE not in remaining:
+        latest = remaining[-1]
+        periods = [period for period in periods if period < latest - config.anticipation]
+    coerced = latest if config.control_group == ControlGroup.NEVER_TREATED else None
+    return periods, remaining, coerced
+
+
+def _whole_clusters(cluster, n_clusters, cohorts, periods):
+    """Tell whether a clustered fit keeps every cluster within one partition."""
+    # A unit's row of moments holds a column for each cell, each treated cohort, and the constant. This count bounds the
+    # sums a task keeps per cluster.
+    n_treated = sum(cohort != NEVER_TREATED_VALUE for cohort in cohorts)
+    n_columns = n_treated * len(periods) + n_treated + 1
+    return cluster is not None and not _spread_clusters(n_clusters, n_columns)
+
+
 def _spread_clusters(n_clusters, n_columns):
-    """Tell whether a clustered fit can spread the units of each cluster over all the partitions."""
-    # Since each task then returns a row of n_columns sums for every cluster it touched, 2**17 sums keep each task's
-    # rows near a megabyte.
+    """Tell whether a clustered fit can spread each cluster over all the partitions."""
+    # Each task then returns a row of n_columns sums for every cluster it touched. A limit of 2**17 sums keeps each
+    # task's rows near a megabyte.
     return n_clusters * n_columns <= 2**17
 
 
-def _kept_rows(data, config, kept, periods, mean_weight, cluster, covariates, types):
+def _period_index(period, periods):
+    """Return the position of each row's period among the sorted periods or -1 for any other period."""
+    if not periods:
+        return F.lit(-1)
+    # PySpark 3.5's array_position accepts only a literal value. A CASE WHEN chain numbers the periods instead.
+    index = F.when(period == F.lit(periods[0]), 0)
+    for position, value in enumerate(periods[1:], start=1):
+        index = index.when(period == F.lit(value), position)
+    return index.otherwise(-1)
+
+
+def _kept_rows(data, config, kept, periods, mean_weight, cluster, covariates, types, raw_weights=False):
     """Select the rows without missing values with each column under the name of its role.
 
     The columns take the names ``id``, ``t``, ``i``, ``g``, ``y``, ``w``,
-    ``c``, and ``x0`` onward. The period index ``i`` is the position of the
-    row's period in the sorted ``periods`` and -1 for any other period. The
-    weights are divided by the positive ``mean_weight``. A float cluster of
-    negative zero joins the cluster of zero.
+    ``r``, ``c``, and ``x0`` onward.
     """
     period = _column(config.tname)
-    index = F.lit(-1)
-    if periods:
-        # Since the array_position of PySpark 3.5 accepts only a literal value, a CASE WHEN chain numbers the periods.
-        index = F.when(period == F.lit(periods[0]), 0)
-        for position, value in enumerate(periods[1:], start=1):
-            index = index.when(period == F.lit(value), position)
-        index = index.otherwise(-1)
-    columns = [
-        _column(config.idname).alias("id"),
-        period.alias("t"),
-        index.alias("i"),
+    columns = [] if config.idname is None else [_column(config.idname).alias("id")]
+    columns.append(period.alias("t"))
+    if periods is not None:
+        columns.append(_period_index(period, periods).alias("i"))
+    columns += [
         _column(config.gname).cast("double").alias("g"),
         _column(config.yname).cast("double").alias("y"),
     ]
     if config.weightsname is not None:
-        columns.append((_column(config.weightsname).cast("double") / F.lit(mean_weight)).alias("w"))
+        weight = _column(config.weightsname).cast("double")
+        columns.append((weight / F.lit(mean_weight)).alias("w"))
+        if raw_weights:
+            columns.append(weight.alias("r"))
     if cluster is not None:
         key = _column(cluster)
         if isinstance(types[cluster], T.FloatType | T.DoubleType):
+            # A float cluster of -0.0 joins the cluster of 0.0 once 0.0 is added.
             key = key + F.lit(0.0)
         columns.append(key.alias("c"))
     columns += [_column(name).cast("double").alias(f"x{position}") for position, name in enumerate(covariates)]
     return data.filter(kept).select(*columns)
 
 
-def _unit_rows(long, n_periods, weighted, clustered, whole_clusters, n_covariates, cohorts):
+def _unit_rows(long, n_periods, weighted, clustered, whole_clusters, n_covariates, cohorts, unbalanced=False):
     """Collect the rows of each unit into one row of the table of all units.
 
-    Since the summary also counts the units that preprocessing drops, every unit
-    with a kept row gets a row that records its checks. Only a unit that is not
-    treated in the first period and holds all ``n_periods`` periods stays in the
-    fit and keeps its outcomes, weights, and covariates in the order of the
-    periods.
-
-    The ``cohorts`` triple holds the latest start of a treated cohort, the latest
-    cohort that counts as treated in the first period, and the cohort that
-    becomes never-treated for lack of never-treated units or None. A cohort of 0
-    or one that starts after the latest start becomes infinite. With
-    ``whole_clusters``, every partition holds all the units of its clusters.
+    The ``cohorts`` triple holds the latest start of a treated cohort, the
+    latest cohort treated in the first period, and the coerced cohort or None.
     """
     last_start, early_until, coerced = cohorts
     fields = ["i", "y"] + ["w"] * weighted + [f"x{position}" for position in range(n_covariates)]
     if whole_clusters:
-        # Since each task then finalizes its own cluster sums, the shuffle hashes on the cluster alone and the later
-        # merge only coalesces whole partitions. Any other repartition or a REBALANCE would silently miscount clusters.
+        # Each task then finalizes its own cluster sums. The shuffle hashes on the cluster alone and the later merge
+        # only coalesces whole partitions. Any other repartition or a REBALANCE would silently miscount clusters.
         grouped = long.repartition("c").groupBy("c", "id")
     elif clustered:
-        # Because hashing on the cluster alone would run a fit of few clusters as a few unequal tasks, hashing on the
-        # unit too spreads each cluster's units over the partitions. The driver then finalizes the cluster sums.
+        # Hashing on the cluster alone would run a fit of few clusters as a few unequal tasks. Hashing on the unit too
+        # spreads each cluster's units over the partitions. The driver then finalizes the cluster sums.
         grouped = long.groupBy("c", "id")
     else:
         grouped = long.groupBy("id")
@@ -430,21 +586,20 @@ def _unit_rows(long, n_periods, weighted, clustered, whole_clusters, n_covariate
         F.collect_list(F.when(F.col("i") >= 0, F.struct(*fields))).alias("rows"),
     )
 
-    raw = F.col("g_min")
-    cohort = F.when((raw == 0) | (raw > F.lit(float(last_start))), F.lit(NEVER_TREATED_VALUE)).otherwise(raw)
+    cohort = _cohort_column(F.col("g_min"), last_start)
     early = cohort <= F.lit(float(early_until))
     if coerced is not None:
         cohort = F.when(cohort == F.lit(coerced), F.lit(NEVER_TREATED_VALUE)).otherwise(cohort)
     present = F.size("rows")
-    keep = ~early & (present == n_periods) if n_periods > 0 else F.lit(False)
-    # Since array_sort orders the structs by their first field, the period index must stay first among the fields.
+    complete = present == n_periods if n_periods > 0 else F.lit(False)
+    keep = ~early & ((present > 0) if unbalanced else complete)
+    # array_sort orders the structs by their first field. The period index must stay first among the fields.
     ordered = F.array_sort("rows")
 
-    columns = [
-        F.col("id").alias(UNIT),
-        cohort.alias(COHORT),
-        F.when(keep, F.transform(ordered, lambda row: row["y"])).alias(OUTCOME),
-    ]
+    columns = [F.col("id").alias(UNIT), cohort.alias(COHORT)]
+    if unbalanced:
+        columns.append(F.when(keep, F.transform(ordered, lambda row: row["i"])).alias(PERIOD))
+    columns.append(F.when(keep, F.transform(ordered, lambda row: row["y"])).alias(OUTCOME))
     if weighted:
         columns.append(F.when(keep, F.transform(ordered, lambda row: row["w"])).alias(WEIGHT))
     if n_covariates > 0:
@@ -452,6 +607,7 @@ def _unit_rows(long, n_periods, weighted, clustered, whole_clusters, n_covariate
         columns.append(F.when(keep, F.flatten(values)).alias(COVARIATE))
     if clustered:
         columns.append(F.col("c").alias(CLUSTER))
+    # Every unit keeps a row of its checks because the summary also counts the units that preprocessing drops.
     columns += [
         keep.alias("keep"),
         early.alias("early"),
@@ -460,35 +616,77 @@ def _unit_rows(long, n_periods, weighted, clustered, whole_clusters, n_covariate
         (F.col("g_min") != F.col("g_max")).alias("varying"),
         (F.col("n_rows") > F.col("n_times")).alias("repeated"),
     ]
+    if unbalanced:
+        columns += [present.alias("present"), complete.alias("complete")]
     return units.select(*columns)
 
 
-def _persist(table):
-    """Persist the table of all units or checkpoint it when the session refuses to persist it.
+def _row_rows(rows, periods, cohorts, weighted, keyed, clustered, whole_clusters, n_covariates):
+    """Select the rows of the fit's periods in the layout of the row table.
+
+    The ``cohorts`` pair holds the first and last entries of the triple of
+    :func:`_unit_rows`.
+    """
+    last_start, coerced = cohorts
+    cohort = _cohort_column(F.col("g"), last_start)
+    if coerced is not None:
+        cohort = F.when(cohort == F.lit(coerced), F.lit(NEVER_TREATED_VALUE)).otherwise(cohort)
+    covariates = [f"x{position}" for position in range(n_covariates)]
+    columns = [_period_index(F.col("t"), periods).alias(PERIOD), cohort.alias(COHORT), F.col("y").alias(OUTCOME)]
+    columns += [F.col("w").alias(WEIGHT)] * weighted + [F.col("r").alias(RAW_WEIGHT)] * (weighted and keyed)
+    columns += [F.col(name) for name in covariates] + [F.col("c").alias(CLUSTER)] * clustered
+    selected = rows.select(*columns).filter(F.col(PERIOD) >= 0)
+
+    copies = []
+    if keyed:
+        # A row's key hashes the values in these columns plus its copy index. Grouping identical rows lets each copy
+        # take its own index. Adding 0.0 groups -0.0 with 0.0 as the key does.
+        floats = [COHORT, OUTCOME] + [RAW_WEIGHT] * weighted + covariates
+        keys = [F.col(PERIOD)] + [(F.col(name) + F.lit(0.0)).alias(name) for name in floats]
+        # Every row of a group carries the same normalized weight because it depends only on the raw weight.
+        carried = [F.first(WEIGHT).alias(WEIGHT)] * weighted
+        selected = selected.groupBy(*keys).agg(F.count(F.lit(1)).alias("n"), *carried)
+        copies = [F.explode(F.sequence(F.lit(0), F.col("n") - 1)).alias(COPY)]
+
+    layout = [F.col(PERIOD), F.col(COHORT), F.col(OUTCOME)]
+    layout += [F.col(WEIGHT)] * weighted + [F.col(RAW_WEIGHT)] * (weighted and keyed)
+    if n_covariates > 0:
+        layout.append(F.array(*[F.col(name) for name in covariates]).alias(COVARIATE))
+    layout += [F.col(CLUSTER)] * clustered
+    table = selected.select(*layout, *copies)
+    if whole_clusters:
+        # Each task finalizes the sums of its own clusters. Hashing on the cluster alone keeps each cluster in one
+        # partition. The later merge only coalesces whole partitions.
+        table = table.repartition(CLUSTER)
+    return table
+
+
+def _persist(table, name="table of units"):
+    """Persist a table or checkpoint it when the session refuses to persist it.
 
     The result pairs the table to read with the persisted table to unpersist
-    once the fit ends or with None when nothing was persisted. When the session
-    refuses the checkpoint too, a warning says that each pass rebuilds the table.
+    once the fit ends or with None when nothing was persisted. The warning for
+    a session that refuses both calls the table by ``name``.
     """
     try:
-        # Because PySpark's StorageLevel.MEMORY_AND_DISK constant is the serialized level, persist() takes no argument
-        # and keeps its default MEMORY_AND_DISK_DESER.
+        # PySpark's StorageLevel.MEMORY_AND_DISK constant is the serialized level. persist() takes no argument and keeps
+        # its default MEMORY_AND_DISK_DESER.
         return table.persist(), table
     except PySparkException:
-        # Since a session such as Databricks serverless refuses to persist, the checkpoint keeps the passes cheap.
+        # A session such as Databricks serverless refuses to persist. The checkpoint then keeps the passes cheap.
         try:
             return table.localCheckpoint(), None
         except PySparkException:
             warnings.warn(
-                "Spark refused to persist the table of units and to checkpoint it. "
+                f"Spark refused to persist the {name} and to checkpoint it. "
                 "Each pass of the fit rebuilds the table from the data.",
                 UserWarning,
             )
             return table, None
 
 
-def _release(cached, error=None):
-    """Unpersist the table of all units without letting a failed release hide the error that ended the fit."""
+def _release(cached, error=None, name="table of units"):
+    """Unpersist a cached table without letting a failed release hide the error that ended the fit."""
     if cached is None:
         return
     try:
@@ -496,10 +694,10 @@ def _release(cached, error=None):
     except Exception as release_error:
         if error is None:
             raise
-        error.add_note(f"Releasing the persisted table of units failed too: {release_error!r}")
+        error.add_note(f"Releasing the persisted {name} failed too: {release_error!r}")
 
 
-def _summary_aggregates(clustered):
+def _summary_aggregates(clustered, unbalanced=False):
     """Return the aggregates of the summary that the rollup over cohorts computes."""
     aggregates = [
         F.count(F.when(F.col("keep"), 1)).alias("units"),
@@ -516,6 +714,11 @@ def _summary_aggregates(clustered):
             F.count(F.lit(1)).alias("groups"),
             F.count_distinct(UNIT).alias("distinct_units"),
         ]
+    if unbalanced:
+        aggregates += [
+            F.sum(F.when(F.col("keep"), F.col("present"))).alias("rows"),
+            F.count(F.when(F.col("keep") & F.col("complete"), 1)).alias("complete"),
+        ]
     return aggregates
 
 
@@ -523,8 +726,8 @@ def _structure_errors(total, long, config, clustered):
     """Return the message of each in-memory structural check that the kept rows fail in the order of the checks."""
     varying_cluster = clustered and total["groups"] != total["distinct_units"]
     if varying_cluster:
-        # Since the units are grouped within clusters, a unit whose cluster varies splits into several rows. Its
-        # checks then run on the kept rows grouped by unit alone.
+        # Grouping the units within clusters splits a unit whose cluster varies into several rows. Its checks then run
+        # on the kept rows grouped by unit alone.
         total = _unit_checks(long)
 
     errors = []
@@ -564,6 +767,28 @@ def _unit_checks(long):
     return row.asDict()
 
 
+def _check_identifiers(long, early, n_periods):
+    """Warn when the identifiers of repeated cross-sections look like a panel and count the early-treated ones.
+
+    The count is the number of identifiers with a row that ``early`` marks, or
+    0 when ``early`` is None.
+    """
+    aggregates = [F.count(F.lit(1)).alias("n_rows")]
+    totals = [F.max("n_rows").alias("max_rows")]
+    if early is not None:
+        aggregates.append(F.max(F.when(early, 1)).alias("early"))
+        totals.append(F.count("early").alias("early"))
+    row = long.groupBy("id").agg(*aggregates).agg(*totals).collect()[0]
+    if row["max_rows"] == n_periods and n_periods > 1:
+        warnings.warn(
+            "panel=False was specified, but units appear across all time periods. "
+            "Your data appears to be panel data. "
+            "Consider setting panel=True to use the panel estimator.",
+            UserWarning,
+        )
+    return 0 if early is None else row["early"]
+
+
 def _duplicate_error(long, config):
     """Describe the units observed more than once in a period by up to three of the repeated pairs."""
     pairs = long.groupBy("id", "t").agg(F.count(F.lit(1)).alias("n")).filter(F.col("n") > 1)
@@ -582,7 +807,32 @@ def _duplicate_error(long, config):
     )
 
 
-def _update_config(config, periods, cohorts, n_units):
+def _check_weights_and_cohorts(config, facts, mean_weight):
+    """Raise the errors of the in-memory steps that normalize the weights and code the cohorts in their order."""
+    if config.weightsname is not None and (facts["negative_weights"] > 0 or mean_weight <= 0):
+        raise ValueError(f"The weights variable '{config.weightsname}' must be non-negative with a positive mean.")
+
+    negative = [cohort for _, cohort in facts["groups"] if cohort < 0]
+    if negative:
+        raise ValueError(
+            f"gname = '{config.gname}' holds negative values such as {min(negative):g}. "
+            "It must hold 0 for never-treated units and the first treated period for the others. "
+            "Shift the periods so that the earliest one is positive."
+        )
+
+
+def _warn_early_and_coerced(n_early, members, coerced):
+    """Warn about the early-treated units or rows and the coerced cohort as the in-memory steps do."""
+    if n_early > 0:
+        warnings.warn(f"Dropped {n_early} {members} that were already treated in the first period", UserWarning)
+    if coerced is not None:
+        warnings.warn(
+            "No never-treated group is available. The last treated cohort is being coerced as 'never-treated' units.",
+            UserWarning,
+        )
+
+
+def _update_config(config, periods, cohorts, n_units, data_format):
     """Set the computed fields of the configuration as the in-memory preprocessing sets them."""
     treated = [cohort for cohort in cohorts if np.isfinite(cohort)]
     # Without never-treated units, the latest cohort serves only as a comparison group under not-yet-treated controls.
@@ -593,19 +843,29 @@ def _update_config(config, periods, cohorts, n_units):
     config.treated_groups = np.array(treated)
     config.treated_groups_count = len(treated)
     config.id_count = n_units
-    config.data_format = DataFormat.PANEL
+    config.data_format = data_format
     if len(periods) == 2:
         config.cband = False
 
 
-def _check_groups(config, per_cohort, n_covariates):
-    """Check the treated groups and warn about small cohorts as the in-memory preprocessing does."""
+def _check_groups(config, per_cohort, n_covariates, rows_per_period=False):
+    """Check the treated groups and warn about small cohorts as the in-memory preprocessing does.
+
+    With ``rows_per_period``, a cohort's size is its number of rows divided by
+    the number of periods rather than its number of units.
+    """
     if config.treated_groups_count == 0:
         raise ValueError(
             "No valid groups. The variable in 'gname' should be expressed as "
             "the time a unit is first treated (0 if never-treated)"
         )
-    small = [cohort for cohort, counts in per_cohort if counts["units"] < n_covariates + 5]
+    # For an unbalanced panel and repeated cross-sections, the in-memory check sizes a cohort as its rows over the
+    # number of periods. This check does the same.
+    sizes = [
+        (cohort, counts["rows"] / config.time_periods_count if rows_per_period else counts["units"])
+        for cohort, counts in per_cohort
+    ]
+    small = [cohort for cohort, size in sizes if size < n_covariates + 5]
     if small:
         group_list = ", ".join(np.format_float_positional(float(cohort), trim="-") for cohort in small)
         warnings.warn(
@@ -616,3 +876,13 @@ def _check_groups(config, per_cohort, n_covariates):
                 "The never-treated group is too small to serve as the comparison group. "
                 "Pass control_group='notyettreated' to compare with units not yet treated."
             )
+
+
+def _cohort_counts(per_cohort, measure, dtype):
+    """Return the polars DataFrame of the size of each cohort in increasing order of the cohorts."""
+    return pl.DataFrame(
+        {
+            "cohort": pl.Series([cohort for cohort, _ in per_cohort], dtype=pl.Float64),
+            "cohort_size": pl.Series([counts[measure] for _, counts in per_cohort], dtype=dtype),
+        }
+    )

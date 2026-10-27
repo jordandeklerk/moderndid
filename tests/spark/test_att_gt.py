@@ -1,6 +1,7 @@
-"""Tests for att_gt, aggte, and honest_did on a panel held in a Spark DataFrame."""
+"""Tests for att_gt, aggte, and honest_did on data held in a Spark DataFrame."""
 
 import re
+from functools import partial
 
 import numpy as np
 import polars as pl
@@ -8,13 +9,17 @@ import pytest
 from polars.testing import assert_frame_equal
 from scipy import stats
 
+from moderndid import aggte, att_gt, drdid_panel, honest_did, preprocess_did, to_df
+from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
+from moderndid.did.shards.layout import row_keys, row_shard_from_arrow
+from moderndid.did.shards.row_driver import fit_att_gt_on_row_shards
 from tests.helpers import importorskip
 
 pyspark = importorskip("pyspark")
 
 from pyspark.sql import functions as F
 
-from moderndid import aggte, att_gt, drdid_panel, honest_did, to_df
+from moderndid.spark.executor import SparkExecutor
 
 pytestmark = pytest.mark.spark
 
@@ -140,6 +145,317 @@ def test_att_gt_on_spark_matches_att_gt_with_each_option(
     assert [text for _, text in memory_warnings] == messages
     assert spark_warnings == memory_warnings
     assert_same_fit(distributed, memory, 1e-12)
+
+
+@pytest.mark.parametrize(
+    "data_fixture, spec, messages, n_rows",
+    [
+        (
+            "mpdta_data",
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "xformla": "~lpop"},
+            [
+                "panel=False was specified, but units appear across all time periods. Your data appears to be panel "
+                "data. Consider setting panel=True to use the panel estimator."
+            ],
+            2500,
+        ),
+        (
+            "mpdta_data",
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "gname": "first.treat",
+                "xformla": "~lpop",
+                "est_method": "ipw",
+                "control_group": "notyettreated",
+                "base_period": "universal",
+            },
+            [],
+            2500,
+        ),
+        (
+            "mpdta_data",
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "gname": "first.treat",
+                "xformla": "~lpop",
+                "est_method": "reg",
+                "control_group": "notyettreated",
+                "anticipation": 1,
+            },
+            [
+                "anticipation = 1. Never-treated units (with group status 0 or inf) are assumed to never anticipate "
+                "treatment. Anticipation only applies to eventually-treated units.",
+                "Dropped 100 observations that were already treated in the first period",
+            ],
+            2400,
+        ),
+        (
+            "mpdta_with_weights_and_states",
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "gname": "first.treat",
+                "xformla": "~lpop",
+                "weightsname": "w",
+                "clustervars": ["state"],
+            },
+            [
+                "The units fall in only 29 clusters. The treated units of cohort 2004 fall in 1 cluster and those of "
+                "cohort 2006 in 3 clusters. Cluster-robust inference rests on very few clusters and can give "
+                "confidence intervals and bands that are too narrow."
+            ],
+            2500,
+        ),
+        (
+            "scalable_cross_sections",
+            {
+                "yname": "y",
+                "tname": "time",
+                "gname": "group",
+                "xformla": "~cov1 + cov2 + cov3 + cov4",
+                "weightsname": "w",
+                "clustervars": ["cluster"],
+            },
+            [],
+            400,
+        ),
+    ],
+    ids=["identifiers_dr", "ipw_universal_base", "reg_anticipation", "weights_and_text_clusters", "four_covariates"],
+)
+def test_att_gt_on_spark_matches_att_gt_on_repeated_cross_sections(
+    request, to_spark, record_warnings, assert_same_fit, data_fixture, spec, messages, n_rows
+):
+    data = request.getfixturevalue(data_fixture)
+    frame = to_spark(data)
+
+    memory, memory_warnings = record_warnings(att_gt, data, panel=False, random_state=7, **spec)
+    distributed, spark_warnings = record_warnings(att_gt, frame, panel=False, random_state=7, **spec)
+
+    assert [text for _, text in memory_warnings] == messages
+    assert spark_warnings == memory_warnings
+    assert distributed.n_units == n_rows
+    assert_same_fit(distributed, memory, 1e-12)
+
+
+@pytest.mark.parametrize(
+    "data_fixture, spec, messages",
+    [
+        (
+            "mpdta_unbalanced",
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "idname": "countyreal",
+                "gname": "first.treat",
+                "xformla": "~lpop",
+                "base_period": "universal",
+            },
+            [],
+        ),
+        (
+            "mpdta_unbalanced",
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "idname": "countyreal",
+                "gname": "first.treat",
+                "xformla": "~lpop",
+                "est_method": "ipw",
+                "control_group": "notyettreated",
+                "weightsname": "w",
+                "clustervars": ["countyreal", "state"],
+            },
+            [
+                "Time-varying weights detected. For balanced panel data, each 2x2 comparison uses the weights from "
+                "the earlier of its two periods, the base period for post-treatment cells.",
+                "The units fall in only 29 clusters. The treated units of cohort 2004 fall in 1 cluster and those of "
+                "cohort 2006 in 3 clusters. Cluster-robust inference rests on very few clusters and can give "
+                "confidence intervals and bands that are too narrow.",
+            ],
+        ),
+        (
+            "scalable_unbalanced_panel",
+            {
+                "yname": "y",
+                "tname": "time",
+                "idname": "id",
+                "gname": "group",
+                "xformla": "~cov1 + cov2 + cov3 + cov4",
+                "est_method": "reg",
+                "control_group": "notyettreated",
+                "clustervars": ["cluster"],
+            },
+            [],
+        ),
+    ],
+    ids=["dr_universal_base", "ipw_time_varying_weights_and_text_clusters", "reg_four_covariates_and_clusters"],
+)
+def test_att_gt_on_spark_matches_att_gt_on_an_unbalanced_panel(
+    request, to_spark, record_warnings, assert_same_fit, data_fixture, spec, messages
+):
+    data = request.getfixturevalue(data_fixture)
+    frame = to_spark(data)
+
+    memory, memory_warnings = record_warnings(att_gt, data, allow_unbalanced_panel=True, random_state=7, **spec)
+    distributed, spark_warnings = record_warnings(att_gt, frame, allow_unbalanced_panel=True, random_state=7, **spec)
+
+    assert [text for _, text in memory_warnings] == messages
+    assert spark_warnings == memory_warnings
+    assert distributed.n_units == memory.n_units == data[spec["idname"]].n_unique()
+    assert data.group_by(spec["idname"]).len()["len"].min() < data[spec["tname"]].n_unique()
+    assert_same_fit(distributed, memory, 1e-12)
+
+
+def test_att_gt_on_spark_draws_a_multiplier_for_each_duplicate_row_however_the_rows_are_partitioned(
+    mpdta_with_repeated_rows, to_spark, row_table_of, assert_same_fit
+):
+    data = mpdta_with_repeated_rows.with_columns(pl.col("lpop").exp().alias("pop"))
+    columns = {
+        "yname": "lemp",
+        "tname": "year",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "weightsname": "pop",
+        "panel": False,
+    }
+    spec = {**columns, "est_method": "reg", "boot": True, "biters": 299}
+    frame = to_spark(data)
+
+    one = att_gt(frame.repartition(1), random_state=5, **spec)
+    table, config, cohort_counts, *_ = row_table_of(frame.repartition(9), draws=True, **spec)
+    spread = table.repartition(9)
+    nine = fit_att_gt_on_row_shards(
+        SparkExecutor(spread, partial(row_shard_from_arrow, n_covariates=1)),
+        config,
+        cohort_counts,
+        5,
+        {"bootstrap": True, "uniform_bands": True},
+    )
+    memory = att_gt(data, random_state=5, **spec)
+    n_tasks = spread.select(F.spark_partition_id()).distinct().count()
+    rows = preprocess_did(data, **columns).data
+    values = rows.select("year", "first.treat", "lemp", "pop", "lpop")
+    copy = values.select(pl.int_range(pl.len()).over(values.columns)).to_series().to_numpy()
+    fields = (
+        np.unique(rows["year"].to_numpy(), return_inverse=True)[1],
+        rows["first.treat"].to_numpy().astype(float),
+        rows["lemp"].to_numpy(),
+        rows["pop"].to_numpy(),
+        rows.select("lpop").to_numpy(),
+    )
+    expected = keyed_rademacher(row_keys(*fields, copy), 5, 299).T @ memory.influence_func
+    shared = keyed_rademacher(row_keys(*fields, np.zeros_like(copy)), 5, 299).T @ memory.influence_func
+    sums = one.influence_moments.bootstrap_sums[:, : len(memory.att_gt)]
+
+    assert n_tasks == 9
+    assert copy.max() == 1
+    assert one.influence_moments.random_state == 5
+    assert_same_fit(nine, one, 1e-12)
+    np.testing.assert_allclose(one.att_gt, memory.att_gt, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(one.vcov_analytical, memory.vcov_analytical, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        nine.influence_moments.bootstrap_sums, one.influence_moments.bootstrap_sums, rtol=1e-12, atol=1e-10
+    )
+    np.testing.assert_allclose(sums, expected, rtol=1e-12, atol=1e-10)
+    assert np.max(np.abs(shared - expected)) > 1e-3
+
+
+def test_att_gt_on_spark_draws_one_multiplier_for_each_unit_of_an_unbalanced_panel(mpdta_unbalanced, to_spark):
+    columns = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "allow_unbalanced_panel": True,
+    }
+    spec = {**columns, "boot": True, "biters": 299, "random_state": 5}
+
+    distributed = att_gt(to_spark(mpdta_unbalanced), **spec)
+    memory = att_gt(mpdta_unbalanced, **spec)
+    units = preprocess_did(mpdta_unbalanced, **columns).time_invariant_data["countyreal"].to_numpy()
+    expected = keyed_rademacher(canonical_keys(units), 5, 299).T @ memory.influence_func
+    analytic = np.sqrt(np.diag(distributed.vcov_analytical) / distributed.n_units)
+
+    assert distributed.n_units == len(units) == 500
+    np.testing.assert_allclose(distributed.att_gt, memory.att_gt, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(distributed.vcov_analytical, memory.vcov_analytical, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        distributed.influence_moments.bootstrap_sums[:, : len(memory.att_gt)], expected, rtol=1e-12, atol=1e-10
+    )
+    assert np.nanmax(np.abs(distributed.se_gt / analytic - 1)) > 1e-3
+
+
+@pytest.mark.parametrize(
+    "data_fixture, table_fixture, options, cluster_dtype, reference_dtype",
+    [
+        ("large_clustered_panel", "row_table_of", {"panel": False}, pl.String, pl.String),
+        (
+            "large_clustered_unbalanced_panel",
+            "unit_table_of",
+            {"idname": "id", "allow_unbalanced_panel": True},
+            pl.Decimal(18, 0),
+            pl.Int64,
+        ),
+    ],
+    ids=["repeated_cross_sections_with_text_clusters", "unbalanced_panel_with_decimal_clusters"],
+)
+def test_att_gt_on_spark_spreads_the_clusters_or_keeps_them_whole_in_either_layout(
+    request,
+    to_spark,
+    assert_same_fit,
+    monkeypatch,
+    data_fixture,
+    table_fixture,
+    options,
+    cluster_dtype,
+    reference_dtype,
+):
+    data = request.getfixturevalue(data_fixture)
+    table_of = request.getfixturevalue(table_fixture)
+    columns = {
+        "yname": "y",
+        "tname": "time",
+        "gname": "group",
+        "xformla": "~cov1",
+        "clustervars": ["cluster"],
+        **options,
+    }
+    spec = {**columns, "est_method": "reg", "boot": True, "biters": 199, "random_state": 3}
+    spark_data = data.with_columns(pl.col("cluster").cast(cluster_dtype))
+    reference_data = data.with_columns(pl.col("cluster").cast(reference_dtype))
+    frame = to_spark(spark_data).repartition(4)
+
+    spread_table, *_, spread_is_whole = table_of(frame, **columns)
+    spread_pairs = spread_table.select(F.spark_partition_id(), "cluster").distinct().collect()
+    spread = att_gt(frame, **spec)
+    monkeypatch.setattr("moderndid.spark.preprocess._spread_clusters", lambda n_clusters, n_columns: False)
+    whole_table, *_, whole_is_whole = table_of(frame, **columns)
+    whole_pairs = whole_table.select(F.spark_partition_id(), "cluster").distinct().collect()
+    whole = att_gt(frame, **spec)
+    memory = att_gt(reference_data, **spec)
+    labels, codes = np.unique(memory.estimation_params["cluster"], return_inverse=True)
+    cluster_sums = np.zeros((len(labels), len(memory.att_gt)))
+    np.add.at(cluster_sums, codes.ravel(), memory.influence_func)
+    expected = keyed_rademacher(canonical_keys(labels), 3, 199).T @ cluster_sums
+
+    assert (spread_is_whole, whole_is_whole) == (False, True)
+    assert len({part for part, _ in spread_pairs}) >= 2
+    assert len({cluster for _, cluster in spread_pairs}) < len(spread_pairs)
+    assert len({part for part, _ in whole_pairs}) >= 2
+    assert len({cluster for _, cluster in whole_pairs}) == len(whole_pairs)
+    assert spread.influence_moments.n_clusters == whole.influence_moments.n_clusters == len(labels) == 50
+    np.testing.assert_allclose(spread.att_gt, memory.att_gt, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(spread.vcov_analytical, memory.vcov_analytical, rtol=1e-12, atol=1e-12)
+    assert_same_fit(whole, spread, 1e-12)
+    np.testing.assert_allclose(
+        whole.influence_moments.bootstrap_sums, spread.influence_moments.bootstrap_sums, rtol=1e-12, atol=1e-10
+    )
+    np.testing.assert_allclose(
+        spread.influence_moments.bootstrap_sums[:, : len(memory.att_gt)], expected, rtol=1e-12, atol=1e-10
+    )
 
 
 def test_att_gt_on_spark_with_two_periods_reports_the_bootstrap_band(
@@ -342,8 +658,13 @@ def test_att_gt_on_spark_bootstrap_draws_one_multiplier_for_each_cluster_like_th
 
 
 @pytest.mark.parametrize("aggregation", ["group", "dynamic", "calendar"])
-def test_aggte_on_a_spark_fit_matches_aggte_in_memory(universal_base_fits, aggregation):
-    on_spark, in_memory = universal_base_fits
+@pytest.mark.parametrize(
+    "fits",
+    ["universal_base_fits", "repeated_cross_section_fits", "unbalanced_panel_fits"],
+    ids=["balanced_panel", "repeated_cross_sections", "unbalanced_panel"],
+)
+def test_aggte_on_a_spark_fit_matches_aggte_in_memory(request, fits, aggregation):
+    on_spark, in_memory = request.getfixturevalue(fits)
 
     distributed = aggte(on_spark, type=aggregation, cband=False)
     memory = aggte(in_memory, type=aggregation, cband=False)
@@ -356,8 +677,13 @@ def test_aggte_on_a_spark_fit_matches_aggte_in_memory(universal_base_fits, aggre
     np.testing.assert_allclose(distributed.overall_se, memory.overall_se, rtol=1e-12)
 
 
-def test_aggte_simple_on_a_spark_fit_matches_aggte_in_memory(universal_base_fits):
-    on_spark, in_memory = universal_base_fits
+@pytest.mark.parametrize(
+    "fits",
+    ["universal_base_fits", "repeated_cross_section_fits", "unbalanced_panel_fits"],
+    ids=["balanced_panel", "repeated_cross_sections", "unbalanced_panel"],
+)
+def test_aggte_simple_on_a_spark_fit_matches_aggte_in_memory(request, fits):
+    on_spark, in_memory = request.getfixturevalue(fits)
 
     distributed = aggte(on_spark, type="simple", cband=False)
     memory = aggte(in_memory, type="simple", cband=False)
@@ -368,17 +694,24 @@ def test_aggte_simple_on_a_spark_fit_matches_aggte_in_memory(universal_base_fits
 
 
 @pytest.mark.parametrize(
-    "sensitivity_type, options",
+    "fits, sensitivity_type, options",
     [
-        ("smoothness", {"m_vec": np.array([0.0, 0.01])}),
-        ("relative_magnitude", {"m_bar_vec": np.array([0.0, 1.0]), "grid_points": 20}),
+        ("universal_base_fits", "smoothness", {"m_vec": np.array([0.0, 0.01])}),
+        ("universal_base_fits", "relative_magnitude", {"m_bar_vec": np.array([0.0, 1.0]), "grid_points": 20}),
+        ("repeated_cross_section_fits", "smoothness", {"m_vec": np.array([0.0, 0.01])}),
+        ("unbalanced_panel_fits", "smoothness", {"m_vec": np.array([0.0, 0.01])}),
     ],
-    ids=["smoothness", "relative_magnitude"],
+    ids=[
+        "balanced_panel_smoothness",
+        "balanced_panel_relative_magnitude",
+        "repeated_cross_sections_smoothness",
+        "unbalanced_panel_smoothness",
+    ],
 )
 def test_honest_did_on_an_event_study_of_a_spark_fit_matches_the_in_memory_fit(
-    universal_base_fits, sensitivity_type, options
+    request, fits, sensitivity_type, options
 ):
-    on_spark, in_memory = universal_base_fits
+    on_spark, in_memory = request.getfixturevalue(fits)
     distributed = aggte(on_spark, type="dynamic", cband=False)
     memory = aggte(in_memory, type="dynamic", cband=False)
 
@@ -395,8 +728,13 @@ def test_honest_did_on_an_event_study_of_a_spark_fit_matches_the_in_memory_fit(
     )
 
 
-def test_to_df_of_a_spark_fit_matches_the_in_memory_fit(universal_base_fits):
-    on_spark, in_memory = universal_base_fits
+@pytest.mark.parametrize(
+    "fits",
+    ["universal_base_fits", "repeated_cross_section_fits", "unbalanced_panel_fits"],
+    ids=["balanced_panel", "repeated_cross_sections", "unbalanced_panel"],
+)
+def test_to_df_of_a_spark_fit_matches_the_in_memory_fit(request, fits):
+    on_spark, in_memory = request.getfixturevalue(fits)
 
     cells = to_df(on_spark)
     expected_cells = to_df(in_memory)
@@ -407,8 +745,13 @@ def test_to_df_of_a_spark_fit_matches_the_in_memory_fit(universal_base_fits):
     assert_frame_equal(event_study, expected_event_study, rel_tol=1e-12, abs_tol=1e-12)
 
 
-def test_report_of_a_spark_fit_matches_the_in_memory_report(universal_base_fits):
-    on_spark, in_memory = universal_base_fits
+@pytest.mark.parametrize(
+    "fits",
+    ["universal_base_fits", "repeated_cross_section_fits", "unbalanced_panel_fits"],
+    ids=["balanced_panel", "repeated_cross_sections", "unbalanced_panel"],
+)
+def test_report_of_a_spark_fit_matches_the_in_memory_report(request, fits):
+    on_spark, in_memory = request.getfixturevalue(fits)
 
     report = str(on_spark)
     expected_report = str(in_memory)
@@ -450,8 +793,8 @@ def test_aggte_on_a_clustered_spark_fit_rejects_unit_level_bootstrap_draws(scala
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "clustervars=[] asks for unit-level bootstrap draws. Since this att_gt fit on a Spark DataFrame drew "
-            "one multiplier for each cluster, it holds no draws for single units."
+            "clustervars=[] asks for unit-level bootstrap draws. This att_gt fit on a Spark DataFrame drew "
+            "one multiplier for each cluster and holds no draws for single units."
         ),
     ):
         aggte(fit, type="dynamic", clustervars=[])
@@ -460,15 +803,6 @@ def test_aggte_on_a_clustered_spark_fit_rejects_unit_level_bootstrap_draws(scala
 @pytest.mark.parametrize(
     "option, message",
     [
-        (
-            {"panel": False},
-            "panel=False is not supported for a Spark DataFrame. Pass panel=True to fit the data as a balanced panel.",
-        ),
-        (
-            {"allow_unbalanced_panel": True},
-            "allow_unbalanced_panel=True is not supported for a Spark DataFrame. "
-            "Pass allow_unbalanced_panel=False to keep the units observed in every period.",
-        ),
         (
             {"est_method": drdid_panel},
             "est_method=drdid_panel is not supported for a Spark DataFrame. Pass est_method='dr', 'ipw', or 'reg'.",
@@ -488,7 +822,7 @@ def test_aggte_on_a_clustered_spark_fit_rejects_unit_level_bootstrap_draws(scala
             "a BitGenerator, or a Generator.",
         ),
     ],
-    ids=["repeated_cross_sections", "unbalanced_panel", "custom_estimator", "backend", "parallel_jobs", "text_seed"],
+    ids=["custom_estimator", "backend", "parallel_jobs", "text_seed"],
 )
 def test_att_gt_on_spark_rejects_options_it_cannot_fit(mpdta_data, to_spark, option, message):
     frame = to_spark(mpdta_data)

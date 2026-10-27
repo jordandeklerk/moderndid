@@ -6,6 +6,7 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 from statsmodels.tools.sm_exceptions import MissingDataError
+from statsmodels.tools.tools import pinv_extended
 
 from moderndid.cupy.backend import _array_module, get_backend, to_numpy
 from moderndid.cupy.regression import cupy_wls
@@ -431,18 +432,24 @@ def _fit_wls(y, X, weights):
     return results.params / scale, results.condition_number
 
 
+def _wls_coefficients(y, X, weights):
+    """Return the minimum-norm weighted least squares coefficients without the diagnostics of a full fit."""
+    root = np.sqrt(weights)
+    return np.dot(pinv_extended(root[:, None] * X)[0], y * root)
+
+
 def _has_collinear_columns(x, weights):
     """Tell whether the weighted covariates of a regression lack full column rank at any scale."""
     xp = get_backend()
     weighted_x = xp.asarray(x) * xp.sqrt(xp.asarray(weights))[:, None]
-    # Since a covariate that is not finite has no rank to check, the fit that follows reports it.
+    # A covariate that is not finite has no rank to check. The fit that follows reports it.
     if not bool(xp.all(xp.isfinite(weighted_x))):
         return False
     norms = xp.linalg.norm(weighted_x, axis=0)
     if not bool(xp.all(norms > 0)):
         return True
-    # Since the rank tolerance scales with the largest singular value, unit-norm columns keep a covariate
-    # measured on a large scale from passing for collinear.
+    # The rank tolerance scales with the largest singular value. Unit-norm columns keep a covariate on a small scale
+    # from passing for collinear beside one on a large scale.
     return int(xp.linalg.matrix_rank(weighted_x / norms)) < weighted_x.shape[1]
 
 
@@ -491,12 +498,12 @@ def _check_observations(rows, x, weights, group, noun, regressed, treat):
         )
     if not regressed:
         return
-    # Since the regression helpers reject covariates that are not 2D with their own error, such an array
-    # counts as one column here.
+    # The regression helpers reject covariates that are not 2D with their own error. Such an array counts as one column
+    # here.
     n_coefficients = x.shape[1] if x.ndim == 2 else 1
     if n_positive >= n_coefficients:
         return
-    # Since a row with zero weight drops out of the fit, the count names only rows with positive weight.
+    # A row with zero weight drops out of the fit. The count names only rows with positive weight.
     counted = noun if n_positive == int(rows.sum()) else f"{noun} with positive weight"
     raise ValueError(
         f"The {group} has fewer {counted} ({n_positive}) than regression coefficients ({n_coefficients}). "

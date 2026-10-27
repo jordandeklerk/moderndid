@@ -17,19 +17,14 @@ except ImportError:
     cupy = None
 
 
-# Only numerical RuntimeWarnings and third-party warnings are suppressed globally.
-# Library UserWarnings are intentionally NOT suppressed so they remain visible
-# during test runs. Use per-test ``@pytest.mark.filterwarnings`` for warnings
-# that are expected in a specific test.
+# UserWarnings from moderndid stay visible. A test that expects one marks it with pytest.mark.filterwarnings.
 def pytest_configure(config):
     """Register global warning filters via pytest's own mechanism."""
     filters = [
-        # Numerical RuntimeWarnings in edge-case data
         "ignore:overflow encountered:RuntimeWarning",
         "ignore:invalid value encountered:RuntimeWarning",
         "ignore:divide by zero encountered:RuntimeWarning",
         "ignore:Mean of empty slice:RuntimeWarning",
-        # Third-party warnings we cannot control
         "ignore:Perfect separation.*:statsmodels.tools.sm_exceptions.PerfectSeparationWarning",
         "ignore:Solution may be inaccurate.*:UserWarning",
         "ignore:.*pl.count.*is deprecated.*:DeprecationWarning",
@@ -210,9 +205,10 @@ def att_gt_on_shards():
             "control_group": "nevertreated",
             "anticipation": 0,
             "base_period": "varying",
+            "allow_unbalanced_panel": False,
             **spec,
         }
-        did_data = preprocess_did(data, panel=True, allow_unbalanced_panel=False, **settings)
+        did_data = preprocess_did(data, panel=True, **settings)
         clustervars = settings["clustervars"]
         units = did_data.time_invariant_data
         cluster = next((name for name in clustervars or [] if name != settings["idname"]), None)

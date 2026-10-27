@@ -31,10 +31,10 @@ def compute_aggte(
     effect is left.
 
     Each aggregated influence function takes the same linear combination of
-    every unit's row that :class:`~moderndid.InfluenceMoments` defines. Since a
-    fit on a Spark DataFrame keeps only the sums of those rows, a call that
-    needs draws the fit did not store, such as more draws, another seed, or
-    draws by unit from a clustered fit, raises an error.
+    every unit's row that :class:`~moderndid.InfluenceMoments` defines. A fit on
+    a Spark DataFrame keeps only the sums of those rows. A call that needs draws
+    the fit did not store, such as more draws, another seed, or draws by unit
+    from a clustered fit, therefore raises an error.
 
     Parameters
     ----------
@@ -165,10 +165,10 @@ def compute_aggte(
         raise ValueError("Missing values at att_gt found. If you want to remove these, set na_rm=True in aggte.")
 
     if moments is not None:
-        # As for an in-memory fit, clusters of one unit each leave the inference at the unit level.
+        # Clusters of one unit each leave the inference at the unit level here and in an in-memory fit.
         fit_clustered = moments.cluster_gram is not None and moments.n_clusters < n_units
         clustered = bool(estimation_params["clustervars"]) and fit_clustered
-        # Since the simple aggregation has no disaggregated effects, it draws only for bootstrap standard errors.
+        # With no disaggregated effects, the simple aggregation draws only for bootstrap standard errors.
         if bootstrap or (estimation_params.get("uniform_bands", False) and aggregation_type != "simple"):
             _check_stored_draws(moments, clustervars, clustered, fit_clustered, bootstrap, biters, random_state)
         estimation_params["n_units"] = n_units
@@ -184,7 +184,7 @@ def compute_aggte(
     unique_original_groups = np.unique(original_groups)
     unique_original_times = np.unique(original_times)
 
-    # Since the max_e window counts periods, periods and cohorts are recoded to consecutive integers.
+    # Periods and cohorts are recoded to consecutive integers because the max_e window counts periods.
     unique_original_times_and_groups = np.sort(
         np.unique(np.concatenate([unique_original_times, unique_original_groups]))
     )
@@ -200,7 +200,7 @@ def compute_aggte(
     cohort_weights = None
     if moments is not None:
         rows = _moment_rows(moments, len(multi_period_result.att_gt), cell_index, unique_original_groups)
-        # Since every unit's row ends in a one, the last row of the Gram matrix sums each cohort's weight column.
+        # The last row of the Gram matrix sums each cohort's weight column because every unit's row ends in a one.
         group_probabilities = moments.gram[-1, rows[len(att) : -1]] / n_units
     else:
         unit_level_groups = multi_period_result.G
@@ -700,8 +700,8 @@ def _compute_calendar_att(
 ):
     """Compute calendar time effects."""
     n_basis = cell_coefficients.shape[0]
-    # A period enters only when one of its cells is treated. Since a universal base keeps each cohort's reference
-    # cell, a cohort whose treated cells all failed would otherwise add periods with nothing to average.
+    # A period enters only when one of its cells is treated. A universal base keeps each cohort's reference cell. A
+    # cohort whose treated cells all failed would otherwise add periods with nothing to average.
     calendar_times = np.array([t for t in unique_times_recoded if np.any((times == t) & (groups <= t))])
 
     original_calendar_times = np.array(
@@ -846,9 +846,9 @@ def _weight_coefficients(
     """Compute the coefficients of the influence function adjustment for estimated weights.
 
     This computes the extra term in the influence function that arises
-    from having to estimate the weights (group probabilities). Since the
-    estimated probability of a cohort is the mean of its weight column, the
-    term combines the weight columns of the kept cohorts and the constant.
+    from having to estimate the weights (group probabilities). The estimated
+    probability of a cohort is the mean of its weight column. The term
+    therefore combines the weight columns of the kept cohorts and the constant.
 
     Parameters
     ----------
@@ -883,8 +883,8 @@ def _weight_coefficients(
 
     sum_pg = pg_keepers.sum()
 
-    # Since each weight divides an estimated cohort probability by the sum over the kept effects, its influence
-    # function has a term from the numerator and a term from the shared denominator.
+    # Each weight divides an estimated cohort probability by the sum over the kept effects. Its influence function
+    # therefore has a term from the numerator and a term from the shared denominator.
     sum_term = np.zeros(n_basis)
     for i, k in enumerate(keepers):
         group_k = groups[k]
@@ -990,8 +990,8 @@ def _resolve_clustervars(fit_params, clustervars):
         # A result that records no clustervars stays unclustered, whatever its preprocessed data names.
         return None if fit_params.get("clustervars") is None else fitted
 
-    # In a panel, clusters of one unit each are the units themselves. Since att_gt draws a multiplier for each
-    # row of a repeated cross section even when rows share an id, the aggregation drops the id there too.
+    # In a panel, clusters of one unit each are the units themselves. att_gt draws a multiplier for each row of a
+    # repeated cross section even when rows share an id. The aggregation drops the id there too.
     clustervars = list(dict.fromkeys(name for name in clustervars if name != idname))
     unknown = [name for name in clustervars if name not in fitted]
     if unknown:
@@ -1000,9 +1000,9 @@ def _resolve_clustervars(fit_params, clustervars):
         else:
             choice = "pass an empty list for unit-level inference"
         raise ValueError(
-            f"The att_gt fit did not cluster on {' or '.join(repr(name) for name in unknown)}. Since the "
-            "aggregation reuses the clusters of the att_gt fit, pass the cluster variable to att_gt instead. To "
-            f"aggregate this fit, {choice}."
+            f"The att_gt fit did not cluster on {' or '.join(repr(name) for name in unknown)}. The aggregation "
+            "reuses the clusters of the att_gt fit. Pass the cluster variable to att_gt instead. To aggregate this "
+            f"fit, {choice}."
         )
     return clustervars
 
@@ -1021,8 +1021,8 @@ def _cluster_vector(estimation_params):
         Cluster of each unit, or None for standard errors at the unit level.
     """
     cluster = estimation_params.get("cluster")
-    # A cluster variable with one value for each unit, such as a copy of the unit id, makes each unit its own
-    # cluster. Since such clusters are the units themselves, the inference stays at the unit level.
+    # A cluster variable with one value for each unit, such as a copy of the unit id, makes each unit its own cluster.
+    # Such clusters are the units themselves and keep the inference at the unit level.
     if cluster is None or len(np.unique(cluster)) == len(cluster):
         return None
     return cluster
@@ -1038,8 +1038,8 @@ def _check_stored_draws(moments, clustervars, clustered, fit_clustered, bootstra
         )
     if clustered != fit_clustered:
         raise ValueError(
-            f"clustervars={clustervars!r} asks for unit-level bootstrap draws. Since this att_gt fit on a Spark "
-            "DataFrame drew one multiplier for each cluster, it holds no draws for single units. Pass boot=False "
+            f"clustervars={clustervars!r} asks for unit-level bootstrap draws. This att_gt fit on a Spark "
+            "DataFrame drew one multiplier for each cluster and holds no draws for single units. Pass boot=False "
             "and cband=False for unit-level analytic standard errors. To bootstrap by unit, rerun att_gt without "
             "clustervars."
         )
@@ -1101,7 +1101,7 @@ class _UnitLevelEvaluator:
         n_cells = self.influence_function.shape[1]
         influence = np.empty((self.influence_function.shape[0], coefficients.shape[1]))
         for j in range(coefficients.shape[1]):
-            # Since an effect averages only some cells, the product reads only the columns it weighs.
+            # An effect averages only some cells. The product reads only the columns it weighs.
             used = np.flatnonzero(coefficients[:n_cells, j])
             influence[:, j] = self.influence_function[:, used] @ coefficients[used, j]
         if self.cohort_weights is not None:
@@ -1144,7 +1144,7 @@ class _MomentEvaluator:
         self.gram = gram[np.ix_(rows, rows)]
         self.bootstrap_sums = None if moments.bootstrap_sums is None else moments.bootstrap_sums[:, rows]
         self.n_units = n_units
-        # As in mboot, a clustered draw gives each cluster's sum one multiplier.
+        # A clustered draw gives each cluster's sum one multiplier here and in mboot.
         self.n_draw_rows = moments.n_clusters if clustered else n_units
         self.draw_scale = n_units / np.sqrt(moments.n_clusters) if clustered else np.sqrt(n_units)
 
@@ -1159,13 +1159,13 @@ class _MomentEvaluator:
     def standard_errors(self, coefficients):
         """Return the analytic standard error of the effect that each column describes."""
         quadratic = np.sum(coefficients * (self.gram @ coefficients), axis=0)
-        # Since rounding can leave the variance of a constant effect just below zero, it stops at zero.
+        # Rounding can leave the variance of a constant effect slightly below zero.
         return np.sqrt(np.maximum(quadratic, 0)) / self.n_units
 
     def vcov(self, coefficients):
         """Return the asymptotic variance-covariance matrix of the effects that the columns describe."""
         covariance = coefficients.T @ (self.gram @ coefficients) / self.n_units
-        # Since the two products round differently, the average with the transpose keeps the matrix symmetric.
+        # The two products round differently. Averaging with the transpose keeps the matrix symmetric.
         return (covariance + covariance.T) / 2
 
     def bootstrap(self, coefficients, biters, alpha, random_state):
@@ -1280,7 +1280,7 @@ def _batched_se(evaluator, influence, att_vec, estimation_params, biters, alpha,
         if use_bootstrap:
             cv = mboot_result["crit_val"]
         else:
-            # Since the analytic standard errors sum within the clusters, the draws behind their band do too.
+            # The analytic standard errors sum within the clusters. The draws behind their band do too.
             band_result = evaluator.bootstrap(valid_inf, biters, alpha, random_state)
             cv = band_result["crit_val"]
             bres = band_result["bres"]
@@ -1294,8 +1294,8 @@ def _batched_se(evaluator, influence, att_vec, estimation_params, biters, alpha,
         elif cv < critical_value:
             warnings.warn(
                 "The simultaneous confidence band is narrower than the pointwise "
-                "confidence interval. Since a band that covers every effect at once can't "
-                "be narrower, aggte falls back to pointwise confidence intervals."
+                "confidence interval. A band that covers every effect at once can't be "
+                "narrower. The aggregation falls back to pointwise confidence intervals."
             )
             estimation_params["uniform_bands"] = False
         else:

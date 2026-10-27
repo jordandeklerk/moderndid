@@ -1,6 +1,7 @@
 """Tests for the locally efficient doubly robust DiD estimator for panel data."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -127,20 +128,6 @@ def test_drdid_panel_trimming():
     assert result.se > 0
 
 
-def test_drdid_panel_singular_covariate_matrix():
-    n_units = 100
-    rng = np.random.default_rng(42)
-
-    d = rng.binomial(1, 0.5, n_units)
-    x1 = rng.standard_normal(n_units)
-    x = np.column_stack([np.ones(n_units), x1, x1])
-    y0 = rng.standard_normal(n_units)
-    y1 = y0 + 2 * d + rng.standard_normal(n_units)
-
-    with pytest.raises(ValueError, match="singular"):
-        drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
-
-
 def test_drdid_panel_negative_weights():
     n_units = 100
     rng = np.random.default_rng(42)
@@ -192,3 +179,50 @@ def test_drdid_panel_rejects_the_removed_nboot_argument():
 
     with pytest.raises(TypeError, match="unexpected keyword argument 'nboot'"):
         drdid_panel(y1=y0 + d, y0=y0, d=d, covariates=None, boot=True, nboot=20)
+
+
+@pytest.mark.parametrize(
+    ("redundant", "message"),
+    [
+        ("duplicate", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("intercept", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("zero", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("affine", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("duplicate_and_zero", "The propensity score model dropped 2 covariates that are collinear with the others."),
+    ],
+    ids=["duplicate", "intercept", "zero", "affine", "duplicate_and_zero"],
+)
+def test_drdid_panel_warns_about_a_redundant_propensity_covariate_before_its_outcome_regression_fails(
+    two_period_specs, redundant_columns, redundant, message
+):
+    spec = two_period_specs["panel"]
+    covariates = spec["covariates"]
+    padded = np.column_stack([covariates[:, :2], redundant_columns[redundant], covariates[:, 2:]])
+    singular = (
+        "The regression design matrix of the comparison group is singular. Consider removing covariates that are "
+        "constant or collinear among the comparison units."
+    )
+
+    with (
+        pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record,
+        pytest.raises(ValueError, match=f"^{re.escape(singular)}$"),
+    ):
+        drdid_panel(**{**spec, "covariates": padded})
+
+    assert len(record) == 1
+
+
+@pytest.mark.parametrize("level", [0.0, 1e6])
+def test_drdid_panel_keeps_every_covariate_of_a_full_rank_design_without_a_warning(two_period_specs, level):
+    spec = two_period_specs["panel"]
+    shifted = spec["covariates"] + np.array([0.0, 0.0, level])
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = drdid_panel(**{**spec, "covariates": shifted})
+    expected = drdid_panel(**spec)
+    without_last = drdid_panel(**{**spec, "covariates": spec["covariates"][:, :2]})
+
+    assert [str(w.message) for w in record] == []
+    np.testing.assert_allclose(result.att, expected.att, rtol=1e-10)
+    assert abs(result.att - without_last.att) > 1e-3

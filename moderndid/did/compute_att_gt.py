@@ -17,6 +17,7 @@ from moderndid.drdid.estimators.reg_did_panel import reg_did_panel
 from moderndid.drdid.estimators.reg_did_rc import reg_did_rc
 from moderndid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
 from moderndid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
+from moderndid.drdid.utils import _propensity_columns
 
 from .container import ATTgtResult, CellSpec, ComputeATTgtResult
 
@@ -54,7 +55,7 @@ def compute_att_gt(data, n_jobs=1):
             UserWarning,
         )
 
-    # Since every cell of an unbalanced panel maps rows to the same units, the mapping is built once here.
+    # Every cell of an unbalanced panel maps rows to the same units and uses the one mapping built here.
     unit_index = _unit_index(data) if _is_unbalanced_panel(data) else None
     args_list = [(g_idx, t_idx, data, unit_index) for g_idx, t_idx in group_time_pairs]
     cell_results = parallel_map(_process_gt_cell_did, args_list, n_jobs=n_jobs)
@@ -287,10 +288,11 @@ def run_att_gt_estimation(
 def _cell_fails_screen(treated, covariates, weights, est_method, g_label, t_label):
     """Tell whether a cell fails the overlap or the regression screen.
 
-    The overlap screen fits the propensity score by a logit with the sampling
-    weights as frequency weights. It flags the cell when the fitted score of a
-    unit with positive weight reaches 0.999. The regression screen flags the
-    cell when the weighted Gram matrix of the comparison units' covariates is
+    The overlap screen fits the propensity score by a logit on the covariates
+    of the estimators' propensity score models with the sampling weights as
+    frequency weights. It flags the cell when the fitted score of a unit with
+    positive weight reaches 0.999. The regression screen flags the cell when
+    the weighted Gram matrix of the comparison units' covariates is
     numerically singular. Units with zero weight leave both fits, as they
     leave the estimators' fits.
 
@@ -314,16 +316,18 @@ def _cell_fails_screen(treated, covariates, weights, est_method, g_label, t_labe
     bool
         True when the cell fails a screen. A warning then names the cell.
     """
-    # The estimators divide the cell's weights by their mean before they fit. Since the logit fit stops once the
-    # deviance changes by less than a fixed amount and the deviance grows with the weights, the screen does the same.
+    # The estimators divide the cell's weights by their mean before they fit. The screen does the same because the logit
+    # fit stops once the deviance changes by less than a fixed amount and the deviance grows with the weights.
     if weights.sum() > 0:
         weights = weights / weights.mean()
 
     fails = False
 
     if est_method in (EstimationMethod.DOUBLY_ROBUST, EstimationMethod.IPW):
+        kept = _propensity_columns(covariates, weights)
+        design = covariates if kept is None else np.take(covariates, kept, axis=1)
         try:
-            logit = sm.GLM(treated.astype(float), covariates, family=sm.families.Binomial(), freq_weights=weights)
+            logit = sm.GLM(treated.astype(float), design, family=sm.families.Binomial(), freq_weights=weights)
             pscores = logit.fit(maxiter=100, disp=False).fittedvalues
             if np.max(pscores, initial=0.0, where=weights > 0) >= 0.999:
                 fails = True
@@ -622,8 +626,8 @@ def run_drdid(
         if _is_unbalanced_panel(data) and "unit_index" in cohort_data:
             inf_func_long = np.zeros(n)
             inf_func_long[valid_obs] = (data.config.id_count / valid_obs.sum()) * result.att_inf_func
-            # Since aggte pairs these rows with the groups and weights in time_invariant_data, each unit's
-            # observations add up in that unit's row there.
+            # Each unit's observations add up in that unit's row because aggte pairs these rows with the groups and
+            # weights in time_invariant_data.
             influence_func = np.bincount(
                 cohort_data["unit_index"], weights=inf_func_long, minlength=data.config.id_count
             )
@@ -659,7 +663,7 @@ def _check_cell_weights(d, weights, periods=None):
     for period in np.unique(periods):
         for units, name in sides:
             in_period = units & (periods == period)
-            # Since an empty side has no weights to check, the presence checks and the estimator handle it.
+            # An empty side has no weights to check. The presence checks and the estimator handle it.
             if np.any(in_period) and not np.sum(weights[in_period]) > 0:
                 raise ValueError(f"The {name} in time period {_period_label(period)} all have zero weight.")
 

@@ -214,7 +214,7 @@ class MissingDataHandler(BaseTransformer):
             warnings.warn(f"Dropped {n_missing} rows from original data due to missing values")
             df = df.filter(~missing)
 
-        # Since the later steps already read a NaN as missing, an infinity becomes a NaN.
+        # An infinity becomes a NaN because the later steps already read a NaN as missing.
         float_columns = [name for name, dtype in df.schema.items() if dtype.is_float() and name not in key_columns]
         return df.with_columns(
             pl.when(pl.col(name).is_infinite()).then(float("nan")).otherwise(pl.col(name)).alias(name)
@@ -288,11 +288,11 @@ class TreatmentEncoder(BaseTransformer):
             raise ValueError(
                 f"{self.cohort_argument} = '{config.gname}' holds negative values such as {negative.min():g}. "
                 "It must hold 0 for never-treated units and the first treated period for the others. "
-                "Since 0 marks never-treated units, shift the periods so that the earliest one is positive."
+                "Shift the periods so that the earliest one is positive."
             )
 
         last_start = df[config.tname].max()
-        # Since cont_did places every cohort at an observed period, a start after the panel stays never-treated there.
+        # A start after the panel stays never-treated in cont_did because it places every cohort at an observed period.
         if isinstance(config, DIDConfig):
             last_start += config.anticipation
 
@@ -314,7 +314,7 @@ class EarlyTreatmentFilter(BaseTransformer):
         tlist = sorted(df[config.tname].unique().to_list())
         first_period = min(tlist)
 
-        # Because the triple difference config has no anticipation, its units react from their first treated period.
+        # The triple difference config has no anticipation. Its units react from their first treated period.
         treated_early_mask = pl.col(config.gname) <= first_period + getattr(config, "anticipation", 0)
 
         if config.idname:
@@ -429,8 +429,8 @@ class RepeatedCrossSectionHandler(BaseTransformer):
         """Transform data."""
         df = to_polars(data)
 
-        # Since panel=False asks for the repeated cross section estimators, every row is its own observation,
-        # even when idname names a unit that several rows share.
+        # panel=False asks for the repeated cross section estimators. Every row is its own observation, even when idname
+        # names a unit that several rows share.
         if not config.panel:
             config.true_repeated_cross_sections = True
             config.idname = ROW_ID_COLUMN
@@ -438,8 +438,8 @@ class RepeatedCrossSectionHandler(BaseTransformer):
 
         if config.allow_unbalanced_panel and config.idname:
             unit_counts = df.group_by(config.idname).len()
-            # Since an unbalanced panel has no outcome tensor, it takes the repeated cross section estimators.
-            # They still sum each unit's influence function through the row id.
+            # An unbalanced panel has no outcome tensor and takes the repeated cross section estimators. They still sum
+            # each unit's influence function through the row id.
             if (unit_counts["len"] != df[config.tname].n_unique()).any():
                 config.panel = False
                 return df.with_columns(pl.col(config.idname).alias(ROW_ID_COLUMN))
@@ -459,8 +459,8 @@ class TimePeriodRecoder(BaseTransformer):
         original_periods = sorted(df[config.tname].unique().to_list())
         time_map = {t: i + 1 for i, t in enumerate(original_periods)}
 
-        # Since groups are compared with periods, they take the same positions. A start between two observed
-        # periods has no position. Moving it to a neighboring period would shift the group's event times.
+        # Groups are compared with periods and take the same positions. A start between two observed periods has no
+        # position. Moving it to a neighboring period would shift the group's event times.
         groups = df[config.gname].to_numpy().astype(float)
         finite = np.isfinite(groups)
         between = finite & (groups > original_periods[0]) & ~np.isin(groups, original_periods)
@@ -705,7 +705,7 @@ class PrePostColumnSelector(BaseTransformer):
         formula_vars = []
         if config.xformla and config.xformla != "~1":
             if get_transformed_terms(config.xformla):
-                # Since PrePostCovariateProcessor evaluates transformed terms itself, only the columns they read stay.
+                # PrePostCovariateProcessor evaluates transformed terms itself. Only the columns they read stay.
                 formula_vars = get_formula_columns(config.xformla, df.columns)
             else:
                 formula_vars = extract_vars_from_formula(config.xformla)
@@ -752,7 +752,7 @@ class PrePostCovariateProcessor(BaseTransformer):
                 "pip install formulaic. You can also add the transformed covariate to the data as its own column.",
             )
 
-        # Since the builder never reads the design columns as covariates, they keep their own types.
+        # The builder never reads the design columns as covariates. They keep their own types.
         design = {config.yname, config.tname, config.treat_col, config.idname, config.weightsname}
         names = [name for name in extract_vars_from_formula(config.xformla) if name not in design]
         categorical = [name for name in names if not (df.schema[name].is_numeric() or df.schema[name] == pl.Boolean)]
@@ -888,7 +888,7 @@ class DIDInterColumnSelector(BaseTransformer):
         for col in [config.tname, config.dname]:
             if col in df.columns and df[col].dtype not in (pl.Float64, pl.Float32, pl.Int64, pl.Int32):
                 df = df.with_columns(pl.col(col).cast(pl.Float64))
-        # Since a double holds whole numbers exactly only up to 2**53, a numeric unit id keeps its own type.
+        # A double holds whole numbers exactly only up to 2**53. A numeric unit id keeps its own type.
         if config.gname in df.columns and not df[config.gname].dtype.is_numeric():
             df = df.with_columns(pl.col(config.gname).cast(pl.Float64))
 
@@ -1186,8 +1186,8 @@ class DIDInterPanelBalancer(BaseTransformer):
 
         df = full_index.join(df, on=[config.gname, config.tname], how="left")
 
-        # A mean of copies of a value such as 0.1 can land a rounding error away from it and differ
-        # between groups. Copying the observed value keeps each baseline in one control pool.
+        # A mean of copies of a value such as 0.1 can end up a rounding error away from it and differ between groups.
+        # Copying the observed value keeps each baseline in one control pool.
         group_columns = {
             "F_g": pl.Float64,
             "d_sq": pl.Float64,
@@ -1304,19 +1304,19 @@ class DIDInterConfigUpdater:
             Number of placebos that some switcher reaches.
         """
         df = to_polars(data)
-        # Since S_g holds floats, is_in needs the directions as floats too.
+        # is_in needs the directions as floats because S_g holds floats.
         directions = [float(d) for d in DIDInterConfigUpdater.switcher_directions(config)]
         switchers = df.filter((pl.col("F_g") != float("inf")) & pl.col("S_g").is_in(directions))
         if switchers.is_empty():
             return 0, 0
 
         effect_horizons = pl.col("T_g") - pl.col("F_g") + 1
-        # Since periods are ranks from 1, F_g - 2 periods come before the last period before the switch.
+        # Periods are ranks from 1. The last period before the switch has F_g - 2 periods before it.
         placebo_horizons = pl.min_horizontal(effect_horizons, pl.col("F_g") - 2)
         max_effects, max_placebo = switchers.select(
             effect_horizons.max().alias("effects"), placebo_horizons.max().alias("placebo")
         ).row(0)
-        # Since the differenced outcome of trends_lin starts one period later, one placebo fewer fits.
+        # One fewer placebo fits because the differenced outcome of trends_lin starts one period later.
         return int(max_effects), max(int(max_placebo) - int(config.trends_lin), 0)
 
 
@@ -1432,7 +1432,7 @@ class DDDColumnSelector(BaseTransformer):
         cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
 
         df = df.select(cols_to_keep)
-        # Since an infinite cohort marks a never-treated unit, the two-period steps read it as the 0 they expect.
+        # An infinite cohort marks a never-treated unit. The two-period steps read it as the 0 they expect.
         if df.schema[config.gname].is_float():
             never_treated = pl.col(config.gname) == float("inf")
             df = df.with_columns(pl.when(never_treated).then(0.0).otherwise(pl.col(config.gname)).alias(config.gname))
@@ -1722,8 +1722,8 @@ class DynBalancingPooler(BaseTransformer):
 
         ids = df[idname]
         unit_text = pl.col(idname).cast(pl.Utf8)
-        # Since a whole-number float id names its units like the same integer, the stacked units sort in the same
-        # order whatever the id type.
+        # A whole-number float id names its units like the same integer. The stacked units then sort in the same order
+        # whatever the id type.
         if ids.dtype.is_float() and ((ids == ids.round()) & (ids.abs() < 2.0**53)).all():
             unit_text = pl.col(idname).cast(pl.Int64).cast(pl.Utf8)
 
@@ -1742,12 +1742,11 @@ class DynBalancingPooler(BaseTransformer):
                 config.fixed_effects = ["new_Time" if fe == tname else fe for fe in config.fixed_effects]
             return df
 
-        # Since polars 2.0 rejects is_in of a float column against integers and sums UInt64 and Int64 into Int128,
-        # periods are compared and shifted as Int64 or Float64.
+        # Polars 2.0 rejects is_in of a float column against integers and sums UInt64 and Int64 into Int128. Periods are
+        # therefore compared and shifted as Int64 or Float64.
         period_type = pl.Int64 if df.schema[tname].is_integer() else pl.Float64
         period = pl.col(tname).cast(period_type)
 
-        # Build lag offsets and the time windows they require
         lags = pl.DataFrame({"_lag": list(range(1, num_periods + 1))})
         lags = lags.with_columns(
             pl.col("_lag")
@@ -1758,13 +1757,10 @@ class DynBalancingPooler(BaseTransformer):
             .alias("_needed")
         )
 
-        # Cross-join every unit-period row with every lag
         df_with_lag = df.join(lags, how="cross")
 
-        # Keep only rows whose time falls within the needed window for that lag
         df_with_lag = df_with_lag.filter(period.is_in(pl.col("_needed").cast(pl.List(period_type))))
 
-        # Filter to units that have complete windows for each lag
         complete_keys = (
             df_with_lag.group_by([idname, "_lag"])
             .agg(pl.len().alias("_cnt"))
@@ -1824,7 +1820,7 @@ class DynBalancingFixedEffectDummifier(BaseTransformer):
         df = to_polars(data)
 
         for fe_col in config.fixed_effects:
-            # Since a missing value names no level, every dummy of its row stays missing like a missing covariate.
+            # A missing value names no level. Every dummy of its row stays missing like a missing covariate.
             levels = nonfinite_to_null(df.select(fe_col)).to_series()
             for val in sorted(levels.drop_nulls().unique().to_list()):
                 df = df.with_columns((levels == val).cast(pl.Int32).alias(f"{fe_col}_{val}"))

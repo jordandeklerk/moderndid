@@ -1,6 +1,7 @@
 """Tests for the outcome regression DiD estimator for panel data."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -200,3 +201,48 @@ def test_reproducibility_bootstrap():
 
     assert not np.array_equal(result1.boots, result2.boots)
     assert np.isclose(result1.att, result2.att, rtol=1e-10)
+
+
+def test_reg_did_panel_fits_an_exact_comparison_regression_without_warnings(panel_exact_comparison_fit):
+    spec = panel_exact_comparison_fit
+    delta_y = spec["y1"] - spec["y0"]
+    d, x, weights = spec["d"], spec["covariates"], spec["i_weights"]
+    comparison = d == 0
+    root = np.sqrt(weights[comparison])
+    coefficients = np.linalg.lstsq(root[:, None] * x[comparison], root * delta_y[comparison], rcond=None)[0]
+    residual = delta_y - x @ coefficients
+    att = np.average(residual, weights=weights * d)
+    inf_func = weights * d * (residual - att) / np.mean(weights * d)
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = reg_did_panel(**spec, influence_func=True)
+
+    assert [str(warning.message) for warning in record] == []
+    np.testing.assert_allclose(result.att, att, rtol=1e-12)
+    np.testing.assert_allclose(result.att_inf_func, inf_func, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result.se, np.sqrt(np.mean(inf_func**2) / d.size), rtol=1e-12)
+
+
+@pytest.mark.parametrize("weight", [1.0, 0.0], ids=["positive_weight", "zero_weight"])
+@pytest.mark.parametrize("outcome", ["y1", "y0"])
+def test_reg_did_panel_rejects_an_infinite_comparison_outcome_without_warnings(
+    two_period_specs, forbid_errstate, outcome, weight
+):
+    spec = two_period_specs["panel"]
+    unit = np.flatnonzero(spec["d"] == 0)[0]
+    values, i_weights = spec[outcome].copy(), spec["i_weights"].copy()
+    values[unit] = np.inf
+    i_weights[unit] = weight
+    message = (
+        "Failed to fit outcome regression model: y1 or y0 holds infinite values for some units of the comparison "
+        "group. Pass finite outcomes for those units."
+    )
+    forbid_errstate()
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            reg_did_panel(**{**spec, outcome: values, "i_weights": i_weights})
+
+    assert [str(warning.message) for warning in record] == []

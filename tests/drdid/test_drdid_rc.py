@@ -1,6 +1,7 @@
 """Tests for the locally efficient doubly robust DiD estimator for repeated cross-section data."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -217,24 +218,6 @@ def test_trimming():
     assert result.se > 0
 
 
-def test_singular_covariate_matrix():
-    n_units = 100
-    rng = np.random.default_rng(42)
-
-    post = rng.binomial(1, 0.5, n_units)
-    d = rng.binomial(1, 0.5, n_units)
-    x1 = rng.standard_normal(n_units)
-    x = np.column_stack([np.ones(n_units), x1, x1])
-    y = rng.standard_normal(n_units) + 2 * d * post
-    message = (
-        "The regression design matrix of the comparison group in the pre-period is singular. Consider removing "
-        "covariates that are constant or collinear within that group and period."
-    )
-
-    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
-        drdid_rc(y=y, post=post, d=d, covariates=x)
-
-
 def test_negative_weights():
     n_units = 100
     rng = np.random.default_rng(42)
@@ -344,3 +327,50 @@ def test_compute_weights_propensity_score_one(forbid_errstate):
     largest = np.finfo(float).max
     assert weights["w_cont_pre"].tolist() == [largest, 0.0, 1.0, 0.0, 0.0, 0.0, -largest]
     assert weights["w_cont_post"].tolist() == [0.0, largest, 0.0, 1.0, 0.0, 0.0, 0.0]
+
+
+@pytest.mark.parametrize(
+    ("redundant", "message"),
+    [
+        ("duplicate", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("intercept", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("zero", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("affine", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("duplicate_and_zero", "The propensity score model dropped 2 covariates that are collinear with the others."),
+    ],
+    ids=["duplicate", "intercept", "zero", "affine", "duplicate_and_zero"],
+)
+def test_drdid_rc_warns_about_a_redundant_propensity_covariate_before_its_outcome_regression_fails(
+    two_period_specs, redundant_columns, redundant, message
+):
+    spec = two_period_specs["repeated_cross_sections"]
+    covariates = spec["covariates"]
+    padded = np.column_stack([covariates[:, :2], redundant_columns[redundant], covariates[:, 2:]])
+    singular = (
+        "The regression design matrix of the comparison group in the pre-period is singular. Consider removing "
+        "covariates that are constant or collinear within that group and period."
+    )
+
+    with (
+        pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record,
+        pytest.raises(ValueError, match=f"^{re.escape(singular)}$"),
+    ):
+        drdid_rc(**{**spec, "covariates": padded})
+
+    assert len(record) == 1
+
+
+@pytest.mark.parametrize("level", [0.0, 1e6])
+def test_drdid_rc_keeps_every_covariate_of_a_full_rank_design_without_a_warning(two_period_specs, level):
+    spec = two_period_specs["repeated_cross_sections"]
+    shifted = spec["covariates"] + np.array([0.0, 0.0, level])
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = drdid_rc(**{**spec, "covariates": shifted})
+    expected = drdid_rc(**spec)
+    without_last = drdid_rc(**{**spec, "covariates": spec["covariates"][:, :2]})
+
+    assert [str(w.message) for w in record] == []
+    np.testing.assert_allclose(result.att, expected.att, rtol=1e-10)
+    assert abs(result.att - without_last.att) > 1e-3

@@ -7,19 +7,21 @@ If your panel already sits in a Spark table or holds more units than one
 machine can keep in memory, collecting it for an in-memory fit can be slow or
 impossible. You can instead pass the Spark DataFrame to
 :func:`~moderndid.att_gt` just as you'd pass a pandas or polars DataFrame.
-Spark's executors then gather each unit's rows together and send the driver
-only statistics such as sums and counts whose size doesn't depend on the number
-of units. The driver, the Python process that runs your code, turns those into
-the same :class:`~moderndid.MPResult` that an in-memory fit returns.
+Spark's executors then work through the rows and send the driver only
+statistics such as sums and counts whose size doesn't depend on the number of
+units. The driver, the Python process that runs your code, turns those into the
+same :class:`~moderndid.MPResult` that an in-memory fit returns.
 
 The question we'll keep coming back to is whether a Spark fit gives you the
 answer you'd get in memory. The county data from the :ref:`staggered DiD
 example <example_staggered_did>` is small enough to fit both ways and lets the
-first fit on this page answer that question directly. Because your own table
-may be too large for that, we'll then show how to check a sample of it before
-the full fit. We'll also point out where to collect the rows for an in-memory
-fit when you need more than balanced panels and the three estimators built into
-``att_gt``.
+first fit on this page answer that question directly. Fits of repeated
+cross-sections and of an unbalanced panel made from the county data answer the
+same question for data that doesn't follow every unit through every period.
+Because your own table may be too large to fit both ways, we'll then show how
+to check a sample of it before the full fit. We'll also point out where to
+collect the rows for an in-memory fit when you need an estimator other than the
+three built into ``att_gt``.
 
 When a Spark fit pays off
 -------------------------
@@ -198,22 +200,20 @@ What a Spark fit does differently
 Most of what you'd ask of ``att_gt`` in memory works on Spark too. Sampling
 weights, a cluster variable besides ``idname``, both comparison groups, both
 base periods, and anticipation all work with any of the three built-in
-estimators. A few arguments aren't supported for a Spark DataFrame, though.
-Rather than let a long fit fail partway through, ``att_gt`` raises a ValueError
-for each of them before Spark runs a job and tells you what to pass instead.
+estimators. You can also fit :ref:`repeated cross-sections and unbalanced
+panels <spark-layouts>` on Spark by passing ``panel=False`` or
+``allow_unbalanced_panel=True``. A few arguments aren't supported for a Spark
+DataFrame, though. Rather than let a long fit fail partway through, ``att_gt``
+raises a ValueError for each of them before Spark runs a job and tells you what
+to pass instead.
 
-- ``panel=False`` (repeated cross-sections)
-- ``allow_unbalanced_panel=True`` (units missing from some periods)
 - A callable ``est_method`` (anything besides ``"dr"``, ``"ipw"``, and ``"reg"``)
 - Any ``backend`` (the executors always compute with NumPy)
 - ``n_jobs`` other than 1 (Spark already runs the work in parallel)
 
-If your data really is a repeated cross-section, an in-memory fit with
-``panel=False`` needs its rows on the driver. So does an in-memory fit that
-uses a callable ``est_method`` or passes ``allow_unbalanced_panel=True`` to
-keep the units missing from some periods. Any other function that takes data,
-such as :func:`~moderndid.ddd`, :func:`~moderndid.cont_did`, or
-:func:`~moderndid.core.panel.diagnose_panel`, needs the rows on the driver too.
+A fit with a callable ``est_method`` therefore needs the rows on the driver.
+So does any other function that takes data, such as :func:`~moderndid.ddd`,
+:func:`~moderndid.cont_did`, or :func:`~moderndid.core.panel.diagnose_panel`.
 You can collect the rows with the same ``toArrow()`` or ``toPandas()`` call as
 a small panel.
 
@@ -225,6 +225,14 @@ None on a Spark result. In their place, ``influence_moments`` holds an
 reads. Because the result holds only NumPy arrays and plain Python values that
 don't grow with the number of units, you can pickle it and aggregate it later
 in a Python process without PySpark.
+
+Rerunning a Spark fit with the same ``random_state``, or splitting its table
+differently, gives the same results up to rounding, because only the order in
+which the sums add up changes. The bootstrap standard errors still differ
+slightly from those of an in-memory fit, as the next section explains. A choice
+within rounding of its cutoff can also go the other way between two fits, such
+as whether a covariate that almost duplicates another drops out or whether a
+cell fails because a propensity score reaches 0.999.
 
 .. _spark-bootstrap:
 
@@ -281,12 +289,16 @@ equally valid draws from the same bootstrap distribution. The gap between their
 standard errors is the noise of a finite number of draws and shrinks as you
 raise ``biters``.
 
-Because the signs follow the identifiers rather than where each unit sits, a
-Spark fit gives the same standard errors, up to rounding, however Spark splits
-the data. The same holds whether the fit runs on classic Spark or through Spark
-Connect. The simultaneous bands of the default ``cband=True`` come from the
-same draws and don't depend on the split either. The :ref:`architecture guide
-<architecture-shard-draws>` shows how a Spark fit computes the signs.
+A Spark fit of repeated cross-sections without clusters computes each row's
+sign from the row's own values rather than from an identifier. Two identical
+rows, such as matching answers to a survey, still draw separate signs.
+Because each sign follows its unit, row, or cluster rather than where it sits,
+a Spark fit gives the same standard errors, up to rounding, however Spark
+splits the data. The same holds whether the fit runs on classic Spark or
+through Spark Connect. The simultaneous bands of the default ``cband=True``
+come from the same draws and don't depend on the split either. The developer
+guide to :ref:`random draws on shards <dev-shard-draws>` shows how a Spark fit
+computes the signs.
 
 .. admonition:: The seed of an unseeded fit
    :class: note
@@ -377,13 +389,17 @@ identifier into a 64-bit integer.
 
 Passing the coded column as ``idname="county_code"`` gives the same estimates
 as ``countyreal``. Because the bootstrap signs follow the identifiers, its
-bootstrap standard errors move slightly. If two identifiers ever shared a code,
-they would repeat (unit, period) pairs and stop the fit with an error rather
-than quietly merge two units into one.
+bootstrap standard errors move slightly. If two identifiers of a balanced panel
+ever shared a code, they would repeat (unit, period) pairs and stop the fit
+with an error rather than quietly merge two units into one. Two units of an
+unbalanced panel that share a code, though, merge into one without an error if
+they have no period in common, belong to the same cohort, and, in a clustered
+fit, sit in the same cluster.
 
-Because a Spark fit takes only balanced panels, it drops every unit that misses
-a period and warns you how many it dropped. Counting those units before the fit
-tells you how much of your table it will use.
+Unless you pass ``allow_unbalanced_panel=True``, a Spark fit balances the panel
+just as an in-memory fit does. It drops every unit that misses a period and
+warns you how many it dropped. Counting those units before the fit tells you
+how much of your table it will use.
 
 .. code-block:: python
 
@@ -402,7 +418,162 @@ tells you how much of your table it will use.
 
 With no county missing a year, the fit keeps all 500 of them. On your own
 table, the fit would drop every unit that this query counts and any unit with a
-missing value in a column it reads.
+missing value in a column it reads. You can keep those units instead by fitting
+:ref:`an unbalanced panel <spark-layouts>` with
+``allow_unbalanced_panel=True``.
+
+.. _spark-layouts:
+
+Repeated cross-sections and unbalanced panels
+---------------------------------------------
+
+Many tables that call for Spark don't track the same units through every
+period. When you tell ``att_gt`` how such a table was collected, it estimates
+each effect by applying the repeated cross-section form of the estimator to the
+rows of that effect's two periods. We'll make one table in each layout from the
+county data and fit it both ways with ``spec``.
+
+Repeated cross-sections
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Surveys and logs of transactions often observe different people in each
+period rather than following the same ones. If your table holds such repeated
+cross-sections, passing ``panel=False`` makes every row an observation of its
+own. The standard errors then treat the rows as independent of one another
+unless you group them with ``clustervars``, such as by the state that sets the
+policy you study. An ``idname`` is optional here and never groups the rows into
+units. Passing one still makes the fit drop every row of an identifier that has
+a row already treated in the first period.
+
+Because every county appears in all five years, passing ``countyreal`` as
+``idname`` would make the fit warn that the rows look like panel data. We'll
+leave the identifier out and let the 2,500 rows stand in for repeated
+cross-sections, as if each year had sampled new counties. You can again check
+that each pair of columns matches and compare the standard errors with those of
+the panel fit from before.
+
+.. code-block:: python
+
+   # Fit the 2,500 rows as repeated cross-sections without a unit identifier.
+   repeated = spec | {"panel": False, "idname": None}
+   in_memory_repeated = did.att_gt(local, **repeated)
+   result_repeated = did.att_gt(data, **repeated)
+
+   # Pair the estimates and standard errors as before.
+   repeated_pairs = did.to_df(in_memory_repeated).select(columns).join(
+       did.to_df(result_repeated).select(columns), on=["group", "time"], suffix="_spark"
+   )
+   print(repeated_pairs.drop_nans().filter(group=2004))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         shape: (4, 6)
+         ┌───────┬──────┬───────────┬──────────┬───────────┬──────────┐
+         │ group ┆ time ┆ att       ┆ se       ┆ att_spark ┆ se_spark │
+         │ ---   ┆ ---  ┆ ---       ┆ ---      ┆ ---       ┆ ---      │
+         │ i64   ┆ i64  ┆ f64       ┆ f64      ┆ f64       ┆ f64      │
+         ╞═══════╪══════╪═══════════╪══════════╪═══════════╪══════════╡
+         │ 2004  ┆ 2004 ┆ -0.01453  ┆ 0.08974  ┆ -0.01453  ┆ 0.08974  │
+         │ 2004  ┆ 2005 ┆ -0.076422 ┆ 0.092438 ┆ -0.076422 ┆ 0.092438 │
+         │ 2004  ┆ 2006 ┆ -0.140448 ┆ 0.095452 ┆ -0.140448 ┆ 0.095452 │
+         │ 2004  ┆ 2007 ┆ -0.106904 ┆ 0.089051 ┆ -0.106904 ┆ 0.089051 │
+         └───────┴──────┴───────────┴──────────┴───────────┴──────────┘
+
+Each estimate and standard error matches its Spark counterpart once more. The
+estimates also equal those of the panel fit on this balanced data. You can see
+what treating the rows as unrelated costs in the standard errors, though. Since
+nothing pairs a county's years anymore, they come out about three to five times
+as large as the panel fit's.
+
+Unbalanced panels
+^^^^^^^^^^^^^^^^^
+
+Panels of customers or administrative records often lose units over time as
+accounts close or records lapse. You can keep those units in the fit by
+passing ``allow_unbalanced_panel=True`` instead of letting the default
+balancing drop them. The standard errors still treat each unit, not each row,
+as independent of the others. A cluster variable therefore has to stay fixed
+within each unit, just as in a balanced panel. On a panel without gaps, you get
+the balanced fit whether or not you pass the option. The :doc:`data guide
+<data>` explains what keeping the incomplete units assumes.
+
+A filter on a hash of the county and year drops about one row in five and
+leaves 1,999 of the 2,500 rows. A balanced fit of those rows would keep only
+the 153 counties observed in all five years and drop the other 347. Both fits
+below pass ``allow_unbalanced_panel=True`` to keep all 500 counties. Their
+columns should pair up as closely as in the earlier fits.
+
+.. code-block:: python
+
+   # Drop about one county-year in five to leave gaps in the panel.
+   thinned = data.filter(F.xxhash64("countyreal", "year") % 5 != 0)
+
+   # Keep the counties that miss a year and fit the panel both ways.
+   unbalanced = spec | {"allow_unbalanced_panel": True}
+   in_memory_unbalanced = did.att_gt(thinned.toPandas(), **unbalanced)
+   result_unbalanced = did.att_gt(thinned, **unbalanced)
+
+   # Pair the estimates and standard errors as before.
+   unbalanced_pairs = did.to_df(in_memory_unbalanced).select(columns).join(
+       did.to_df(result_unbalanced).select(columns), on=["group", "time"], suffix="_spark"
+   )
+   print(unbalanced_pairs.drop_nans().filter(group=2004))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         shape: (4, 6)
+         ┌───────┬──────┬───────────┬──────────┬───────────┬──────────┐
+         │ group ┆ time ┆ att       ┆ se       ┆ att_spark ┆ se_spark │
+         │ ---   ┆ ---  ┆ ---       ┆ ---      ┆ ---       ┆ ---      │
+         │ i64   ┆ i64  ┆ f64       ┆ f64      ┆ f64       ┆ f64      │
+         ╞═══════╪══════╪═══════════╪══════════╪═══════════╪══════════╡
+         │ 2004  ┆ 2004 ┆ 0.025362  ┆ 0.035346 ┆ 0.025362  ┆ 0.035346 │
+         │ 2004  ┆ 2005 ┆ -0.056018 ┆ 0.076207 ┆ -0.056018 ┆ 0.076207 │
+         │ 2004  ┆ 2006 ┆ -0.090955 ┆ 0.0475   ┆ -0.090955 ┆ 0.0475   │
+         │ 2004  ┆ 2007 ┆ -0.097656 ┆ 0.040683 ┆ -0.097656 ┆ 0.040683 │
+         └───────┴──────┴───────────┴──────────┴───────────┴──────────┘
+
+You can see each in-memory column match its Spark counterpart here as well.
+Across all twelve effects of either layout, the estimates and standard errors
+on Spark differ from those in memory by less than :math:`10^{-15}`.
+
+What the two layouts cost
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+You should expect both layouts to take longer than a balanced panel of the same
+size. Since each of their effects reads only the rows of its own two periods,
+it fits models of its own. A balanced fit instead estimates its models once for
+all the effects of a cohort that share an earlier period and comparison units.
+Repeated cross-sections take the longest because every one of their rows counts
+as a unit.
+
+A fit of repeated cross-sections never takes the shuffle that gathers each
+unit's rows together, though. Without clusters, it shuffles the rows once for
+the bootstrap signs that the default ``cband=True`` draws. Passing
+``cband=False`` with the default ``boot=False`` leaves out that shuffle along
+with the draws.
+
+.. admonition:: Timed on local Spark
+   :class: note
+
+   On an Apple M2 Pro laptop with a local Spark 4.2 cluster of two single-core
+   executors and eight shuffle partitions, we ran two sessions of five timed
+   fits of the balanced panel and of each layout after a warm-up and took the
+   median of all ten. Doubly robust fits of the county data with ``spec`` and
+   its default band took about 0.8 seconds each. With the same settings and
+   four covariates, fits of a panel that :func:`~moderndid.gen_did_scalable`
+   generated with 20,000 units, ten periods, and eight treated cohorts took
+   about 2.5 seconds for the balanced panel, 3.1 seconds for the unbalanced
+   panel left by dropping one row in five, and 5.4 seconds for the same 200,000
+   rows as repeated cross-sections.
 
 .. _spark-sample-check:
 
@@ -411,9 +582,10 @@ Checking a sample before the full fit
 
 Your own table comes with no in-memory fit to compare against. You can make one
 by fitting a sample of its units both on Spark and in memory. Sampling single
-rows would leave units incomplete and drop them from both fits. We'll instead
-filter on a hash of the identifier so that each unit keeps or loses all of its
-rows together.
+rows of a panel would leave almost every unit incomplete for a balanced fit to
+drop. We'll instead filter on a hash of the identifier so that each unit keeps
+or loses all of its rows together. Hashing each row's values instead of an
+identifier gives repeated cross-sections a sample for the same check.
 
 .. code-block:: python
 
@@ -486,10 +658,10 @@ quickest of the three estimators because it estimates no propensity scores.
 
 Of Spark's own settings, the one you're most likely to change is
 ``spark.sql.shuffle.partitions``. It sets how many partitions Spark makes when
-it gathers each unit's rows together and defaults to 200 (``auto`` on
-serverless compute). On one machine, 200 partitions can take longer than
-everything else a small fit does. Setting the value to a few per core, as
-below, shortens that step.
+it shuffles the rows, as a panel fit does to gather each unit's rows together,
+and defaults to 200 (``auto`` on serverless compute). On one machine, 200
+partitions can take longer than everything else a small fit does. Setting the
+value to a few per core, as below, shortens that step.
 
 .. code-block:: python
 
@@ -528,5 +700,5 @@ treated cohorts and by one more than the number of periods, passes about
 the estimator wait on the core working through it.
 
 For a look at how a Spark fit computes its estimates and draws without
-collecting the units, the :ref:`architecture guide <architecture-shards>`
-follows one from the inside.
+collecting the units, the developer guide to :ref:`fits on shards
+<dev-shards>` follows one from the inside.

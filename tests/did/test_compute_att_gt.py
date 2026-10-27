@@ -10,8 +10,9 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 import scipy.sparse as sp
 
-from moderndid.core.preprocess import DIDConfig, preprocess_did
+from moderndid.core.preprocess import DIDConfig, EstimationMethod, preprocess_did
 from moderndid.did.compute_att_gt import (
+    _cell_fails_screen,
     compute_att_gt,
     get_did_cohort_index,
     run_att_gt_estimation,
@@ -640,6 +641,57 @@ def test_compute_att_gt_skips_each_cell_whose_treated_regression_is_unidentified
         "The 2x2 comparison for group 3 in time period 3 failed. The treated group in the pre-period has fewer "
         f"observations (4) than regression coefficients (6). {advice}",
     ]
+
+
+@pytest.mark.parametrize(
+    "redundant",
+    [np.ones_like, lambda x: 2 * x, lambda x: 3 * x - 1],
+    ids=["repeated_intercept", "twice_the_covariate", "affine_in_the_covariate"],
+)
+def test_cell_fails_screen_fits_its_logit_on_the_covariates_that_the_propensity_score_model_keeps(
+    far_comparison_cell, record_warnings, redundant
+):
+    treated, x = far_comparison_cell
+    weights = np.ones(len(x))
+    kept = np.column_stack([np.ones(len(x)), x])
+    collinear = np.column_stack([kept, redundant(x)])
+
+    kept_fails, kept_warnings = record_warnings(
+        _cell_fails_screen, treated, kept, weights, EstimationMethod.IPW, "3", "3"
+    )
+    collinear_fails, collinear_warnings = record_warnings(
+        _cell_fails_screen, treated, collinear, weights, EstimationMethod.IPW, "3", "3"
+    )
+
+    assert collinear_fails is kept_fails is False
+    assert collinear_warnings == kept_warnings
+    assert collinear_warnings.count((RuntimeWarning, "overflow encountered in exp")) == len(collinear_warnings) > 0
+
+
+@pytest.mark.parametrize(
+    "layout", [{"idname": "countyreal"}, {"panel": False}], ids=["balanced_panel", "repeated_cross_sections"]
+)
+def test_compute_att_gt_warns_about_a_dropped_propensity_covariate_once_for_each_cell(
+    mpdta_collinear_covariates, layout
+):
+    data = preprocess_did(
+        mpdta_collinear_covariates,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        xformla="~lpop + lpop2",
+        est_method="ipw",
+        **layout,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert len(result.attgt_list) == 12
+    assert [(w.category, str(w.message)) for w in caught] == [
+        (UserWarning, "The propensity score model dropped 1 covariate that is collinear with the others.")
+    ] * 12
 
 
 @pytest.mark.parametrize(

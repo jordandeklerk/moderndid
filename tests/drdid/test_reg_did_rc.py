@@ -1,6 +1,7 @@
 """Tests for outcome regression DiD estimator with repeated cross-sections."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -277,3 +278,55 @@ def test_reg_did_rc_1d_covariates():
 
     assert isinstance(result.att, float)
     assert result.se > 0
+
+
+def test_reg_did_rc_fits_exact_comparison_regressions_without_warnings(rc_exact_comparison_fit):
+    spec = rc_exact_comparison_fit
+    y, post, d = spec["y"], spec["post"], spec["d"]
+    x, weights = spec["covariates"], spec["i_weights"]
+    coefficients = [
+        np.linalg.lstsq(np.sqrt(weights[rows])[:, None] * x[rows], np.sqrt(weights[rows]) * y[rows], rcond=None)[0]
+        for rows in ((d == 0) & (post == 0), (d == 0) & (post == 1))
+    ]
+    change = x @ (coefficients[1] - coefficients[0])
+    w_post, w_pre, w_treated = weights * d * post, weights * d * (1 - post), weights * d
+    att = np.average(y, weights=w_post) - np.average(y, weights=w_pre) - np.average(change, weights=w_treated)
+    inf_func = (
+        w_post * (y - np.average(y, weights=w_post)) / np.mean(w_post)
+        - w_pre * (y - np.average(y, weights=w_pre)) / np.mean(w_pre)
+        - w_treated * (change - np.average(change, weights=w_treated)) / np.mean(w_treated)
+    )
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = reg_did_rc(**spec, influence_func=True)
+
+    assert [str(warning.message) for warning in record] == []
+    np.testing.assert_allclose(result.att, att, rtol=1e-12)
+    np.testing.assert_allclose(result.att_inf_func, inf_func, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result.se, np.sqrt(np.mean(inf_func**2) / y.size), rtol=1e-12)
+
+
+@pytest.mark.parametrize("weight", [1.0, 0.0], ids=["positive_weight", "zero_weight"])
+@pytest.mark.parametrize("value", [np.nan, np.inf], ids=["nan", "inf"])
+@pytest.mark.parametrize(("period", "post_value"), [("pre", 0), ("post", 1)], ids=["pre", "post"])
+def test_reg_did_rc_rejects_a_comparison_outcome_that_is_not_finite_without_warnings(
+    two_period_specs, forbid_errstate, period, post_value, value, weight
+):
+    spec = two_period_specs["repeated_cross_sections"]
+    row = np.flatnonzero((spec["d"] == 0) & (spec["post"] == post_value))[0]
+    y, i_weights = spec["y"].copy(), spec["i_weights"].copy()
+    y[row] = value
+    i_weights[row] = weight
+    message = (
+        f"Failed to fit {period}-period regression: y holds missing or infinite values for some observations of the "
+        f"comparison group in the {period}-period. Pass finite outcomes for those observations."
+    )
+    forbid_errstate()
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+            reg_did_rc(**{**spec, "y": y, "i_weights": i_weights})
+
+    assert [str(warning.message) for warning in record] == []

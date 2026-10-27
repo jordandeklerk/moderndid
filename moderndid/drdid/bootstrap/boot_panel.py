@@ -7,7 +7,7 @@ import statsmodels.api as sm
 
 from moderndid.cupy.backend import to_numpy, use_backend
 
-from ..estimators.wols import _check_panel_groups, ols_panel, wols_panel
+from ..estimators.wols import _check_panel_groups, _wls_coefficients, ols_panel, wols_panel
 from ..propensity.aipw_estimators import aipw_did_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
 from ..utils import _column_scales, _scaled_columns, _validate_inputs
@@ -53,7 +53,7 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.99
     wols_panel : Weighted OLS for outcome regression in panel data.
     """
     n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     delta_y, d, x, i_weights = map(to_numpy, (delta_y, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)
@@ -153,7 +153,7 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.995, ran
     wboot_dr_tr_panel : Traditional doubly-robust bootstrap for panel data.
     """
     n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     delta_y, d, x, i_weights = map(to_numpy, (delta_y, d, x, i_weights))
 
     if len(np.unique(d)) < 2:
@@ -250,7 +250,7 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.995,
     calculate_pscore_ipt : IPT propensity score estimation.
     """
     n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     delta_y, d, x, i_weights = map(to_numpy, (delta_y, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)
@@ -354,7 +354,7 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, biters=1000, trim_level=0.995, r
     ols_panel : Ordinary least squares for the comparison-group outcome regression.
     """
     n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     delta_y, d, x, i_weights = map(to_numpy, (delta_y, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)
@@ -451,11 +451,11 @@ def wboot_reg_panel(delta_y, d, x, i_weights, biters=1000, random_state=None):
     wboot_ipw_panel : IPW bootstrap without outcome regression.
     """
     n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, biters, trim_level=0.5)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     delta_y, d, x, i_weights = map(to_numpy, (delta_y, d, x, i_weights))
     bootstrap_estimates = np.full(biters, np.nan)
 
-    # Since every draw keeps the same units with positive weight, a group too small for the estimator fails them all.
+    # Every draw keeps the same units with positive weight. A group too small for the estimator fails them all.
     try:
         _check_panel_groups(d, x, i_weights, regressions=("comparison",))
     except ValueError as e:
@@ -463,7 +463,10 @@ def wboot_reg_panel(delta_y, d, x, i_weights, biters=1000, random_state=None):
         return bootstrap_estimates
 
     control_mask = d == 0
-    scaled_x = _scaled_columns(x)
+    # A draw needs only the coefficients. A full fit's diagnostics would divide by zero or warn whenever the comparison
+    # units leave the design singular.
+    scales = _column_scales(x[control_mask])
+    scaled = x[control_mask] / scales
     rng = np.random.RandomState(random_state)
 
     with use_backend("numpy"):
@@ -472,17 +475,15 @@ def wboot_reg_panel(delta_y, d, x, i_weights, biters=1000, random_state=None):
             b_weights = i_weights * v
 
             try:
-                glm_model = sm.GLM(
-                    delta_y[control_mask],
-                    scaled_x[control_mask],
-                    family=sm.families.Gaussian(link=sm.families.links.Identity()),
-                    var_weights=b_weights[control_mask],
-                )
-                reg_coeff = glm_model.fit().params
+                reg_coeff = _wls_coefficients(delta_y[control_mask], scaled, b_weights[control_mask]) / scales
             except (np.linalg.LinAlgError, ValueError):
                 continue
+            # Least squares carries a missing or infinite outcome into its coefficients without raising. Non-finite
+            # coefficients mark the draw as failed.
+            if not np.isfinite(reg_coeff).all():
+                continue
 
-            out_reg_b = scaled_x @ reg_coeff
+            out_reg_b = x @ reg_coeff
             bootstrap_estimates[b] = np.mean(b_weights * d * (delta_y - out_reg_b)) / np.mean(b_weights * d)
 
     n_failed = int(np.sum(np.isnan(bootstrap_estimates)))
@@ -535,7 +536,7 @@ def wboot_twfe_panel(y, d, post, x, i_weights, biters=1000, random_state=None):
     wboot_drdid_imp_panel : Doubly-robust bootstrap for DiD with panel data.
     """
     n_obs = _validate_inputs({"y": y, "d": d, "post": post, "i_weights": i_weights}, x, biters, trim_level=0.5)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y, d, post, x, i_weights = map(to_numpy, (y, d, post, x, i_weights))
 
     if n_obs % 2 != 0:

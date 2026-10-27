@@ -124,8 +124,8 @@ def test_aggte_rejects_clusters_the_fit_did_not_use(mp_result, fit_clusters, req
 
     with pytest.raises(
         ValueError,
-        match=f"^The att_gt fit did not cluster on {re.escape(names)}\\. Since the aggregation reuses the clusters "
-        "of the att_gt fit, pass the cluster variable to att_gt instead\\. To aggregate this fit, "
+        match=f"^The att_gt fit did not cluster on {re.escape(names)}\\. The aggregation reuses the clusters of "
+        "the att_gt fit\\. Pass the cluster variable to att_gt instead\\. To aggregate this fit, "
         f"{re.escape(advice)}\\.$",
     ):
         aggte(fit, type="dynamic", clustervars=requested)

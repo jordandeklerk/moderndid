@@ -110,8 +110,8 @@ yet, the advice for both follows Databricks' documentation. A serverless
 notebook needs `environment version
 <https://docs.databricks.com/aws/en/release-notes/serverless/environment-version/>`_
 3 or later for its Python 3.12. Since serverless compute refuses to persist
-data, a fit there falls back to a local checkpoint or else reads and shuffles
-the data again at every step.
+data, a fit there falls back to a local checkpoint or else rebuilds its table
+from the data at every step.
 
 With Databricks Connect, your own machine runs your code and ``att_gt`` while
 the compute works on the rows. That machine therefore needs the same ModernDiD
@@ -289,26 +289,29 @@ decimal type with fraction digits or more than 18 digits. If the column holds
 only whole numbers, casting it to bigint before the fit lets it through.
 
 Two errors that a Spark fit inherits from the in-memory checks suggest
-``panel=False`` even though a Spark fit refuses it. One says "panel=True was
-specified, but no units appear in multiple time periods". The other says "All
-observations dropped while converting to balanced panel".
+``panel=False``. One says "panel=True was specified, but no units appear in
+multiple time periods". The other says "All observations dropped while
+converting to balanced panel". If your table really holds repeated
+cross-sections or a panel in which every unit misses some period, the
+:ref:`Spark guide <spark-layouts>` shows how to fit it.
 
 .. admonition:: These errors usually point to ``idname``
    :class: warning
 
-   On Spark, either error usually means that ``idname`` doesn't pick out the
-   same unit in every period. Since fitting a panel as a repeated cross-section
-   changes the estimator, fix the identifier rather than collecting the rows
-   for an in-memory fit with ``panel=False``.
+   Either error usually means that ``idname`` doesn't pick out the same unit
+   in every period. Since fitting a panel as repeated cross-sections changes
+   the estimator, fix the identifier rather than switching to ``panel=False``.
 
 Limits of the Spark session
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A warning that says "Spark refused to persist the table of units and to
-checkpoint it" means that the session allowed neither. Although the fit still
-runs, it then gathers each unit's rows again from the data at every step and
-takes much longer on a large panel. Compute that allows a persist, such as
-classic compute in dedicated access mode, gathers them only once.
+checkpoint it" means that the session allowed neither. For repeated
+cross-sections, it says "Spark refused to persist the row table and to
+checkpoint it" instead. Although the fit still runs, it then rebuilds that
+table from the data at every step and takes much longer on a large table.
+Compute that allows a persist, such as classic compute in dedicated access
+mode, builds the table only once.
 
 If an error says "Total size of serialized results" and names
 ``spark.driver.maxResultSize``, the executors' sums outgrew what the driver

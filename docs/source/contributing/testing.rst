@@ -321,17 +321,19 @@ Testing on Spark
 ================
 
 A fit on a Spark DataFrame has to reproduce the in-memory result on a cluster
-whose tasks run in other processes. Since the shard engine never imports
-PySpark, we test it in the ordinary suite. Its parity tests in
-``tests/did/test_shards.py`` run it through ``LocalExecutor``, as the
-:ref:`architecture guide <architecture-shards>` describes.
+whose tasks run in other processes. Since the shard engines never import
+PySpark, we test them in the ordinary suite. The parity tests in
+``tests/did/test_shards.py`` run the panel engine through ``LocalExecutor``, as
+the guide to :ref:`fits on shards <dev-shards>` describes. Those in
+``tests/did/test_row_shards.py`` do the same for the row engine on repeated
+cross-sections and unbalanced panels.
 
 The tests in ``tests/spark/`` cover the whole path on Spark. They compare the
 results of ``att_gt``, ``aggte``, and ``honest_did`` on a Spark DataFrame with
 the in-memory results and confirm that the bootstrap draws don't change with
-the partitioning. Other tests check the unit table that ``build_unit_table``
-builds, the executor that runs each pass, and whether a Spark fit raises the
-same errors and warnings as an in-memory fit.
+the partitioning. Other tests check the tables that ``build_unit_table`` and
+``build_row_table`` build, the executor that runs each pass, and whether a
+Spark fit raises the same errors and warnings as an in-memory fit.
 
 Writing a Spark test
 --------------------
@@ -354,23 +356,25 @@ or the ``to_arrow`` fixture rather than the PySpark method.
 has checked that both fits raised the same warnings, ``assert_same_fit``
 compares their results at a tolerance such as 1e-12.
 
-.. admonition:: Keep the fixture in step with ``spark_att_gt``
+.. admonition:: Keep the fixtures in step with ``spark_att_gt``
    :class: important
 
-   The ``att_gt_on_shards`` fixture in ``tests/conftest.py`` runs a fit
-   through ``LocalExecutor``. Since it builds ``estimation_params`` and
+   The ``att_gt_on_shards`` fixture in ``tests/conftest.py`` and the
+   ``att_gt_on_row_shards`` fixture in ``tests/did/conftest.py`` run a fit
+   through ``LocalExecutor``. Since both build ``estimation_params`` and
    ``cluster_counts`` by hand the way ``spark_att_gt`` does, a change to how
-   ``spark_att_gt`` builds either one needs the same change in the fixture.
+   ``spark_att_gt`` builds either one needs the same change in both fixtures.
 
-Most Spark tests fit a unit table of one partition, since ``build_unit_table``
-merges its partitions to about a megabyte each and a test panel rarely fills
-more than one. To reach several partitions, repartition the table that the
-``unit_table_of`` fixture returns, as ``test_executor.py`` does. Only a
-``SparkExecutor`` built with ``whole_clusters=True`` needs that repartition to
-hash on the cluster. A panel whose unit table passes a megabyte, such as
-``large_clustered_panel``, gets more than one partition from
-``build_unit_table`` itself. The eight shuffle partitions of the session
-fixture change how long a fit takes rather than what it estimates.
+Most Spark tests fit a table of one partition, since ``build_unit_table`` and
+``build_row_table`` merge their partitions to about a megabyte each and test
+data rarely fills more than one. To reach several partitions, repartition the
+table that the ``unit_table_of`` or ``row_table_of`` fixture returns, as
+``test_executor.py`` does. Only a ``SparkExecutor`` built with
+``whole_clusters=True`` needs that repartition to hash on the cluster. A panel
+whose unit table passes a megabyte, such as ``large_clustered_panel``, gets
+more than one partition from ``build_unit_table`` itself. The eight shuffle
+partitions of the session fixture change how long a fit takes rather than what
+it estimates.
 
 A bootstrap test needs reference values that the engine didn't compute. Since
 a fit on shards draws different signs from an in-memory fit, its bootstrap
@@ -498,8 +502,7 @@ The ``spark`` environment installs the newest PySpark, 4.2 at the time of
 writing. The Docker cluster runs the 4.2.0 that its image pins. Because the
 ``spark35`` entries test the 3.5 floor of the ``spark`` extra, a call to a
 PySpark API that 3.5 lacks fails there unless the code keeps a 3.5 path, as
-the rules for Spark code in the :ref:`architecture guide <architecture-shards>`
-require. The ``record_warnings`` fixture ignores two warnings that come from
+the :ref:`rules for Spark code <dev-spark-rules>` require. The ``record_warnings`` fixture ignores two warnings that come from
 PySpark rather than from a fit. Classic sessions of PySpark 3.5 through 4.1
 leave the socket of each collect for the garbage collector to close.
 PySpark 3.5 also checks the versions of pandas and pyarrow with the deprecated

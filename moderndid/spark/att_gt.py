@@ -1,15 +1,18 @@
-"""Group-time average treatment effects of a panel held in a Spark DataFrame."""
+"""Group-time average treatment effects of data held in a Spark DataFrame."""
 
 import warnings
+from functools import partial
 
 import pyspark
 
 from moderndid.core.preprocess import BasePeriod, ControlGroup, DIDConfig, EstimationMethod
 from moderndid.core.preprocess.validators import check_columns
 from moderndid.did.shards.driver import _check_random_state, fit_att_gt_on_shards
+from moderndid.did.shards.layout import row_shard_from_arrow, shard_from_arrow
+from moderndid.did.shards.row_driver import fit_att_gt_on_row_shards
 
 from .executor import SparkExecutor
-from .preprocess import _covariate_names, _release, build_unit_table, schema_frame
+from .preprocess import _covariate_names, _release, build_row_table, build_unit_table, schema_frame
 
 
 def spark_att_gt(
@@ -34,48 +37,37 @@ def spark_att_gt(
     random_state,
     n_jobs,
 ):
-    """Compute group-time average treatment effects of a balanced panel held in a Spark DataFrame.
+    """Compute group-time average treatment effects of data held in a Spark DataFrame.
 
-    The arguments follow :func:`~moderndid.att_gt`. Each step of the estimator
-    runs in :func:`~moderndid.did.shards.driver.fit_att_gt_on_shards` as a pass
-    over the table of units that
-    :func:`~moderndid.spark.preprocess.build_unit_table` builds. The rows stay
-    on the Spark executors.
+    The arguments follow :func:`~moderndid.att_gt`. A balanced panel from
+    :func:`~moderndid.spark.preprocess.build_unit_table` goes to
+    :func:`~moderndid.did.shards.driver.fit_att_gt_on_shards`. Repeated
+    cross-sections from :func:`~moderndid.spark.preprocess.build_row_table`
+    and an unbalanced panel kept by ``allow_unbalanced_panel`` go to
+    :func:`~moderndid.did.shards.row_driver.fit_att_gt_on_row_shards`. The fit
+    needs pyspark 3.5 or later, a built-in ``est_method``, ``n_jobs=1``, and a
+    ``random_state`` that
+    :func:`~moderndid.did.shards.driver.fit_att_gt_on_shards` accepts. Any
+    other choice raises a ValueError before Spark runs a job.
 
-    Without the bootstrap, the estimates and standard errors agree with those
-    of the in-memory fit to rounding. Since a Spark fit keys each bootstrap
-    multiplier to its unit or cluster, a bootstrap fit draws different
-    multipliers from an in-memory fit with the same ``random_state``.
-
-    The fit needs pyspark 3.5 or later, ``panel=True``,
-    ``allow_unbalanced_panel=False``, a built-in ``est_method``, and
-    ``n_jobs=1``. The ``random_state`` must be None, a non-negative integer,
-    a SeedSequence, a BitGenerator, or a Generator. Any other choice raises a
-    ValueError before Spark runs a job.
+    Without the bootstrap, the estimates and standard errors match those of
+    the in-memory fit to rounding. A bootstrap fit draws different multipliers
+    from an in-memory fit with the same ``random_state`` because a Spark fit
+    keys each multiplier to its unit, its cluster, or the values of its row.
 
     Returns
     -------
     MPResult
-        The result that :func:`~moderndid.att_gt` describes. Its
-        ``influence_moments`` field holds :class:`~moderndid.InfluenceMoments`
-        in place of ``influence_func``, ``G``, and ``weights_ind``.
+        The result that :func:`~moderndid.att_gt` describes for a fit on a
+        Spark DataFrame.
     """
-    # Since a Databricks runtime brings its own pyspark and skips the extra's floor, the version is checked here.
+    # The version is checked here because a Databricks runtime brings its own pyspark and skips the extra's floor.
     release = pyspark.__version__.split(".")[:2]
     if all(part.isdigit() for part in release) and tuple(int(part) for part in release) < (3, 5):
         raise ValueError(
             f"pyspark {pyspark.__version__} is installed. A fit of att_gt on a Spark DataFrame needs pyspark 3.5 or "
             "later. Upgrade pyspark or, on Databricks, choose Databricks Runtime 16.4 LTS or later. The Spark setup "
             "guide of the moderndid docs says which runtimes to choose."
-        )
-    if not panel:
-        raise ValueError(
-            "panel=False is not supported for a Spark DataFrame. Pass panel=True to fit the data as a balanced panel."
-        )
-    if allow_unbalanced_panel:
-        raise ValueError(
-            "allow_unbalanced_panel=True is not supported for a Spark DataFrame. "
-            "Pass allow_unbalanced_panel=False to keep the units observed in every period."
         )
     if callable(est_method):
         name = getattr(est_method, "__name__", type(est_method).__name__)
@@ -125,7 +117,8 @@ def spark_att_gt(
         est_method=EstimationMethod(est_method),
         base_period=BasePeriod(base_period),
     )
-    unit_table, config, cohort_counts, n_obs, cluster_counts, whole_clusters, cached = build_unit_table(data, config)
+    built = build_unit_table(data, config) if panel else build_row_table(data, config, draws=boot or cband)
+    table, config, cohort_counts, n_obs, cluster_counts, whole_clusters, cached = built
     try:
         if clustervars is not None and idname in clustervars:
             clustervars = [name for name in clustervars if name != idname]
@@ -147,14 +140,19 @@ def spark_att_gt(
             "n_units": config.id_count,
             "n_obs": n_obs,
         }
-        executor = SparkExecutor(
-            unit_table, config.time_periods_count, len(_covariate_names(config)), whole_clusters=whole_clusters
-        )
-        result = fit_att_gt_on_shards(
-            executor, config, cohort_counts, random_state, estimation_params, cluster_counts=cluster_counts
-        )
+        n_covariates = len(_covariate_names(config))
+        # Preprocessing hands a panel in which some unit misses a period to the estimators of repeated cross-sections.
+        # The returned configuration, not the caller's panel argument, picks the reader and the driver.
+        if config.panel:
+            read_shard = partial(shard_from_arrow, n_periods=config.time_periods_count, n_covariates=n_covariates)
+            fit = fit_att_gt_on_shards
+        else:
+            read_shard = partial(row_shard_from_arrow, n_covariates=n_covariates)
+            fit = fit_att_gt_on_row_shards
+        executor = SparkExecutor(table, read_shard, whole_clusters=whole_clusters)
+        result = fit(executor, config, cohort_counts, random_state, estimation_params, cluster_counts=cluster_counts)
     except BaseException as error:
-        _release(cached, error)
+        _release(cached, error, "table of units" if panel else "row table")
         raise
     _release(cached)
     return result

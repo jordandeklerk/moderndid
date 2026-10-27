@@ -202,10 +202,13 @@ class InfluenceMoments(NamedTuple):
         \omega_i \mathbf{1}\{G_i = g_C\}, \ 1\right)'.
 
     The row stacks the unit's influence function :math:`\psi_i` for every
-    group-time effect, its first-period sampling weight :math:`\omega_i` in the
-    column of its treated cohort :math:`G_i`, and a constant. From these sums
-    :func:`~moderndid.aggte` computes the standard errors and bootstrap draws of
-    every aggregation.
+    group-time effect, its sampling weight :math:`\omega_i` in the column of its
+    treated cohort :math:`G_i`, and a constant. The weight is the unit's
+    first-period weight in a balanced panel and the mean of its per-period
+    weights in an unbalanced panel. In repeated cross-sections, where each
+    observation is its own unit, it is the observation's own weight. From these
+    sums :func:`~moderndid.aggte` computes the standard errors and bootstrap
+    draws of every aggregation.
 
     Attributes
     ----------

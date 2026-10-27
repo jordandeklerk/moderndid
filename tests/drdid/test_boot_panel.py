@@ -1,6 +1,7 @@
 """Tests for panel data bootstrap inference functions."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -9,6 +10,7 @@ from moderndid import (
     drdid_imp_panel,
     drdid_panel,
     ipw_did_panel,
+    reg_did_panel,
     std_ipw_did_panel,
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
@@ -809,6 +811,87 @@ def test_panel_bootstraps_reproduce_their_estimators_at_unit_weights(
     )
 
     np.testing.assert_allclose(draws, expected, rtol=1e-8)
+
+
+def test_wboot_reg_panel_refits_an_exact_comparison_regression_without_warnings(panel_exact_comparison_fit):
+    spec = panel_exact_comparison_fit
+    delta_y = spec["y1"] - spec["y0"]
+    shared = {"d": spec["d"], "x": spec["covariates"], "i_weights": spec["i_weights"]}
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        draws = wboot_reg_panel(delta_y=delta_y, **shared, biters=20, random_state=3)
+        shifted = wboot_reg_panel(
+            delta_y=delta_y + spec["covariates"] @ np.array([0.5, -0.25]), **shared, biters=20, random_state=3
+        )
+
+    assert [str(warning.message) for warning in record] == []
+    assert np.all(np.isfinite(draws))
+    assert np.std(draws) > 0
+    np.testing.assert_allclose(shifted, draws, rtol=1e-10, atol=1e-12)
+
+
+def test_wboot_reg_panel_matches_reg_did_panel_refit_with_the_weights_of_each_draw(
+    preset_bootstrap_weights, two_period_specs
+):
+    spec = two_period_specs["panel"]
+    draw_weights = np.random.default_rng(6).exponential(size=(3, spec["d"].size))
+    expected = [reg_did_panel(**{**spec, "i_weights": spec["i_weights"] * v}).att for v in draw_weights]
+    preset_bootstrap_weights(draw_weights)
+
+    draws = wboot_reg_panel(
+        delta_y=spec["y1"] - spec["y0"],
+        d=spec["d"],
+        x=spec["covariates"],
+        i_weights=spec["i_weights"],
+        biters=3,
+        random_state=3,
+    )
+
+    np.testing.assert_allclose(draws, expected, rtol=1e-12)
+    assert np.ptp(draws) > 1e-3
+
+
+def test_wboot_reg_panel_on_a_singular_comparison_design_matches_the_reduced_design_without_warnings(
+    two_period_specs, forbid_errstate
+):
+    spec = two_period_specs["panel"]
+    covariates = spec["covariates"]
+    singular = np.column_stack([covariates, spec["d"] * covariates[:, 1]])
+    shared = {"delta_y": spec["y1"] - spec["y0"], "d": spec["d"], "i_weights": spec["i_weights"]}
+    forbid_errstate()
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        draws = wboot_reg_panel(x=singular, **shared, biters=20, random_state=3)
+    expected = wboot_reg_panel(x=covariates, **shared, biters=20, random_state=3)
+
+    assert [str(warning.message) for warning in record] == []
+    np.testing.assert_allclose(draws, expected, rtol=1e-10)
+    assert np.ptp(draws) > 1e-3
+
+
+def test_wboot_reg_panel_fails_draws_whose_refit_is_not_finite_with_only_the_count_warning(
+    two_period_specs, forbid_errstate
+):
+    spec = two_period_specs["panel"]
+    delta_y = spec["y1"] - spec["y0"]
+    delta_y[np.flatnonzero(spec["d"] == 0)[0]] = np.inf
+    message = "20 of 20 bootstrap draws are NaN because their outcome regressions could not be solved."
+    forbid_errstate()
+
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record:
+        draws = wboot_reg_panel(
+            delta_y=delta_y,
+            d=spec["d"],
+            x=spec["covariates"],
+            i_weights=spec["i_weights"],
+            biters=20,
+            random_state=3,
+        )
+
+    assert [(warning.category, str(warning.message)) for warning in record] == [(UserWarning, message)]
+    assert np.all(np.isnan(draws))
 
 
 def test_wboot_drdid_imp_panel_rejects_the_removed_n_bootstrap_argument():

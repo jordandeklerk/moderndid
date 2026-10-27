@@ -68,15 +68,16 @@ def att_gt(
 
     See the :ref:`staggered DiD example <example_staggered_did>` for a full analysis of
     the minimum wage data with ``att_gt``. The :ref:`Spark guide <spark>` shows how to
-    fit a balanced panel held in a Spark DataFrame.
+    fit balanced panels, unbalanced panels, and repeated cross-sections held in a Spark
+    DataFrame.
 
     Parameters
     ----------
     data : DataFrame
-        Panel data in long format. Accepts any object implementing the Arrow PyCapsule
-        Interface (``__arrow_c_stream__``), including polars, pandas, pyarrow Table, and
-        cudf DataFrames. Also accepts a Spark DataFrame from a classic or Spark Connect
-        session.
+        Panel data or repeated cross-sections in long format. Accepts any object
+        implementing the Arrow PyCapsule Interface (``__arrow_c_stream__``), including
+        polars, pandas, pyarrow Table, and cudf DataFrames. Also accepts a Spark
+        DataFrame from a classic or Spark Connect session.
     yname : str
         The name of the outcome column.
     tname : str
@@ -189,7 +190,9 @@ def att_gt(
 
     When sampling weights change over time within a unit of a balanced panel, a warning
     notes that each comparison uses the weights of its earlier period.
-    :func:`~moderndid.aggte` weights each unit by its weight in the first period.
+    :func:`~moderndid.aggte` weights each unit by its first-period weight in a balanced
+    panel, by the mean of its weights in an unbalanced panel, and by its own weight in
+    repeated cross-sections.
 
     With a cluster variable besides ``idname``, a warning appears when a treated cohort's
     units fall in fewer than 5 clusters or all units fall in fewer than 30.
@@ -201,8 +204,8 @@ def att_gt(
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
-    # Since att_gt never imports pyspark, a Spark DataFrame can only arrive after the caller has imported it. Because a
-    # Spark Connect DataFrame of pyspark 3.5 shares no class with a classic one, its class is checked as well.
+    # att_gt never imports pyspark. A Spark DataFrame can only arrive after the caller has imported it. The class of a
+    # Spark Connect DataFrame is checked as well because in pyspark 3.5 it shares no class with a classic one.
     spark_frames = tuple(
         frame
         for frame in (
@@ -266,7 +269,7 @@ def att_gt(
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
 
     if spark_data:
-        # Since pyspark is optional, the Spark path loads only for a Spark DataFrame. It comes before check_columns
+        # The Spark path loads only for a Spark DataFrame because pyspark is optional. It comes before check_columns
         # because converting the data for that check would collect its rows to the driver.
         from moderndid.spark.att_gt import spark_att_gt
 
@@ -356,18 +359,18 @@ def att_gt(
     if clustervars is not None and idname in clustervars:
         clustervars = [v for v in clustervars if v != idname]
 
-    # Since clustering on idname alone is unit-level inference, the fit records a cluster vector only for another
-    # variable. The standard errors, the Wald pre-test, aggte, and honest_did cluster on that vector.
+    # Clustering on idname alone is unit-level inference. The fit records a cluster vector only for another variable.
+    # The standard errors, the Wald pre-test, aggte, and honest_did cluster on that vector.
     cluster = dp.time_invariant_data[clustervars[0]].to_numpy() if clustervars else None
 
     if cluster is not None:
         unit_cohorts = dp.time_invariant_data[gname].to_numpy()
         warn_few_clusters(cluster, {g: cluster[unit_cohorts == g] for g in np.unique(groups)})
 
-    # Since clusters of one unit each are the units themselves, they leave the covariance at the unit level.
+    # Clusters of one unit each are the units themselves and leave the covariance at the unit level.
     clustered = cluster is not None and len(np.unique(cluster)) < len(cluster)
     if clustered:
-        # Since units in one cluster share shocks, their influence functions are summed before the outer product.
+        # Units in one cluster share shocks. Their influence functions are summed before the outer product.
         cluster_sums = _cluster_sums(influence_functions_dense, cluster)
         variance_matrix = cluster_sums.T @ cluster_sums / n_units
     else:
@@ -375,8 +378,8 @@ def att_gt(
 
     bootstrap_results = None
     if boot:
-        # Since a cell with a negligible bootstrap scale would swamp the band, the group-time critical value leaves
-        # such cells out and keeps every draw.
+        # A cell with a negligible bootstrap scale would swamp the band. The group-time critical value leaves such cells
+        # out but keeps every draw.
         bootstrap_results = _mboot(
             inf_func=influence_functions_dense,
             n_units=n_units,
@@ -415,8 +418,8 @@ def att_gt(
         if weightsname is not None:
             sampling_weights = dp.time_invariant_data[WEIGHTS_COLUMN]
             if _is_unbalanced_panel(dp):
-                # Since a unit of an unbalanced panel can carry a different weight in each of its rows, aggte
-                # weighs the unit by the mean of those weights.
+                # A unit of an unbalanced panel can carry a different weight in each of its rows. aggte weighs the unit
+                # by the mean of those weights.
                 unit_ids = dp.time_invariant_data[dp.config.idname]
                 unit_means = dp.data.group_by(dp.config.idname).agg(pl.col(WEIGHTS_COLUMN).mean())
                 sampling_weights = unit_ids.replace_strict(
@@ -476,8 +479,8 @@ def _finish_att_gt(
 
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-    # Since a Wald test on a cluster-robust covariance rejects a true null too often at realistic cluster counts,
-    # a clustered fit reports no pre-test. Its report points to the bootstrap's uniform bands instead.
+    # A Wald test on a cluster-robust covariance rejects a true null too often at realistic cluster counts. A clustered
+    # fit therefore reports no pre-test. Its report points to the bootstrap's uniform bands instead.
     if clustered:
         wald_statistic = None
         wald_pvalue = None

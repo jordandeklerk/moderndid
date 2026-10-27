@@ -372,20 +372,21 @@ def test_ordid_missing_values_raise_in_panel():
         )
 
 
-@pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
-def test_ordid_unbalanced_panel_error():
+def test_ordid_unbalanced_panel_drops_units_with_incomplete_observations():
     rng = np.random.default_rng(42)
+    y = rng.standard_normal(5)
     df = pl.DataFrame(
         {
             "id": [1, 1, 2, 2, 3],
             "time": [0, 1, 0, 1, 0],
-            "y": rng.standard_normal(5),
+            "y": y,
             "treat": [0, 0, 1, 1, 0],
         }
     )
+    message = "Panel data is unbalanced. Dropping units with incomplete observations."
 
-    with pytest.raises(ValueError):
-        ordid(
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$"):
+        result = ordid(
             data=df,
             yname="y",
             tname="time",
@@ -393,6 +394,8 @@ def test_ordid_unbalanced_panel_error():
             idname="id",
             panel=True,
         )
+
+    np.testing.assert_allclose(result.att, (y[3] - y[2]) - (y[1] - y[0]), rtol=1e-12)
 
 
 def test_ordid_more_than_two_periods_error():

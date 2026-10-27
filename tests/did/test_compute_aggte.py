@@ -362,8 +362,8 @@ def test_hand_built_result_resolves_clusters_from_its_data(mpdta_mp_result):
     np.testing.assert_array_equal(by_unit.se_by_event, unclustered.se_by_event)
     with pytest.raises(
         ValueError,
-        match="^The att_gt fit did not cluster on 'state'\\. Since the aggregation reuses the clusters of the att_gt "
-        "fit, pass the cluster variable to att_gt instead\\. To aggregate this fit, pass clustervars=\\['cluster'\\] "
-        "to reuse its clusters, or an empty list for unit-level inference\\.$",
+        match="^The att_gt fit did not cluster on 'state'\\. The aggregation reuses the clusters of the att_gt fit\\. "
+        "Pass the cluster variable to att_gt instead\\. To aggregate this fit, pass clustervars=\\['cluster'\\] to "
+        "reuse its clusters, or an empty list for unit-level inference\\.$",
     ):
         compute_aggte(mpdta_mp_result, clustervars=["state"], **draws)

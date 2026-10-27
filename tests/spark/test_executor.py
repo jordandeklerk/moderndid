@@ -2,16 +2,19 @@
 
 import re
 import sys
+from functools import partial
 
 import numpy as np
 import pytest
 
 from moderndid import _version, att_gt, preprocess_did
-from moderndid.did.shards.container import SummaryState
+from moderndid.did.shards.container import RowSummaryState, SummaryState
 from moderndid.did.shards.driver import fit_att_gt_on_shards
 from moderndid.did.shards.kernels import summary_kernel
-from moderndid.did.shards.local import LocalExecutor, shards_from_did_data
+from moderndid.did.shards.layout import row_shard_from_arrow, shard_from_arrow
+from moderndid.did.shards.local import LocalExecutor, row_shards_from_did_data, shards_from_did_data
 from moderndid.did.shards.plan import plan_cells
+from moderndid.did.shards.row_kernels import row_summary_kernel
 from tests.helpers import importorskip
 
 importorskip("pyspark")
@@ -50,11 +53,74 @@ def test_spark_executor_combines_a_pass_like_the_local_executor(mpdta_pop_weight
     state = SummaryState(fits=plan.fits, cells=plan.cells, logit=True, regression=True)
     expected = LocalExecutor(shards_from_did_data(did_data, 3, random_state=0)).run(summary_kernel, state)
     unit_table, config, *_ = unit_table_of(mpdta_pop_weighted, **spec)
-    executor = SparkExecutor(unit_table.repartition(5), config.time_periods_count, 1)
+    executor = SparkExecutor(
+        unit_table.repartition(5), partial(shard_from_arrow, n_periods=config.time_periods_count, n_covariates=1)
+    )
     result = executor.run(summary_kernel, state)
 
     assert executor.n_passes == 1
     assert result.sums["units"] == 500
+    assert (sorted(result.sums), sorted(result.maxima), sorted(result.factors)) == (
+        sorted(expected.sums),
+        sorted(expected.maxima),
+        sorted(expected.factors),
+    )
+    assert result.keyed == {}
+    np.testing.assert_allclose(_stacked(result.sums), _stacked(expected.sums), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(_stacked(result.maxima), _stacked(expected.maxima), rtol=1e-12)
+    np.testing.assert_allclose(_factor_grams(result.factors), _factor_grams(expected.factors), rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "data_fixture, table_fixture, spec, n_units",
+    [
+        (
+            "mpdta_pop_weighted",
+            "row_table_of",
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "gname": "first.treat",
+                "xformla": "~lpop",
+                "weightsname": "pop",
+                "panel": False,
+            },
+            2500,
+        ),
+        (
+            "mpdta_unbalanced",
+            "unit_table_of",
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "idname": "countyreal",
+                "gname": "first.treat",
+                "xformla": "~lpop",
+                "weightsname": "w",
+                "allow_unbalanced_panel": True,
+            },
+            500,
+        ),
+    ],
+    ids=["repeated_cross_sections", "unbalanced_panel"],
+)
+def test_spark_executor_combines_a_pass_over_the_rows_of_either_layout_like_the_local_executor(
+    request, data_fixture, table_fixture, spec, n_units
+):
+    data = request.getfixturevalue(data_fixture)
+    table_of = request.getfixturevalue(table_fixture)
+
+    did_data = preprocess_did(data, **spec)
+    plan = plan_cells(did_data.config, did_data.cohort_counts)
+    state = RowSummaryState(fits=plan.fits, cells=plan.cells, method="dr")
+    shards = row_shards_from_did_data(did_data, 3, random_state=0, keyed=False)
+    expected = LocalExecutor(shards).run(row_summary_kernel, state)
+    table, config, *_ = table_of(data, **spec)
+    executor = SparkExecutor(table.repartition(5), partial(row_shard_from_arrow, n_covariates=1))
+    result = executor.run(row_summary_kernel, state)
+
+    assert executor.n_passes == 1
+    assert result.sums["units"] == config.id_count == n_units
     assert (sorted(result.sums), sorted(result.maxima), sorted(result.factors)) == (
         sorted(expected.sums),
         sorted(expected.maxima),
@@ -76,7 +142,7 @@ def test_spark_executor_fits_a_unit_table_with_empty_and_single_unit_partitions(
     table = unit_table.repartition(32, "unit")
     sizes = [row["count"] for row in table.groupBy(F.spark_partition_id()).count().collect()]
     result = fit_att_gt_on_shards(
-        SparkExecutor(table, config.time_periods_count, 1),
+        SparkExecutor(table, partial(shard_from_arrow, n_periods=config.time_periods_count, n_covariates=1)),
         config,
         cohort_counts,
         0,
@@ -109,7 +175,7 @@ def test_spark_executor_combines_the_rows_of_many_partitions_in_a_second_stage(
     table = unit_table.repartition(24, "cluster")
     sizes = [row["count"] for row in table.groupBy(F.spark_partition_id()).count().collect()]
     result = fit_att_gt_on_shards(
-        SparkExecutor(table, config.time_periods_count, 2),
+        SparkExecutor(table, partial(shard_from_arrow, n_periods=config.time_periods_count, n_covariates=2)),
         config,
         cohort_counts,
         11,
@@ -149,8 +215,9 @@ def test_spark_executor_finalizes_keyed_sums_in_tasks_and_on_the_driver_alike(
     n_tasks = partitions.select("part").distinct().count()
     parts_per_cluster = partitions.groupBy("cluster").agg(F.count_distinct("part").alias("parts"))
     split_clusters = parts_per_cluster.filter(F.col("parts") > 1).count()
+    read_shard = partial(shard_from_arrow, n_periods=config.time_periods_count, n_covariates=2)
     in_tasks = fit_att_gt_on_shards(
-        SparkExecutor(by_cluster, config.time_periods_count, 2, whole_clusters=True),
+        SparkExecutor(by_cluster, read_shard, whole_clusters=True),
         config,
         cohort_counts,
         11,
@@ -158,7 +225,7 @@ def test_spark_executor_finalizes_keyed_sums_in_tasks_and_on_the_driver_alike(
         cluster_counts=cluster_counts,
     )
     on_driver = fit_att_gt_on_shards(
-        SparkExecutor(by_row, config.time_periods_count, 2, whole_clusters=False),
+        SparkExecutor(by_row, read_shard, whole_clusters=False),
         config,
         cohort_counts,
         11,
@@ -198,8 +265,9 @@ def test_spark_executor_finalizing_in_tasks_counts_every_piece_of_a_split_cluste
 
     unit_table, config, cohort_counts, _, cluster_counts, _ = unit_table_of(scalable_panel, **spec)
     by_row = unit_table.repartition(24)
+    read_shard = partial(shard_from_arrow, n_periods=config.time_periods_count, n_covariates=0)
     in_tasks = fit_att_gt_on_shards(
-        SparkExecutor(by_row, config.time_periods_count, 0, whole_clusters=True),
+        SparkExecutor(by_row, read_shard, whole_clusters=True),
         config,
         cohort_counts,
         0,
@@ -207,7 +275,7 @@ def test_spark_executor_finalizing_in_tasks_counts_every_piece_of_a_split_cluste
         cluster_counts=cluster_counts,
     )
     on_driver = fit_att_gt_on_shards(
-        SparkExecutor(by_row, config.time_periods_count, 0, whole_clusters=False),
+        SparkExecutor(by_row, read_shard, whole_clusters=False),
         config,
         cohort_counts,
         0,
@@ -237,7 +305,7 @@ def test_spark_executor_reports_executors_whose_moderndid_differs_from_the_drive
         ),
     ):
         fit_att_gt_on_shards(
-            SparkExecutor(unit_table, config.time_periods_count, 0),
+            SparkExecutor(unit_table, partial(shard_from_arrow, n_periods=config.time_periods_count, n_covariates=0)),
             config,
             cohort_counts,
             0,

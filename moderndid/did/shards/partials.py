@@ -57,12 +57,10 @@ def combine_partials(first, second):
 def finalize_keyed(partial):
     r"""Replace each keyed sum by the Gram matrix of its rows and its number of keys.
 
-    A keyed sum named ``name`` with rows :math:`s_c` becomes the sum
-    :math:`\sum_c s_c s_c'` under ``name_gram`` and the number of keys under
-    ``name_count``. Since a key's row is final only once every unit with that
-    key has arrived, a set of shards can finalize its own keyed sums only when
-    it holds every unit of its keys. The Gram matrices of disjoint sets of keys
-    then add up.
+    A keyed sum ``name`` with rows :math:`s_c` becomes the Gram matrix
+    :math:`\sum_c s_c s_c'` under ``name_gram`` and its number of keys under
+    ``name_count``. Both add to any sums already under those names, because
+    they add up over disjoint sets of keys.
 
     Parameters
     ----------
@@ -91,7 +89,7 @@ def _stack_factors(first, second):
     """Refactor two stacked triangular factors so that one pair describes all their rows."""
     triangular = np.vstack([first[0], second[0]])
     transformed = np.vstack([first[1], second[1]])
-    # Since a set of units with no rows of a design contributes no factor, the other pair already describes them all.
+    # Units with no rows of a design contribute no factor. The other pair already describes every row.
     if first[0].shape[0] == 0 or second[0].shape[0] == 0:
         return triangular, transformed
     q, r = np.linalg.qr(triangular)

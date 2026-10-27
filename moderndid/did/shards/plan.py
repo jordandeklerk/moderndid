@@ -8,13 +8,14 @@ from .container import CellTable, FitTable, ShardPlan
 
 
 def plan_cells(config, cohort_counts):
-    """Describe every group-time cell of a balanced panel and the fits the cells share.
+    """Describe every group-time cell and the fits the cells share.
 
     The cells follow :func:`~moderndid.did.compute_att_gt.cell_spec` in the
-    order in which :func:`~moderndid.att_gt` reports them. Since estimable cells
-    that share a treated cohort, a comparison group, and an earlier period use
-    the same units, covariates, and weights, they share one propensity score
-    fit and one outcome regression design.
+    order in which :func:`~moderndid.att_gt` reports them. Estimable cells of a
+    balanced panel with the same treated cohort, comparison group, and earlier
+    period share one propensity score fit and one outcome regression design. In
+    repeated cross-sections or an unbalanced panel, estimable cell :math:`j`
+    takes the rows of its two periods and owns fit :math:`j`.
 
     Parameters
     ----------
@@ -48,6 +49,8 @@ def plan_cells(config, cohort_counts):
         if spec is None or spec.skip_warning is not None or spec.reference:
             continue
         key = (float(spec.group), tuple(sorted(float(c) for c in spec.control_cohorts)), int(spec.earlier_index))
+        if not config.panel:
+            key = (*key, position)
         cell_fit.append(fit_index.setdefault(key, len(fit_index)))
         estimable.append(position)
 
@@ -55,11 +58,9 @@ def plan_cells(config, cohort_counts):
     keys = list(fit_index)
     fits = FitTable(
         cohorts=cohorts,
-        group=np.array([np.searchsorted(cohorts, group) for group, _, _ in keys], dtype=np.int64),
-        controls=np.array([np.isin(cohorts, controls) for _, controls, _ in keys], dtype=bool).reshape(
-            len(keys), len(cohorts)
-        ),
-        earlier=np.array([earlier for _, _, earlier in keys], dtype=np.int64),
+        group=np.array([np.searchsorted(cohorts, key[0]) for key in keys], dtype=np.int64),
+        controls=np.array([np.isin(cohorts, key[1]) for key in keys], dtype=bool).reshape(len(keys), len(cohorts)),
+        earlier=np.array([key[2] for key in keys], dtype=np.int64),
     )
     cells = CellTable(
         fit=np.array(cell_fit, dtype=np.int64),

@@ -1,5 +1,8 @@
 """Tests for standardized IPW DiD estimator with repeated cross-sections."""
 
+import re
+import warnings
+
 import numpy as np
 import pytest
 
@@ -224,8 +227,10 @@ def test_std_ipw_did_rc_multicollinear_covariates():
     d = rng.binomial(1, 0.5, n)
     post = rng.binomial(1, 0.5, n)
     y = 1 + 0.5 * x1 + 2 * d * post + rng.standard_normal(n)
+    message = "The propensity score model dropped 1 covariate that is collinear with the others."
 
-    result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$"):
+        result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
     assert isinstance(result.att, float)
     assert not np.isnan(result.att)
     assert result.se > 0
@@ -243,3 +248,49 @@ def test_std_ipw_did_rc_comparison_with_non_std():
 
     assert 0 < result_std.att < 4
     assert result_std.se > 0
+
+
+@pytest.mark.parametrize(
+    ("redundant", "message"),
+    [
+        ("duplicate", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("intercept", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("zero", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("affine", "The propensity score model dropped 1 covariate that is collinear with the others."),
+        ("duplicate_and_zero", "The propensity score model dropped 2 covariates that are collinear with the others."),
+    ],
+    ids=["duplicate", "intercept", "zero", "affine", "duplicate_and_zero"],
+)
+def test_std_ipw_did_rc_with_a_redundant_covariate_matches_the_design_without_it(
+    two_period_specs, redundant_columns, redundant, message
+):
+    spec = two_period_specs["repeated_cross_sections"]
+    covariates = spec["covariates"]
+    padded = np.column_stack([covariates[:, :2], redundant_columns[redundant], covariates[:, 2:]])
+
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$") as record:
+        result = std_ipw_did_rc(**{**spec, "covariates": padded}, influence_func=True)
+    expected = std_ipw_did_rc(**spec, influence_func=True)
+    unconditional = std_ipw_did_rc(**{**spec, "covariates": None})
+
+    assert len(record) == 1
+    assert result.att == expected.att
+    assert result.se == expected.se
+    np.testing.assert_array_equal(result.att_inf_func, expected.att_inf_func)
+    assert abs(expected.att - unconditional.att) > 1e-3
+
+
+@pytest.mark.parametrize("level", [0.0, 1e6])
+def test_std_ipw_did_rc_keeps_every_covariate_of_a_full_rank_design_without_a_warning(two_period_specs, level):
+    spec = two_period_specs["repeated_cross_sections"]
+    shifted = spec["covariates"] + np.array([0.0, 0.0, level])
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        result = std_ipw_did_rc(**{**spec, "covariates": shifted})
+    expected = std_ipw_did_rc(**spec)
+    without_last = std_ipw_did_rc(**{**spec, "covariates": spec["covariates"][:, :2]})
+
+    assert [str(w.message) for w in record] == []
+    np.testing.assert_allclose(result.att, expected.att, rtol=1e-10)
+    assert abs(result.att - without_last.att) > 1e-3

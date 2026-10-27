@@ -62,6 +62,12 @@ How the package works
      - Description
    * - :doc:`architecture`
      - Follow data preparation, estimation, inference, and result presentation.
+   * - :doc:`shards`
+     - Rebuild a fit from sums over blocks of units, as a fit on Spark does.
+   * - :doc:`row_shards`
+     - Fit repeated cross-sections and unbalanced panels from shards of rows.
+   * - :doc:`spark_fits`
+     - Follow a fit on Spark from the table it builds to the tasks of each pass.
    * - :doc:`new_estimator`
      - Develop an estimator from its target through computation and inference.
    * - :doc:`debugging`
@@ -74,6 +80,9 @@ How the package works
    :maxdepth: 1
 
    architecture
+   shards
+   row_shards
+   spark_fits
    new_estimator
    debugging
    benchmarking
