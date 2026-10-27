@@ -16,7 +16,7 @@ Work through these in order and report what each step found.
 3. Check the installed version against CRAN and GitHub main before calling the difference a version effect.
 4. Look in `known_differences` in `benchmarks/compare.py` and in `docs/source/benchmarks/agreement.rst`, where the differences already ruled on are recorded with their causes.
 5. Decide which number is right from the paper, a derivation, or a simulation against a known truth, following the auditing-estimators skill.
-6. When moderndid is wrong, fix it under the writing-moderndid-code skill. When the R package is wrong, keep moderndid's statistic, record the difference beside the comparison (the known differences, a skip reason in the validation test, the benchmark pages), and give the user the defect, its size, and the R source lines. Never change a statistic so that a comparison matches, even when asked for a clean table. Put the evidence in front of the user and let them decide, and report a defect upstream only if they agree.
+6. When moderndid is wrong, fix it under the writing-moderndid-code and writing-moderndid-tests skills. When the R package is wrong, keep moderndid's statistic, record the difference beside the comparison (the known differences, a skip reason in the validation test, the benchmark pages), and give the user the defect, its size, and the R source lines. Never change a statistic so that a comparison matches, even when asked for a clean table. Put the evidence in front of the user and let them decide, and report a defect upstream only if they agree.
 
 ## The R environment
 

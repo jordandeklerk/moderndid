@@ -1,6 +1,6 @@
 ---
 name: writing-moderndid-code
-description: Use when writing, changing, fixing, refactoring, porting, testing, or reviewing any Python code in moderndid/ or tests/, such as an estimator, function, argument, result container, printed report, to_df converter, plot, public export, docstring, or test, or when the user asks about moderndid's code conventions. Holds the project's standards for package layout, validation and error messages, warnings, results and reports, exports and API pages, numpydoc docstrings, comments, and tests, plus the checklist for reviews. Docs pages belong to writing-docs-pages, and comparisons with R packages belong to comparing-with-r.
+description: Use when writing, changing, fixing, refactoring, porting, or reviewing any Python code in moderndid/ or tests/, such as an estimator, function, argument, result container, printed report, to_df converter, plot, public export, docstring, or test, or when the user asks about moderndid's code conventions. Holds the project's standards for package layout, validation and error messages, warnings, results and reports, exports and API pages, numpydoc docstrings, and comments, plus the checklist for reviews. Tests and the test-first workflow belong to writing-moderndid-tests, docs pages to writing-docs-pages, and comparisons with R packages to comparing-with-r.
 ---
 
 # Writing moderndid code
@@ -23,7 +23,7 @@ Reviews of this repository keep finding the same problems, so check every new or
 - Placement: result types in `container.py` with Attributes and `#:` comments, a formatter registered with `attach_format`, a converter in `_DISPATCH`, and the export steps and API page for every new public name.
 - Docstrings: a summary line with no comma, no Latin abbreviation, no Raises section, no pointer to its own sections such as "See Notes", Returns bullets as `- **name**: description`, long math in a `.. math::` display in Notes, authors only in an entry point's References, and no mention of R.
 - Code: imports at the top, no module-level constant for a one-off number, and comments that say why.
-- Tests: a module docstring, flat functions with fixtures in `conftest.py`, no comments, inline imports, or module constants, `np.random.default_rng` rather than `np.random.seed`, `match=` on every `pytest.raises`, `random_state` on every call that bootstraps, and expected values computed independently.
+- Tests: the checks under Reviewing a test in the writing-moderndid-tests skill, starting with the red run and the mutations each new test reports.
 
 ## Package layout
 
@@ -73,7 +73,7 @@ Most families leave their formatters and converters out of both `__all__` lists,
 
 ## Adding an estimator family
 
-`docs/source/dev/new_estimator.rst` develops an estimator from its target parameter to its result. In code, a family needs the folder layout above, an entry point whose docstring holds the paper's References, argument checks through `check_columns` and a config or a `preprocess_*` wrapper, a compute module, `container.py`, `format.py`, a converter, the export steps above, an API page added to the table and toctree of `docs/source/api/index.rst`, and a `README.md`. Tests follow [tests.md](tests.md) once the API settles, the comparison with the reference R package follows the comparing-with-r skill, and the example page follows writing-docs-pages. A port describes the method in its own terms and keeps every mention of the source R package out of the code.
+`docs/source/dev/new_estimator.rst` develops an estimator from its target parameter to its result. In code, a family needs the folder layout above, an entry point whose docstring holds the paper's References, argument checks through `check_columns` and a config or a `preprocess_*` wrapper, a compute module, `container.py`, `format.py`, a converter, the export steps above, an API page added to the table and toctree of `docs/source/api/index.rst`, and a `README.md`. Tests come first under the writing-moderndid-tests skill, the comparison with the reference R package follows the comparing-with-r skill, and the example page follows writing-docs-pages. A port describes the method in its own terms and keeps every mention of the source R package out of the code.
 
 ## Numerics
 
@@ -91,4 +91,4 @@ Every public docstring starts from a template in [docstrings.md](docstrings.md),
 
 ## Tests
 
-Every test follows [tests.md](tests.md), which covers placement, layout, fixtures, expected values, tolerances, randomness, warnings, and optional dependencies. Read it before writing or changing a test. R validation tests in `tests/validation/` follow the comparing-with-r skill.
+Every test, and every change to behavior that a test should pin, follows the writing-moderndid-tests skill. Load it before writing, changing, or reviewing a test and before fixing a bug. R validation tests in `tests/validation/` follow the comparing-with-r skill.
