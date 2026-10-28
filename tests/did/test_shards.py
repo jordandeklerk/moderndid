@@ -495,6 +495,360 @@ def test_att_gt_on_shards_with_a_collinear_propensity_covariate_matches_att_gt_w
     _assert_same_fit(sharded, memory)
 
 
+@pytest.mark.parametrize("data_fixture", ["wide_scalable_panel", "wider_scalable_panel"])
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+@pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
+def test_att_gt_on_shards_matches_att_gt_without_warnings_on_weighted_panels_with_twenty_and_fifty_covariates(
+    request, att_gt_on_shards, data_fixture, est_method, control_group
+):
+    data = request.getfixturevalue(data_fixture)
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~" + " + ".join(name for name in data.columns if name.startswith("cov")),
+        "weightsname": "w",
+        "clustervars": ["cluster"],
+        "est_method": est_method,
+        "control_group": control_group,
+        "random_state": 7,
+    }
+
+    with warnings.catch_warnings(record=True) as memory_warnings:
+        warnings.simplefilter("always")
+        memory = att_gt(data, **spec)
+    with warnings.catch_warnings(record=True) as shard_warnings:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(data, 3, **spec)
+
+    assert [str(w.message) for w in memory_warnings] == []
+    assert [str(w.message) for w in shard_warnings] == []
+    np.testing.assert_array_equal(sharded.groups, [2, 2, 3, 3])
+    assert np.all(np.isfinite(sharded.att_gt))
+    assert np.all(np.isfinite(sharded.se_gt))
+    _assert_same_fit(sharded, memory)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_att_gt_on_shards_matches_a_newton_logit_and_least_squares_on_twenty_weighted_covariates(
+    wide_scalable_panel, att_gt_on_shards, two_by_two_by_hand, est_method
+):
+    units = wide_scalable_panel.filter(pl.col("time") == 1).sort("id")
+    outcomes = wide_scalable_panel.pivot(on="time", index="id", values="y", sort_columns=True).sort("id")
+    covariates = np.column_stack([np.ones(len(units)), units.select(pl.col("^cov\\d+$")).to_numpy()])
+    panel = (outcomes.drop("id").to_numpy(), units["group"].to_numpy(), covariates, units["w"].to_numpy())
+    cells = [(2, 1, 0, (0,)), (2, 2, 0, (0,)), (3, 1, 0, (0,)), (3, 2, 1, (0,))]
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~" + " + ".join(f"cov{j}" for j in range(1, 21)),
+        "weightsname": "w",
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    sharded = att_gt_on_shards(wide_scalable_panel, 3, **spec)
+    expected = [two_by_two_by_hand(*panel, cell, est_method) for cell in cells]
+
+    assert covariates.shape == (800, 21)
+    np.testing.assert_array_equal(sharded.groups, [2, 2, 3, 3])
+    np.testing.assert_array_equal(sharded.times, [2, 3, 2, 3])
+    np.testing.assert_allclose(sharded.att_gt, expected, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw"])
+def test_att_gt_on_shards_trims_exactly_the_comparison_units_whose_newton_logit_scores_reach_0995(
+    trimmed_comparison_panel, att_gt_on_shards, two_by_two_by_hand, est_method
+):
+    units = trimmed_comparison_panel.filter(pl.col("t") == 1).sort("id")
+    outcomes = trimmed_comparison_panel.pivot(on="t", index="id", values="y", sort_columns=True).sort("id")
+    covariates = np.column_stack([np.ones(len(units)), units.select(pl.col("^x\\d+$")).to_numpy()])
+    panel = (outcomes.drop("id").to_numpy(), units["g"].to_numpy(), covariates, np.ones(len(units)))
+    cells = [(3, 1, 0, (0,)), (3, 2, 1, (0,)), (3, 3, 1, (0,))]
+    spec = {
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~" + " + ".join(f"x{j}" for j in range(20)),
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(trimmed_comparison_panel, 3, **spec)
+    expected = [two_by_two_by_hand(*panel, cell, est_method) for cell in cells]
+
+    assert [str(w.message) for w in recorded] == []
+    np.testing.assert_array_equal(sharded.times, [2, 3, 4])
+    np.testing.assert_allclose(sharded.att_gt, expected, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize(
+    "redundant",
+    [
+        pl.col("cov5"),
+        0.7 * pl.col("cov5"),
+        pl.col("cov5") + 0.5 * pl.col("cov6") - pl.col("cov7"),
+        pl.col("cov5") + 0.3,
+        pl.lit(3.0),
+    ],
+    ids=["copy", "multiple", "combination", "shifted_copy", "constant"],
+)
+def test_att_gt_on_shards_ipw_with_a_redundant_twenty_first_covariate_matches_the_fit_without_it(
+    wide_scalable_panel, att_gt_on_shards, redundant
+):
+    data = wide_scalable_panel.with_columns(redundant.alias("redundant"))
+    covariates = " + ".join(f"cov{j}" for j in range(1, 21))
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "weightsname": "w",
+        "est_method": "ipw",
+        "random_state": 7,
+    }
+
+    reduced = att_gt_on_shards(data, 3, xformla=f"~{covariates}", **spec)
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(data, 3, xformla=f"~{covariates} + redundant", **spec)
+
+    np.testing.assert_array_equal(reduced.groups, [2, 2, 3, 3])
+    assert [str(w.message) for w in recorded] == []
+    np.testing.assert_array_equal(sharded.groups, reduced.groups)
+    assert np.all(np.isfinite(sharded.att_gt))
+    assert np.all(np.isfinite(sharded.se_gt))
+    np.testing.assert_allclose(sharded.att_gt, reduced.att_gt, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(sharded.se_gt, reduced.se_gt, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [pl.col("cov5"), pl.when(pl.col("group") == 0).then(0.0).otherwise(pl.col("cov6"))],
+    ids=["copy", "zero_among_comparison_units"],
+)
+@pytest.mark.parametrize("est_method", ["dr", "reg"])
+def test_att_gt_on_shards_skips_every_cell_like_att_gt_when_a_wide_comparison_design_is_singular(
+    wide_scalable_panel, att_gt_on_shards, extra, est_method
+):
+    data = wide_scalable_panel.with_columns(extra.alias("extra"))
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~" + " + ".join(f"cov{j}" for j in range(1, 21)) + " + extra",
+        "weightsname": "w",
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    with warnings.catch_warnings(record=True) as memory_warnings:
+        warnings.simplefilter("always")
+        memory = att_gt(data, **spec)
+    with warnings.catch_warnings(record=True) as shard_warnings:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(data, 3, **spec)
+
+    assert [str(w.message) for w in shard_warnings] == [
+        *(
+            f"Not enough control units for group {group} in time period {time} to run specified regression"
+            for group, time in ((2, 2), (2, 3), (3, 2), (3, 3))
+        ),
+        "No pre-treatment periods available for the Wald pre-test of parallel trends. This can happen when all "
+        "groups are first treated early in the panel, such as in the second time period, so that no pre-treatment "
+        "ATT(g,t) estimates exist.",
+    ]
+    assert [(w.category, str(w.message)) for w in shard_warnings] == [
+        (w.category, str(w.message)) for w in memory_warnings
+    ]
+    assert len(sharded.att_gt) == len(memory.att_gt) == 0
+
+
+def test_att_gt_on_shards_skips_like_att_gt_the_cells_whose_comparison_group_is_smaller_than_the_coefficients(
+    twenty_never_treated_panel, att_gt_on_shards
+):
+    spec = {
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~" + " + ".join(f"x{j}" for j in range(20)),
+        "est_method": "reg",
+        "control_group": "notyettreated",
+        "random_state": 7,
+    }
+
+    with warnings.catch_warnings(record=True) as memory_warnings:
+        warnings.simplefilter("always")
+        memory = att_gt(twenty_never_treated_panel, **spec)
+    with warnings.catch_warnings(record=True) as shard_warnings:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(twenty_never_treated_panel, 3, **spec)
+
+    assert [str(w.message) for w in shard_warnings] == [
+        "Be aware that there are some small groups in your dataset.\nCheck groups: inf",
+        *(
+            f"Not enough control units for group {group} in time period {time} to run specified regression"
+            for group, time in ((2, 3), (3, 2), (3, 3))
+        ),
+        "No pre-treatment periods available for the Wald pre-test of parallel trends. This can happen when all "
+        "groups are first treated early in the panel, such as in the second time period, so that no pre-treatment "
+        "ATT(g,t) estimates exist.",
+    ]
+    assert [(w.category, str(w.message)) for w in shard_warnings] == [
+        (w.category, str(w.message)) for w in memory_warnings
+    ]
+    np.testing.assert_array_equal(sharded.times, [2])
+    assert np.all(np.isfinite(sharded.att_gt))
+    assert np.all(np.isfinite(sharded.se_gt))
+    _assert_same_fit(sharded, memory)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_att_gt_on_shards_matches_a_newton_logit_and_least_squares_with_four_comparison_units_to_spare(
+    twenty_five_never_treated_panel, att_gt_on_shards, two_by_two_by_hand, est_method
+):
+    units = twenty_five_never_treated_panel.filter(pl.col("t") == 1).sort("id")
+    outcomes = twenty_five_never_treated_panel.pivot(on="t", index="id", values="y", sort_columns=True).sort("id")
+    covariates = np.column_stack([np.ones(len(units)), units.select(pl.col("^x\\d+$")).to_numpy()])
+    panel = (outcomes.drop("id").to_numpy(), units["g"].to_numpy(), covariates, np.ones(len(units)))
+    cells = [(2, 1, 0, (0,)), (2, 2, 0, (0,)), (3, 1, 0, (0,)), (3, 2, 1, (0,))]
+    spec = {
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~" + " + ".join(f"x{j}" for j in range(20)),
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(twenty_five_never_treated_panel, 3, **spec)
+    expected = [two_by_two_by_hand(*panel, cell, est_method) for cell in cells]
+
+    assert (int(np.sum(panel[1] == 0)), covariates.shape[1]) == (25, 21)
+    assert [str(w.message) for w in recorded] == []
+    np.testing.assert_array_equal(sharded.times, [2, 3, 2, 3])
+    np.testing.assert_allclose(sharded.att_gt, expected, rtol=1e-8, atol=0)
+
+
+@pytest.mark.parametrize("change", [pl.col("cov5") * 1e4, pl.col("cov5") + 1e3], ids=["rescaled", "shifted"])
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_att_gt_on_shards_keeps_its_estimates_when_one_of_twenty_covariates_is_rescaled_or_shifted(
+    wide_scalable_panel, att_gt_on_shards, change, est_method
+):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~" + " + ".join(f"cov{j}" for j in range(1, 21)),
+        "weightsname": "w",
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    original = att_gt_on_shards(wide_scalable_panel, 3, **spec)
+    changed = att_gt_on_shards(wide_scalable_panel.with_columns(change.alias("cov5")), 3, **spec)
+
+    np.testing.assert_array_equal(original.groups, [2, 2, 3, 3])
+    np.testing.assert_array_equal(changed.groups, original.groups)
+    assert np.all(np.isfinite(changed.att_gt))
+    assert np.all(np.isfinite(changed.se_gt))
+    np.testing.assert_allclose(changed.att_gt, original.att_gt, rtol=1e-9, atol=0)
+    np.testing.assert_allclose(changed.se_gt, original.se_gt, rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize("change", [pl.col("cov5") * 1e8, pl.col("cov5") * 1e-8], ids=["times_1e8", "times_1e-8"])
+def test_att_gt_on_shards_ipw_keeps_its_estimates_when_one_of_twenty_covariates_is_scaled_by_eight_orders_of_magnitude(
+    wide_scalable_panel, att_gt_on_shards, change
+):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~" + " + ".join(f"cov{j}" for j in range(1, 21)),
+        "weightsname": "w",
+        "est_method": "ipw",
+        "random_state": 7,
+    }
+
+    original = att_gt_on_shards(wide_scalable_panel, 3, **spec)
+    changed = att_gt_on_shards(wide_scalable_panel.with_columns(change.alias("cov5")), 3, **spec)
+
+    np.testing.assert_array_equal(original.groups, [2, 2, 3, 3])
+    np.testing.assert_array_equal(changed.groups, original.groups)
+    assert np.all(np.isfinite(changed.att_gt))
+    assert np.all(np.isfinite(changed.se_gt))
+    np.testing.assert_allclose(changed.att_gt, original.att_gt, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(changed.se_gt, original.se_gt, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_att_gt_on_shards_recovers_the_planted_effects_beside_sixteen_irrelevant_covariates(
+    planted_effects_panel, att_gt_on_shards, est_method
+):
+    spec = {
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~" + " + ".join(f"x{j}" for j in range(20)),
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    sharded = att_gt_on_shards(planted_effects_panel, 3, **spec)
+
+    np.testing.assert_array_equal(sharded.groups, [2, 2, 3, 3])
+    np.testing.assert_array_equal(sharded.times, [2, 3, 2, 3])
+    np.testing.assert_allclose(sharded.att_gt, [1.0, 2.0, 0.0, 1.0], rtol=0, atol=0.5)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw"])
+def test_att_gt_on_shards_drops_like_att_gt_the_cohort_whose_twenty_covariates_push_its_scores_past_0999(
+    separated_cohort_panel, att_gt_on_shards, est_method
+):
+    spec = {
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~" + " + ".join(f"x{j}" for j in range(20)),
+        "est_method": est_method,
+        "random_state": 7,
+    }
+
+    with warnings.catch_warnings(record=True) as memory_warnings:
+        warnings.simplefilter("always")
+        memory = att_gt(separated_cohort_panel, **spec)
+    with warnings.catch_warnings(record=True) as shard_warnings:
+        warnings.simplefilter("always")
+        sharded = att_gt_on_shards(separated_cohort_panel, 3, **spec)
+
+    assert [str(w.message) for w in shard_warnings] == [
+        "Overlap condition violated for 2 in time period 2",
+        "Overlap condition violated for 2 in time period 3",
+    ]
+    assert [(w.category, str(w.message)) for w in shard_warnings] == [
+        (w.category, str(w.message)) for w in memory_warnings
+    ]
+    np.testing.assert_array_equal(sharded.groups, [3, 3])
+    assert np.all(np.isfinite(sharded.att_gt))
+    assert np.all(np.isfinite(sharded.se_gt))
+    _assert_same_fit(sharded, memory)
+
+
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 @pytest.mark.parametrize("n_shards", [1, 7])
 def test_att_gt_on_shards_bootstrap_finishes_keyed_draws_of_the_influence_function(

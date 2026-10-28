@@ -1,5 +1,8 @@
 """Tests for IPW estimators."""
 
+import re
+import warnings
+
 import numpy as np
 import pytest
 
@@ -8,48 +11,53 @@ from moderndid import ipw_did_rc, ipw_rc, wboot_ipw_rc
 pytestmark = pytest.mark.slow
 
 
-def test_ipw_did_rc_basic():
-    rng = np.random.default_rng(42)
-    n = 100
-    y = rng.normal(1, 1, n)
-    post = rng.binomial(1, 0.5, n)
-    d = rng.binomial(1, 0.3, n)
-    ps = 0.3 * np.ones(n)
-    i_weights = np.ones(n)
+def test_ipw_rc_matches_a_hand_computed_att():
+    y = np.array([2.0, 4.0, 7.0, 9.0, 1.0, 3.0, 4.0, 2.0])
+    post = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    d = np.array([1, 1, 1, 1, 0, 0, 0, 0])
+    ps = np.array([0.5, 0.25, 0.5, 0.75, 0.5, 0.2, 0.5, 0.8])
+    i_weights = np.array([1.0, 2.0, 1.0, 1.0, 1.0, 2.0, 1.0, 1.0])
 
     result = ipw_rc(y, post, d, ps, i_weights)
+
     assert isinstance(result, float)
-    assert np.isfinite(result)
+    np.testing.assert_allclose(result, -0.5, rtol=1e-12)
 
 
-def test_ipw_did_rc_with_trimming():
-    rng = np.random.default_rng(42)
-    n = 100
-    y = rng.normal(1, 1, n)
-    post = rng.binomial(1, 0.5, n)
-    d = rng.binomial(1, 0.3, n)
-    ps = rng.uniform(0.1, 0.9, n)
-    i_weights = np.ones(n)
-
-    trim_ps = np.ones(n, dtype=bool)
-    trim_ps[d == 0] = ps[d == 0] < 0.8
+def test_ipw_rc_drops_trimmed_rows_from_the_comparison_terms_only():
+    y = np.array([2.0, 4.0, 7.0, 9.0, 1.0, 3.0, 4.0, 2.0])
+    post = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    d = np.array([1, 1, 1, 1, 0, 0, 0, 0])
+    ps = np.array([0.5, 0.25, 0.5, 0.75, 0.5, 0.2, 0.5, 0.8])
+    i_weights = np.array([1.0, 2.0, 1.0, 1.0, 1.0, 2.0, 1.0, 1.0])
+    trim_ps = np.array([True, True, True, True, True, True, True, False])
 
     result = ipw_rc(y, post, d, ps, i_weights, trim_ps)
+
     assert isinstance(result, float)
-    assert np.isfinite(result)
+    np.testing.assert_allclose(result, 3.5, rtol=1e-12)
 
 
-def test_ipw_did_rc_all_treated():
-    rng = np.random.default_rng(42)
-    n = 50
-    y = np.ones(n)
-    post = rng.binomial(1, 0.5, n)
-    d = np.ones(n)
-    ps = 0.5 * np.ones(n)
-    i_weights = np.ones(n)
+def test_ipw_rc_with_only_treated_rows_returns_their_change_in_means():
+    y = np.array([1.0, 3.0, 4.0, 8.0])
+    post = np.array([0, 0, 1, 1])
+    i_weights = np.array([1.0, 2.0, 1.0, 3.0])
 
-    result = ipw_rc(y, post, d, ps, i_weights)
-    assert np.isfinite(result)
+    result = ipw_rc(y, post, np.ones(4), np.full(4, 0.5), i_weights)
+
+    np.testing.assert_allclose(result, 14 / 3, rtol=1e-12)
+
+
+def test_ipw_rc_returns_nan_with_a_warning_for_a_non_finite_estimate():
+    y = np.array([2.0, 4.0, 7.0, np.inf, 1.0, 3.0, 4.0, 2.0])
+    post = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    d = np.array([1, 1, 1, 1, 0, 0, 0, 0])
+    ps = np.array([0.5, 0.25, 0.5, 0.75, 0.5, 0.2, 0.5, 0.8])
+
+    with pytest.warns(UserWarning, match=f"^{re.escape('IPW estimator is not finite: inf.')}$"):
+        result = ipw_rc(y, post, d, ps, np.ones(8))
+
+    assert np.isnan(result)
 
 
 def test_ipw_did_rc_no_treated():
@@ -146,40 +154,62 @@ def test_ipw_did_rc_invalid_inputs():
         ipw_rc(y[:-1], post, d, ps, i_weights)
 
 
-def test_wboot_ipw_rc_basic():
-    rng = np.random.default_rng(42)
-    n = 100
-    y = rng.normal(1, 1, n)
-    post = rng.binomial(1, 0.5, n)
-    d = rng.binomial(1, 0.3, n)
-    x = rng.normal(0, 1, (n, 3))
-    x[:, 0] = 1
-    i_weights = np.ones(n)
+def test_wboot_ipw_rc_basic(rc_cell_arrays, cell_rc_att, preset_bootstrap_weights):
+    arrays = rc_cell_arrays
+    draws = np.random.default_rng(5).exponential(size=(10, arrays["d"].size))
+    preset_bootstrap_weights(draws)
 
-    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, biters=10, random_state=42)
+    boots = wboot_ipw_rc(
+        arrays["y"], arrays["post"], arrays["d"], arrays["covariates"], arrays["i_weights"], biters=10, random_state=42
+    )
+    expected = [cell_rc_att(**{**arrays, "i_weights": arrays["i_weights"] * v}) for v in draws]
 
-    assert bootstrap_estimates.shape == (10,)
-    assert np.sum(np.isfinite(bootstrap_estimates)) >= 5
+    np.testing.assert_allclose(boots, expected, rtol=1e-8)
 
 
-def test_wboot_ipw_rc_convergence():
-    rng = np.random.default_rng(123)
-    n = 200
-    true_effect = 0.5
+def test_wboot_ipw_rc_rejects_invalid_inputs(rc_cell_arrays):
+    arrays = rc_cell_arrays
+    rest = (arrays["post"], arrays["d"], arrays["covariates"], arrays["i_weights"])
 
-    x = rng.normal(0, 1, (n, 2))
-    x[:, 0] = 1
-    ps_true = 1 / (1 + np.exp(-0.5 * x[:, 1]))
-    d = rng.binomial(1, ps_true, n)
-    post = rng.binomial(1, 0.5, n)
+    with pytest.raises(TypeError, match=f"^{re.escape('y must be a NumPy array.')}$"):
+        wboot_ipw_rc(list(arrays["y"]), *rest, biters=5)
+    with pytest.raises(ValueError, match=f"^{re.escape('All arrays must have the same number of observations.')}$"):
+        wboot_ipw_rc(arrays["y"][:-1], *rest, biters=5)
+    with pytest.raises(ValueError, match=f"^{re.escape('biters must be a positive integer.')}$"):
+        wboot_ipw_rc(arrays["y"], *rest, biters=0)
+    with pytest.raises(ValueError, match=f"^{re.escape('trim_level must be between 0 and 1.')}$"):
+        wboot_ipw_rc(arrays["y"], *rest, biters=5, trim_level=1.5)
 
-    y = 1 + 0.5 * x[:, 1] + true_effect * d * post + rng.normal(0, 0.5, n)
-    i_weights = np.ones(n)
 
-    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, biters=20, random_state=123)
+def test_wboot_ipw_rc_draws_repeat_with_their_random_state(rc_cell_arrays):
+    arrays = rc_cell_arrays
+    data = (arrays["y"], arrays["post"], arrays["d"], arrays["covariates"], arrays["i_weights"])
 
-    mean_estimate = np.nanmean(bootstrap_estimates)
-    assert np.abs(mean_estimate - true_effect) < 0.71
+    first = wboot_ipw_rc(*data, biters=5, random_state=3)
+    repeated = wboot_ipw_rc(*data, biters=5, random_state=3)
+    other = wboot_ipw_rc(*data, biters=5, random_state=4)
+
+    assert np.isfinite(first).all()
+    np.testing.assert_array_equal(repeated, first)
+    assert np.min(np.abs(other - first)) > 1e-6
+
+
+def test_wboot_ipw_rc_warns_when_its_draws_fail(rc_cell_arrays):
+    arrays = rc_cell_arrays
+    rest = (arrays["post"], arrays["d"], arrays["covariates"], arrays["i_weights"])
+    y = np.where(np.arange(arrays["y"].size) == 0, np.inf, arrays["y"])
+
+    with warnings.catch_warnings(record=True) as failing:
+        warnings.simplefilter("always")
+        failed = wboot_ipw_rc(y, *rest, biters=5, random_state=3)
+    with warnings.catch_warnings(record=True) as passing:
+        warnings.simplefilter("always")
+        wboot_ipw_rc(arrays["y"], *rest, biters=5, random_state=3)
+    messages = [str(w.message) for w in failing if "iterations failed" in str(w.message)]
+
+    assert np.isnan(failed).all()
+    assert messages == ["5 out of 5 bootstrap iterations failed. Results may be unreliable."]
+    assert not any("iterations failed" in str(w.message) for w in passing)
 
 
 def test_wboot_ipw_rc_reproduces_ipw_did_rc_at_unit_weights(unit_bootstrap_weights, trimmed_two_period_data):

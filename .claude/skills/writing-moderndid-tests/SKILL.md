@@ -50,6 +50,23 @@ Wrong code often returns the right number on convenient data. These choices hide
 - An exact boundary can take a different path than a value one rounding step away. Without its guard, the zero-variance branch of the ARP test still reaches the right decision at a correlation of exactly -1 and goes wrong only at `np.nextafter(-1.0, -2.0)`.
 - Hand-built data shares your assumptions. When a bug came from real data, check the fix on a real dataset such as `load_mpdta()` or `load_nsw()` too.
 
+## Many covariates
+
+Users fit these estimators with many covariates. The known failures show up there, such as propensity fits that diverge or never converge, singular or nearly singular designs, comparison groups with barely more units than coefficients, and propensity scores piled near 0 and 1. A function that takes covariates gets tests on a wide design besides its tests on one or two covariates. A wide design has 20 or more covariates, or groups only a few units larger than the number of coefficients. `gen_did_scalable` and `gen_ddd_scalable` take `n_covariates`. Unlike floating-point extremes, wide designs are ordinary data. A failure on one is a bug.
+
+Expected values stay independent on a wide design.
+
+- An outcome regression equals `np.linalg.lstsq` on the same columns.
+- A propensity score equals a logit or tilting fit written out in the test with Newton's method.
+- A covariate that repeats another, or a combination of others, leaves the estimate and its standard error where they were without it, since the column space is the same.
+- Rescaling or shifting a covariate leaves the estimate where it was.
+- Irrelevant covariates added to a `gen_*` design keep the estimate within its Monte Carlo error of the planted truth.
+- Trimming drops exactly the units whose scores from the independent fit pass the documented level.
+- The shard engine and the in-memory fit agree on the wide design.
+- A comparison group with no more units than coefficients, or a singular comparison design, takes the documented path, a warning that names the cell or an error with its documented message. A finite estimate on such data is a bug.
+
+Run the estimator on the wide design and measure what it does before writing the assertion.
+
 ## Assertions that can't fail
 
 - An assert inside an `if`, a `for`, or a `try`. A condition that skips it, a loop over an empty collection, or a caught exception passes in silence. Assert the precondition first, such as the number of cells.
@@ -101,6 +118,7 @@ Each of these thoughts has come before a test that passes no matter what. Stop a
 - "The expected value is what the function returns today." Built that way, the test pins today's bugs.
 - "Deleting the guard made the test fail, so the guard is covered." That covers one direction. Widen the guard until it always fires and see the control test fail too.
 - "It's a rounding difference." Measure it against the limits under Tolerances before believing it.
+- "Twenty covariates is an edge case." Users fit these estimators that way. The known failures live there.
 
 ## Mutating safely
 
@@ -127,7 +145,7 @@ Below the forms, list each pytest command with its pass, fail, and skip counts. 
 
 ## Reviewing a test
 
-A test written by another agent counts only with its evidence. Check that its report fills every line of the form above, rerun at least one named break yourself, and trace every literal number in the test to its source. A guard needs its control test. In `git diff tests/`, send back any assertion removed, tolerance widened, skip or xfail added, or expected value changed without a source.
+A test written by another agent counts only with its evidence. Check that its report fills every line of the form above, rerun at least one named break yourself, and trace every literal number in the test to its source. A guard needs its control test. A function that takes covariates needs its tests on a wide design. In `git diff tests/`, send back any assertion removed, tolerance widened, skip or xfail added, or expected value changed without a source.
 
 ## Conventions
 

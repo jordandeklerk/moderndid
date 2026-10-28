@@ -1020,3 +1020,137 @@ def test_preprocess_did_keeps_callable_est_method(mpdta_data):
     )
 
     assert dp.config.est_method is drdid_panel
+
+
+@pytest.mark.parametrize("repeats", ["", " + x7 + x49"])
+def test_preprocess_did_covariates_tensor_holds_each_period_of_fifty_covariates(wide_cohort_panel, repeats):
+    data = wide_cohort_panel({0: 70, 2: 60, 3: 60}, 50)
+    names = [f"x{j}" for j in range(50)]
+    xformla = "~ " + " + ".join(names) + repeats
+
+    result = preprocess_did(data, yname="y", tname="t", idname="id", gname="g", xformla=xformla)
+    units = result.time_invariant_data.select("id")
+    expected = [
+        np.column_stack(
+            [
+                np.ones(units.height),
+                units.join(data.filter(pl.col("t") == t), on="id", how="left", maintain_order="left")
+                .select(names)
+                .to_numpy(),
+            ]
+        )
+        for t in (1, 2, 3)
+    ]
+
+    assert result.covariates_matrix is None
+    np.testing.assert_array_equal(np.stack(result.covariates_tensor), np.stack(expected))
+
+
+def test_preprocess_did_covariates_matrix_holds_each_row_of_fifty_covariates(wide_cohort_panel):
+    data = wide_cohort_panel({0: 70, 2: 60, 3: 60}, 50).filter(~((pl.col("id") % 4 == 0) & (pl.col("t") == 2)))
+    names = [f"x{j}" for j in range(50)]
+
+    result = preprocess_did(data, yname="y", tname="t", idname="id", gname="g", xformla="~ " + " + ".join(names))
+    rows = result.data.select("id", "t").join(data, on=["id", "t"], how="left", maintain_order="left")
+
+    assert result.config.panel is False
+    assert rows.height == data.height
+    np.testing.assert_array_equal(
+        result.covariates_matrix, np.column_stack([np.ones(rows.height), rows.select(names).to_numpy()])
+    )
+
+
+@pytest.mark.parametrize("repeats", ["", " + x3 + x3"])
+@pytest.mark.parametrize("n_covariates", [20, 50])
+def test_preprocess_did_small_group_warning_names_cohorts_below_five_units_beyond_the_covariates(
+    wide_cohort_panel, n_covariates, repeats
+):
+    data = wide_cohort_panel({0: 3 * n_covariates, 2: n_covariates + 4, 3: n_covariates + 5}, n_covariates)
+    xformla = "~ " + " + ".join(f"x{j}" for j in range(n_covariates)) + repeats
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = preprocess_did(data, yname="y", tname="t", idname="id", gname="g", xformla=xformla)
+
+    assert [str(w.message) for w in caught] == [
+        "Be aware that there are some small groups in your dataset.\nCheck groups: 2"
+    ]
+    assert result.config.id_count == 5 * n_covariates + 9
+
+
+@pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
+@pytest.mark.parametrize("n_covariates", [20, 50])
+def test_preprocess_did_small_group_warning_stays_quiet_at_five_units_beyond_the_covariates(
+    wide_cohort_panel, n_covariates, control_group
+):
+    data = wide_cohort_panel({0: n_covariates + 5, 2: n_covariates + 5, 3: n_covariates + 5}, n_covariates)
+    xformla = "~ " + " + ".join(f"x{j}" for j in range(n_covariates))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = preprocess_did(
+            data, yname="y", tname="t", idname="id", gname="g", xformla=xformla, control_group=control_group
+        )
+
+    assert [str(w.message) for w in caught] == []
+    assert result.config.id_count == 3 * n_covariates + 15
+
+
+@pytest.mark.parametrize("n_covariates", [20, 50])
+def test_preprocess_did_rejects_never_treated_group_no_larger_than_the_coefficients(wide_cohort_panel, n_covariates):
+    data = wide_cohort_panel({0: n_covariates + 1, 2: 3 * n_covariates, 3: 3 * n_covariates}, n_covariates)
+    xformla = "~ " + " + ".join(f"x{j}" for j in range(n_covariates))
+    warning = "Be aware that there are some small groups in your dataset.\nCheck groups: inf"
+    message = (
+        "The never-treated group is too small to serve as the comparison group. "
+        "Pass control_group='notyettreated' to compare with units not yet treated."
+    )
+
+    with (
+        pytest.warns(UserWarning, match=f"^{re.escape(warning)}$"),
+        pytest.raises(ValueError, match=f"^{re.escape(message)}$"),
+    ):
+        preprocess_did(data, yname="y", tname="t", idname="id", gname="g", xformla=xformla)
+
+
+@pytest.mark.parametrize("n_covariates", [20, 50])
+def test_preprocess_did_keeps_small_never_treated_group_beside_not_yet_treated_units(wide_cohort_panel, n_covariates):
+    data = wide_cohort_panel({0: n_covariates + 1, 2: 3 * n_covariates, 3: 3 * n_covariates}, n_covariates)
+    xformla = "~ " + " + ".join(f"x{j}" for j in range(n_covariates))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = preprocess_did(
+            data, yname="y", tname="t", idname="id", gname="g", xformla=xformla, control_group="notyettreated"
+        )
+
+    assert [str(w.message) for w in caught] == [
+        "Be aware that there are some small groups in your dataset.\nCheck groups: inf"
+    ]
+    assert result.config.id_count == 7 * n_covariates + 1
+
+
+def test_preprocess_did_drops_each_row_missing_any_of_twenty_covariates(wide_panel_with_holes):
+    names = [f"x{j}" for j in range(20)]
+    missing = ~np.isfinite(wide_panel_with_holes.select(names).to_numpy()).all(axis=1)
+    lost_units = np.unique(wide_panel_with_holes["id"].to_numpy()[missing])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = preprocess_did(
+            wide_panel_with_holes,
+            yname="y",
+            tname="t",
+            idname="id",
+            gname="g",
+            xformla="~ " + " + ".join(names),
+            allow_unbalanced_panel=False,
+        )
+
+    assert [str(w.message) for w in caught] == [
+        f"Dropped {missing.sum()} rows from original data due to missing values",
+        f"Dropped {lost_units.size} units while converting to balanced panel",
+    ]
+    assert result.config.id_count == 150 - lost_units.size
+    assert not result.time_invariant_data["id"].is_in(lost_units.tolist()).any()
+    assert np.isfinite(np.stack(result.covariates_tensor)).all()

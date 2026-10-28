@@ -641,3 +641,339 @@ def test_benchmark_compute_att_gt_parallel(
 
     np.testing.assert_allclose([cell.att for cell in result.attgt_list], att, rtol=1e-10, atol=0)
     np.testing.assert_allclose(result.influence_functions.toarray(), inf, rtol=1e-10, atol=1e-12)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+@pytest.mark.parametrize("data_fixture", ["wide_panel", "wider_panel"])
+def test_compute_att_gt_wide_panel_matches_least_squares_and_newton_logit_fits(
+    request, reference_cell_att, data_fixture, est_method
+):
+    rows = request.getfixturevalue(data_fixture)
+    covariates = [column for column in rows.columns if column.startswith("cov")]
+    data = preprocess_did(
+        rows,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~" + "+".join(covariates),
+        weightsname="w",
+        est_method=est_method,
+    )
+    cells = [(2, 2, 1, [0]), (2, 3, 1, [0]), (3, 2, 1, [0]), (3, 3, 2, [0])]
+    expected = [reference_cell_att(rows, covariates, cell, est_method) for cell in cells]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert [str(warning.message) for warning in caught] == []
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    np.testing.assert_allclose([cell.att for cell in result.attgt_list], expected, rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_compute_att_gt_wide_cross_section_matches_least_squares_and_newton_logit_fits(
+    wide_cross_section, reference_cell_att, est_method
+):
+    covariates = [column for column in wide_cross_section.columns if column.startswith("cov")]
+    data = preprocess_did(
+        wide_cross_section,
+        yname="y",
+        tname="time",
+        gname="group",
+        xformla="~" + "+".join(covariates),
+        weightsname="w",
+        est_method=est_method,
+        panel=False,
+    )
+    cells = [(2, 2, 1, [0]), (2, 3, 1, [0]), (3, 2, 1, [0]), (3, 3, 2, [0])]
+    expected = [reference_cell_att(wide_cross_section, covariates, cell, est_method, panel=False) for cell in cells]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert [str(warning.message) for warning in caught] == []
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    np.testing.assert_allclose([cell.att for cell in result.attgt_list], expected, rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_compute_att_gt_wide_panel_influence_functions_match_weight_derivative(
+    wide_panel, wide_panel_atts_with_scaled_unit_weights, weight_derivative, est_method
+):
+    spec = {"xformla": "~" + "+".join(f"cov{j}" for j in range(1, 21)), "est_method": est_method}
+    data = preprocess_did(wide_panel, yname="y", tname="time", idname="id", gname="group", weightsname="w", **spec)
+    units = data.time_invariant_data["id"]
+    cohorts = data.time_invariant_data["group"].to_numpy()
+    edges = np.flatnonzero(cohorts[1:] != cohorts[:-1])
+    rows = np.r_[0, edges, edges + 1, len(units) - 1]
+
+    result = compute_att_gt(data)
+    influence = result.influence_functions.toarray()
+    expected = weight_derivative(
+        lambda factors: wide_panel_atts_with_scaled_unit_weights(wide_panel, units, factors, **spec), len(units), rows
+    )
+
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    assert influence.shape == (len(units), 4)
+    assert np.all(np.isfinite(influence))
+    np.testing.assert_allclose(influence[rows], expected, rtol=1e-6, atol=1e-5)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_compute_att_gt_wide_cross_section_influence_functions_match_weight_derivative(
+    wide_cross_section, wide_cross_section_atts_with_scaled_row_weights, weight_derivative, est_method
+):
+    spec = {"xformla": "~" + "+".join(f"cov{j}" for j in range(1, 21)), "est_method": est_method}
+    data = preprocess_did(
+        wide_cross_section, yname="y", tname="time", gname="group", weightsname="w", panel=False, **spec
+    )
+    original_rows = data.data[".rowid"].to_numpy()
+    blocks = data.data.select(["time", "group"]).to_numpy()
+    edges = np.flatnonzero(np.any(blocks[1:] != blocks[:-1], axis=1))
+    rows = np.r_[0, edges, edges + 1, len(original_rows) - 1]
+
+    result = compute_att_gt(data)
+    influence = result.influence_functions.toarray()
+    expected = weight_derivative(
+        lambda factors: wide_cross_section_atts_with_scaled_row_weights(wide_cross_section, factors, **spec),
+        wide_cross_section.height,
+        original_rows[rows],
+    )
+
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    assert influence.shape == (wide_cross_section.height, 4)
+    assert np.all(np.isfinite(influence))
+    np.testing.assert_allclose(influence[rows], expected, rtol=1e-6, atol=1e-5)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw"])
+@pytest.mark.parametrize("data_fixture", ["hub_overlap_panel", "hub_overlap_cross_section"])
+def test_compute_att_gt_wide_design_trims_comparison_units_at_the_documented_propensity_level(
+    request, newton_logit, reference_cell_att, data_fixture, est_method
+):
+    rows = request.getfixturevalue(data_fixture)(3)
+    panel = data_fixture == "hub_overlap_panel"
+    covariates = [f"cov{j}" for j in range(1, 21)]
+    observations = rows.filter(pl.col("time") == 1) if panel else rows
+    treated = (observations["group"] == 2).to_numpy()
+    design = np.column_stack([np.ones(observations.height), observations.select(covariates).to_numpy()])
+    scores = newton_logit(treated.astype(float), design, observations["w"].to_numpy())
+    data = preprocess_did(
+        rows,
+        yname="y",
+        tname="time",
+        idname="id" if panel else None,
+        gname="group",
+        xformla="~" + "+".join(covariates),
+        weightsname="w",
+        est_method=est_method,
+        panel=panel,
+    )
+    expected = reference_cell_att(rows, covariates, (2, 2, 1, [0]), est_method, panel=panel)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert np.sum(scores[~treated] >= 0.995) == 1
+    assert scores.max() < 0.999
+    assert [str(warning.message) for warning in caught] == []
+    np.testing.assert_allclose([cell.att for cell in result.attgt_list], [expected], rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw"])
+def test_compute_att_gt_wide_design_skips_a_cell_whose_propensity_score_reaches_the_overlap_level(
+    hub_overlap_panel, newton_logit, est_method
+):
+    rows = hub_overlap_panel(1)
+    covariates = [f"cov{j}" for j in range(1, 21)]
+    first = rows.filter(pl.col("time") == 1)
+    design = np.column_stack([np.ones(first.height), first.select(covariates).to_numpy()])
+    scores = newton_logit((first["group"] == 2).to_numpy().astype(float), design, first["w"].to_numpy())
+    data = preprocess_did(
+        rows,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~" + "+".join(covariates),
+        weightsname="w",
+        est_method=est_method,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert scores.max() >= 0.999
+    assert result.attgt_list == []
+    assert [str(warning.message) for warning in caught] == ["Overlap condition violated for 2 in time period 2"]
+
+
+@pytest.mark.filterwarnings("ignore:Be aware that there are some small groups:UserWarning")
+def test_compute_att_gt_wide_panel_skips_cells_whose_comparison_group_has_fewer_units_than_coefficients(
+    wide_panel, reference_cell_att
+):
+    never_treated = wide_panel.filter((pl.col("group") == 0) & (pl.col("time") == 1))["id"].head(20)
+    rows = wide_panel.filter((pl.col("group") > 0) | pl.col("id").is_in(never_treated.implode()))
+    covariates = [f"cov{j}" for j in range(1, 21)]
+    data = preprocess_did(
+        rows,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~" + "+".join(covariates),
+        weightsname="w",
+        est_method="reg",
+        control_group="notyettreated",
+    )
+    expected = reference_cell_att(rows, covariates, (2, 2, 1, [0, 3]), "reg")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2)]
+    np.testing.assert_allclose(result.attgt_list[0].att, expected, rtol=1e-9, atol=0)
+    assert [str(warning.message) for warning in caught] == [
+        f"Not enough control units for group {group} in time period {period} to run specified regression"
+        for group, period in ((2, 3), (3, 2), (3, 3))
+    ]
+
+
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_compute_att_gt_wide_panel_estimates_cells_whose_comparison_group_has_a_few_more_units_than_coefficients(
+    wide_panel, reference_cell_att, est_method
+):
+    never_treated = wide_panel.filter((pl.col("group") == 0) & (pl.col("time") == 1))["id"].head(25)
+    rows = wide_panel.filter((pl.col("group") > 0) | pl.col("id").is_in(never_treated.implode()))
+    covariates = [f"cov{j}" for j in range(1, 21)]
+    data = preprocess_did(
+        rows,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~" + "+".join(covariates),
+        weightsname="w",
+        est_method=est_method,
+    )
+    cells = [(2, 2, 1, [0]), (2, 3, 1, [0]), (3, 2, 1, [0]), (3, 3, 2, [0])]
+    expected = [reference_cell_att(rows, covariates, cell, est_method) for cell in cells]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert [str(warning.message) for warning in caught] == []
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    np.testing.assert_allclose([cell.att for cell in result.attgt_list], expected, rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize("data_fixture", ["wide_panel", "wide_cross_section"])
+@pytest.mark.parametrize("est_method", ["dr", "reg"])
+@pytest.mark.parametrize(
+    "redundant",
+    [pl.col("cov5"), pl.when(pl.col("group") == 0).then(0.0).otherwise(pl.col("cov5"))],
+    ids=["copy_of_cov5", "zero_for_comparison_units"],
+)
+def test_compute_att_gt_wide_design_skips_cells_whose_comparison_covariates_are_singular(
+    request, redundant, est_method, data_fixture
+):
+    rows = request.getfixturevalue(data_fixture).with_columns(redundant.alias("redundant"))
+    panel = data_fixture == "wide_panel"
+    data = preprocess_did(
+        rows,
+        yname="y",
+        tname="time",
+        idname="id" if panel else None,
+        gname="group",
+        xformla="~" + "+".join([*(f"cov{j}" for j in range(1, 21)), "redundant"]),
+        weightsname="w",
+        est_method=est_method,
+        panel=panel,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert result.attgt_list == []
+    assert [str(warning.message) for warning in caught] == [
+        f"Not enough control units for group {group} in time period {period} to run specified regression"
+        for group, period in ((2, 2), (2, 3), (3, 2), (3, 3))
+    ]
+
+
+@pytest.mark.parametrize("data_fixture", ["wide_panel", "wide_cross_section"])
+def test_compute_att_gt_ipw_wide_design_estimates_cells_with_a_covariate_constant_among_comparison_units(
+    request, reference_cell_att, data_fixture
+):
+    rows = request.getfixturevalue(data_fixture).with_columns(
+        pl.when(pl.col("group") == 0).then(0.0).otherwise(pl.col("cov5")).alias("treated_cov5")
+    )
+    panel = data_fixture == "wide_panel"
+    covariates = [*(f"cov{j}" for j in range(1, 21)), "treated_cov5"]
+    data = preprocess_did(
+        rows,
+        yname="y",
+        tname="time",
+        idname="id" if panel else None,
+        gname="group",
+        xformla="~" + "+".join(covariates),
+        weightsname="w",
+        est_method="ipw",
+        panel=panel,
+    )
+    cells = [(2, 2, 1, [0]), (2, 3, 1, [0]), (3, 2, 1, [0]), (3, 3, 2, [0])]
+    expected = [reference_cell_att(rows, covariates, cell, "ipw", panel=panel) for cell in cells]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert [str(warning.message) for warning in caught] == []
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    np.testing.assert_allclose([cell.att for cell in result.attgt_list], expected, rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize("data_fixture", ["wide_panel", "wide_cross_section"])
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_compute_att_gt_wide_design_with_a_nearly_repeated_covariate_matches_the_fit_with_their_difference(
+    request, reference_cell_att, est_method, data_fixture
+):
+    rows = request.getfixturevalue(data_fixture).with_columns(
+        (pl.col("cov5") + 1e-6 * pl.col("noise")).alias("near_cov5")
+    )
+    panel = data_fixture == "wide_panel"
+    covariates = [f"cov{j}" for j in range(1, 21)]
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id" if panel else None,
+        "gname": "group",
+        "weightsname": "w",
+        "est_method": est_method,
+        "panel": panel,
+    }
+    data = preprocess_did(rows, xformla="~" + "+".join([*covariates, "near_cov5"]), **spec)
+    separated = compute_att_gt(preprocess_did(rows, xformla="~" + "+".join([*covariates, "noise"]), **spec))
+    expected_se = np.sqrt(np.mean(separated.influence_functions.toarray() ** 2, axis=0))
+    cells = [(2, 2, 1, [0]), (2, 3, 1, [0]), (3, 2, 1, [0]), (3, 3, 2, [0])]
+    expected = [reference_cell_att(rows, [*covariates, "noise"], cell, est_method, panel=panel) for cell in cells]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+    se = np.sqrt(np.mean(result.influence_functions.toarray() ** 2, axis=0))
+
+    assert [str(warning.message) for warning in caught] == []
+    assert [(cell.group, cell.year) for cell in result.attgt_list] == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    np.testing.assert_allclose([cell.att for cell in result.attgt_list], expected, rtol=1e-8, atol=0)
+    assert np.all(np.isfinite(se))
+    assert np.all(np.isfinite(expected_se))
+    np.testing.assert_allclose(se, expected_se, rtol=1e-4, atol=0)

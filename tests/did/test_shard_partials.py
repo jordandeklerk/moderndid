@@ -73,6 +73,30 @@ def test_combine_partials_stacks_qr_factors_into_the_least_squares_solution(size
     )
 
 
+@pytest.mark.parametrize("n_blocks", [5, 12], ids=["blocks_taller_than_the_design", "blocks_narrower_than_the_design"])
+def test_combine_partials_solves_an_ill_conditioned_forty_column_design_to_the_precision_of_its_qr_factor(n_blocks):
+    rng = np.random.default_rng(11)
+    left = np.linalg.qr(rng.normal(size=(300, 40)))[0]
+    right = np.linalg.qr(rng.normal(size=(40, 40)))[0]
+    design = left @ np.diag(np.logspace(0, -7, 40)) @ right
+    coefficients = rng.normal(size=(40, 2))
+    partials = []
+    for block in np.array_split(np.arange(300), n_blocks):
+        q, r = np.linalg.qr(design[block])
+        partials.append(
+            Partial(sums={}, maxima={}, factors={"design": (r, q.T @ design[block] @ coefficients)}, keyed={})
+        )
+
+    combined = empty_partial()
+    for partial in partials:
+        combined = combine_partials(combined, partial)
+    r, rotated = combined.factors["design"]
+
+    assert np.linalg.cond(design) > 1e6
+    assert r.shape == (40, 40)
+    np.testing.assert_allclose(np.linalg.solve(r, rotated), coefficients, rtol=0, atol=1e-9)
+
+
 def test_combine_partials_of_two_empty_factors_holds_no_rows():
     empty = Partial(sums={}, maxima={}, factors={"design": (np.zeros((0, 3)), np.zeros((0, 2)))}, keyed={})
 

@@ -1,9 +1,13 @@
 """Tests for the locally efficient doubly robust DiD estimator for repeated cross-section data."""
 
+import functools
 import re
+import warnings
 
 import numpy as np
 import pytest
+import statsmodels.api as sm
+from scipy import stats
 
 from moderndid import drdid_rc
 from moderndid.drdid.estimators.drdid_rc import _compute_weights
@@ -11,143 +15,150 @@ from moderndid.drdid.estimators.drdid_rc import _compute_weights
 pytestmark = pytest.mark.slow
 
 
-def dgp_rc_for_test(n=5000, seed=42):
-    rng = np.random.default_rng(seed)
-    x1 = rng.normal(0, 1, n)
-    x2 = rng.normal(0, 1, n)
-    x3 = rng.normal(0, 1, n)
-    x4 = rng.normal(0, 1, n)
-    post = rng.binomial(1, 0.5, n)
-    d_propensity = 1 / (1 + np.exp(-(x1 + x3)))
-    d = (rng.uniform(size=n) < d_propensity).astype(int)
-    y = 1 + 2 * x1 + 3 * x2 + 4 * x3 + 5 * x4 + post + d * post + rng.normal(0, 1, n)
-    covariates = np.column_stack((np.ones(n), x1, x2, x3, x4))
-    return y, post, d, covariates
-
-
-def get_test_data():
-    y, post, d, covariates = dgp_rc_for_test()
-    i_weights = np.ones(len(y))
-    return {
-        "y": y,
-        "post": post,
-        "d": d,
-        "covariates": covariates,
-        "i_weights": i_weights,
-        "n": len(y),
-    }
-
-
-def test_analytical_inference():
-    setup = get_test_data()
-    result = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        boot=False,
+def test_drdid_rc_without_covariates_is_the_difference_in_differences_of_cell_means(two_period_specs):
+    spec = {**two_period_specs["repeated_cross_sections"], "covariates": None}
+    y, post, d, weights = spec["y"], spec["post"], spec["d"], spec["i_weights"]
+    cells = [(d == 1) & (post == 1), (d == 1) & (post == 0), (d == 0) & (post == 1), (d == 0) & (post == 0)]
+    means = [np.average(y, weights=weights * cell) for cell in cells]
+    se = np.sqrt(
+        sum(
+            np.sum((weights * cell * (y - mean)) ** 2) / np.sum(weights * cell) ** 2
+            for cell, mean in zip(cells, means, strict=True)
+        )
     )
-    assert result.att is not None
-    assert result.se is not None
-    assert np.isclose(result.att, 1.0, atol=0.2)
+    att = means[0] - means[1] - means[2] + means[3]
+
+    result = drdid_rc(**spec)
+
+    assert isinstance(result.att, float)
+    np.testing.assert_allclose(result.att, att, rtol=1e-12)
+    np.testing.assert_allclose(result.se, se, rtol=1e-12)
+    np.testing.assert_allclose([result.lci, result.uci], att + np.array([-1.96, 1.96]) * se, rtol=1e-12)
     assert result.boots is None
+    assert result.att_inf_func is None
 
 
-def test_weighted_bootstrap():
-    setup = get_test_data()
-    result = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        boot=True,
-        boot_type="weighted",
-        biters=20,
-    )
-    assert result.att is not None
-    assert result.se is not None
-    assert np.isclose(result.att, 1.0, atol=0.2)
-    assert result.boots is not None
-    assert len(result.boots) == result.args["biters"]
+def test_drdid_rc_matches_the_locally_efficient_formula_with_covariates(
+    two_period_specs, maximum_likelihood_scores, rc_dr_att
+):
+    spec = two_period_specs["repeated_cross_sections"]
+    d, x, weights = spec["d"], spec["covariates"], spec["i_weights"]
+    ps = maximum_likelihood_scores(d, x, weights)
+    expected = rc_dr_att(spec["y"], spec["post"], d, x, weights, ps, improved=False, locally_efficient=True)
 
+    result = drdid_rc(**spec)
 
-def test_multiplier_bootstrap():
-    setup = get_test_data()
-    result = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        boot=True,
-        boot_type="multiplier",
-        biters=20,
-    )
-    assert result.att is not None
-    assert result.se is not None
-    assert np.isclose(result.att, 1.0, atol=0.2)
-    assert result.boots is not None
-    assert len(result.boots) == result.args["biters"]
-
-
-def test_influence_function():
-    setup = get_test_data()
-    result = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        influence_func=True,
-    )
-    assert result.att_inf_func is not None
-    assert len(result.att_inf_func) == setup["n"]
-    assert np.abs(np.mean(result.att_inf_func)) < 0.1
+    assert isinstance(result.att, float)
+    np.testing.assert_allclose(result.att, expected, rtol=1e-12)
+    assert result.boots is None
+    assert result.att_inf_func is None
 
 
 def test_drdid_rc_influence_function_matches_weight_derivative(rc_misspecified_score_arrays, weight_derivative):
     arrays = rc_misspecified_score_arrays
     cell = 2 * arrays["d"] + arrays["post"]
+    weights = np.random.default_rng(3).uniform(0.5, 1.5, cell.size)
     rows = np.concatenate([np.flatnonzero(cell == value)[:3] for value in np.unique(cell)])
 
-    result = drdid_rc(**arrays, influence_func=True)
-    expected = weight_derivative(lambda weights: drdid_rc(**arrays, i_weights=weights).att, cell.size, rows)
+    result = drdid_rc(**arrays, i_weights=weights, influence_func=True)
+    expected = weight_derivative(lambda scale: drdid_rc(**arrays, i_weights=weights * scale).att, cell.size, rows)
 
+    assert result.att_inf_func.shape == (cell.size,)
     np.testing.assert_allclose(result.att_inf_func[rows], expected, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(result.se, np.std(result.att_inf_func) / np.sqrt(cell.size), rtol=1e-12)
 
 
-def test_no_covariates():
-    setup = get_test_data()
+def test_drdid_rc_trimming_drops_comparison_rows_above_the_trim_level(
+    trimmed_two_period_data, maximum_likelihood_scores, rc_dr_att
+):
+    data = trimmed_two_period_data
+    weights = np.random.default_rng(3).uniform(0.5, 1.5, data["d"].size)
+    ps = maximum_likelihood_scores(data["d"], data["x"], weights)
+    reference = {"y": data["y"], "post": data["post"], "d": data["d"], "x": data["x"], "weights": weights, "ps": ps}
+    expected = rc_dr_att(**reference, improved=False, locally_efficient=True, trim_level=0.9)
+
+    result = drdid_rc(data["y"], data["post"], data["d"], data["x"], i_weights=weights, trim_level=0.9)
+
+    assert np.sum((data["d"] == 0) & (ps >= 0.9)) > 0
+    assert abs(expected - rc_dr_att(**reference, improved=False, locally_efficient=True)) > 0.1
+    np.testing.assert_allclose(result.att, expected, rtol=1e-12)
+
+
+def test_drdid_rc_weighted_bootstrap_refits_the_estimate_at_unit_multipliers(
+    unit_bootstrap_weights, trimmed_two_period_data, maximum_likelihood_scores, rc_dr_att
+):
+    data = trimmed_two_period_data
+    weights = np.random.default_rng(3).uniform(0.5, 1.5, data["d"].size)
+    ps = maximum_likelihood_scores(data["d"], data["x"], weights)
+    reference = {"y": data["y"], "post": data["post"], "d": data["d"], "x": data["x"], "weights": weights, "ps": ps}
+    expected = rc_dr_att(**reference, improved=False, locally_efficient=True, trim_level=0.9)
+
     result = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=None,
-        i_weights=setup["i_weights"],
-        boot=False,
+        data["y"], data["post"], data["d"], data["x"], i_weights=weights, boot=True, biters=3, trim_level=0.9
     )
-    assert result.att is not None
-    assert result.se is not None
-    assert not np.isnan(result.att)
-    assert not np.isnan(result.se)
+
+    np.testing.assert_allclose(result.boots, np.full(3, expected), rtol=1e-10)
+    assert result.se == 0
 
 
-def test_with_weights():
-    n_units = 200
-    rng = np.random.default_rng(42)
+def test_drdid_rc_weighted_bootstrap_scales_the_interval_by_its_draws(two_period_specs):
+    spec = two_period_specs["repeated_cross_sections"]
 
-    post = rng.binomial(1, 0.5, n_units)
-    d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
-    y = rng.standard_normal(n_units) + 2 * d * post
-    i_weights = rng.uniform(0.5, 1.5, n_units)
+    result = drdid_rc(**spec, boot=True, biters=25)
+    deviations = result.boots - result.att
+    quartiles = np.percentile(deviations, [25, 75])
+    se = (quartiles[1] - quartiles[0]) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+    critical = np.quantile(np.abs(deviations) / se, 0.95)
 
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, i_weights=i_weights)
+    assert result.boots.shape == (25,)
+    assert np.all(np.isfinite(result.boots))
+    np.testing.assert_allclose(result.se, se, rtol=1e-12)
+    np.testing.assert_allclose([result.lci, result.uci], result.att + np.array([-1, 1]) * critical * se, rtol=1e-12)
 
-    assert isinstance(result.att, float)
-    assert result.se > 0
+
+def test_drdid_rc_multiplier_bootstrap_scales_the_interval_by_its_draws(two_period_specs):
+    spec = two_period_specs["repeated_cross_sections"]
+    analytic = drdid_rc(**spec)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = drdid_rc(**spec, boot=True, boot_type="multiplier", biters=1999)
+    quartiles = np.percentile(result.boots, [25, 75])
+    se = (quartiles[1] - quartiles[0]) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+    critical = np.quantile(np.abs(result.boots) / se, 0.95)
+
+    assert result.boots.shape == (1999,)
+    assert np.all(np.isfinite(result.boots))
+    np.testing.assert_allclose(result.se, se, rtol=1e-12)
+    np.testing.assert_allclose([result.lci, result.uci], result.att + np.array([-1, 1]) * critical * se, rtol=1e-12)
+    np.testing.assert_allclose(result.se, analytic.se, rtol=0.2)
+    assert result.args["boot_type"] == "multiplier"
+    assert result.args["biters"] == 1999
+    assert [str(warning.message) for warning in caught] == []
+
+
+def test_drdid_rc_multiplier_bootstrap_without_spread_reports_a_zero_standard_error(two_period_specs):
+    spec = two_period_specs["repeated_cross_sections"]
+
+    result = drdid_rc(**{**spec, "y": np.zeros_like(spec["y"])}, boot=True, boot_type="multiplier", biters=5)
+
+    np.testing.assert_array_equal(result.boots, np.zeros(5))
+    assert result.att == 0
+    assert result.se == 0
+
+
+def test_drdid_rc_warns_when_the_propensity_score_fit_stops_before_converging(monkeypatch, two_period_specs):
+    monkeypatch.setattr(sm.GLM, "fit", functools.partialmethod(sm.GLM.fit, maxiter=1))
+
+    with pytest.warns(UserWarning, match=f"^{re.escape('Propensity score estimation did not converge.')}$"):
+        drdid_rc(**two_period_specs["repeated_cross_sections"])
+
+
+def test_drdid_rc_recovers_the_planted_effect(rc_planted_effect_arrays):
+    result = drdid_rc(**rc_planted_effect_arrays)
+
+    np.testing.assert_allclose(result.att, 1, atol=0.2)
+    assert result.args["estMethod"] == "trad2"
 
 
 def test_no_treated():
@@ -159,7 +170,7 @@ def test_no_treated():
     x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
     y = rng.standard_normal(n_units)
 
-    with pytest.raises(ValueError, match="No effectively treated units"):
+    with pytest.raises(ValueError, match=f"^{re.escape('No effectively treated units.')}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -172,7 +183,7 @@ def test_all_treated():
     x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
     y = rng.standard_normal(n_units) + 2 * post
 
-    with pytest.raises(ValueError, match="No control units"):
+    with pytest.raises(ValueError, match=f"^{re.escape('No control units.')}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -185,7 +196,7 @@ def test_no_post_treatment():
     x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
     y = rng.standard_normal(n_units)
 
-    with pytest.raises(ValueError, match="No post-treatment observations"):
+    with pytest.raises(ValueError, match=f"^{re.escape('No post-treatment observations.')}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
 
 
@@ -198,23 +209,8 @@ def test_no_pre_treatment():
     x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
     y = rng.standard_normal(n_units) + 2 * d
 
-    with pytest.raises(ValueError, match="No pre-treatment observations"):
+    with pytest.raises(ValueError, match=f"^{re.escape('No pre-treatment observations.')}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
-
-
-def test_trimming():
-    n_units = 500
-    rng = np.random.default_rng(42)
-
-    post = rng.binomial(1, 0.5, n_units)
-    d = rng.binomial(1, 0.1, n_units)
-    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
-    y = rng.standard_normal(n_units) + 2 * d * post
-
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, trim_level=0.9)
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
 
 
 def test_singular_covariate_matrix():
@@ -245,7 +241,7 @@ def test_negative_weights():
     y = rng.standard_normal(n_units) + 2 * d * post
     i_weights = rng.standard_normal(n_units)
 
-    with pytest.raises(ValueError, match="non-negative"):
+    with pytest.raises(ValueError, match=f"^{re.escape('i_weights must be non-negative.')}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x, i_weights=i_weights)
 
 
@@ -267,67 +263,6 @@ def test_perfect_separation():
 
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
-
-
-def test_bootstrap_with_zero_se():
-    n_units = 50
-    rng = np.random.default_rng(42)
-
-    post = rng.binomial(1, 0.5, n_units)
-    d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units)])
-    y = np.ones(n_units) * (1 + d * post)
-
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", biters=10)
-
-    assert result.att is not None
-    if result.se == 0:
-        assert result.lci == result.att
-        assert result.uci == result.att
-
-
-@pytest.mark.parametrize("covariates", [None, "with_covariates"])
-def test_basic_functionality(covariates):
-    n_units = 200
-    rng = np.random.default_rng(42)
-
-    post = rng.binomial(1, 0.5, n_units)
-    d = rng.binomial(1, 0.5, n_units)
-
-    if covariates == "with_covariates":
-        x = rng.standard_normal((n_units, 3))
-        x = np.column_stack([np.ones(n_units), x])
-    else:
-        x = None
-
-    y = rng.standard_normal(n_units) + 2 * d * post
-
-    result = drdid_rc(y=y, post=post, d=d, covariates=x)
-
-    assert isinstance(result.att, float)
-    assert isinstance(result.se, float)
-    assert result.se > 0
-    assert result.lci < result.uci
-    assert result.boots is None
-    assert result.att_inf_func is None
-
-
-@pytest.mark.parametrize("boot_type", ["weighted", "multiplier"])
-def test_bootstrap_types(boot_type):
-    n_units = 100
-    rng = np.random.default_rng(42)
-
-    post = rng.binomial(1, 0.5, n_units)
-    d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
-    y = rng.standard_normal(n_units) + 2 * d * post
-
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, biters=20)
-
-    assert result.boots is not None
-    assert len(result.boots) == 20
-    assert result.se > 0
-    assert result.lci < result.uci
 
 
 @pytest.mark.filterwarnings("error::RuntimeWarning")

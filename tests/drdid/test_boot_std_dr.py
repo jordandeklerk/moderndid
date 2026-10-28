@@ -9,26 +9,26 @@ from moderndid.cupy.backend import use_backend
 pytestmark = pytest.mark.slow
 
 
-def test_mboot_did_basic():
-    n = 100
-    rng = np.random.default_rng(42)
-    linrep = rng.normal(0, 1, n)
+def test_mboot_did_draws_center_on_zero_for_an_influence_function_with_a_nonzero_mean():
+    linrep = np.random.default_rng(42).normal(3, 1, 100)
 
-    boots = mboot_did(linrep, biters=20, random_state=42)
+    boots = mboot_did(linrep, biters=4000, random_state=42)
 
-    assert boots.shape == (20,)
+    assert boots.shape == (4000,)
     assert np.all(np.isfinite(boots))
-    assert np.abs(np.mean(boots)) < 0.1
+    np.testing.assert_allclose(np.mean(boots), 0.0, atol=0.02)
 
 
 def test_mboot_did_deterministic():
-    n = 50
-    linrep = np.ones(n)
+    linrep = np.random.default_rng(0).normal(0, 1, 50)
 
     boots1 = mboot_did(linrep, biters=20, random_state=42)
     boots2 = mboot_did(linrep, biters=20, random_state=42)
+    boots3 = mboot_did(linrep, biters=20, random_state=43)
 
-    np.testing.assert_allclose(boots1, boots2, rtol=1e-10)
+    assert np.all(np.isfinite(boots1))
+    np.testing.assert_array_equal(boots1, boots2)
+    assert np.all(boots1 != boots3)
 
 
 def test_mboot_did_zero_linrep():
@@ -40,30 +40,14 @@ def test_mboot_did_zero_linrep():
     assert np.all(boots == 0)
 
 
-def test_mboot_did_mammen_weights():
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    pkappa = 0.5 * (1 + sqrt5) / sqrt5
-
-    expected_mean = pkappa * k1 + (1 - pkappa) * k2
-    expected_var = pkappa * k1**2 + (1 - pkappa) * k2**2 - expected_mean**2
-
-    assert np.abs(expected_mean) < 1e-10
-    assert np.abs(expected_var - 1.0) < 1e-10
-
-
 def test_mboot_did_variance_scaling():
     n = 1000
-    rng = np.random.default_rng(42)
-    linrep = rng.normal(0, 2, n)
+    linrep = np.random.default_rng(42).normal(0, 2, n)
+    linrep -= linrep.mean()
 
-    boots = mboot_did(linrep, biters=200, random_state=42)
+    boots = mboot_did(linrep, biters=4000, random_state=42)
 
-    expected_var = np.var(linrep) / n
-    bootstrap_var = np.var(boots)
-
-    assert np.abs(bootstrap_var - expected_var) / expected_var < 0.1
+    np.testing.assert_allclose(np.var(boots), np.sum(linrep**2) / n**2, rtol=0.1)
 
 
 @pytest.mark.parametrize("biters", [20, 50, 100])
@@ -87,24 +71,13 @@ def test_mboot_did_rejects_the_removed_n_bootstrap_argument():
 
 def test_mboot_did_single_observation():
     linrep = np.array([5.0])
-
-    boots = mboot_did(linrep, biters=20, random_state=42)
-
     sqrt5 = np.sqrt(5)
     k1 = 0.5 * (1 - sqrt5)
     k2 = 0.5 * (1 + sqrt5)
 
+    boots = mboot_did(linrep, biters=20, random_state=42)
+
     assert np.all(np.isin(boots, [5.0 * k1, 5.0 * k2]))
-
-
-def test_mboot_did_large_influence_function():
-    n = 100
-    linrep = np.full(n, 1000.0)
-
-    boots = mboot_did(linrep, biters=10, random_state=42)
-
-    assert np.all(np.isfinite(boots))
-    assert np.abs(np.mean(boots)) < 100.0
 
 
 def test_mboot_did_draws_mammen_weights():
