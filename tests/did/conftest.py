@@ -605,3 +605,77 @@ def rcs_df():
             "g": [0, 3, 3, 0, 3, 3],
         }
     )
+
+
+@pytest.fixture
+def mean_change_cells():
+    """Function that returns each cell's weighted difference in mean outcome changes and its unit influence function."""
+
+    def estimate(data, cells, weightsname=None, yname="lemp", tname="year", idname="countyreal", gname="first.treat"):
+        units = data.unique(idname).sort(idname)
+        cohorts = units[gname].to_numpy()
+        att = np.zeros(len(cells))
+        influence = np.zeros((units.height, len(cells)))
+        for k, (cohort, later, earlier, comparison) in enumerate(cells):
+            rows = {period: data.filter(pl.col(tname) == period).sort(idname) for period in (later, earlier)}
+            change = rows[later][yname].to_numpy() - rows[earlier][yname].to_numpy()
+            weight = rows[min(later, earlier)][weightsname].to_numpy() if weightsname else np.ones(units.height)
+            for side, sign in ((cohorts == cohort, 1.0), (np.isin(cohorts, comparison), -1.0)):
+                mean = np.sum(weight[side] * change[side]) / np.sum(weight[side])
+                att[k] += sign * mean
+                influence[side, k] = sign * units.height * weight[side] * (change[side] - mean) / np.sum(weight[side])
+        return att, influence
+
+    return estimate
+
+
+@pytest.fixture
+def period_mean_cells():
+    """Function that returns each cell's difference in four period means and its influence function by row or unit."""
+
+    def estimate(data, cells, idname=None, yname="lemp", tname="year", gname="first.treat"):
+        rows = data.sort(idname) if idname else data
+        n_obs = rows[idname].n_unique() if idname else rows.height
+        y, periods, cohorts = (rows[column].to_numpy() for column in (yname, tname, gname))
+        att = np.zeros(len(cells))
+        influence = np.zeros((rows.height, len(cells)))
+        for k, (cohort, later, earlier, comparison) in enumerate(cells):
+            treated = cohorts == cohort
+            compared = np.isin(cohorts, comparison)
+            for side, sign in (
+                (treated & (periods == later), 1.0),
+                (treated & (periods == earlier), -1.0),
+                (compared & (periods == later), -1.0),
+                (compared & (periods == earlier), 1.0),
+            ):
+                mean = y[side].mean()
+                att[k] += sign * mean
+                influence[side, k] = sign * n_obs * (y[side] - mean) / side.sum()
+        if idname is None:
+            return att, influence
+        unit = np.unique(rows[idname].to_numpy(), return_inverse=True)[1]
+        return att, np.stack([np.bincount(unit, weights=column) for column in influence.T], axis=1)
+
+    return estimate
+
+
+@pytest.fixture
+def collinear_pretrend_panel():
+    """Panel whose treated cohorts follow exact trends so that two pre-treatment cells share an influence function."""
+    rng = np.random.default_rng(3)
+    cohorts = np.r_[np.zeros(30), np.full(20, 3), np.full(20, 4)]
+    level = rng.normal(size=cohorts.size)
+    noise = rng.normal(size=(4, cohorts.size))
+    return pl.concat(
+        [
+            pl.DataFrame(
+                {
+                    "id": np.arange(cohorts.size),
+                    "t": t,
+                    "g": cohorts,
+                    "y": level + np.where(cohorts == 0, noise[t - 1], 0.5 * t) + ((cohorts > 0) & (t >= cohorts)),
+                }
+            )
+            for t in (1, 2, 3, 4)
+        ]
+    )
