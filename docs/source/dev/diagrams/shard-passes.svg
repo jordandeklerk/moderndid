@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="dg" viewBox="0 0 880 556" role="img" aria-labelledby="dg-passes-title dg-passes-desc">
+  <title id="dg-passes-title">Passes over the shards</title>
+  <desc id="dg-passes-desc">The driver sends one kernel per pass to every shard. Each shard returns one row of sums. The logit passes repeat until the deviance settles.</desc>
+  <defs>
+    <pattern id="dg-passes-grid" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmin" d="M 16 0 V 64 M 32 0 V 64 M 48 0 V 64 M 0 16 H 64 M 0 32 H 64 M 0 48 H 64"/>
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <pattern id="dg-passes-gridq" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <marker id="dg-passes-head" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <marker id="dg-passes-head-loop" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head-loop" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <symbol id="dg-passes-proc-24" viewBox="-4 -4 24 24"><path d="M3 2.5h10a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5ZM4.5 6.5l2 1.75-2 1.75M8 10.5h3.5"/></symbol>
+    <symbol id="dg-passes-task-24" viewBox="-7 -7 42 42"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+    <symbol id="dg-passes-sigma-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M21.5 5H8.5l7 9-7 9h13"/></symbol>
+    <symbol id="dg-passes-task-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+  </defs>
+  <rect class="dg-paper" x="0" y="0" width="880" height="556"/>
+  <rect fill="url(#dg-passes-grid)" x="0" y="0" width="880" height="556"/>
+  <path class="dg-paper" d="M 20 24 H 636 A 4 4 0 0 1 640 28 V 536 A 4 4 0 0 1 636 540 H 20 A 4 4 0 0 1 16 536 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path fill="url(#dg-passes-gridq)" d="M 20 24 H 636 A 4 4 0 0 1 640 28 V 536 A 4 4 0 0 1 636 540 H 20 A 4 4 0 0 1 16 536 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path class="dg-driver dg-zone" d="M 20 24 H 636 A 4 4 0 0 1 640 28 V 536 A 4 4 0 0 1 636 540 H 20 A 4 4 0 0 1 16 536 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path class="dg-driver dg-zone-line" d="M 40 24 H 636 A 4 4 0 0 1 640 28 V 536 A 4 4 0 0 1 636 540 H 20 A 4 4 0 0 1 16 536 V 48"/>
+  <path class="dg-driver dg-tile" d="M 20 24 H 40 V 48 H 16 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <use class="dg-glyph dg-glyph-tab" href="#dg-passes-proc-24" x="16" y="24" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="40">Driver process</text>
+  <path class="dg-paper" d="M 660 24 H 860 A 4 4 0 0 1 864 28 V 536 A 4 4 0 0 1 860 540 H 660 A 4 4 0 0 1 656 536 V 28 A 4 4 0 0 1 660 24 Z"/>
+  <path fill="url(#dg-passes-gridq)" d="M 660 24 H 860 A 4 4 0 0 1 864 28 V 536 A 4 4 0 0 1 860 540 H 660 A 4 4 0 0 1 656 536 V 28 A 4 4 0 0 1 660 24 Z"/>
+  <path class="dg-compute dg-zone" d="M 660 24 H 860 A 4 4 0 0 1 864 28 V 536 A 4 4 0 0 1 860 540 H 660 A 4 4 0 0 1 656 536 V 28 A 4 4 0 0 1 660 24 Z"/>
+  <path class="dg-compute dg-zone-dash" d="M 680 24 H 860 A 4 4 0 0 1 864 28 V 536 A 4 4 0 0 1 860 540 H 660 A 4 4 0 0 1 656 536 V 48"/>
+  <path class="dg-compute dg-tile" d="M 660 24 H 680 V 48 H 656 V 28 A 4 4 0 0 1 660 24 Z"/>
+  <use class="dg-glyph dg-glyph-tab28" href="#dg-passes-task-24" x="656" y="24" width="24" height="24"/>
+  <text class="dg-zone-label" x="688" y="40">Shards</text>
+  <path class="dg-wire" d="M 404 124 H 672" marker-end="url(#dg-passes-head)"/>
+  <path class="dg-wire" d="M 672 176 H 404" marker-end="url(#dg-passes-head)"/>
+  <path class="dg-wire" d="M 404 208 H 672" marker-end="url(#dg-passes-head)"/>
+  <path class="dg-wire" d="M 672 260 H 404" marker-end="url(#dg-passes-head)"/>
+  <path class="dg-wire" d="M 404 340 H 672" marker-end="url(#dg-passes-head)"/>
+  <path class="dg-wire" d="M 672 392 H 404" marker-end="url(#dg-passes-head)"/>
+  <path class="dg-wire" d="M 404 424 H 672" marker-end="url(#dg-passes-head)"/>
+  <path class="dg-wire" d="M 672 476 H 404" marker-end="url(#dg-passes-head)"/>
+  <path id="dg-passes-next-iteration" class="dg-loop" d="M 404 308 H 752 A 8 8 0 0 0 760 300 V 240 A 8 8 0 0 0 752 232 H 736" marker-end="url(#dg-passes-head-loop)"/>
+  <text class="dg-code" x="522" y="118" text-anchor="middle">summary_kernel</text>
+  <text class="dg-note" x="522" y="170" text-anchor="middle">counts, weight sums, (<tspan class="dg-math">R</tspan>, <tspan class="dg-math">Q</tspan>′<tspan class="dg-math">B</tspan>) of each fit</text>
+  <text class="dg-code" x="522" y="202" text-anchor="middle">irls_kernel</text>
+  <text class="dg-note" x="522" y="254" text-anchor="middle">(<tspan class="dg-math">R</tspan>, <tspan class="dg-math">Q</tspan>′<tspan class="dg-math">z</tspan>) and the deviance</text>
+  <text class="dg-code" x="522" y="334" text-anchor="middle">cell_sums_kernel</text>
+  <text class="dg-note" x="522" y="386" text-anchor="middle">totals and covariate products</text>
+  <text class="dg-code" x="522" y="418" text-anchor="middle">moments_kernel</text>
+  <text class="dg-note" x="522" y="470" text-anchor="middle"><tspan class="dg-math">Z</tspan>′<tspan class="dg-math">Z</tspan> and the draws' sums</text>
+  <text class="dg-driver dg-r-label" x="772" y="260">Next iteration</text>
+  <text class="dg-callout" x="522" y="289" text-anchor="middle">Six of the county fit's nine passes</text>
+  <rect class="dg-driver dg-tile" x="40" y="68" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-passes-sigma-32" x="40" y="68" width="32" height="32"/>
+  <text class="dg-name" x="84" y="81">Driver</text>
+  <text class="dg-note" x="84" y="97"><tspan class="dg-code">fit_att_gt_on_shards</tspan></text>
+  <rect class="dg-compute dg-tile" x="40" y="132" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-passes-task-32" x="40" y="132" width="32" height="32"/>
+  <text class="dg-name" x="84" y="145"><tspan class="dg-num">01</tspan> Summary pass</text>
+  <text class="dg-note" x="84" y="161">what every fit needs</text>
+  <text class="dg-note" x="84" y="177">before its first iteration</text>
+  <rect class="dg-compute dg-tile" x="40" y="216" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-passes-task-32" x="40" y="216" width="32" height="32"/>
+  <text class="dg-name" x="84" y="229"><tspan class="dg-num">02</tspan> Logit passes</text>
+  <text class="dg-note" x="84" y="245">one per iteration</text>
+  <text class="dg-note" x="84" y="261">of the logits</text>
+  <rect class="dg-compute dg-tile" x="40" y="348" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-passes-task-32" x="40" y="348" width="32" height="32"/>
+  <text class="dg-name" x="84" y="361"><tspan class="dg-num">03</tspan> Cell sums pass</text>
+  <text class="dg-note" x="84" y="377">every cell's effect</text>
+  <text class="dg-note" x="84" y="393">at the final fits</text>
+  <rect class="dg-compute dg-tile" x="40" y="432" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-passes-task-32" x="40" y="432" width="32" height="32"/>
+  <text class="dg-name" x="84" y="445"><tspan class="dg-num">04</tspan> Moments pass</text>
+  <text class="dg-note" x="84" y="461">for the standard errors</text>
+  <text class="dg-note" x="84" y="477">and the bootstrap</text>
+  <rect class="dg-driver dg-r-box" x="232" y="68" width="172" height="64" rx="4"/>
+  <text class="dg-body" x="244" y="96">plan the cells</text>
+  <text class="dg-body" x="244" y="112">and the shared fits</text>
+  <rect class="dg-driver dg-r-box" x="232" y="168" width="172" height="48" rx="4"/>
+  <text class="dg-body" x="244" y="188">keep independent covariates</text>
+  <text class="dg-body" x="244" y="204">and solve the regressions</text>
+  <rect class="dg-driver dg-r-box" x="232" y="252" width="172" height="96" rx="4"/>
+  <text class="dg-body" x="244" y="296">take a Newton step</text>
+  <text class="dg-body" x="244" y="312">until the deviance settles</text>
+  <rect class="dg-driver dg-r-box" x="232" y="384" width="172" height="48" rx="4"/>
+  <text class="dg-body" x="244" y="404">compute the effects,</text>
+  <text class="dg-body" x="244" y="420">cell checks, and warnings</text>
+  <rect class="dg-driver dg-r-box" x="232" y="468" width="172" height="48" rx="4"/>
+  <text class="dg-body" x="244" y="488">build <tspan class="dg-code">InfluenceMoments</tspan></text>
+  <text class="dg-body" x="244" y="504">and then the result</text>
+  <rect class="dg-frame" x="672" y="116" width="64" height="68" rx="4"/>
+  <rect class="dg-paper" x="684" y="124" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="124" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 124 V 136 M 704 124 V 136 M 714 124 V 136"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="124" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="144" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="144" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 144 V 156 M 704 144 V 156 M 714 144 V 156"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="144" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="164" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="164" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 164 V 176 M 704 164 V 176 M 714 164 V 176"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="164" width="40" height="12"/>
+  <rect class="dg-frame" x="672" y="200" width="64" height="68" rx="4"/>
+  <rect class="dg-paper" x="684" y="208" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="208" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 208 V 220 M 704 208 V 220 M 714 208 V 220"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="208" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="228" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="228" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 228 V 240 M 704 228 V 240 M 714 228 V 240"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="228" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="248" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="248" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 248 V 260 M 704 248 V 260 M 714 248 V 260"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="248" width="40" height="12"/>
+  <rect class="dg-frame" x="672" y="332" width="64" height="68" rx="4"/>
+  <rect class="dg-paper" x="684" y="340" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="340" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 340 V 352 M 704 340 V 352 M 714 340 V 352"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="340" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="360" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="360" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 360 V 372 M 704 360 V 372 M 714 360 V 372"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="360" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="380" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="380" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 380 V 392 M 704 380 V 392 M 714 380 V 392"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="380" width="40" height="12"/>
+  <rect class="dg-frame" x="672" y="416" width="64" height="68" rx="4"/>
+  <rect class="dg-paper" x="684" y="424" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="424" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 424 V 436 M 704 424 V 436 M 714 424 V 436"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="424" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="444" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="444" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 444 V 456 M 704 444 V 456 M 714 444 V 456"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="444" width="40" height="12"/>
+  <rect class="dg-paper" x="684" y="464" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="684" y="464" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 694 464 V 476 M 704 464 V 476 M 714 464 V 476"/>
+  <rect class="dg-compute dg-r-edge" x="684" y="464" width="40" height="12"/>
+  <text class="dg-note" x="672" y="92">each shard returns</text>
+  <text class="dg-note" x="672" y="108">one row of sums</text>
+</svg>

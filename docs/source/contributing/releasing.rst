@@ -4,202 +4,184 @@
 Preparing a release
 ###################
 
-A release turns the reviewed source on ``main`` into the distribution users
-install. Before the GitHub workflow builds and publishes that distribution,
-maintainers need to choose the version, check the artifacts, and explain the
-changes in the release notes. We'll follow those checks before the tag that
-starts publication.
+A release publishes the reviewed code on ``main`` to PyPI under a new version
+number and tells users in its notes what changed for their analyses. Because
+PyPI never accepts a second upload of a version, even after the first is
+deleted, a mistake that reaches it takes another release to fix. The checks
+that could stop a bad release therefore all come before the tag that publishes
+it.
+
+This guide is for maintainers who can push to the main repository. We'll check
+the code on ``main``, prepare the version and notes in a pull request, and
+build the distributions before the tag. The last section follows the publish
+workflow and what comes after it.
 
 Checking the release candidate
 ==============================
 
-Once you've chosen the commit you intend to release, review the changes since
-the previous tag to see which estimator tests and reference comparisons it
-needs.
-
-.. admonition:: Match the test run to the commit
-   :class: important
-
-   A successful run on ``main`` supports this release only if it covered that
-   same commit and the checks that matter, such as the slow tests that the
-   changes since the previous tag affect. You can trigger the weekly full-suite
-   workflow manually when its latest run doesn't cover the candidate.
-
-GPU code needs a check of its own because no pull request runs the GPU tests
-workflow. If the changes since the previous tag touch the CuPy backend, an
-estimator's GPU route, or the ``gpu`` extra, start that workflow on ``main``
-and wait for it to pass before tagging.
-
-Build and read the documentation using the scratch procedure in :doc:`guide`.
-If an example uses a stored result, confirm that it was recomputed after any
-change to the call, estimator, or result structure. A cached output is not
-evidence that the candidate produces that result.
-
-Review changes to the public API before choosing a version that reflects their
-consequences for existing users. Under `semantic versioning
-<https://semver.org/>`__, patch versions describe compatible bug fixes and
-minor versions describe compatible additions. A release that changes accepted
-inputs or the interpretation of an existing result needs an explicit
-compatibility explanation, especially while the project is in its initial
-development series.
-
-Preparing the version and notes
-===============================
-
-A release sets the same version in two files that nothing keeps in step for
-you. Since ``pyproject.toml`` marks the version as dynamic, Flit reads
-``__version__`` in ``moderndid/_version.py`` and writes it into the
-distribution. The other copy is the ``version`` key in the ``[workspace]``
-table of ``pixi.toml``. ``moderndid.__version__`` and the documentation build
-both take the version from the installed distribution metadata and can show
-the previous one until you reinstall the package.
-
-For example, a patch release after ``0.2.0`` changes the assignment in
-``moderndid/_version.py`` on a preparation branch.
-
-.. code-block:: python
-
-   __version__ = "0.2.1"
-
-On the same branch, set the workspace version in ``pixi.toml`` to match.
-
-.. code-block:: toml
-
-   [workspace]
-   version = "0.2.1"
-
-The release notes under ``docs/source/release/`` should help users understand
-how changes to estimates, inference, input handling, or defaults affect their
-analysis and what they need to do to obtain the corrected behavior. Include
-the new page in that section's table and hidden toctree so readers can find it
-alongside the other releases. The first sentence of a patch release's notes
-says that it is a patch release.
-
-The list of merged pull requests at the end of each page names only the pull
-requests that people wrote. Updates from Renovate, pre-commit.ci, and the
-changelog workflow stay out of it. The sentence above the list gives the total
-number of merged pull requests and the number the list shows.
-
-Unlike the documentation release notes, ``CHANGELOG.md`` is regenerated from
-GitHub Releases by the changelog workflow after publication. Since that workflow
-doesn't infer the release explanation from a version assignment or commit
-prefix, prepare the GitHub Release description with the same care as the
-documentation page. ``.github/release.yml`` keeps the same automated pull
-requests out of the description that GitHub generates.
-
-Checking the built distributions
-================================
-
-The build environment's package task builds a wheel and source distribution in
-``dist/``. Run it from the repository root after the preparation changes are
-ready to review.
-
-.. code-block:: bash
-
-   pixi run -e build package
-
-Check the metadata inside the artifacts rather than relying on a version
-printed by an existing editable installation. The following inspection prints
-the package name and version for each distribution currently in ``dist/`` so
-old files are visible too.
-
-.. code-block:: python
-
-   from email.parser import Parser
-   from pathlib import Path
-   from tarfile import open as open_tar
-   from zipfile import ZipFile
-
-   distributions = Path("dist")
-
-   for wheel in sorted(distributions.glob("*.whl")):
-       with ZipFile(wheel) as archive:
-           metadata_name = next(
-               name for name in archive.namelist()
-               if name.endswith(".dist-info/METADATA")
-           )
-           metadata = Parser().parsestr(archive.read(metadata_name).decode())
-       print(wheel.name, metadata["Name"], metadata["Version"])
-
-   for source in sorted(distributions.glob("*.tar.gz")):
-       with open_tar(source) as archive:
-           metadata_name = next(
-               name for name in archive.getnames()
-               if name.count("/") == 1 and name.endswith("/PKG-INFO")
-           )
-           metadata = Parser().parsestr(
-               archive.extractfile(metadata_name).read().decode()
-           )
-       print(source.name, metadata["Name"], metadata["Version"])
-
-Once the metadata agrees with the intended version, check that the wheel and
-source distribution include any package data the release needs. Installing the
-candidate wheel in a separate environment lets you check its public imports
-and affected behavior using the artifact users will receive. An editable
-checkout can miss files omitted from that distribution, even when its own
-checks pass.
-
-Submit the version and notes through a pull request so the release candidate is
-reviewed before it is tagged. If review changes the candidate, repeat the
-checks affected by those edits against the final commit.
-
-Tagging the reviewed commit
-===========================
-
-After the preparation pull request has merged, bring your local ``main`` to the
-upstream commit and confirm its identity. Replace the example version in the
-tag below with the one you checked in the artifacts.
+Before anything carries a new version number, make sure that the code on
+``main`` is ready to ship. From a checkout whose ``upstream`` remote points at
+the main repository, as in the :doc:`setup guide <guide>`, the command below
+lists one line for each pull request merged since the last release.
 
 .. code-block:: bash
 
    git fetch upstream
-   git switch main
-   git merge --ff-only upstream/main
-   git rev-parse HEAD
-   git tag -a v0.2.1 -m "Release v0.2.1"
+   git log --oneline --first-parent v0.4.1..upstream/main
 
-.. admonition:: Published versions cannot be replaced
-   :class: warning
+The pull request checks already ran the fast suite on each of those changes.
+Start the "Full test suite" workflow on ``main`` from the Actions tab to run
+the slow tests on every supported Python version along with the example
+notebooks. If the changes touch the CuPy backend, an estimator's GPU route, or
+the ``gpu`` extra, start the "GPU tests" workflow on ``main`` too, since only
+``main`` can use its Modal token. For a change to an estimator's calculation,
+run that estimator's :ref:`reference validation <testing-validation>` on your
+machine.
 
-   Pushing a ``v*`` tag starts the publishing workflow for that commit.
-   Confirm the tag, artifact metadata, and reviewed commit agree before
-   taking this step.
+.. admonition:: Match the test run to the release
+   :class: important
 
-A maintainer with access to the upstream repository can push the tag after
-those checks are complete.
+   A green run supports the release only if it ran on the code you'll tag and
+   covered the checks that its changes need. When the latest scheduled run
+   predates the last merge, start a new one.
+
+After building the documentation into a scratch folder as the setup guide
+shows, read every page that the changes touch. Some example pages load a
+stored result from ``docs/source/prerun`` instead of running a slow estimation
+during the build. Such a file keeps showing old numbers after the code changes.
+Delete any whose call, estimator, or result container changed since it was
+saved. A local docs build then writes a fresh file to commit.
+
+Preparing the version and notes
+===============================
+
+A pull request of its own brings the version number and the release notes into
+``main`` under a title such as ``REL: prepare release v0.4.2``. Pick the
+number from what the release changes for users. A patch release such as 0.4.2
+fixes bugs or makes code faster without breaking code written for the previous
+version. A minor release such as 0.5.0 adds new functions or options and,
+while the version starts with 0, may also rename or remove part of the API, as
+0.4.0 did when ``agg_ddd`` and ``compute_aggte`` took ``na_rm`` in place of
+``dropna``.
+
+The version lives in two files that nothing keeps in step. Flit, the build
+backend that ``pyproject.toml`` names, reads ``__version__`` from
+``moderndid/_version.py`` into the metadata of the distributions.
+
+.. code-block:: python
+
+   __version__ = "0.4.2"
+
+The other copy is the ``version`` key in the ``[workspace]`` table of
+``pixi.toml``.
+
+.. code-block:: toml
+
+   [workspace]
+   version = "0.4.2"
+
+Changing ``_version.py`` also makes the ``make-notebooks`` pre-commit hook pin
+the install cell of every runnable notebook in ``docs/notebooks/`` to the new
+version. Commit the rewritten notebooks in the preparation pull request too.
+
+.. admonition:: Tag soon after the merge
+   :class: tip
+
+   Once the preparation pull request merges, the notebooks that the latest
+   docs open from ``main`` install a version that PyPI doesn't have yet. Tag
+   the release soon after the merge to close that gap.
+
+The notes go in a new page, ``docs/source/release/<version>-notes.rst``, that
+you add to the table and the hidden toctree of
+``docs/source/release/index.rst``. Like the latest notes, it opens with what
+changed for users and whether their code keeps working. A patch release's
+notes call it a patch release in their first sentence. Each item says how a
+change affects an analysis and what a user has to do.
+
+The list of merged pull requests at the end names only the ones that people
+wrote. Updates from Renovate and pre-commit.ci, the bots that bump
+dependencies and hooks, stay out of it along with those from the changelog
+workflow. The sentence above the list gives the total number merged and how
+many the list shows.
+
+Checking the built distributions
+================================
+
+Users install the wheel and source distribution that the publish workflow
+builds rather than your checkout. Before you tag, build both from the
+preparation branch and install the wheel the way a user would.
 
 .. code-block:: bash
 
-   git push upstream v0.2.1
+   rm -rf dist
+   pixi run -e build package
+   ls dist
+
+The ``package`` task builds both files with ``python -m build`` in an isolated
+environment, as the publish workflow does. Because the build never removes
+earlier files, clearing ``dist`` first leaves only the two new ones. Both file
+names carry the version that Flit read from ``_version.py``.
+
+.. code-block:: bash
+
+   python -m venv /tmp/moderndid-wheel
+   /tmp/moderndid-wheel/bin/python -m pip install dist/moderndid-0.4.2-py3-none-any.whl
+   /tmp/moderndid-wheel/bin/python -c "import moderndid as did; print(did.__version__, did.load_mpdta().shape)"
+
+The last command prints the version and the shape of the county data,
+``(2500, 6)``. Loading the county data in the fresh environment also shows
+that the wheel carries the package's data files. Install any extras that the
+changed code needs into that environment and run that code there too. If
+review changes the preparation branch, repeat the checks that the edits
+affect.
+
+Tagging the reviewed commit
+===========================
+
+Pushing a tag whose name starts with ``v`` publishes the release. The tag
+therefore goes on the commit that merged the reviewed preparation pull request.
+Replace 0.4.2 in the commands below with the version you built.
+
+.. code-block:: bash
+
+   git fetch upstream
+   git log -1 --oneline upstream/main
+   git tag -a v0.4.2 -m "Release v0.4.2" upstream/main
+
+The log line should name the merge of your preparation pull request.
+
+.. admonition:: A pushed tag starts the upload
+   :class: warning
+
+   Check the tag, its commit, and the version in the built files before you
+   push, because the publish workflow uploads whatever the tag points at.
+
+.. code-block:: bash
+
+   git push upstream v0.4.2
 
 Following publication
 =====================
 
-``.github/workflows/publish.yml`` builds distributions on pushes to ``main``
-and on ``v*`` tag pushes. Its publish job runs only for a tag push and
-downloads the artifacts from the build job. Authentication uses PyPI Trusted
-Publishing through GitHub's identity token rather than a package-upload token
-stored in the workflow.
+After the push, the publish workflow in ``.github/workflows/publish.yml``
+builds the two distributions and uploads them to PyPI. It builds on every push
+to ``main`` as well but uploads only for a tag. Through trusted publishing,
+PyPI accepts the upload on a token that GitHub issues to the workflow run
+rather than a stored password. The upload job runs in a GitHub environment
+named ``publish``. If the repository settings give that environment a required
+reviewer, the job waits for an approval in the Actions tab.
 
-Before a release, review the protection rules for the GitHub environment named
-``publish`` and the PyPI publisher configuration used by the publish job. Any
-approval requirements are configured in repository settings rather than
-established by the environment name alone.
+Once the upload succeeds, check that
+`PyPI <https://pypi.org/project/moderndid/>`__ shows the new version and its
+description. Then create a GitHub Release from
+the tag and let GitHub generate its notes. The generated notes list each merged
+pull request by its title and leave out the bots that ``.github/release.yml``
+names. Rename any merged pull request whose title wouldn't explain its change
+to a user before you generate them.
 
-After publication succeeds, check that the expected version and package
-description appear on `PyPI <https://pypi.org/project/moderndid/>`__. Create
-the GitHub Release from the same tag and review its generated description
-before publishing it. Generated pull request titles may need context before
-they explain a change to a user.
-
-``post-release.yml`` runs on GitHub Release publication events and also
-supports a manual trigger. It regenerates ``CHANGELOG.md`` and opens a pull
-request for the update. Check that pull request and the Read the Docs build so
-the published package and its documentation describe the same release.
-
-If a job fails, use its logs to distinguish a build error, an identity or
-environment configuration error, and an upload rejected because the version
-already exists. A GitHub tag does not by itself validate the metadata inside
-the package. If a published release needs a correction, prepare a new version
-through the same reviewed process rather than trying to replace its uploaded
-files.
+Publishing the GitHub Release starts the post-release workflow in
+``.github/workflows/post-release.yml``. It rebuilds ``CHANGELOG.md`` at the
+root of the repository from the GitHub Releases and opens a pull request with
+the update for you to merge. Read the Docs then builds its stable version from
+the new tag. Check that the stable docs show the new version and its page in
+the :ref:`changelog <release-notes>`.

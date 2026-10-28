@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="dg" viewBox="0 0 880 556" role="img" aria-labelledby="dg-moments-title dg-moments-desc">
+  <title id="dg-moments-title">Inference from sums over units</title>
+  <desc id="dg-moments-desc">Each shard keeps one row of influence functions, cohort weights, and a constant for each of its units. It returns only the sum of their products and, in a fit that draws, the bootstrap sums. The driver adds the shards' sums and gets the variance of any aggregation from them.</desc>
+  <defs>
+    <pattern id="dg-moments-grid" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmin" d="M 16 0 V 64 M 32 0 V 64 M 48 0 V 64 M 0 16 H 64 M 0 32 H 64 M 0 48 H 64"/>
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <pattern id="dg-moments-gridq" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <marker id="dg-moments-head" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <symbol id="dg-moments-task-24" viewBox="-7 -7 42 42"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+    <symbol id="dg-moments-proc-24" viewBox="-4 -4 24 24"><path d="M3 2.5h10a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5ZM4.5 6.5l2 1.75-2 1.75M8 10.5h3.5"/></symbol>
+    <symbol id="dg-moments-grid-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M7 5h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2ZM11 5v18M17 5v18M5 11h18M5 17h18"/></symbol>
+    <symbol id="dg-moments-task-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+    <symbol id="dg-moments-sigma-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M21.5 5H8.5l7 9-7 9h13"/></symbol>
+    <symbol id="dg-moments-study-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M5 4.5v19h19M10 13.5v7M15 9v7M20 4.5v7"/><path class="dg-glyph-dot" d="M8.25 17a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0M13.25 12.5a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0M18.25 8a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0"/></symbol>
+  </defs>
+  <rect class="dg-paper" x="0" y="0" width="880" height="556"/>
+  <rect fill="url(#dg-moments-grid)" x="0" y="0" width="880" height="556"/>
+  <path class="dg-paper" d="M 20 24 H 860 A 4 4 0 0 1 864 28 V 352 A 4 4 0 0 1 860 356 H 20 A 4 4 0 0 1 16 352 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path fill="url(#dg-moments-gridq)" d="M 20 24 H 860 A 4 4 0 0 1 864 28 V 352 A 4 4 0 0 1 860 356 H 20 A 4 4 0 0 1 16 352 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path class="dg-compute dg-zone" d="M 20 24 H 860 A 4 4 0 0 1 864 28 V 352 A 4 4 0 0 1 860 356 H 20 A 4 4 0 0 1 16 352 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path class="dg-compute dg-zone-dash" d="M 40 24 H 860 A 4 4 0 0 1 864 28 V 352 A 4 4 0 0 1 860 356 H 20 A 4 4 0 0 1 16 352 V 48"/>
+  <path class="dg-compute dg-tile" d="M 20 24 H 40 V 48 H 16 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <use class="dg-glyph dg-glyph-tab28" href="#dg-moments-task-24" x="16" y="24" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="40">Shards</text>
+  <path class="dg-paper" d="M 20 372 H 860 A 4 4 0 0 1 864 376 V 536 A 4 4 0 0 1 860 540 H 20 A 4 4 0 0 1 16 536 V 376 A 4 4 0 0 1 20 372 Z"/>
+  <path fill="url(#dg-moments-gridq)" d="M 20 372 H 860 A 4 4 0 0 1 864 376 V 536 A 4 4 0 0 1 860 540 H 20 A 4 4 0 0 1 16 536 V 376 A 4 4 0 0 1 20 372 Z"/>
+  <path class="dg-driver dg-zone" d="M 20 372 H 860 A 4 4 0 0 1 864 376 V 536 A 4 4 0 0 1 860 540 H 20 A 4 4 0 0 1 16 536 V 376 A 4 4 0 0 1 20 372 Z"/>
+  <path class="dg-driver dg-zone-line" d="M 40 372 H 860 A 4 4 0 0 1 864 376 V 536 A 4 4 0 0 1 860 540 H 20 A 4 4 0 0 1 16 536 V 396"/>
+  <path class="dg-driver dg-tile" d="M 20 372 H 40 V 396 H 16 V 376 A 4 4 0 0 1 20 372 Z"/>
+  <use class="dg-glyph dg-glyph-tab" href="#dg-moments-proc-24" x="16" y="372" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="388">Driver process</text>
+  <path class="dg-wire" d="M 288 196 V 228" marker-end="url(#dg-moments-head)"/>
+  <path class="dg-wire" d="M 448 196 V 228" marker-end="url(#dg-moments-head)"/>
+  <path class="dg-wire" d="M 608 196 V 228" marker-end="url(#dg-moments-head)"/>
+  <path class="dg-wire" d="M 320 320 V 336 H 640 V 320"/>
+  <path class="dg-wire" d="M 480 320 V 416" marker-end="url(#dg-moments-head)"/>
+  <path class="dg-wire" d="M 568 460 H 672" marker-end="url(#dg-moments-head)"/>
+  <rect class="dg-compute dg-tile" x="40" y="68" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-moments-grid-32" x="40" y="68" width="32" height="32"/>
+  <text class="dg-name" x="84" y="81"><tspan class="dg-num">01</tspan> Unit rows</text>
+  <text class="dg-note" x="84" y="97">one row per unit,</text>
+  <text class="dg-note" x="84" y="113">kept on its shard</text>
+  <text class="dg-label" x="288" y="60" text-anchor="middle">16 entries</text>
+  <rect class="dg-paper" x="256" y="68" width="64" height="128"/>
+  <rect class="dg-compute dg-r-cell" x="256" y="68" width="64" height="128"/>
+  <path class="dg-compute dg-r-div" d="M 264 68 V 196 M 272 68 V 196 M 280 68 V 196 M 288 68 V 196 M 296 68 V 196 M 304 68 V 196 M 312 68 V 196 M 256 76 H 320 M 256 84 H 320 M 256 92 H 320 M 256 100 H 320 M 256 108 H 320 M 256 116 H 320 M 256 124 H 320 M 256 132 H 320 M 256 140 H 320 M 256 148 H 320 M 256 156 H 320 M 256 164 H 320 M 256 172 H 320 M 256 180 H 320 M 256 188 H 320"/>
+  <rect class="dg-compute dg-r-edge" x="256" y="68" width="64" height="128"/>
+  <text class="dg-note" x="328" y="136">167 counties</text>
+  <rect class="dg-paper" x="416" y="68" width="64" height="128"/>
+  <rect class="dg-compute dg-r-cell" x="416" y="68" width="64" height="128"/>
+  <path class="dg-compute dg-r-div" d="M 424 68 V 196 M 432 68 V 196 M 440 68 V 196 M 448 68 V 196 M 456 68 V 196 M 464 68 V 196 M 472 68 V 196 M 416 76 H 480 M 416 84 H 480 M 416 92 H 480 M 416 100 H 480 M 416 108 H 480 M 416 116 H 480 M 416 124 H 480 M 416 132 H 480 M 416 140 H 480 M 416 148 H 480 M 416 156 H 480 M 416 164 H 480 M 416 172 H 480 M 416 180 H 480 M 416 188 H 480"/>
+  <rect class="dg-compute dg-r-edge" x="416" y="68" width="64" height="128"/>
+  <text class="dg-note" x="488" y="136">167 counties</text>
+  <rect class="dg-paper" x="576" y="68" width="64" height="128"/>
+  <rect class="dg-compute dg-r-cell" x="576" y="68" width="64" height="128"/>
+  <path class="dg-compute dg-r-div" d="M 584 68 V 196 M 592 68 V 196 M 600 68 V 196 M 608 68 V 196 M 616 68 V 196 M 624 68 V 196 M 632 68 V 196 M 576 76 H 640 M 576 84 H 640 M 576 92 H 640 M 576 100 H 640 M 576 108 H 640 M 576 116 H 640 M 576 124 H 640 M 576 132 H 640 M 576 140 H 640 M 576 148 H 640 M 576 156 H 640 M 576 164 H 640 M 576 172 H 640 M 576 180 H 640 M 576 188 H 640"/>
+  <rect class="dg-compute dg-r-edge" x="576" y="68" width="64" height="128"/>
+  <text class="dg-note" x="648" y="136">166 counties</text>
+  <rect class="dg-compute dg-tile" x="40" y="228" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-moments-task-32" x="40" y="228" width="32" height="32"/>
+  <text class="dg-name" x="84" y="241"><tspan class="dg-num">02</tspan> Sums of products</text>
+  <text class="dg-note" x="84" y="257">the same size for</text>
+  <text class="dg-note" x="84" y="273">any number of units</text>
+  <rect class="dg-frame" x="248" y="220" width="144" height="100" rx="4"/>
+  <rect class="dg-paper" x="256" y="228" width="64" height="64"/>
+  <rect class="dg-compute dg-r-cell" x="256" y="228" width="64" height="64"/>
+  <path class="dg-compute dg-r-div" d="M 264 228 V 292 M 272 228 V 292 M 280 228 V 292 M 288 228 V 292 M 296 228 V 292 M 304 228 V 292 M 312 228 V 292 M 256 236 H 320 M 256 244 H 320 M 256 252 H 320 M 256 260 H 320 M 256 268 H 320 M 256 276 H 320 M 256 284 H 320"/>
+  <rect class="dg-compute dg-r-edge" x="256" y="228" width="64" height="64"/>
+  <rect class="dg-paper" x="328" y="228" width="56" height="64"/>
+  <rect class="dg-compute dg-r-cell-opt" x="328" y="228" width="56" height="64"/>
+  <path class="dg-compute dg-r-div" d="M 336 228 V 292 M 344 228 V 292 M 352 228 V 292 M 360 228 V 292 M 368 228 V 292 M 376 228 V 292 M 328 236 H 384 M 328 244 H 384 M 328 252 H 384 M 328 260 H 384 M 328 268 H 384 M 328 276 H 384 M 328 284 H 384"/>
+  <rect class="dg-compute dg-r-edge-opt" x="328" y="228" width="56" height="64"/>
+  <rect class="dg-frame" x="408" y="220" width="144" height="100" rx="4"/>
+  <rect class="dg-paper" x="416" y="228" width="64" height="64"/>
+  <rect class="dg-compute dg-r-cell" x="416" y="228" width="64" height="64"/>
+  <path class="dg-compute dg-r-div" d="M 424 228 V 292 M 432 228 V 292 M 440 228 V 292 M 448 228 V 292 M 456 228 V 292 M 464 228 V 292 M 472 228 V 292 M 416 236 H 480 M 416 244 H 480 M 416 252 H 480 M 416 260 H 480 M 416 268 H 480 M 416 276 H 480 M 416 284 H 480"/>
+  <rect class="dg-compute dg-r-edge" x="416" y="228" width="64" height="64"/>
+  <rect class="dg-paper" x="488" y="228" width="56" height="64"/>
+  <rect class="dg-compute dg-r-cell-opt" x="488" y="228" width="56" height="64"/>
+  <path class="dg-compute dg-r-div" d="M 496 228 V 292 M 504 228 V 292 M 512 228 V 292 M 520 228 V 292 M 528 228 V 292 M 536 228 V 292 M 488 236 H 544 M 488 244 H 544 M 488 252 H 544 M 488 260 H 544 M 488 268 H 544 M 488 276 H 544 M 488 284 H 544"/>
+  <rect class="dg-compute dg-r-edge-opt" x="488" y="228" width="56" height="64"/>
+  <rect class="dg-frame" x="568" y="220" width="144" height="100" rx="4"/>
+  <rect class="dg-paper" x="576" y="228" width="64" height="64"/>
+  <rect class="dg-compute dg-r-cell" x="576" y="228" width="64" height="64"/>
+  <path class="dg-compute dg-r-div" d="M 584 228 V 292 M 592 228 V 292 M 600 228 V 292 M 608 228 V 292 M 616 228 V 292 M 624 228 V 292 M 632 228 V 292 M 576 236 H 640 M 576 244 H 640 M 576 252 H 640 M 576 260 H 640 M 576 268 H 640 M 576 276 H 640 M 576 284 H 640"/>
+  <rect class="dg-compute dg-r-edge" x="576" y="228" width="64" height="64"/>
+  <rect class="dg-paper" x="648" y="228" width="56" height="64"/>
+  <rect class="dg-compute dg-r-cell-opt" x="648" y="228" width="56" height="64"/>
+  <path class="dg-compute dg-r-div" d="M 656 228 V 292 M 664 228 V 292 M 672 228 V 292 M 680 228 V 292 M 688 228 V 292 M 696 228 V 292 M 648 236 H 704 M 648 244 H 704 M 648 252 H 704 M 648 260 H 704 M 648 268 H 704 M 648 276 H 704 M 648 284 H 704"/>
+  <rect class="dg-compute dg-r-edge-opt" x="648" y="228" width="56" height="64"/>
+  <text class="dg-label" x="288" y="308" text-anchor="middle"><tspan class="dg-math">Z</tspan>′<tspan class="dg-math">Z</tspan></text>
+  <text class="dg-label" x="356" y="308" text-anchor="middle"><tspan class="dg-math">S</tspan></text>
+  <circle class="dg-dot" cx="480" cy="336" r="2"/>
+  <text class="dg-callout" x="848" y="256" text-anchor="end">Only these sums</text>
+  <text class="dg-callout" x="848" y="276" text-anchor="end">leave the shards.</text>
+  <rect class="dg-driver dg-tile" x="40" y="416" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-moments-sigma-32" x="40" y="416" width="32" height="32"/>
+  <text class="dg-name" x="84" y="429"><tspan class="dg-num">03</tspan> Driver</text>
+  <text class="dg-note" x="84" y="445">receives one block</text>
+  <text class="dg-note" x="84" y="461">from each shard</text>
+  <rect class="dg-driver dg-r-box" x="392" y="416" width="176" height="64" rx="4"/>
+  <text class="dg-body" x="404" y="436">add the three blocks</text>
+  <text class="dg-body" x="404" y="452">into <tspan class="dg-math">Z</tspan>′<tspan class="dg-math">Z</tspan> and <tspan class="dg-math">S</tspan></text>
+  <text class="dg-body" x="404" y="468">keep them in the result</text>
+  <rect class="dg-result dg-tile" x="628" y="416" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-moments-study-32" x="628" y="416" width="32" height="32"/>
+  <text class="dg-name" x="672" y="429"><tspan class="dg-num">04</tspan> Variances</text>
+  <rect class="dg-result dg-r-box" x="672" y="440" width="176" height="40" rx="4"/>
+  <text class="dg-body" x="760" y="464" text-anchor="middle"><tspan class="dg-math">c</tspan>′<tspan class="dg-math">Z</tspan>′<tspan class="dg-math">Z</tspan><tspan class="dg-math">c</tspan> / <tspan class="dg-math">n</tspan>²</text>
+  <text class="dg-note" x="672" y="500">of any aggregation</text>
+  <text class="dg-note" x="672" y="516">with coefficients <tspan class="dg-math">c</tspan></text>
+</svg>

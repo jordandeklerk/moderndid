@@ -7,12 +7,34 @@ The :doc:`panel engine <shards>` reads shards that hold each unit's outcome in
 every period. That layout fits neither repeated cross-sections, where each unit
 appears once, nor an unbalanced panel, where some units miss periods. The row
 engine in ``row_kernels.py`` and ``row_driver.py`` therefore reads a
-``RowShard`` that holds the period index, cohort, outcome, weight, and
-covariates of each observation. In an unbalanced panel, a shard also keeps the
-rows of every unit together in period order and gives each row the position of
-its unit in ``units``. We'll prepare the county rows as repeated
-cross-sections with ``preprocess_did``, the one-call form of the preprocessing
-builder, before ``row_shards_from_did_data`` splits them into three shards.
+``RowShard`` with one entry for each observation. Most of the panel engine
+carries over to rows, from its passes and sums over units to its keyed draws.
+What changes is how a shard holds the data, whether cells can share a fit, and
+how a row without an identifier gets its bootstrap key.
+
+On Spark, a fit first lays its data out as a table with one row for each unit
+of a panel or one row for each observation of repeated cross-sections. The
+figure below sets the unit table of a balanced panel, the unit table of an
+unbalanced panel, and the row table of repeated cross-sections beside the shard
+that each one becomes.
+
+.. container:: mdid-diagram
+
+   .. raw:: html
+      :file: diagrams/shard-layouts.svg
+
+.. rst-class:: mdid-caption
+
+The three table layouts and the shards that their readers make from a slice of
+rows. Dashed columns and arrays appear only in fits that need them.
+
+Because each row of an unbalanced panel's unit table holds a whole unit, its
+shards keep each unit's rows together in period order. For the walkthrough,
+we'll treat the county rows as repeated cross-sections, as if each year had
+sampled new counties. After ``preprocess_did`` prepares them,
+``row_shards_from_did_data`` deals them into three shards. Each shard should
+hold about a third of the 2,500 county-years in flat arrays of one entry per
+row. A period index on each row takes the place of the panel's period axis.
 
 .. code-block:: python
 
@@ -50,19 +72,28 @@ builder, before ``row_shards_from_did_data`` splits them into three shards.
          Covariates of the first shard: (834, 1)
          Period indices of its first rows: [3 1 0 0 2 3]
 
-Each array holds one entry for every row where the panel's shards held one for
-every unit and period. Each period index points into the five sorted years of
-the fit. ``units`` stays None because every county-year is a unit by itself.
+Where the panel's shards held one entry for every unit and period, each array
+here holds one entry for every row. Each period index points into the five
+sorted years of the fit. In an unbalanced panel, the ``units`` array points
+each row to its unit. Here it stays None because every county-year is a unit
+by itself.
 
 A fit for every cell
 --------------------
 
-Because a cell of rows fits its models on the rows of both of its periods, no
-two cells can share a fit. ``plan_cells`` therefore gives every cell a fit of
-its own when ``config.panel`` is False. ``fit_att_gt_on_row_shards`` makes the
-same four kinds of passes as the panel driver with the kernels of
-``row_kernels.py``. It shares the panel driver's logit iterations, least
-squares solves, seed handling, and ``_finish_shard_fit``.
+The panel engine saved work by letting cells with the same units, covariates,
+and weights share one fit, as the 12 county cells shared 8. Rows can't share
+that way, because a cell of rows fits its models on the rows of both of its
+periods rather than on units set by the earlier one. When ``config.panel`` is
+False, ``plan_cells`` therefore gives every cell a fit of its own.
+
+The rest of the fit runs as it does for a panel. ``fit_att_gt_on_row_shards``
+makes the same four kinds of passes as ``fit_att_gt_on_shards`` with the
+kernels of ``row_kernels.py``. It reuses the logit iterations, least squares
+solves, and seed handling of ``driver.py`` and ends in the same
+``_finish_shard_fit``, the step that runs the moments pass and builds the
+result. The code below fits the county rows both in memory and on the three
+shards and counts the cells, fits, and passes.
 
 .. code-block:: python
 
@@ -102,35 +133,45 @@ cells take 12 fits where the balanced panel's took 8. Like the panel fit, this
 one makes nine passes because the logits of every cell iterate together, one
 pass for each of six iterations.
 
-A row's contribution to a cell is the estimator's influence function scaled by
-the number of units in the data over the number of the cell's rows, as in
-memory. A row of repeated cross-sections forms a :math:`z_i` by itself and
-puts its weight in its cohort's column. In an unbalanced panel,
-``row_moments_kernel`` first adds up the contributions of a unit's rows and
-puts their mean weight in that column. Since each shard sums the rows of its
-own units, a unit split between two shards would count as two units. The
-summary pass's check of the unit count then stops the fit with a RuntimeError.
+The moments pass still sums one row :math:`z_i` for each unit as in the panel
+engine. What rows change is how each unit's :math:`z_i` gets built from its
+observations. Each row contributes the estimator's influence function to its
+cell, scaled by the number of units in the data over the number of the cell's
+rows as in memory. In repeated cross-sections, each observation is a unit of
+its own that gets its own :math:`z_i` and puts its weight in its cohort's
+column. In an unbalanced panel, ``row_moments_kernel`` first adds up the
+contributions of a unit's rows and puts their mean weight in that column.
+
+.. admonition:: Keep each unit's rows in one shard
+   :class: important
+
+   The moments pass adds up a unit's rows only within a shard. A unit split
+   between two shards would therefore count as two units. The summary pass
+   checks the unit count and stops such a fit with a RuntimeError.
 
 Keys for rows without identifiers
 ---------------------------------
 
-Like the :ref:`draws of the panel engine <dev-shard-draws>`, the bootstrap
-draws of a row fit need a key for every unit. An unbalanced panel keys each
-unit by its identifier through ``canonical_keys``, just as a balanced panel
-does. A clustered fit of either layout keys each cluster instead. For repeated
-cross-sections, though, the in-memory fit gives each row its position in the
-data as its identifier, even when ``idname`` names a unit. A Spark table has no
-stable row order to copy those positions from.
+The :ref:`draws of the panel engine <dev-shard-draws>` compute each unit's
+bootstrap sign from a key made from its identifier. An unbalanced panel keys
+its units the same way through ``canonical_keys``. A clustered fit of either
+layout keys each cluster instead. Repeated cross-sections are harder, because
+the in-memory fit gives each of their rows its position in the data as its
+identifier, even when ``idname`` names a unit. A Spark table has no stable row
+order to copy those positions from.
 
-``row_keys`` therefore builds each row's 64-bit key from the row's period
-index, cohort, outcome, raw sampling weight, and covariates. The raw weight
-goes in rather than the normalized one because the mean that normalizes the
-weights is a Spark sum whose last bits can change with the partitioning.
+Without an identifier or an order to go by, a row can only be told apart by its
+values. ``row_keys`` therefore hashes each row's period index, cohort, outcome,
+raw sampling weight, and covariates into a 64-bit key. The raw weight goes in
+rather than the normalized one because the mean that normalizes the weights is
+a Spark sum whose last bits can change with the partitioning.
+
 Duplicate rows, such as the same answers given by two survey respondents, would
 still share a key and every sign drawn from it. The in-memory bootstrap instead
 draws a separate multiplier for each of them. The key therefore also hashes
 each row's copy index, its position among the rows whose values all match its
-own. Repeating the first of the county rows shows what the copy index does.
+own. To see the copy index at work, the code below repeats the first county
+row and keys the rows with and without copy indices, on one shard and on seven.
 
 .. code-block:: python
 
@@ -169,11 +210,13 @@ Keyed without its copy index of 1, that row would take the original's key.
 Seven shards give the same keys as one, since it never matters which of two
 interchangeable copies gets which index.
 
-On Spark, numbering the copies takes one shuffle that brings identical rows
-together. ``build_row_table`` adds it only when an unclustered fit draws, with
-``boot=True`` or the default ``cband=True``, since a fit without draws needs no
-keys. If a fit would draw from rows without them, ``fit_att_gt_on_row_shards``
-stops with a RuntimeError after its summary pass.
+Numbering the copies needs every copy of a row in the same place. On Spark,
+``build_row_table`` gathers them with one shuffle, the step in which Spark
+moves rows between partitions so that identical rows meet. Because a fit
+without draws needs no row keys, the builder adds that shuffle only for an
+unclustered fit that draws under ``boot=True`` or the default ``cband=True``.
+If a fit would draw from rows without keys, ``fit_att_gt_on_row_shards`` stops
+with a RuntimeError after its summary pass.
 
 .. admonition:: Number copies over the hashed values
    :class: important

@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="dg" viewBox="0 0 880 576" role="img" aria-labelledby="dg-sums-title dg-sums-desc">
+  <title id="dg-sums-title">One pass over the shards</title>
+  <desc id="dg-sums-desc">The prepared county panel is cut between counties into three shards. The same kernel runs on each shard and returns a partial of counts and outcome totals. The driver adds the partials and divides the totals into each year's mean outcome.</desc>
+  <defs>
+    <pattern id="dg-sums-grid" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmin" d="M 16 0 V 64 M 32 0 V 64 M 48 0 V 64 M 0 16 H 64 M 0 32 H 64 M 0 48 H 64"/>
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <pattern id="dg-sums-gridq" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <marker id="dg-sums-head" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <symbol id="dg-sums-task-24" viewBox="-7 -7 42 42"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+    <symbol id="dg-sums-proc-24" viewBox="-4 -4 24 24"><path d="M3 2.5h10a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5ZM4.5 6.5l2 1.75-2 1.75M8 10.5h3.5"/></symbol>
+    <symbol id="dg-sums-frame-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M8 4.5h12a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2ZM6 9.5h16M6 14.25h16M6 19h16M11.5 9.5v14"/></symbol>
+    <symbol id="dg-sums-grid-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M7 5h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2ZM11 5v18M17 5v18M5 11h18M5 17h18"/></symbol>
+    <symbol id="dg-sums-task-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+    <symbol id="dg-sums-sigma-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M21.5 5H8.5l7 9-7 9h13"/></symbol>
+    <symbol id="dg-sums-study-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M5 4.5v19h19M10 13.5v7M15 9v7M20 4.5v7"/><path class="dg-glyph-dot" d="M8.25 17a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0M13.25 12.5a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0M18.25 8a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0"/></symbol>
+  </defs>
+  <rect class="dg-paper" x="0" y="0" width="880" height="576"/>
+  <rect fill="url(#dg-sums-grid)" x="0" y="0" width="880" height="576"/>
+  <path class="dg-paper" d="M 20 148 H 860 A 4 4 0 0 1 864 152 V 396 A 4 4 0 0 1 860 400 H 20 A 4 4 0 0 1 16 396 V 152 A 4 4 0 0 1 20 148 Z"/>
+  <path fill="url(#dg-sums-gridq)" d="M 20 148 H 860 A 4 4 0 0 1 864 152 V 396 A 4 4 0 0 1 860 400 H 20 A 4 4 0 0 1 16 396 V 152 A 4 4 0 0 1 20 148 Z"/>
+  <path class="dg-compute dg-zone" d="M 20 148 H 860 A 4 4 0 0 1 864 152 V 396 A 4 4 0 0 1 860 400 H 20 A 4 4 0 0 1 16 396 V 152 A 4 4 0 0 1 20 148 Z"/>
+  <path class="dg-compute dg-zone-dash" d="M 40 148 H 860 A 4 4 0 0 1 864 152 V 396 A 4 4 0 0 1 860 400 H 20 A 4 4 0 0 1 16 396 V 172"/>
+  <path class="dg-compute dg-tile" d="M 20 148 H 40 V 172 H 16 V 152 A 4 4 0 0 1 20 148 Z"/>
+  <use class="dg-glyph dg-glyph-tab28" href="#dg-sums-task-24" x="16" y="148" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="164">Shards</text>
+  <path class="dg-paper" d="M 20 416 H 860 A 4 4 0 0 1 864 420 V 556 A 4 4 0 0 1 860 560 H 20 A 4 4 0 0 1 16 556 V 420 A 4 4 0 0 1 20 416 Z"/>
+  <path fill="url(#dg-sums-gridq)" d="M 20 416 H 860 A 4 4 0 0 1 864 420 V 556 A 4 4 0 0 1 860 560 H 20 A 4 4 0 0 1 16 556 V 420 A 4 4 0 0 1 20 416 Z"/>
+  <path class="dg-driver dg-zone" d="M 20 416 H 860 A 4 4 0 0 1 864 420 V 556 A 4 4 0 0 1 860 560 H 20 A 4 4 0 0 1 16 556 V 420 A 4 4 0 0 1 20 416 Z"/>
+  <path class="dg-driver dg-zone-line" d="M 40 416 H 860 A 4 4 0 0 1 864 420 V 556 A 4 4 0 0 1 860 560 H 20 A 4 4 0 0 1 16 556 V 440"/>
+  <path class="dg-driver dg-tile" d="M 20 416 H 40 V 440 H 16 V 420 A 4 4 0 0 1 20 416 Z"/>
+  <use class="dg-glyph dg-glyph-tab" href="#dg-sums-proc-24" x="16" y="416" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="432">Driver process</text>
+  <path class="dg-wire" d="M 432 116 V 124 A 8 8 0 0 1 424 132 H 344 A 8 8 0 0 0 336 140 V 192" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 496 116 V 192" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 560 116 V 124 A 8 8 0 0 0 568 132 H 648 A 8 8 0 0 1 656 140 V 192" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 336 252 V 284" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 336 316 V 348" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 496 252 V 284" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 496 316 V 348" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 656 252 V 284" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 656 316 V 348" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 336 360 V 380 H 656 V 360"/>
+  <path class="dg-wire" d="M 496 360 V 460" marker-end="url(#dg-sums-head)"/>
+  <path class="dg-wire" d="M 584 504 H 672" marker-end="url(#dg-sums-head)"/>
+  <rect class="dg-data dg-tile" x="40" y="56" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-sums-frame-32" x="40" y="56" width="32" height="32"/>
+  <text class="dg-name" x="84" y="69">Prepared sample</text>
+  <text class="dg-note" x="84" y="85">a column per county</text>
+  <text class="dg-note" x="84" y="101">and a row per year</text>
+  <path class="dg-dim" d="M 400 40 H 592 M 396 44 L 404 36 M 588 44 L 596 36 M 400 34 V 48 M 592 34 V 48"/>
+  <rect class="dg-mask" x="456" y="32" width="80" height="16"/>
+  <text class="dg-note" x="496" y="44" text-anchor="middle">500 counties</text>
+  <rect class="dg-paper" x="400" y="56" width="192" height="60"/>
+  <rect class="dg-data dg-r-cell" x="400" y="56" width="192" height="60"/>
+  <path class="dg-div" d="M 416 56 V 116 M 432 56 V 116 M 448 56 V 116 M 464 56 V 116 M 480 56 V 116 M 496 56 V 116 M 512 56 V 116 M 528 56 V 116 M 544 56 V 116 M 560 56 V 116 M 576 56 V 116 M 400 68 H 592 M 400 80 H 592 M 400 92 H 592 M 400 104 H 592"/>
+  <rect class="dg-edge" x="400" y="56" width="192" height="60"/>
+  <path class="dg-compute dg-r-edge" d="M 464 52 V 120 M 528 52 V 120"/>
+  <text class="dg-callout" x="840" y="80" text-anchor="end">Cuts fall between counties,</text>
+  <text class="dg-callout" x="840" y="100" text-anchor="end">never between years.</text>
+  <rect class="dg-compute dg-tile" x="40" y="192" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-sums-grid-32" x="40" y="192" width="32" height="32"/>
+  <text class="dg-name" x="84" y="205"><tspan class="dg-num">01</tspan> Blocks of counties</text>
+  <text class="dg-note" x="84" y="221">whole counties only,</text>
+  <text class="dg-note" x="84" y="237">called shards</text>
+  <rect class="dg-paper" x="304" y="192" width="64" height="60"/>
+  <rect class="dg-compute dg-r-cell" x="304" y="192" width="64" height="60"/>
+  <path class="dg-compute dg-r-div" d="M 320 192 V 252 M 336 192 V 252 M 352 192 V 252 M 304 204 H 368 M 304 216 H 368 M 304 228 H 368 M 304 240 H 368"/>
+  <rect class="dg-compute dg-r-edge" x="304" y="192" width="64" height="60"/>
+  <text class="dg-note" x="376" y="226">167 counties</text>
+  <rect class="dg-paper" x="464" y="192" width="64" height="60"/>
+  <rect class="dg-compute dg-r-cell" x="464" y="192" width="64" height="60"/>
+  <path class="dg-compute dg-r-div" d="M 480 192 V 252 M 496 192 V 252 M 512 192 V 252 M 464 204 H 528 M 464 216 H 528 M 464 228 H 528 M 464 240 H 528"/>
+  <rect class="dg-compute dg-r-edge" x="464" y="192" width="64" height="60"/>
+  <text class="dg-note" x="536" y="226">167 counties</text>
+  <rect class="dg-paper" x="624" y="192" width="64" height="60"/>
+  <rect class="dg-compute dg-r-cell" x="624" y="192" width="64" height="60"/>
+  <path class="dg-compute dg-r-div" d="M 640 192 V 252 M 656 192 V 252 M 672 192 V 252 M 624 204 H 688 M 624 216 H 688 M 624 228 H 688 M 624 240 H 688"/>
+  <rect class="dg-compute dg-r-edge" x="624" y="192" width="64" height="60"/>
+  <text class="dg-note" x="696" y="226">166 counties</text>
+  <rect class="dg-compute dg-tile" x="40" y="284" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-sums-task-32" x="40" y="284" width="32" height="32"/>
+  <text class="dg-name" x="84" y="297"><tspan class="dg-num">02</tspan> One function</text>
+  <text class="dg-note" x="84" y="313">runs on every block</text>
+  <text class="dg-note" x="84" y="329">and returns a partial</text>
+  <rect class="dg-compute dg-r-box" x="300" y="284" width="72" height="32" rx="4"/>
+  <text class="dg-body" x="336" y="304" text-anchor="middle">Kernel</text>
+  <rect class="dg-compute dg-r-box" x="460" y="284" width="72" height="32" rx="4"/>
+  <text class="dg-body" x="496" y="304" text-anchor="middle">Kernel</text>
+  <rect class="dg-compute dg-r-box" x="620" y="284" width="72" height="32" rx="4"/>
+  <text class="dg-body" x="656" y="304" text-anchor="middle">Kernel</text>
+  <rect class="dg-paper" x="304" y="348" width="64" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="304" y="348" width="64" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 320 348 V 360 M 336 348 V 360 M 352 348 V 360"/>
+  <rect class="dg-compute dg-r-edge" x="304" y="348" width="64" height="12"/>
+  <rect class="dg-paper" x="464" y="348" width="64" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="464" y="348" width="64" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 480 348 V 360 M 496 348 V 360 M 512 348 V 360"/>
+  <rect class="dg-compute dg-r-edge" x="464" y="348" width="64" height="12"/>
+  <rect class="dg-paper" x="624" y="348" width="64" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="624" y="348" width="64" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 640 348 V 360 M 656 348 V 360 M 672 348 V 360"/>
+  <rect class="dg-compute dg-r-edge" x="624" y="348" width="64" height="12"/>
+  <circle class="dg-dot" cx="496" cy="380" r="2"/>
+  <rect class="dg-driver dg-tile" x="40" y="460" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-sums-sigma-32" x="40" y="460" width="32" height="32"/>
+  <text class="dg-name" x="84" y="473"><tspan class="dg-num">03</tspan> Driver</text>
+  <text class="dg-note" x="84" y="489">the process that</text>
+  <text class="dg-note" x="84" y="505">runs your code</text>
+  <rect class="dg-driver dg-r-box" x="408" y="460" width="176" height="64" rx="4"/>
+  <text class="dg-body" x="420" y="480">add the three partials</text>
+  <text class="dg-body" x="420" y="496">into one row of sums</text>
+  <text class="dg-body" x="420" y="512">divide totals by the count</text>
+  <rect class="dg-result dg-tile" x="628" y="460" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-sums-study-32" x="628" y="460" width="32" height="32"/>
+  <text class="dg-name" x="672" y="473"><tspan class="dg-num">04</tspan> Mean outcomes</text>
+  <rect class="dg-paper" x="672" y="496" width="160" height="24"/>
+  <rect class="dg-result dg-r-cell" x="672" y="496" width="160" height="24"/>
+  <path class="dg-result dg-r-div" d="M 704 496 V 520 M 736 496 V 520 M 768 496 V 520 M 800 496 V 520"/>
+  <rect class="dg-result dg-r-edge" x="672" y="496" width="160" height="24"/>
+  <text class="dg-code" x="688" y="512" text-anchor="middle">5.80</text>
+  <text class="dg-code" x="720" y="512" text-anchor="middle">5.74</text>
+  <text class="dg-code" x="752" y="512" text-anchor="middle">5.75</text>
+  <text class="dg-code" x="784" y="512" text-anchor="middle">5.78</text>
+  <text class="dg-code" x="816" y="512" text-anchor="middle">5.79</text>
+  <text class="dg-note" x="672" y="536">2003</text>
+  <text class="dg-note" x="832" y="536" text-anchor="end">2007</text>
+</svg>

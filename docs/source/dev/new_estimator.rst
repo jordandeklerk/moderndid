@@ -4,61 +4,53 @@
 Adding an estimator
 ===================
 
-When you bring a method from a paper into moderndid, the estimating equation
-is a starting point for the implementation. You still need to decide what
-one observation means, how the data will reach that equation, and what
-uncertainty the result should report. We'll work through those choices by
-developing a two-period panel estimator, from the target effect to a function
-you can call on paired outcomes.
+When you bring a method from a paper into moderndid, its estimating equation
+tells you what to compute. It doesn't say which rows of the data make up one
+observation, how sampling variation reaches the reported interval, or what the
+result has to keep for the calculations that follow a fit. Mistakes in those
+choices are easy to miss because an implementation can reproduce the paper's
+point estimate while pairing the wrong outcomes or scaling its standard error
+by the wrong count.
 
-The example uses the familiar difference between two groups' mean outcome
-changes. Since :func:`~moderndid.reg_did_panel` already estimates this effect
-without covariates, you can follow the calculation without introducing
-nuisance models at the same time. Alongside the code for a small working
-estimator, the discussion explains which choices you would revisit for another
-method. :doc:`architecture`
-covers how those pieces connect to the rest of the package once the
-statistical implementation is ready.
+We'll work through the choices with a small estimator for a two-period panel,
+the difference between the treated and comparison groups' mean outcome
+changes. The package's outcome regression estimator, :func:`~moderndid.ordid`,
+reduces to the same comparison without covariates and gives you an existing
+estimator to check the new one against. By the end, the new estimator matches
+it on a panel small enough to check by hand, covers a known effect at its
+nominal rate in simulated data, and prints a report like the package's other
+results.
 
 
 Begin with the effect you want to estimate
 ------------------------------------------
 
-Before deciding which arguments a function accepts, you need to be clear
-about whose effect it will estimate. Suppose each unit is observed once before
-and once after a treatment begins. Units with :math:`D_i=1` receive
-treatment in the second period and units with :math:`D_i=0` remain
-untreated in both periods. The target is the average effect on the treated
-units after treatment begins,
+Before deciding which arguments a function accepts, you need to be clear about
+whose effect it estimates. Suppose each unit is observed once before and once
+after a treatment that reaches the units with :math:`D_i=1` in the second
+period. The comparison units with :math:`D_i=0` stay untreated in both periods.
+The target is the average effect on the treated units in the second period,
 
 .. math::
 
    \tau=\mathbb{E}[Y_{i1}(1)-Y_{i1}(0)\mid D_i=1].
 
-Since the treated units' outcomes without treatment in that second period are
-never observed, the comparison group's mean outcome change recovers their
-counterfactual change. This requires parallel mean untreated
-trends across the groups, no anticipation, and no spillovers. You can follow
-the identification argument in the
-:doc:`two-period background <../background/drdid>` and in Section 2 of
-`Sant'Anna and Zhao (2020) <https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_.
-
-For this implementation, we assume parallel trends without conditioning on
-covariates and give every unit equal weight. Those choices lead to the
-sample difference in mean changes,
+The treated units' outcomes without treatment in that period are never
+observed. The comparison group's mean outcome change stands in for the change
+they would have seen. That substitution takes parallel trends in the untreated
+outcomes, no anticipation of treatment, and no spillovers between the groups,
+as the :doc:`two-period background <../background/drdid>` and Section 2.1 of
+`Sant'Anna and Zhao (2020)
+<https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_ explain. Assuming
+parallel trends without conditioning on covariates and giving every unit the
+same weight, we estimate the effect by the difference between the groups'
+sample mean changes,
 
 .. math::
 
    \widehat\tau
    =\overline{\Delta Y}_{D=1}-\overline{\Delta Y}_{D=0},
    \qquad \Delta Y_i=Y_{i1}-Y_{i0}.
-
-If your method instead uses conditional parallel trends, the adjustment
-for covariates belongs in this calculation. Adding a formula argument to
-the function would not make the unadjusted comparison above appropriate
-for that design. Starting from the target and identification assumptions
-helps you decide what needs to enter the computation before choosing an
-existing implementation to build on.
 
 
 .. _new-estimator-dispatch-table:
@@ -67,229 +59,33 @@ existing implementation to build on.
 Decide what one observation means
 ---------------------------------
 
-Because this is a panel estimator, one observation in the calculation is a
-paired unit rather than an outcome row. We'll give the numerical routine
-three arrays, ``y0``, ``y1``, and ``d``, whose positions refer to the same
-units. While ``y0`` and ``y1`` contain outcomes before and after treatment,
-``d`` records treatment-group membership rather than treatment status in each
-period. A treated unit therefore has a 1 in ``d`` even though its first
-outcome was observed before treatment began.
-
-The distinction matters when you prepare the arrays from a DataFrame. In
-moderndid, the existing ``TwoPeriodDIDConfig`` and ``PreprocessDataBuilder``
-prepare paired outcomes as ``y0``, ``y1``, and ``D``. The
-:doc:`data preparation discussion <architecture>` explains that path and
-how to choose another layout when a method requires it. Repeated
-cross-sections, for example, cannot supply the within-unit changes used here.
-
-.. admonition:: Equal lengths don't guarantee pairing
-   :class: warning
-
-   Extracting the periods without matching unit identifiers can leave arrays of
-   equal length with different units in the same position. Since a check on
-   shapes and values cannot detect this, correct pairing has to come from
-   preparation.
-
-The estimator also needs a deliberate policy for an incomplete sample. This
-example rejects missing or non-finite values and requires at least two units in
-each group. If an implementation instead drops incomplete units, that decision
-can change the population represented by the fit and needs to be explained to
-the caller.
-
-
-Compute the effect and its uncertainty together
------------------------------------------------
-
-Once the paired sample is settled, the point estimate follows directly
-from the two mean changes. You also need to work out how sampling variation
-in those means reaches the estimated effect, rather than add a standard
-error after the calculation is finished. For the example, we'll use
-analytical inference under independent and identically distributed unit
-sampling, finite outcome-change variance, and positive population shares
-for both groups.
-
-Let :math:`\widehat p` be the treated share and let
-:math:`\widehat\mu_1` and :math:`\widehat\mu_0` be the groups' mean outcome
-changes. The estimated influence contribution for unit :math:`i` is
-
-.. math::
-
-   \widehat\psi_i
-   =\frac{D_i}{\widehat p}(\Delta Y_i-\widehat\mu_1)
-    -\frac{1-D_i}{1-\widehat p}(\Delta Y_i-\widehat\mu_0).
-
-For each unit, the contribution uses its outcome change relative to its
-own group's mean and divides that deviation by the group's sample share.
-This expresses the sampling variation of both group means relative to the
-full number of units. A numerical routine can return those contributions
-alongside the contrast without knowing how the original columns were named.
+Because the estimator compares each unit's two outcomes, one observation is a
+unit with both of its outcomes. Long data hold those outcomes in two rows, one
+for each period. Instead of pairing the rows ourselves, we'll use the
+preparation that the package's two-period estimators share.
+``preprocess_drdid`` matches each unit's rows by identifier and returns the
+outcomes of the two periods as arrays ``y0`` and ``y1`` and the group indicator
+``D``, all in one unit order.
 
 .. code-block:: python
 
-   import numpy as np
+   import polars as pl
 
+   from moderndid.core.preprocess import preprocess_drdid
 
-   def compute_mean_did(y0, y1, d):
-       """Compute the contrast and its unit influence contributions."""
-       change = y1 - y0
-       treated_mean = change[d == 1].mean()
-       comparison_mean = change[d == 0].mean()
-       treated_share = d.mean()
+   data = pl.DataFrame(
+       {
+           "unit": [1, 2, 3, 4, 4, 3, 2, 1],
+           "year": [2000, 2000, 2000, 2000, 2001, 2001, 2001, 2001],
+           "treated": [0, 0, 1, 1, 1, 1, 0, 0],
+           "y": [10.0, 12.0, 20.0, 22.0, 28.0, 24.0, 15.0, 11.0],
+       }
+   )
+   prepared = preprocess_drdid(data, yname="y", tname="year", treat_col="treated", idname="unit")
 
-       treated_component = d / treated_share * (change - treated_mean)
-       comparison_component = (1 - d) / (1 - treated_share) * (change - comparison_mean)
-       influence = treated_component - comparison_component
-       att = float(treated_mean - comparison_mean)
-       return att, influence
-
-To use those contributions for inference, the calling function needs to
-know how they are scaled. The routine follows the convention
-
-.. math::
-
-   \widehat\tau-\tau
-   =\frac{1}{n}\sum_{i=1}^n\psi_i+o_p(n^{-1/2}).
-
-Given the contributions the routine returns before division by :math:`n`, the
-standard error is
-
-.. math::
-
-   \widehat{\operatorname{se}}(\widehat\tau)
-   =\frac{\sqrt{\sum_{i=1}^n\widehat\psi_i^2}}{n}.
-
-The formula uses the influence-function variance convention without a
-degrees-of-freedom correction. If your method uses another convention, its
-calculation needs to reflect that choice.
-
-.. admonition:: Count paired units, not rows
-   :class: important
-
-   Since each contribution describes a paired unit, :math:`n` counts those
-   units rather than the outcome rows in the original panel. Dividing by the
-   row count would change the standard error's normalization.
-
-The independent-sampling assumption has consequences for a more complex
-design. If counties share shocks within a state, treating every county as
-independent would leave out dependence that inference needs to preserve.
-Similarly, when a method fits outcome or propensity models, their estimation
-may contribute to the influence function. The panel implementations of
-:func:`~moderndid.reg_did_panel` and :func:`~moderndid.drdid_panel` show how
-those contributions enter covariate-adjusted estimators. Their formulas
-need to follow the new method's derivation before you reuse them.
-
-
-.. _new-estimator-maketables:
-
-Keep what the next calculation will need
-----------------------------------------
-
-With the effect and its influence contributions available, the next question
-is what the fitted result should retain. A caller who reads the effect now
-may need its uncertainty for a later report or calculation. We'll keep the
-standard error, fitted interval and critical value, unit contributions, sample
-count, and significance level together in a small ``NamedTuple``.
-
-.. code-block:: python
-
-   from typing import NamedTuple
-
-
-   class MeanDIDResult(NamedTuple):
-       """A panel effect with its independent-unit analytical inference."""
-
-       att: float
-       se: float
-       ci_lower: float
-       ci_upper: float
-       critical_value: float
-       influence_func: np.ndarray
-       n_units: int
-       alpha: float
-
-A later report can display the interval used in the fit because the result
-retains its bounds and critical value. For a DataFrame-facing estimator,
-the unit contributions also need their corresponding identifiers so
-filtering or reordering cannot silently change what they refer to.
-Once these quantities are settled, :doc:`architecture` explains how
-containers make them available to printed reports, DataFrames, and
-publication tables.
-
-
-Bring the choices into a callable estimator
--------------------------------------------
-
-We can now assemble the entry point from the pieces above. It accepts the
-paired arrays and a significance level, checks the sample policy chosen
-earlier, and passes valid arrays to ``compute_mean_did``. It then computes the
-analytical standard error from the returned contributions and forms the
-interval from a normal critical value at the requested level.
-
-.. code-block:: python
-
-   from scipy import stats
-
-
-   def mean_did(y0, y1, d, alpha=0.05):
-       """Estimate an unweighted DiD from aligned paired outcomes."""
-       y0, y1, d = (np.asarray(values, dtype=float) for values in (y0, y1, d))
-       if any(values.ndim != 1 for values in (y0, y1, d)):
-           raise ValueError("Outcomes and group membership must be one-dimensional.")
-       if y0.shape != y1.shape or y0.shape != d.shape:
-           raise ValueError("Outcomes and group membership must have matching shapes.")
-       if not all(np.isfinite(values).all() for values in (y0, y1, d)):
-           raise ValueError("The sample must contain only finite values.")
-       if not np.isin(d, [0, 1]).all():
-           raise ValueError("Group membership must contain only 0 and 1.")
-       if (d == 1).sum() < 2 or (d == 0).sum() < 2:
-           raise ValueError("Each group must contain at least two units.")
-       if not 0 < alpha < 1:
-           raise ValueError("alpha must be between zero and one.")
-
-       att, influence = compute_mean_did(y0, y1, d)
-       n_units = len(d)
-       se = float(np.linalg.norm(influence) / n_units)
-       critical_value = float(stats.norm.ppf(1 - alpha / 2))
-       return MeanDIDResult(
-           att=att,
-           se=se,
-           ci_lower=att - critical_value * se,
-           ci_upper=att + critical_value * se,
-           critical_value=critical_value,
-           influence_func=influence,
-           n_units=n_units,
-           alpha=alpha,
-       )
-
-The function exposes only choices that the calculation implements. If you
-later support sampling weights or clustering, those arguments need to
-change the estimating equation or inference as well as the information
-stored in the result. The :ref:`argument conventions
-<consistent-argument-naming>` help you keep their names familiar to callers
-without borrowing options that the method does not yet support.
-
-
-Follow one calculation through the result
-------------------------------------------
-
-A small panel shows whether the function carries the intended comparison
-through to its result. We'll give the comparison units outcome changes of 1
-and 3 and the treated units changes of 4 and 6. Subtracting the comparison
-mean of 2 from the treated mean of 5 leaves an expected effect of 3 outcome
-units.
-
-.. code-block:: python
-
-   y0 = np.array([10, 12, 20, 22])
-   y1 = np.array([11, 15, 24, 28])
-   d = np.array([0, 0, 1, 1])
-
-   result = mean_did(y0, y1, d)
-   print(f"ATT: {result.att:.4f}")
-   print(f"Standard error: {result.se:.4f}")
-   print(f"95 percent interval: [{result.ci_lower:.4f}, {result.ci_upper:.4f}]")
-   print(f"Paired units: {result.n_units}")
-   print(f"Influence contributions: {result.influence_func}")
+   print("Outcomes in 2000:", prepared.y0)
+   print("Outcomes in 2001:", prepared.y1)
+   print("Treated group:", prepared.D)
 
 .. container:: cell_output
 
@@ -297,52 +93,408 @@ units.
 
       .. code-block:: text
 
-         ATT: 3.0000
-         Standard error: 1.0000
-         95 percent interval: [1.0400, 4.9600]
-         Paired units: 4
-         Influence contributions: [ 2. -2. -2.  2.]
+         Outcomes in 2000: [10. 12. 20. 22.]
+         Outcomes in 2001: [11. 15. 24. 28.]
+         Treated group: [0 0 1 1]
 
-Alongside the expected effect of 3 outcome units, the result retains four
-influence contributions that sum to zero. Their squared sum of 16 gives a
-standard error of :math:`\sqrt{16}/4=1`. The interval uses the normal critical
-value of about 1.96. Although this constructed panel checks the calculation,
-four units do not establish the empirical coverage of a large-sample interval.
+Although the 2001 rows list the units in reverse order, the arrays line up by
+unit. ``D`` records which group a unit belongs to rather than whether it was
+treated in each period. A treated unit therefore carries a 1 even though its
+first outcome came before treatment began.
 
-.. admonition:: Match an option to what it changes
+.. admonition:: Row order doesn't pair units
+   :class: warning
+
+   Arrays cut from each year's rows in row order have equal lengths and can
+   still hold different units in the same position. On these four units, that
+   pairing turns the effect of 3 into one of -23. Since no check on shapes or
+   values can catch the mistake, the pairing has to come from the identifiers.
+
+Reusing ``preprocess_drdid`` also gives the new estimator the same sample as
+the doubly robust estimator :func:`~moderndid.drdid`. On a panel, it drops a
+unit observed in only one period with a warning. It stops with an error at a
+missing outcome, a repeated unit and period, a treatment indicator that changes
+within a unit, or a third period. For repeated cross-sections, the same
+function returns one outcome per row and a post-period indicator instead.
+
+
+Compute the effect with its influence function
+----------------------------------------------
+
+The routine that computes the effect should also return what inference needs.
+In large samples, the estimate's error behaves like the average of one term per
+unit, the unit's influence function. Those terms give the standard error and
+later serve clustering, aggregation, and the bootstrap. With :math:`\widehat q`
+the treated share and :math:`\widehat\mu_1` and :math:`\widehat\mu_0` the two
+groups' mean outcome changes, unit :math:`i`'s estimated influence function is
+
+.. math::
+
+   \widehat\psi_i
+   =\frac{D_i}{\widehat q}(\Delta Y_i-\widehat\mu_1)
+    -\frac{1-D_i}{1-\widehat q}(\Delta Y_i-\widehat\mu_0).
+
+Each unit contributes its deviation from its own group's mean change divided by
+that group's share, as the :ref:`influence functions background
+<background-influence-functions>` derives. Like the numerical routines
+elsewhere in the package, the one below takes only arrays.
+
+.. code-block:: python
+
+   def compute_mean_did(y0, y1, d):
+       """Compute the mean DiD and its influence function."""
+       change = y1 - y0
+       treated_mean = change[d == 1].mean()
+       comparison_mean = change[d == 0].mean()
+       treated_share = d.mean()
+
+       treated_part = d / treated_share * (change - treated_mean)
+       comparison_part = (1 - d) / (1 - treated_share) * (change - comparison_mean)
+       return float(treated_mean - comparison_mean), treated_part - comparison_part
+
+The routine returns the terms before any division by :math:`n`, under the
+convention
+
+.. math::
+
+   \widehat\tau-\tau
+   =\frac{1}{n}\sum_{i=1}^n\psi_i+o_p(n^{-1/2}).
+
+The standard error therefore divides the square root of their summed squares
+by the number of units,
+
+.. math::
+
+   \widehat{\operatorname{se}}(\widehat\tau)
+   =\frac{1}{n}\Bigl(\sum_{i=1}^n\widehat\psi_i^2\Bigr)^{1/2}.
+
+Like the analytical standard errors of the staggered adoption estimator
+:func:`~moderndid.att_gt`, it applies no degrees-of-freedom correction.
+
+.. admonition:: Count units, not rows
+   :class: important
+
+   The :math:`n` in the formula counts units, each with both of its outcomes,
+   rather than rows of the long data. Dividing by the :math:`2n` rows would
+   halve the standard error.
+
+This standard error assumes that units are sampled independently of each
+other. With clustered sampling, the :ref:`background on standard errors
+<background-influence-functions-inference>` sums the terms within each cluster
+before squaring. Fitted outcome or propensity score models add terms of their
+own that the :ref:`background on fitted models
+<background-influence-functions-fitted>` derives and the doubly robust panel
+estimator :func:`~moderndid.drdid_panel` computes. Copy its formulas only where
+your derivation gives the same terms.
+
+
+.. _new-estimator-maketables:
+
+Keep what the next calculation will need
+----------------------------------------
+
+Everything after the fit, from a printed report to an aggregation, reads the
+result rather than the data. Besides the effect, the result therefore keeps the
+interval's bounds, its critical value, the influence function, and the number
+of units that scales it. We'll hold these in a ``NamedTuple`` like every other
+moderndid result.
+
+.. code-block:: python
+
+   from typing import NamedTuple
+
+   import numpy as np
+
+
+   class MeanDIDResult(NamedTuple):
+       """Result of the mean DiD estimator."""
+
+       #: Average treatment effect on the treated.
+       att: float
+       #: Standard error of the effect.
+       se: float
+       #: Lower bound of the confidence interval.
+       ci_lower: float
+       #: Upper bound of the confidence interval.
+       ci_upper: float
+       #: Critical value of the interval.
+       critical_value: float
+       #: Influence function with one entry for each unit.
+       influence_func: np.ndarray
+       #: Number of units in the paired sample.
+       n_units: int
+       #: Significance level of the interval.
+       alpha: float
+
+In the package, the API reference shows the fields that the class docstring
+lists under Attributes. The ``#:`` comments keep each field's meaning beside its
+definition for readers of the code. The names match those of existing results,
+such as ``influence_func`` and ``n_units`` on the result of
+:func:`~moderndid.att_gt`.
+
+
+Bring the choices into a callable estimator
+-------------------------------------------
+
+The entry point gathers the decisions above into the one function users call.
+Its arguments reuse the :ref:`names other estimators give the same ideas
+<consistent-argument-naming>`, from ``yname`` for the outcome column to
+``treatname`` for the group indicator, as in :func:`~moderndid.ordid`. Before
+any computation, it checks them with ``check_columns``, a shared helper that
+names every column the data lack and suggests the closest match. The ``alpha``
+check shows the wording every error message follows. It names the argument as
+the user wrote it, says what is wrong, and says what to pass instead.
+
+.. admonition:: Add an option once the calculation uses it
    :class: tip
 
-   Changing ``alpha`` would change the interval without changing the point
-   estimate or unit contributions. Choosing a different comparison or fitting
-   covariate models would instead change the statistical calculation itself.
-   That distinction helps you decide whether a new option belongs in the
-   numerical routine, the inference procedure, or the preparation of the sample.
+   A covariate formula belongs in the signature only once the estimating
+   equation adjusts for covariates. Adding one to this unadjusted comparison
+   wouldn't make it valid under conditional parallel trends. Clustering, by
+   contrast, would change only the standard error, the way ``alpha`` changes
+   only the interval.
+
+With a single unit, a group would contribute only a zero term and drop its
+sampling variation from the standard error. We therefore require at least two
+units in each group once preparation has settled the sample.
+
+.. code-block:: python
+
+   from scipy import stats
+
+   from moderndid.core.preprocess.validators import check_columns
+
+
+   def mean_did(data, yname, tname, idname, treatname, alpha=0.05):
+       """Estimate the mean DiD of a two-period panel."""
+       if not 0 < alpha < 1:
+           raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
+       check_columns(data, yname=yname, tname=tname, idname=idname, treatname=treatname)
+       prepared = preprocess_drdid(data, yname=yname, tname=tname, treat_col=treatname, idname=idname)
+
+       n_treated = int(prepared.D.sum())
+       n_comparison = prepared.n_units - n_treated
+       if min(n_treated, n_comparison) < 2:
+           raise ValueError(
+               f"treatname='{treatname}' gives {n_treated} treated and {n_comparison} "
+               "comparison units. Pass data with at least two units in each group."
+           )
+
+       att, influence_func = compute_mean_did(prepared.y0, prepared.y1, prepared.D)
+       se = float(np.sqrt(np.sum(influence_func**2)) / prepared.n_units)
+       critical_value = float(stats.norm.ppf(1 - alpha / 2))
+       return MeanDIDResult(
+           att=att,
+           se=se,
+           ci_lower=att - critical_value * se,
+           ci_upper=att + critical_value * se,
+           critical_value=critical_value,
+           influence_func=influence_func,
+           n_units=prepared.n_units,
+           alpha=alpha,
+       )
+
+On the four units from earlier, the new estimator and :func:`~moderndid.ordid`
+should agree on the effect, its standard error, and every unit's term.
+
+.. code-block:: python
+
+   import moderndid as did
+
+   columns = {"yname": "y", "tname": "year", "idname": "unit", "treatname": "treated"}
+   result = mean_did(data, **columns)
+   reference = did.ordid(data, **columns, inf_func=True)
+
+   print("Influence function:", result.influence_func)
+   print(f"ATT: {result.att:.4f}, outcome regression {reference.att:.4f}")
+   print(f"Standard error: {result.se:.4f}, outcome regression {reference.se:.4f}")
+   print("Same influence function:", np.allclose(result.influence_func, reference.att_inf_func))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Influence function: [ 2. -2. -2.  2.]
+         ATT: 3.0000, outcome regression 3.0000
+         Standard error: 1.0000, outcome regression 1.0000
+         Same influence function: True
+
+The squares of the four printed terms add up to 16. Dividing its square root by
+the 4 units gives the standard error of 1 that both estimators report.
+Agreement on four units checks the arithmetic and the scaling but can't say
+whether a 95 percent interval covers the effect in 95 percent of samples.
+
+
+Recover a known effect in simulated data
+----------------------------------------
+
+Checking coverage takes many samples with a known effect, because coverage
+describes the estimator across samples rather than in one fit. In each
+simulated panel below, about 40 percent of the 1,000 units are treated. They
+start from a higher outcome level than the comparison units but share their
+untreated trend of 1. Treatment adds 2 to the second outcome of every treated
+unit. We'll fit 500 such panels and compare the spread of the estimates with
+the standard errors the fits report.
+
+.. code-block:: python
+
+   def simulate_panel(n_units, effect, rng):
+       """Draw a two-period panel in which treatment raises the second outcome by effect."""
+       treated = rng.binomial(1, 0.4, n_units)
+       level = rng.normal(2 * treated, 1)
+       y0 = level + rng.normal(size=n_units)
+       y1 = level + 1 + effect * treated + rng.normal(size=n_units)
+       return pl.DataFrame(
+           {
+               "unit": np.tile(np.arange(n_units), 2),
+               "year": np.repeat([2000, 2001], n_units),
+               "treated": np.tile(treated, 2),
+               "y": np.concatenate([y0, y1]),
+           }
+       )
+
+
+   rng = np.random.default_rng(0)
+   fits = [mean_did(simulate_panel(1000, 2.0, rng), **columns) for _ in range(500)]
+   estimates = np.array([fit.att for fit in fits])
+   covered = [fit.ci_lower <= 2.0 <= fit.ci_upper for fit in fits]
+
+   print(f"Mean estimate: {estimates.mean():.3f}")
+   print(f"Standard deviation of the estimates: {estimates.std():.3f}")
+   print(f"Mean standard error: {np.mean([fit.se for fit in fits]):.3f}")
+   print(f"Coverage of the 95 percent intervals: {np.mean(covered):.3f}")
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Mean estimate: 2.004
+         Standard deviation of the estimates: 0.093
+         Mean standard error: 0.091
+         Coverage of the 95 percent intervals: 0.950
+
+Across the 500 panels, the estimates center on the true effect of 2. Their
+standard deviation of 0.093 is close to the average standard error of 0.091
+that the fits report. The intervals cover the true effect in 95 percent of the
+panels. With 500 panels, any coverage between about 93 and 97 percent would be
+consistent with a correct interval.
+
+For a method with nuisance models, :func:`~moderndid.gen_did_scalable` plants
+known effects in staggered data and lets you choose which of the outcome and
+propensity score models are correctly specified.
+
+
+Print a report users can read
+-----------------------------
+
+Users read a result through its printed report rather than its raw fields. A
+formatter builds that report from the helpers in ``moderndid.core.format``.
+Those helpers give the new report the same title bars, effect table,
+significance note, and footer as the package's other reports. ``attach_format``
+then makes the formatter supply the text whenever the result is printed or
+displayed.
+
+.. code-block:: python
+
+   from moderndid.core.format import (
+       attach_format,
+       format_footer,
+       format_significance_note,
+       format_single_result_table,
+       format_standard_errors,
+       format_title,
+   )
+
+
+   def format_mean_did_result(result):
+       """Format a mean DiD result for display."""
+       conf_level = round((1 - result.alpha) * 100)
+       lines = format_title("Mean Difference-in-Differences")
+       lines.append(f" Computed from {result.n_units} units.")
+       lines.extend(
+           format_single_result_table(
+               "ATT", result.att, result.se, conf_level, result.ci_lower, result.ci_upper
+           )
+       )
+       lines.extend(format_significance_note())
+       lines.append(format_standard_errors(bootstrap=False))
+       lines.extend(format_footer("Reference: Sant'Anna and Zhao (2020)"))
+       return "\n".join(lines)
+
+
+   attach_format(MeanDIDResult, format_mean_did_result)
+   print(result)
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         ==============================================================================
+          Mean Difference-in-Differences
+         ==============================================================================
+          Computed from 4 units.
+
+         ┌────────┬────────────┬────────────────────────┐
+         │    ATT │ Std. Error │ [95% Conf. Interval]   │
+         ├────────┼────────────┼────────────────────────┤
+         │ 3.0000 │     1.0000 │ [  1.0400,   4.9600] * │
+         └────────┴────────────┴────────────────────────┘
+
+         ------------------------------------------------------------------------------
+          Signif. codes: '*' confidence interval does not cover 0
+          Analytical standard errors
+         ==============================================================================
+          Reference: Sant'Anna and Zhao (2020)
+
+Because the report reads the interval and significance level stored in the
+result instead of recomputing them, it always shows the interval the fit
+formed. Its footer names the paper behind the method, the one place outside the
+entry point's References section where authors appear.
+
+.. admonition:: Register the formatter on import
+   :class: important
+
+   The ``attach_format`` call at the bottom of ``format.py`` runs only when that
+   module is imported. A family's ``__init__.py`` therefore imports
+   ``format.py`` with a relative import. Without that import, every result
+   prints its raw fields instead of the report.
 
 
 .. _new-estimator-module-layout:
 
-Develop the method beyond this example
---------------------------------------
+Bring the estimator into the package
+------------------------------------
 
-You can choose an existing implementation to build on by looking for the
-data layout and the identifying comparison closest to your method. For
-example, ``drdid/estimators/reg_did_panel.py`` follows paired changes through
-an outcome regression. Staggered adoption methods organize many such
-comparisons by cohort and time. A continuous-treatment method also needs to
-describe the dose at which an effect is evaluated.
+Each function on this page has a home in an estimator family, the folder under
+``moderndid/`` that holds one method. In the ``did`` family, ``att_gt.py``
+holds the entry point, ``compute_att_gt.py`` the numerical routines,
+``container.py`` the results, and ``format.py`` the reports. A public entry
+point also needs a References section that cites the paper, exports in the
+family's and the root ``__init__.py``, an API page, a converter that lets
+:func:`~moderndid.to_df` turn its result into a table, and a ``README.md`` for
+the family. The :doc:`architecture guide <architecture>` shows how the exports
+and the converter connect to the rest of the package.
 
-For those methods, the result needs labels for its effect axes so a caller
-can tell which comparison each estimate represents. If an aggregation
-estimates its weights, their uncertainty needs to reach the aggregate
-alongside the uncertainty in its component effects. The result therefore
-needs the information required by that aggregation's derivation as well as the
-component estimates.
+.. admonition:: Copy the did layout, not drdid's
+   :class: note
 
-When the method is ready to live in the package, keep its numerical routine
-separate from the public entry point and place its result type in the
-family's ``container.py``. That separation lets you follow a change in the
-estimating equation without also tracing DataFrame preparation or reporting.
-:doc:`architecture` provides the implementation map for those interfaces. The
-:doc:`testing guide <../contributing/testing>` covers the checks that support a
-contribution. If one of those checks fails, :doc:`debugging` shows how to trace
-the difference to the data, the fitted effects, or the uncertainty.
+   Some older families, such as ``drdid``, define a result type beside each
+   estimator. A new family keeps every result type in its ``container.py``.
+
+A staggered adoption estimator repeats this comparison for each cohort and
+period. Its result labels every effect and keeps one influence function column
+per effect over the same units. When an aggregation of those effects estimates
+its weights, the :ref:`staggered DiD background
+<background-did-aggregation-weights>` derives the term those weights add.
+
+The :doc:`testing guide <../contributing/testing>` shows how to keep checks
+like these in the test suite, from a hand-computed case to a seeded
+simulation. If a number later disagrees with what you expected, the
+:doc:`debugging guide <debugging>` traces the difference to the sample, the
+effect, or its uncertainty.

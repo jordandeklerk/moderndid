@@ -108,20 +108,6 @@ of wrapping text never need the sideways scrolling the theme's block layout allo
   width: 100%;
 }
 
-.md-typeset .architecture-table {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.md-typeset .architecture-table table {
-  display: table;
-  min-width: 34rem;
-}
-
-.md-typeset .architecture-table code {
-  white-space: nowrap;
-}
-
 /*
 A narrow table squeezes until the theme splits its code names at any character. Whole names make most tables scroll in
 their own box instead. Index tables cannot scroll and give up some cell padding on the smallest phones.
@@ -1015,4 +1001,421 @@ body[data-md-color-scheme="slate"] {
 
 .md-typeset .mdid-footer-logo img {
   width: 360px;
+}
+
+/* Captions start flush left and span their figure, as they do in a paper, rather than the theme's narrow centered block. */
+.md-typeset figcaption {
+  max-width: none;
+  margin: 1em 0;
+  text-align: left;
+}
+
+/* Below a 640px column a diagram scrolls sideways rather than shrinking its type. */
+.mdid-diagram {
+  margin: 1em 0 0;
+  overflow-x: auto;
+}
+
+.mdid-diagram svg {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: auto;
+}
+
+/* A diagram's caption is the paragraph after it, set like the captions of the docs' figures. */
+.md-typeset p.mdid-caption {
+  margin: 1em 0;
+  font-style: italic;
+}
+
+/* Each diagram is an inline SVG that carries only classes. Its colors switch with the docs' color scheme here. */
+.dg {
+  --dg-paper: #f8fafc;
+  --dg-paper-2: #eff3f8;
+  --dg-grid: rgba(40, 60, 100, 0.04);
+  --dg-grid-major: rgba(40, 60, 100, 0.08);
+  --dg-ink: #141b2b;
+  --dg-line: #3d4a64;
+  --dg-muted: #56627a;
+  --dg-faint: #8d98ab;
+  --dg-rule: #ccd4e0;
+  --dg-glyph: #ffffff;
+  --dg-badge: #141b2b;
+  --dg-badge-text: #ffffff;
+  --dg-data-tile: #0f7c8a;
+  --dg-data-line: #0f7c8a;
+  --dg-data-tint: rgba(15, 124, 138, 0.12);
+  --dg-data-wash: rgba(15, 124, 138, 0.03);
+  --dg-data-text: #0c6d79;
+  --dg-compute-tile: #b9580d;
+  --dg-compute-line: #b9580d;
+  --dg-compute-tint: rgba(185, 88, 13, 0.12);
+  --dg-compute-wash: rgba(185, 88, 13, 0.03);
+  --dg-compute-text: #a34c0b;
+  --dg-driver-tile: #315bc4;
+  --dg-driver-line: #315bc4;
+  --dg-driver-tint: rgba(49, 91, 196, 0.13);
+  --dg-driver-wash: rgba(49, 91, 196, 0.03);
+  --dg-driver-text: #2b51b3;
+  --dg-result-tile: #2e7d32;
+  --dg-result-line: #2e7d32;
+  --dg-result-tint: rgba(46, 125, 50, 0.12);
+  --dg-result-wash: rgba(46, 125, 50, 0.03);
+  --dg-result-text: #28702c;
+}
+
+[data-md-color-scheme="slate"] .dg {
+  --dg-paper: #1c202b;
+  --dg-paper-2: #222735;
+  --dg-grid: rgba(150, 178, 235, 0.04);
+  --dg-grid-major: rgba(150, 178, 235, 0.075);
+  --dg-ink: #e8ecf5;
+  --dg-line: #a6b7d9;
+  --dg-muted: #a1acc2;
+  --dg-faint: #6f7c96;
+  --dg-rule: #3a455e;
+  --dg-badge: #e8ecf5;
+  --dg-badge-text: #1c202b;
+  --dg-data-tile: #1a93a1;
+  --dg-data-line: #3db2be;
+  --dg-data-tint: rgba(61, 178, 190, 0.17);
+  --dg-data-wash: rgba(61, 178, 190, 0.06);
+  --dg-data-text: #3db2be;
+  --dg-compute-tile: #d0661a;
+  --dg-compute-line: #f08c42;
+  --dg-compute-tint: rgba(240, 140, 66, 0.17);
+  --dg-compute-wash: rgba(240, 140, 66, 0.06);
+  --dg-compute-text: #f08c42;
+  --dg-driver-tile: #4f74d9;
+  --dg-driver-line: #6d8ff2;
+  --dg-driver-tint: rgba(109, 143, 242, 0.19);
+  --dg-driver-wash: rgba(109, 143, 242, 0.06);
+  --dg-driver-text: #8aa6ff;
+  --dg-result-tile: #3a9440;
+  --dg-result-line: #5dbb63;
+  --dg-result-tint: rgba(93, 187, 99, 0.17);
+  --dg-result-wash: rgba(93, 187, 99, 0.06);
+  --dg-result-text: #5dbb63;
+}
+
+/* A role class points the dg-r-* rules of an element and its children at that role's colors. */
+.dg .dg-data {
+  --dg-r-tile: var(--dg-data-tile);
+  --dg-r-line: var(--dg-data-line);
+  --dg-r-tint: var(--dg-data-tint);
+  --dg-r-wash: var(--dg-data-wash);
+  --dg-r-text: var(--dg-data-text);
+}
+
+.dg .dg-compute {
+  --dg-r-tile: var(--dg-compute-tile);
+  --dg-r-line: var(--dg-compute-line);
+  --dg-r-tint: var(--dg-compute-tint);
+  --dg-r-wash: var(--dg-compute-wash);
+  --dg-r-text: var(--dg-compute-text);
+}
+
+.dg .dg-driver {
+  --dg-r-tile: var(--dg-driver-tile);
+  --dg-r-line: var(--dg-driver-line);
+  --dg-r-tint: var(--dg-driver-tint);
+  --dg-r-wash: var(--dg-driver-wash);
+  --dg-r-text: var(--dg-driver-text);
+}
+
+.dg .dg-result {
+  --dg-r-tile: var(--dg-result-tile);
+  --dg-r-line: var(--dg-result-line);
+  --dg-r-tint: var(--dg-result-tint);
+  --dg-r-wash: var(--dg-result-wash);
+  --dg-r-text: var(--dg-result-text);
+}
+
+.dg .dg-paper,
+.dg .dg-mask {
+  fill: var(--dg-paper);
+}
+
+.dg .dg-gmin {
+  fill: none;
+  stroke: var(--dg-grid);
+  stroke-width: 1;
+}
+
+.dg .dg-gmaj {
+  fill: none;
+  stroke: var(--dg-grid-major);
+  stroke-width: 1;
+}
+
+.dg .dg-zone {
+  fill: var(--dg-r-wash);
+}
+
+.dg .dg-zone-line {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 1;
+}
+
+.dg .dg-zone-dash {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.dg .dg-tile {
+  fill: var(--dg-r-tile);
+}
+
+.dg .dg-glyph {
+  fill: none;
+  stroke: var(--dg-glyph);
+  stroke-width: 2.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dg .dg-glyph-tab {
+  stroke-width: 1.5;
+}
+
+.dg .dg-glyph-tab28 {
+  stroke-width: 2.625;
+}
+
+.dg .dg-glyph-dot {
+  fill: var(--dg-glyph);
+  stroke: none;
+}
+
+.dg .dg-inset {
+  fill: var(--dg-paper-2);
+  stroke: var(--dg-faint);
+  stroke-width: 1;
+}
+
+.dg .dg-box {
+  fill: var(--dg-paper);
+  stroke: var(--dg-line);
+  stroke-width: 1.5;
+}
+
+.dg .dg-r-box {
+  fill: var(--dg-paper);
+  stroke: var(--dg-r-line);
+  stroke-width: 1.5;
+}
+
+.dg .dg-frame {
+  fill: none;
+  stroke: var(--dg-faint);
+  stroke-width: 1;
+}
+
+.dg .dg-r-frame {
+  fill: var(--dg-r-wash);
+  stroke: var(--dg-r-line);
+  stroke-width: 1.5;
+}
+
+.dg .dg-edge {
+  fill: none;
+  stroke: var(--dg-line);
+  stroke-width: 1.5;
+}
+
+.dg .dg-edge-opt {
+  fill: none;
+  stroke: var(--dg-line);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+
+.dg .dg-r-cell {
+  fill: var(--dg-r-tint);
+}
+
+.dg .dg-r-head {
+  fill: var(--dg-r-tint);
+}
+
+.dg .dg-r-cell-opt {
+  fill: var(--dg-r-wash);
+}
+
+.dg .dg-r-edge {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 1.5;
+}
+
+.dg .dg-r-edge1 {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 1;
+}
+
+.dg .dg-r-edge-opt {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+
+.dg .dg-r-div {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 0.75;
+  stroke-opacity: 0.55;
+}
+
+.dg .dg-r-chip {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 0.75;
+}
+
+.dg .dg-r-chip-opt {
+  fill: none;
+  stroke: var(--dg-r-line);
+  stroke-width: 0.75;
+  stroke-opacity: 0.5;
+}
+
+.dg .dg-rule {
+  fill: none;
+  stroke: var(--dg-rule);
+  stroke-width: 0.75;
+}
+
+.dg .dg-div {
+  fill: none;
+  stroke: var(--dg-line);
+  stroke-width: 0.75;
+  stroke-opacity: 0.4;
+}
+
+.dg .dg-wire {
+  fill: none;
+  stroke: var(--dg-line);
+  stroke-width: 1;
+}
+
+.dg .dg-loop {
+  fill: none;
+  stroke: var(--dg-driver-line);
+  stroke-width: 1.75;
+}
+
+.dg .dg-head {
+  fill: var(--dg-line);
+}
+
+.dg .dg-head-loop {
+  fill: var(--dg-driver-line);
+}
+
+.dg .dg-dim,
+.dg .dg-leader {
+  fill: none;
+  stroke: var(--dg-faint);
+  stroke-width: 1;
+}
+
+.dg .dg-dot {
+  fill: var(--dg-line);
+}
+
+.dg .dg-badge {
+  fill: var(--dg-badge);
+}
+
+.dg .dg-detail {
+  fill: none;
+  stroke: var(--dg-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.dg text {
+  font-family: var(--md-text-font-family, "PT Sans"), sans-serif;
+  fill: var(--dg-ink);
+}
+
+.dg .dg-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dg .dg-zone-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dg .dg-note,
+.dg .dg-label {
+  font-size: 12px;
+  fill: var(--dg-muted);
+}
+
+.dg .dg-body {
+  font-size: 12px;
+}
+
+.dg .dg-r-label {
+  font-size: 12px;
+  fill: var(--dg-r-text);
+}
+
+.dg .dg-badge-text {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--dg-badge-text);
+}
+
+.dg .dg-code,
+.dg .dg-num,
+.dg .dg-th,
+.dg .dg-th-opt,
+.dg .dg-shape,
+.dg .dg-reader {
+  font-family: var(--md-code-font-family, "Fira Mono"), monospace;
+  font-size: 11px;
+}
+
+.dg .dg-name .dg-code {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dg .dg-num {
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--dg-muted);
+}
+
+.dg .dg-th,
+.dg .dg-th-opt,
+.dg .dg-shape,
+.dg .dg-reader {
+  font-size: 10.5px;
+}
+
+.dg .dg-th-opt,
+.dg .dg-shape {
+  fill: var(--dg-muted);
+}
+
+.dg .dg-math {
+  font-style: italic;
+}
+
+.dg .dg-callout {
+  font-family: "PT Serif", Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  fill: var(--dg-muted);
 }

@@ -2,44 +2,62 @@
 Testing a contribution
 ######################
 
-The test you write should catch the problem that brought you to the code.
-An incorrect comparison group, a misaligned influence
-function, and a confidence interval built from the wrong variance each need a
-check of the affected behavior. We'll begin with the smallest case that exposes
-that problem and add numerical evidence where the calculation needs it.
+The tests in moderndid check that each estimator computes what its paper
+defines. The mistakes that matter most raise no error and return plausible
+numbers, such as an effect measured against the wrong comparison group or a
+standard error from a misaligned influence function. A test can also pass for
+the wrong reason, when its expected value came from the code it checks or when
+it skipped because a package was missing.
 
-Choosing what to run
-====================
+This guide shows you how to write tests that catch those mistakes. We'll write
+one for :func:`~moderndid.att_gt`, the estimator of group-time average
+treatment effects, on the minimum wage panel of 500 US counties that
+:func:`~moderndid.load_mpdta` loads. Later sections cover tolerances, reference
+validation, optional packages, the tests that need a GPU or a Spark cluster,
+and what each automated check runs.
 
-In the development environment from :doc:`guide`, you can select the affected
-file, one function, or a group of tests that share the behavior you're changing.
-We'll use existing tests for group-time effects below to show the selection patterns
-you can apply to your own work.
+Running the tests that cover a change
+=====================================
+
+A focused run tells you within seconds whether the behavior you're changing
+still holds. Beyond the whole file that the :doc:`setup guide <guide>` runs,
+you can name one test after its file and two colons or select the tests whose
+names contain a keyword.
 
 .. code-block:: bash
 
-   pixi run -e dev pytest tests/did/test_att_gt.py -m "not slow" -vv
-   pixi run -e dev pytest \
-       tests/did/test_att_gt.py::test_att_gt_estimation_methods -vv
+   pixi run -e dev pytest tests/did/test_att_gt.py::test_att_gt_estimation_methods -vv
    pixi run -e dev pytest tests/did/ -k "weights" -m "not slow" -vv
 
-Tests that take longer, such as some bootstrap and numerical validation
-checks, carry the ``slow`` marker. If your change affects that behavior, run the
-relevant slow test explicitly rather than assuming the faster tests cover it.
-The ``tests-core`` and ``tests-full`` Pixi tasks select the fast suite and the
-suite without marker filtering respectively. Both cover much more of the
-package than a focused development check.
+When your change touches what a slow test checks, run that test by name,
+because ``-m "not slow"`` leaves out every test that carries the ``slow``
+marker.
+
+The ``tests-core`` and ``tests-full`` tasks of the ``dev`` environment run the
+fast suite and the full suite across every core of your machine. A focused run
+is usually all you need locally, since the pull request checks run the fast
+suite on every supported Python version.
 
 .. _testing-how-to-write:
 
 Writing a regression test
 =========================
 
-Place a test near the behavior it checks in ``tests/<module>/``. Use a
-standalone test function whose name describes the result you expect and put
-reusable data or setup in that module's ``conftest.py``. The fixture below
-gives the county employment tests access to the same dataset while keeping data
-loading separate from the calculation under test.
+A regression test pins down the behavior that your change fixes or adds. It
+fails on the code from before your change and passes on the code after it.
+
+The tests of ``moderndid/<family>/<module>.py`` live in
+``tests/<family>/test_<module>.py``, even for a module in a subfolder of its
+family. A test module opens with a docstring such as
+``"""Tests for group-time average treatment effects."""`` and its imports.
+Write each test as a plain function whose name says the behavior it checks.
+Keep tests out of classes and leave out comments and docstrings.
+
+Data that several tests share comes from a fixture, a function that pytest
+calls to build an input for each test that names it as an argument. Fixtures,
+each with a one-line docstring, go in the ``conftest.py`` of their folder, the
+file that pytest reads before the tests beside it. Look for one that already
+builds what you need, such as the fixture for the county data below.
 
 .. code-block:: python
 
@@ -50,18 +68,15 @@ loading separate from the calculation under test.
 
    @pytest.fixture
    def mpdta_data():
+       """Minimum wage panel of 500 counties from 2003 to 2007."""
        return load_mpdta()
 
-A bug fix needs an assertion that fails before the fix and passes after it. New
-calculations can be checked against a hand-computed small case, a property
-implied by the method, or an independently obtained reference result. Merely
-checking that the function returns an object won't catch a plausible estimate
-computed for the wrong sample.
-
-The test below checks that reordering the rows preserves group-time effects
-when the county and year identifiers remain unchanged. We turn off bootstrap
-inference and simultaneous bands so the comparison checks row handling without
-introducing a random draw.
+The test below checks that :func:`~moderndid.att_gt` gives the same estimates
+when the rows of the county data arrive in a random order. Because
+preprocessing sorts the rows before any estimation, both fits must give
+identical estimates and standard errors. Log population as a covariate puts
+the outcome regression and the propensity score of the default doubly robust
+estimator through the check.
 
 .. code-block:: python
 
@@ -70,75 +85,81 @@ introducing a random draw.
    from moderndid import att_gt
 
 
-   def test_att_gt_row_order(mpdta_data):
+   def test_att_gt_gives_the_same_estimates_for_shuffled_rows(mpdta_data):
        spec = {
            "yname": "lemp",
            "tname": "year",
            "idname": "countyreal",
            "gname": "first.treat",
-           "est_method": "reg",
-           "boot": False,
-           "cband": False,
+           "xformla": "~ lpop",
        }
-       expected = att_gt(data=mpdta_data, **spec)
-       shuffled = mpdta_data.sample(fraction=1, shuffle=True, seed=42)
-       actual = att_gt(data=shuffled, **spec)
+       shuffled = mpdta_data.sample(fraction=1.0, shuffle=True, seed=42)
 
+       expected = att_gt(mpdta_data, **spec)
+       actual = att_gt(shuffled, **spec)
+
+       assert not shuffled.equals(mpdta_data)
        np.testing.assert_array_equal(actual.groups, expected.groups)
        np.testing.assert_array_equal(actual.times, expected.times)
-       np.testing.assert_allclose(
-           actual.att_gt, expected.att_gt, rtol=1e-10, atol=1e-12
-       )
+       np.testing.assert_array_equal(actual.att_gt, expected.att_gt)
+       np.testing.assert_array_equal(actual.se_gt, expected.se_gt)
 
-When several methods or input forms should meet the same expectation,
-``pytest.mark.parametrize`` lets you express that relationship in one test.
-Different expectations belong in separate tests so you can tell which behavior
-changed when one fails. Keeping imports at the top of the file and fixtures in
-``conftest.py`` leaves the test body free to show its input, call, and
-assertion.
-
-Checking numerical results
-==========================
+The first assertion makes sure that the shuffle moved the rows, because a
+shuffle that returned the original order would let the test pass without
+checking anything. Use ``pytest.mark.parametrize`` when several estimation
+methods or input types share one expectation. Different expectations get
+separate tests, because a failure should name the behavior that changed.
 
 .. _testing-numerical-tolerances:
 
 Choosing numerical tolerances
------------------------------
+=============================
 
-Use the absolute tolerance to control differences near zero and the relative
-tolerance to scale with the reference value's magnitude. Set both explicitly in
-``np.testing.assert_allclose`` and choose them for the quantity you're
-checking. A deterministic difference of means usually permits a tighter
-comparison than a standard error from an iterative fit.
+A tolerance says how far a result may stray from its expected value before the
+test fails. Two runs that must agree exactly, such as the shuffled and original
+fits above, compare with ``np.testing.assert_array_equal``. A value computed
+another way compares with ``np.testing.assert_allclose`` and an explicit
+``rtol`` and ``atol``, because the two calculations add their terms in
+different orders. For a deterministic calculation, set the tolerance to what
+the code achieves, usually ``rtol=1e-12`` or ``1e-10``.
 
-For a bootstrap or simulation, use an explicit ``random_state`` when the
-function accepts it and a seeded ``np.random.default_rng`` for generated data.
-Although reproducibility helps diagnose a discrepancy, identical seeds do not
-guarantee identical draws across different algorithms.
+Never paste moderndid's own output into a test as the expected value, because
+such a test only checks that the output hasn't changed. Rebuild the value from
+pieces that the result exposes, compute it by hand on a small case, or check a
+property that the method implies. In ``tests/did/test_att_gt.py``, for example,
+``test_att_gt_without_the_bootstrap_sums_the_influence_function_within_clusters``
+sums each unit's influence function within its state with ``np.bincount`` and
+compares the standard errors it gives at ``rtol=1e-12``.
 
-.. admonition:: A wider tolerance is not a fix
+.. admonition:: A wider tolerance hides the mistake
    :class: warning
 
-   A comparison of independent bootstrap runs needs a tolerance supported by
-   their sampling variation, not a wider bound chosen only after the test
-   fails.
+   When a comparison fails by more than rounding, trace the sample, the
+   weights, and the inference settings before you touch the tolerance.
+   Loosening it until the test passes hides the mistake the test exists to
+   catch. The :ref:`debugging guide <debugging>` shows how to find where two
+   results part.
 
-If a discrepancy is larger than expected, trace the sample selection,
-normalization, weight convention, and inference settings before changing the
-tolerance. For help locating the source of a numerical discrepancy, the
-:ref:`debugging guide <debugging>` follows the calculation through the
-implementation.
+To make every run see the same numbers, build test data with a ``gen_*``
+simulator from ``moderndid.core.data`` at ``random_state=42`` or with
+:func:`~moderndid.load_mpdta`. Anything else random comes from a seeded
+``np.random.default_rng`` rather than the global ``np.random`` functions.
+Every call that draws a bootstrap takes an explicit ``random_state``. That
+includes an ``att_gt`` fit whose result reaches :func:`~moderndid.aggte`,
+because the aggregation inherits the fit's seed and draws for its uniform
+bands under the default ``cband=True``.
+
+.. _testing-validation:
 
 Running reference validation
-----------------------------
+============================
 
-The tests in ``tests/validation/`` compare estimates and inference with
-independent reference calculations on the same inputs. On Linux and macOS,
-their environment provides the reference tools and the optional packages these
-comparisons need, such as scikit-learn for dynamic balancing and pyfixest for
-extended TWFE. Since the setup task compiles some dependencies from source, it
-needs a working Rust toolchain and can take longer than installing the ordinary
-development environment.
+The tests in ``tests/validation/`` compare moderndid's estimates and standard
+errors with those of independent implementations of the same methods on the
+same data. The ``validation`` Pixi environment provides those implementations
+on Linux and macOS. Its ``setup-r`` task installs the reference packages that
+the environment lacks and updates outdated ones. One of them compiles from
+source and needs a Rust toolchain.
 
 .. code-block:: bash
 
@@ -146,99 +167,108 @@ development environment.
    pixi run -e validation setup-r
    pixi run -e validation did
 
-The ``did`` task selects ``tests/validation/test_r_did.py`` to check the
-staggered adoption estimator. Other available tasks include ``drdid``,
-``didcont``, ``didtriple``, ``didinter``, ``didhonest``, and ``npiv``. You can
-select an individual test through ``pixi run -e validation pytest`` when the
-whole estimator's validation file is unnecessary. The extended TWFE tests have
-no task of their own and run from ``tests/validation/test_r_etwfe.py`` through
-the same ``pytest`` command. The dynamic balancing tests run only when
-``DYNBALANCING_PATH`` names a checkout of its reference implementation. The
-setup script checks installed versions and can update outdated dependencies
-on later runs as well as installing missing ones.
+The ``did`` task runs ``tests/validation/test_r_did.py`` for the staggered
+adoption estimator. Tasks named ``drdid``, ``didcont``, ``didtriple``,
+``didinter``, ``didhonest``, and ``npiv`` run the files of the other
+estimators. The ``all`` task runs all of them, along with the extended TWFE
+file that has no task of its own. Run that file, or a single test from any
+file, through ``pixi run -e validation pytest``. The dynamic balancing tests
+run only when the ``DYNBALANCING_PATH`` environment variable names a checkout
+of their reference implementation.
 
-.. admonition:: Read validation skips
+.. admonition:: Read the skip reasons
    :class: important
 
-   A missing reference dependency can skip a numerical comparison rather
-   than fail it. Check the skip reasons before treating a completed
-   validation run as evidence that your estimates agree.
+   A reference package that failed to install skips its comparisons rather
+   than failing them. Add ``-ra`` to the command and read the skip reasons
+   before you treat a passing validation run as evidence that the estimates
+   agree.
 
-The :ref:`worked comparisons <r-comparisons>` cover most of these estimators
-on application data. Each comparison sets the
-tolerances of its own assertions in its code. The
-:ref:`numerical checks <benchmarks-numerical-checks>` in the benchmarking guide
-give the tolerances of the timing runner.
+The :ref:`worked comparisons <r-comparisons>` run most of these estimators
+side by side on application data.
 
-Handling warnings and optional dependencies
-===========================================
+Checking errors, warnings, and optional packages
+================================================
 
-When a warning is part of the behavior you're changing, assert it with
-``pytest.warns`` and a message match. If a test is about another behavior and a
-particular warning is expected, use a narrowly matched
-``pytest.mark.filterwarnings`` marker. A broad warning filter can hide new
-problems in the calculation you're trying to check.
+Tests check the messages of errors and warnings as well as their types, since
+users read them. Match an error with ``pytest.raises(ValueError, match=...)``
+on a distinctive part of its message. Wrap that part in ``re.escape`` when it
+holds brackets or other regular expression syntax. A bare
+``pytest.raises(Exception)`` would also pass on an ``AttributeError`` from a
+missing export.
 
-Tests that require an optional dependency can use
-``tests.helpers.importorskip`` at module level. Since a missing dependency
-normally skips that file, keep those tests separate from checks that should run
-with the base package. GPU tests are the exception because they reach CuPy
-through :ref:`fixtures of their own <testing-gpu>`. When the fixtures in a
-folder need an extra, its ``conftest.py`` calls ``importorskip`` at the top. A
-run without that extra then skips the whole folder. Passing that folder to
-pytest by name stops the run with an error instead, because pytest loads its
-``conftest.py`` before collection starts.
+When a warning is the behavior you're testing, assert it with
+``pytest.warns(UserWarning, match=...)``. A test about something else names
+the one warning it expects in a ``pytest.mark.filterwarnings`` marker, because
+a broader filter could hide a new warning from the calculation.
 
-Setting the ``MODERNDID_REQUIRE_ALL_DEPS`` environment variable makes
-``importorskip`` raise the import error instead of skipping. Because a skipped
-file reports no failure, set it for tests whose packages your environment
-should provide, such as the ``didml`` tests in the development environment.
+.. admonition:: Prove that a guard needs no silencing
+   :class: tip
+
+   Library code guards a calculation rather than silencing NumPy's
+   floating-point warnings with ``np.errstate``. The ``forbid_errstate``
+   fixture in ``tests/conftest.py`` turns any call to ``np.errstate`` into a
+   failure for the test that takes it.
+
+A test that needs an optional package imports it through ``importorskip`` from
+``tests.helpers`` at the top of its module. Without the package, that call
+skips every test in the module. A folder whose fixtures need the package makes
+the call in its ``conftest.py`` instead. A run of the whole suite then skips
+the folder. Naming that folder on the command line stops pytest with an error,
+because pytest imports a ``conftest.py`` named this way before it can skip
+anything. In the development environment, which has no PySpark, the 39 tests
+in ``tests/spark/test_preprocess.py`` shrink to a single line of output.
 
 .. code-block:: bash
 
-   MODERNDID_REQUIRE_ALL_DEPS=1 pixi run -e dev pytest tests/didml -vv
+   pixi run -e dev pytest tests/spark/test_preprocess.py -ra -q
 
-Use ``pytest.mark.skipif`` for a known environment limitation and explain it in
-the reason.
+.. container:: cell_output
 
-.. admonition:: Make expected failures strict
-   :class: tip
+   .. container:: output stream
 
-   An expected failure should point to an unresolved issue and use
-   ``strict=True``. An unexpected pass then calls attention to a marker that
-   may no longer belong there.
+      .. code-block:: text
+
+         =========================== short test summary info ============================
+         SKIPPED [1] tests/spark/test_preprocess.py:17: could not import 'pyspark': No module named 'pyspark'
+         1 skipped in 0.03s
+
+Setting the ``MODERNDID_REQUIRE_ALL_DEPS`` environment variable turns that
+skip into a ``ModuleNotFoundError`` at collection. Set it wherever the tests
+should find every package they need, as the Spark jobs on pull requests do. A
+limit of the environment rather than a missing package, such as a pandas too
+new for a conversion test, gets ``pytest.mark.skipif`` with a reason that names
+the limit.
 
 .. _testing-gpu:
 
 Testing on a GPU
 ================
 
-Although most machines that run the test suite have no GPU, the CuPy backend
-and the estimators' GPU routes need tests that run on a real one. We write each
-GPU test once so that it skips on those machines and runs on your own NVIDIA
-GPU or on a cloud GPU from Modal.
+Several estimators in moderndid can run their array work on an NVIDIA GPU
+through CuPy, a library that offers NumPy's interface on the GPU. We write each
+GPU test to skip on the many machines without a GPU and to run in full wherever
+CuPy reaches one.
 
 Writing a GPU test
 ------------------
 
-``pyproject.toml`` registers the ``gpu`` marker for tests that need a GPU.
-Unless CuPy is installed and ``cupy.is_available()`` finds a CUDA GPU,
-``tests/conftest.py`` skips each marked test and reports the reason
-``needs CuPy and a CUDA GPU``. Neither the development environment nor the pull
-request checks install CuPy. A test module therefore never imports it and takes
-it from a fixture instead.
+The ``gpu`` marker, registered in ``pyproject.toml``, flags a test that needs
+a GPU. Unless CuPy is installed and ``cupy.is_available()`` finds a CUDA
+device, ``tests/conftest.py`` skips each marked test with the reason
+``needs CuPy and a CUDA GPU``. Neither the development environment nor the
+pull request checks install CuPy. Test modules therefore never import it and
+take it from a fixture instead.
 
-A check against an independent reference, such as statsmodels, NumPy's linear
-algebra, or a closed form, takes the ``xp`` fixture. With only its CuPy case
-marked, a test that takes the fixture runs under NumPy on every machine and
-under CuPy only where CuPy can reach a GPU. The fixture activates the backend
-for the whole test and yields its array module.
-
-The test below builds its inputs with ``xp.asarray`` and compares the
-coefficients that ``cupy_wls`` fits with those from statsmodels. Because the
-function should return arrays of the active backend, the test asserts the type
-of its coefficients before ``to_numpy`` from ``moderndid.cupy.backend`` moves
-them to the host for the comparison.
+A check against an independent reference, such as statsmodels or a closed
+form, takes the ``xp`` fixture. The fixture runs the test once under each
+backend and hands it the array module of the active one. The NumPy case runs
+on every machine, since only the CuPy case carries the marker. The test below
+checks the weighted least squares fit of ``cupy_wls``, the regression routine
+of the GPU backend, against statsmodels. It also asserts that the coefficients
+come back as arrays of the active backend before ``to_numpy`` moves them to the
+host. A fuller version with three designs sits in
+``tests/core/test_gpu_regression.py``.
 
 .. code-block:: python
 
@@ -255,54 +285,45 @@ them to the host for the comparison.
        outcome = design @ np.array([1.0, 2.0]) + rng.normal(size=200)
        weights = rng.uniform(0.5, 2.0, size=200)
 
-       beta, _ = cupy_wls(
-           xp.asarray(outcome), xp.asarray(design), xp.asarray(weights)
-       )
+       beta, _ = cupy_wls(xp.asarray(outcome), xp.asarray(design), xp.asarray(weights))
        expected = sm.WLS(outcome, design, weights=weights).fit().params
 
        assert isinstance(beta, xp.ndarray)
        np.testing.assert_allclose(to_numpy(beta), expected, rtol=1e-10)
 
-A test that compares a GPU run with the CPU run of the same call carries the
-marker alone. It runs the call under the default NumPy backend and again inside
-``use_backend("cupy")``, or with ``backend="cupy"`` where the function takes
-that argument. Estimators, bootstraps, and the warnings a fit raises are
-usually checked this way. The ``cp`` fixture supplies CuPy for device inputs
-and type checks. Giving such a test the ``xp`` fixture would only add a NumPy
-case that compares NumPy with itself.
+A test that compares a GPU run with the CPU run of the same call, as most GPU
+tests of estimators and bootstraps do, carries the ``gpu`` marker alone. It
+runs the call under the default NumPy backend and again inside
+``use_backend("cupy")``, the context that moves moderndid to the GPU, or with
+``backend="cupy"`` where the function takes that argument. Such a test takes
+CuPy from the ``cp`` fixture, because the ``xp`` fixture would only add a case
+that compares NumPy with itself.
 
-Allowing for rounding and random draws
---------------------------------------
-
-Results on a GPU differ from the CPU's in their last bits because cuBLAS,
-cuSOLVER, and CuPy's reductions round differently from LAPACK and NumPy. Every
-tolerance in a GPU test should leave room for that difference. Inputs also
-need a clear margin from any threshold the code applies, such as the cutoff
-that decides whether a design counts as singular.
-
-Since CuPy's random generator draws different numbers from NumPy's for the
-same seed, a bootstrap on the GPU can't match the CPU draw for draw. Its test
-compares the distribution of the draws through summaries such as their
-support, their mean, or a standard error checked with a loose tolerance. A
-step that runs on the CPU by design, such as a weighted bootstrap, can still
-match the NumPy run exactly when a test calls it directly.
+GPU results differ from the CPU's in their last bits, because the GPU's
+libraries round differently from LAPACK and NumPy. Every tolerance in a GPU
+test leaves room for that difference. Inputs also stay clear of thresholds the
+code applies, such as the cutoff that decides whether a design is singular.
+CuPy's random generator draws different numbers from NumPy's for the same
+seed. A bootstrap test on the GPU therefore compares summaries of the draws,
+such as their support, their mean, or a standard error at a loose tolerance. A
+weighted bootstrap stays on the CPU under every backend and can still match the
+NumPy run exactly when a test calls it directly.
 
 Running GPU tests
 -----------------
 
-On Linux with an NVIDIA GPU, you can run the marked tests in the ``gpu`` Pixi
-environment. It adds CuPy to the development environment and exists only for
-``linux-64``. Because a run in which every GPU test skipped proves nothing about
-the GPU code, the command below passes ``-ra`` to list each skipped test with
-its reason.
+The ``gpu`` Pixi environment, defined only for ``linux-64``, adds CuPy to the
+development environment for machines with an NVIDIA GPU. A run in which every
+GPU test skipped proves nothing. The command below passes ``-ra`` to list each
+skipped test with its reason.
 
 .. code-block:: bash
 
    pixi run -e gpu pytest -m gpu -ra
 
 Without a GPU of your own, you can run the same tests on a T4 GPU through
-Modal. The commands below install its command line client, sign you in, and
-start the run from the repository root.
+Modal, a service that runs Python functions on cloud GPUs and bills your
+account for the time. Run the commands below from the root of your checkout.
 
 .. code-block:: bash
 
@@ -310,149 +331,187 @@ start the run from the repository root.
    modal setup
    modal run .github/scripts/gpu_tests.py
 
-Modal bills the run's GPU time to your own account. The script builds the test
-environment from ``uv.lock`` and mounts ``moderndid/``, ``tests/``, and
-``pyproject.toml`` from your checkout. Before running ``pytest -m gpu``, it
-checks that CuPy can see the GPU and fails when CuPy can't.
+The script builds its environment from ``uv.lock`` and mounts ``moderndid/``,
+``tests/``, and ``pyproject.toml`` from your checkout. It checks that CuPy can
+see the GPU before it runs ``pytest -m gpu``. A broken CUDA setup then fails
+instead of passing with every test skipped.
+
+.. admonition:: Run GPU changes on a GPU
+   :class: important
+
+   A change to the CuPy backend or to an estimator's GPU route needs a run on
+   a GPU, your own or Modal's, before it merges, as no pull request check runs
+   the GPU tests.
 
 .. _testing-spark:
 
 Testing on Spark
 ================
 
-A fit on a Spark DataFrame has to reproduce the in-memory result on a cluster
-whose tasks run in other processes. Since the shard engines never import
-PySpark, we test them in the ordinary suite. The parity tests in
-``tests/did/test_shards.py`` run the panel engine through ``LocalExecutor``, as
-the guide to :ref:`fits on shards <dev-shards>` describes. Those in
-``tests/did/test_row_shards.py`` do the same for the row engine on repeated
-cross-sections and unbalanced panels.
+A fit of :func:`~moderndid.att_gt` on a Spark DataFrame never gathers its rows
+on one machine. In each of several passes, every block of the data, called a
+shard, sums its contribution where it lives. The driver adds up those sums, as
+the guide to :ref:`fits on shards <dev-shards>` shows. As the engines behind
+those passes never import PySpark, the ordinary suite runs them through
+``LocalExecutor``, an executor that holds the shards in memory. The parity
+tests in ``tests/did/test_shards.py`` and ``tests/did/test_row_shards.py``
+compare those engines with the in-memory fit.
 
-The tests in ``tests/spark/`` cover the whole path on Spark. They compare the
-results of ``att_gt``, ``aggte``, and ``honest_did`` on a Spark DataFrame with
-the in-memory results and confirm that the bootstrap draws don't change with
-the partitioning. Other tests check the tables that ``build_unit_table`` and
-``build_row_table`` build, the executor that runs each pass, and whether a
-Spark fit raises the same errors and warnings as an in-memory fit.
-
-Writing a Spark test
---------------------
-
-Every test module in ``tests/spark/`` carries the ``spark`` marker that
-``pyproject.toml`` registers and skips itself when PySpark is missing. Unlike a
-folder whose ``conftest.py`` calls ``importorskip`` at the top,
-``tests/spark/conftest.py`` imports PySpark only when it is installed. Passing
-the folder to pytest by name without PySpark therefore skips its tests instead
-of stopping the run. The session fixture in the folder's ``conftest.py`` also
-needs a Java runtime on ``JAVA_HOME`` or ``PATH`` and skips without one, unless
-the tests connect to a running server at an ``sc://`` address.
-
-A parity test fits the same Polars data in memory and on Spark. The
-``to_spark`` fixture turns the data into a Spark DataFrame through Arrow. Since
-PySpark 3.5 can neither build a DataFrame from a pyarrow Table nor collect a
-DataFrame with ``toArrow()``, a test that needs either step calls ``to_spark``
-or the ``to_arrow`` fixture rather than the PySpark method.
-``record_warnings`` returns each fit with the warnings it raised. Once the test
-has checked that both fits raised the same warnings, ``assert_same_fit``
-compares their results at a tolerance such as 1e-12.
-
-.. admonition:: Keep the fixtures in step with ``spark_att_gt``
+.. admonition:: Keep the shard fixtures in step with spark_att_gt
    :class: important
 
    The ``att_gt_on_shards`` fixture in ``tests/conftest.py`` and the
    ``att_gt_on_row_shards`` fixture in ``tests/did/conftest.py`` run a fit
-   through ``LocalExecutor``. Since both build ``estimation_params`` and
-   ``cluster_counts`` by hand the way ``spark_att_gt`` does, a change to how
-   ``spark_att_gt`` builds either one needs the same change in both fixtures.
+   through ``LocalExecutor``. Both build ``estimation_params`` and
+   ``cluster_counts`` by hand the way ``spark_att_gt``, the function that
+   ``att_gt`` calls for a Spark DataFrame, builds them. A change to either one
+   in ``spark_att_gt`` needs the same change in both fixtures.
 
-Most Spark tests fit a table of one partition, since ``build_unit_table`` and
-``build_row_table`` merge their partitions to about a megabyte each and test
-data rarely fills more than one. To reach several partitions, repartition the
-table that the ``unit_table_of`` or ``row_table_of`` fixture returns, as
-``test_executor.py`` does. Only a ``SparkExecutor`` built with
-``whole_clusters=True`` needs that repartition to hash on the cluster. A panel
-whose unit table passes a megabyte, such as ``large_clustered_panel``, gets
-more than one partition from ``build_unit_table`` itself. The eight shuffle
-partitions of the session fixture change how long a fit takes rather than what
-it estimates.
+The tests in ``tests/spark/`` run the whole path on a Spark session. They
+compare :func:`~moderndid.att_gt`, :func:`~moderndid.aggte`, and
+:func:`~moderndid.honest_did` on a Spark DataFrame with their in-memory
+results and confirm that the bootstrap draws don't depend on how the rows fall
+into partitions. Others cover the tables that a Spark fit builds and the
+executor that runs its passes.
 
-A bootstrap test needs reference values that the engine didn't compute. Since
-a fit on shards draws different signs from an in-memory fit, its bootstrap
-standard errors don't match the in-memory ones. The tests in
-``tests/did/test_shards.py`` instead multiply ``keyed_rademacher`` signs on
-``canonical_keys`` of the unit or cluster identifiers by the in-memory
-influence function, summed within clusters for a clustered fit. They finish
-those draws with ``_mboot_from_draws`` and compare the engine's standard errors
-and critical value with the result at 1e-12. A test that compares the engine
-only with itself would pass a mistake that both sides share. The Spark tests
-compare their bootstrap with a fit through ``LocalExecutor`` because these
-reference tests already pin that fit.
+Writing a Spark test
+--------------------
+
+A parity test fits the same Polars data in memory and on Spark, as the first
+test in ``tests/spark/test_att_gt.py`` does for each estimation method,
+comparison group, and base period. The ``to_spark`` fixture turns the data into
+a Spark DataFrame through Arrow. The ``record_warnings`` fixture returns each
+fit along with the warnings it raised. Once the warnings match,
+``assert_same_fit`` compares the cells, estimates, and standard errors of the
+two fits.
+
+.. code-block:: python
+
+   @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+   @pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
+   @pytest.mark.parametrize("base_period", ["varying", "universal"])
+   def test_att_gt_on_spark_matches_att_gt(
+       mpdta_data, to_spark, record_warnings, assert_same_fit, est_method, control_group, base_period
+   ):
+       spec = {
+           "yname": "lemp",
+           "tname": "year",
+           "idname": "countyreal",
+           "gname": "first.treat",
+           "xformla": "~lpop",
+           "est_method": est_method,
+           "control_group": control_group,
+           "base_period": base_period,
+           "random_state": 7,
+       }
+       frame = to_spark(mpdta_data)
+
+       memory, memory_warnings = record_warnings(att_gt, mpdta_data, **spec)
+       distributed, spark_warnings = record_warnings(att_gt, frame, **spec)
+
+       assert spark_warnings == memory_warnings
+       assert_same_fit(distributed, memory, 1e-12)
+
+PySpark 3.5 can neither build a DataFrame from a pyarrow Table nor collect one
+with ``toArrow()``. A test calls the ``to_spark`` or ``to_arrow`` fixture for
+those steps rather than the PySpark method. ``record_warnings`` also leaves out
+two warnings that PySpark raises on its own, about unclosed sockets and its
+deprecated ``distutils`` version check.
+
+Before its first pass, a Spark fit lays the data out as a table with one row
+per unit, from ``build_unit_table``, or one row per observation, from
+``build_row_table``. With both builders merging partitions until each holds
+about a megabyte, most test tables have one partition. To reach several,
+repartition the table that the ``unit_table_of`` or ``row_table_of`` fixture
+returns, as ``tests/spark/test_executor.py`` does. A ``SparkExecutor`` built
+with ``whole_clusters=True`` needs that repartition on the cluster column, as
+the section on :ref:`tasks of a Spark pass <dev-spark-tasks>` explains. A panel
+as large as
+the ``large_clustered_panel`` fixture gets several partitions from
+``build_unit_table`` itself.
+
+A bootstrap test needs reference values that the engine didn't compute,
+because a test that compared the engine only with itself would pass a mistake
+that both sides share. The tests in ``tests/did/test_shards.py`` apply the
+``keyed_rademacher`` signs that the engine draws for each unit or cluster to
+the in-memory influence function, summed within clusters for a clustered fit.
+``_mboot_from_draws`` turns those draws into standard errors and a critical
+value that the engine's must match at ``1e-12``. The Spark tests compare their
+bootstrap with a fit through ``LocalExecutor`` because these reference tests
+already pin that fit.
+
+.. admonition:: Multipliers on shards
+   :class: note
+
+   Each multiplier on shards depends only on the seed, the draw, and the key of
+   its unit or cluster, as :ref:`random draws on shards <dev-shard-draws>`
+   explains. An in-memory bootstrap draws its signs in the order of the units
+   instead and can't serve as the reference.
 
 Running the Spark tests
 -----------------------
 
-On Linux or macOS, you can run the Spark tests in the ``spark`` Pixi
-environment. It provides PySpark 4.2 and Java 21 on Python 3.13. By default the
-session fixture starts a classic ``local-cluster[2,1,1024]`` session. Since its
-two executors have JVMs of their own, the tasks of every pass run outside the
-driver's JVM as they would on a cluster.
+On Linux or macOS, the ``spark`` Pixi environment runs the Spark tests with
+PySpark 4.2 and Java 21 on Python 3.13. By default the session fixture starts a
+classic session on ``local-cluster[2,1,1024]``, a cluster of two executors with
+one core and 1024 MB each. Those executors run in Java processes of their own,
+as they would on a real cluster.
 
-Setting the ``MODERNDID_SPARK_REMOTE`` environment variable switches the
-fixture to Spark Connect. The value ``local-cluster[2,1,1024]`` starts a local
-Spark Connect server over the same kind of cluster. An address such as
-``sc://localhost:15002`` connects to a server that is already running. Each
-mode needs a pytest run of its own because a classic session and a Spark
-Connect session can't share one process.
+Every module in ``tests/spark/`` carries the ``spark`` marker and skips itself
+when PySpark is missing. Unlike a folder whose ``conftest.py`` calls
+``importorskip`` at the top, ``tests/spark/conftest.py`` imports PySpark only
+when it's installed. Naming the folder on the command line without PySpark
+therefore skips its tests rather than stopping the run. The session fixture
+also needs Java on ``JAVA_HOME`` or ``PATH`` and skips without it, unless the
+tests connect to a running server at an ``sc://`` address.
+
+Spark Connect sends a client's DataFrame operations to a separate Spark server,
+the way notebooks on Databricks serverless compute reach Spark. Setting the
+``MODERNDID_SPARK_REMOTE`` environment variable switches the session fixture to
+Spark Connect. The value ``local-cluster[2,1,1024]`` starts a local Spark
+Connect server over the same kind of cluster. An address such as
+``sc://localhost:15002`` connects to a server that's already running. Each mode
+needs a pytest run of its own, since a classic session and a Spark Connect
+session can't share a process.
 
 .. code-block:: bash
 
    pixi run -e spark pytest tests/spark -ra
    MODERNDID_SPARK_REMOTE="local-cluster[2,1,1024]" pixi run -e spark pytest tests/spark -ra
 
-As in the GPU command, ``-ra`` lists any skipped test with its reason.
-
-The ``spark35`` Tox environment runs the same tests on PySpark 3.5 with numpy
-below 2, pandas below 2.2, and pyarrow below 16, as on Databricks Runtime 16.4
-LTS. Since the tests of older pandas in ``tests/core/test_dataframe.py`` skip on
-any pandas with the Arrow PyCapsule interface, the environment runs that file
-too. It needs three things that the Pixi runs above don't.
+Tox builds an isolated virtual environment for each named setup in
+``tox.ini``. Its ``spark35`` environment runs the same tests on PySpark 3.5 with
+numpy below 2, pandas below 2.2, and pyarrow below 16, close to the packages of
+Databricks Runtime 16.4 LTS. It also runs the conversion tests for pandas older
+than 2.2 in ``tests/core/test_dataframe.py``, the one place where they don't
+skip. The environment uses Python 3.12, where numpy below 2 still has wheels,
+and needs three things that the Pixi runs above don't.
 
 - Java 17 on ``JAVA_HOME``, because Spark 3.5 can't run its Arrow functions on
   Java 21.
-- The tox-uv plugin, because ``constrain_package_deps = true`` puts the pins
-  into a constraint file and pip rejects the extra of ``pyspark[connect]``
-  there.
+- The tox-uv plugin that lets Tox install with uv, because pip rejects the
+  extra of ``pyspark[connect]`` in the constraint file that
+  ``constrain_package_deps = true`` writes.
 - Network access on the first run through Spark Connect, when Spark downloads
-  the server's package from Maven Central into ``~/.ivy2``.
-
-The environment runs on Python 3.12, the Python of Databricks Runtime 16.4 LTS.
-The commands below run it in a classic session and through Spark Connect.
+  the server from Maven Central, the public repository of Java packages, into
+  ``~/.ivy2``. A custom ``spark.jars.ivy`` breaks those runs, because the
+  session fixture hands the executors the server's jar from ``~/.ivy2/jars``.
 
 .. code-block:: bash
 
    uvx --with tox-uv tox -e spark35
    MODERNDID_SPARK_REMOTE="local-cluster[2,1,1024]" uvx --with tox-uv tox -e spark35
 
-Since PySpark 3.5 doesn't bundle the Spark Connect server, the session fixture
-adds its package through ``spark.jars.packages`` on 3.5. A ``local[2]`` server
-like the one in the :ref:`Spark setup guide <spark-setup>` needs nothing more, because its
-executor shares the driver's JVM. On the executors of a ``local-cluster``
-server, Spark 3.5 runs the tasks of each Connect session with a class loader
-that sees only the executor's classpath and the session's own jars. The
-fixture therefore also puts the jar from Ivy's default folder,
-``~/.ivy2/jars``, on ``spark.executor.extraClassPath``. A custom
-``spark.jars.ivy`` would move the jar out of that folder and break those runs.
-
 Testing on a Docker cluster
 ---------------------------
 
 The executors of a local cluster share the Python environment of your test
-session. The Docker cluster in ``tests/spark/cluster/`` runs them in an image
+session. The Docker cluster in ``tests/spark/cluster/`` runs them from an image
 of their own, as a deployed cluster would. Its compose file starts a master,
-two workers, and a Spark Connect server. The image runs Python 3.13 like the
-``spark`` Pixi environment, since the executors need the same Python minor
-version as the test session. Because the image installs moderndid from your
-checkout, ``--build`` rebuilds it with the code you're testing.
+two workers, and a Spark Connect server on Python 3.13, the minor version of
+the ``spark`` Pixi environment, because Spark Connect runs the client's Python
+functions on the workers. The ``--build`` flag below rebuilds the image with
+the code you're testing, since the image installs moderndid from your checkout.
 
 .. code-block:: bash
 
@@ -460,72 +519,73 @@ checkout, ``--build`` rebuilds it with the code you're testing.
    MODERNDID_SPARK_REMOTE=sc://localhost:15002 pixi run -e spark pytest tests/spark -ra
    docker compose -f tests/spark/cluster/compose.yaml down
 
-The ``--wait`` flag makes the first command return once the cluster's health
-checks pass. On macOS, the compose commands need a container runtime such as
-Colima. Start it with ``colima start --cpu 4 --memory 8`` before the first
-command and stop it with ``colima stop`` after the last.
+On macOS, the compose commands need a container runtime such as Colima. Start
+it with ``colima start --cpu 4 --memory 8`` before the first command and stop
+it with ``colima stop`` after the last.
 
 Understanding automated checks
 ==============================
 
-``.github/workflows/test.yml`` defines pull request checks and a matrix of
-Python 3.12, 3.13, and 3.14 on Ubuntu and Windows. Each matrix job runs ``tox``
-with ``TEST_SUITE=core`` to select the fast suite. The ``[gh-actions]`` sections
-of ``tox.ini`` map that value and the job's Python version to the
-``core-coverage`` environment.
+Every push to a pull request starts the jobs in ``.github/workflows/test.yml``
+on GitHub Actions. Each job runs a Tox environment from ``tox.ini``, as the
+table below shows.
 
-Outside the matrix, ``tox -e check`` gets a job of its own on Ubuntu with
-Python 3.12. That environment runs the pre-commit hooks over every tracked
-file, as ``pixi run lint`` does, before it builds the package. The
-``polars-floor`` job runs ``tox -e polars-floor`` on Python 3.12 to test the
-fast suite against the oldest Polars that ``pyproject.toml`` allows. Raising
-that floor means changing the ``polars==1.38.*`` pin in ``tox.ini`` too. A
-separate job runs ``full-coverage`` on Python 3.14 for pushes to ``main``.
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
 
-Because the other jobs install every extra, two more jobs on Python 3.14 run the
-fast suite with smaller installs. The ``minimal`` environment installs the
-package with its test tools and no extras. The ``minimal-plots`` environment
-adds the ``plots`` extra to that install. In both, every test that needs a
-missing extra skips through ``importorskip``.
+   * - Job
+     - What it runs
+   * - ``test``
+     - The fast suite in ``core-coverage``, on Python 3.12, 3.13, and 3.14 on
+       Ubuntu and Windows
+   * - ``check``
+     - The pre-commit hooks over every tracked file, as ``pixi run lint`` runs
+       them, and a build of the package
+   * - ``polars-floor``
+     - The fast suite on the oldest Polars that ``pyproject.toml`` allows
+   * - ``minimal``
+     - The fast suite with no extras in ``minimal`` and with only the ``plots``
+       extra in ``minimal-plots``
+   * - ``spark``
+     - The Spark tests on a local cluster, classic and through Spark Connect,
+       in ``spark`` with PySpark 4.2 and in ``spark35`` with PySpark 3.5
+   * - ``spark-cluster``
+     - The Spark tests on the Docker cluster through Spark Connect, in
+       ``spark``
+   * - ``coverage``
+     - The full suite with coverage in ``full-coverage``, on pushes to
+       ``main`` only
 
-The ``spark`` and ``spark-cluster`` jobs run the Spark tests on Ubuntu. The
-``spark`` job runs them on a local cluster, once in a classic session and once
-through Spark Connect, on each of two PySpark lines. Its PySpark 4.2 entries
-run ``tox -e spark`` on Python 3.13 with Java 21. Its PySpark 3.5 entries run
-``tox -e spark35`` on Python 3.12 with Java 17. The ``spark-cluster`` job
-starts the Docker cluster from ``tests/spark/cluster/``, runs ``tox -e spark``
-against ``sc://localhost:15002``, and stops the cluster even when a test fails.
-Since both tox environments set ``MODERNDID_REQUIRE_ALL_DEPS``, a test that
-would skip for lack of PySpark or Java fails instead.
+To reproduce a failed job, run its environment on your machine with
+``uvx --with tox-uv tox -e`` and the environment's name. Only the ``minimal``
+environments catch an import of a package that a smaller install lacks,
+because every other job that runs the fast suite installs all the extras.
 
-The ``spark`` environment installs the newest PySpark, 4.2 at the time of
-writing. The Docker cluster runs the 4.2.0 that its image pins. Because the
-``spark35`` entries test the 3.5 floor of the ``spark`` extra, a call to a
-PySpark API that 3.5 lacks fails there unless the code keeps a 3.5 path, as
-the :ref:`rules for Spark code <dev-spark-rules>` require. The ``record_warnings`` fixture ignores two warnings that come from
-PySpark rather than from a fit. Classic sessions of PySpark 3.5 through 4.1
-leave the socket of each collect for the garbage collector to close.
-PySpark 3.5 also checks the versions of pandas and pyarrow with the deprecated
-version classes of ``distutils``.
+.. admonition:: Move the Polars pin with the floor
+   :class: important
 
-The weekly full-suite workflow runs on Sunday at 02:00 UTC and can also be
-started manually. An upstream dependency workflow runs at 03:00 UTC on Sunday
-despite its ``nightly`` name. It selects ``tox -e nightly`` to test against
-nightly and prerelease builds of scientific Python dependencies. You can run the
-same command locally wherever Tox is installed. CodeQL scans Python on pull
-requests, pushes to ``main``, and its weekly schedule.
+   Raising the Polars floor in ``pyproject.toml`` means changing the
+   ``polars==1.38.*`` pin that the ``polars-floor`` environment installs from
+   ``tox.ini``.
 
-The GPU tests workflow in ``.github/workflows/gpu.yml`` runs the Modal script
-from a GitHub runner on Sunday at 04:00 UTC and can also be started manually.
-It reads the Modal token from the ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET``
-secrets of a GitHub environment named ``gpu``. That environment's deployment
-branch rule allows only ``main`` to use them. A maintainer also sets a monthly
-budget for the Modal workspace in Modal's settings. Because pull requests don't
-run this workflow, a reviewer runs ``modal run`` on any branch that changes GPU
-code.
+The ``spark35`` entries of the ``spark`` job test the 3.5 floor of the
+``spark`` extra. A call to a PySpark API that 3.5 lacks fails there unless the
+code keeps a 3.5 path, as the :ref:`rules for Spark code <dev-spark-rules>`
+require.
 
-A failed job gives the command and environment you need to reproduce it.
-Include that evidence and your focused local checks in the pull request so a
-reviewer can distinguish a tested behavior from one that still needs an
-environment-specific check. :doc:`reviewing` explains how we read those checks
-alongside the method and implementation.
+Three workflows run on Sundays and can also be started by hand from the
+Actions tab. The full test suite starts at 02:00 UTC and runs every test, the
+slow ones included, on the Python versions and operating systems of the
+``test`` job. Another job of that workflow runs every example notebook with the
+package installed from the checkout. The nightly workflow starts at 03:00 UTC
+and tests the fast suite against nightly and prerelease builds of the
+scientific Python packages. The GPU tests workflow starts at 04:00 UTC and runs
+the Modal script with a token that only the ``main`` branch may use. CodeQL,
+GitHub's code scanner, checks the Python code on pull requests, on pushes to
+``main``, and once a week.
+
+List the focused checks you ran in the pull request. A reviewer can then tell a
+tested behavior from one that still needs a check in another environment.
+:doc:`reviewing` explains how we weigh those checks alongside the method and
+the code.

@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="dg" viewBox="0 0 880 632" role="img" aria-labelledby="dg-fit-title dg-fit-desc">
+  <title id="dg-fit-title">A fit on Spark</title>
+  <desc id="dg-fit-desc">Executors build a cached table of P partitions from your Spark DataFrame. On every pass, the task of each partition returns one row of sums that a grouped stage folds. The driver combines the rows, solves the next pass's state, and returns the att_gt result.</desc>
+  <defs>
+    <pattern id="dg-fit-grid" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmin" d="M 16 0 V 64 M 32 0 V 64 M 48 0 V 64 M 0 16 H 64 M 0 32 H 64 M 0 48 H 64"/>
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <pattern id="dg-fit-gridq" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <marker id="dg-fit-head" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <marker id="dg-fit-head-loop" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head-loop" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <symbol id="dg-fit-exec-24" viewBox="-4 -4 24 24"><path d="M3.5 2.5h9a1 1 0 0 1 1 1v2.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1ZM3.5 9h9a1 1 0 0 1 1 1v2.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1ZM5 4.75h.01M5 11.25h.01M7.5 4.75h.01M7.5 11.25h.01"/></symbol>
+    <symbol id="dg-fit-proc-24" viewBox="-4 -4 24 24"><path d="M3 2.5h10a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5ZM4.5 6.5l2 1.75-2 1.75M8 10.5h3.5"/></symbol>
+    <symbol id="dg-fit-frame-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M8 4.5h12a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2ZM6 9.5h16M6 14.25h16M6 19h16M11.5 9.5v14"/></symbol>
+    <symbol id="dg-fit-build-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M5.5 4h10a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM3.5 8.5h14M8.5 8.5V17M21 17.5v7M17.5 21h7"/></symbol>
+    <symbol id="dg-fit-store-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M6 7.5a8 3 0 1 0 16 0a8 3 0 1 0-16 0M6 7.5v13a8 3 0 0 0 16 0v-13M6 12a8 3 0 0 0 16 0M6 16.25a8 3 0 0 0 16 0"/></symbol>
+    <symbol id="dg-fit-task-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+    <symbol id="dg-fit-fold-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M5 6h4.5v5.5H5M5 16.5h4.5V22H5M9.5 8.75h5v10.5h-5M14.5 14H23"/></symbol>
+    <symbol id="dg-fit-sigma-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M21.5 5H8.5l7 9-7 9h13"/></symbol>
+    <symbol id="dg-fit-study-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M5 4.5v19h19M10 13.5v7M15 9v7M20 4.5v7"/><path class="dg-glyph-dot" d="M8.25 17a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0M13.25 12.5a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0M18.25 8a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0-3.5 0"/></symbol>
+  </defs>
+  <rect class="dg-paper" x="0" y="0" width="880" height="632"/>
+  <rect fill="url(#dg-fit-grid)" x="0" y="0" width="880" height="632"/>
+  <path class="dg-paper" d="M 20 92 H 860 A 4 4 0 0 1 864 96 V 444 A 4 4 0 0 1 860 448 H 20 A 4 4 0 0 1 16 444 V 96 A 4 4 0 0 1 20 92 Z"/>
+  <path fill="url(#dg-fit-gridq)" d="M 20 92 H 860 A 4 4 0 0 1 864 96 V 444 A 4 4 0 0 1 860 448 H 20 A 4 4 0 0 1 16 444 V 96 A 4 4 0 0 1 20 92 Z"/>
+  <path class="dg-compute dg-zone" d="M 20 92 H 860 A 4 4 0 0 1 864 96 V 444 A 4 4 0 0 1 860 448 H 20 A 4 4 0 0 1 16 444 V 96 A 4 4 0 0 1 20 92 Z"/>
+  <path class="dg-compute dg-zone-dash" d="M 40 92 H 860 A 4 4 0 0 1 864 96 V 444 A 4 4 0 0 1 860 448 H 20 A 4 4 0 0 1 16 444 V 116"/>
+  <path class="dg-compute dg-tile" d="M 20 92 H 40 V 116 H 16 V 96 A 4 4 0 0 1 20 92 Z"/>
+  <use class="dg-glyph dg-glyph-tab" href="#dg-fit-exec-24" x="16" y="92" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="108">Spark executors</text>
+  <path class="dg-paper" d="M 20 464 H 860 A 4 4 0 0 1 864 468 V 612 A 4 4 0 0 1 860 616 H 20 A 4 4 0 0 1 16 612 V 468 A 4 4 0 0 1 20 464 Z"/>
+  <path fill="url(#dg-fit-gridq)" d="M 20 464 H 860 A 4 4 0 0 1 864 468 V 612 A 4 4 0 0 1 860 616 H 20 A 4 4 0 0 1 16 612 V 468 A 4 4 0 0 1 20 464 Z"/>
+  <path class="dg-driver dg-zone" d="M 20 464 H 860 A 4 4 0 0 1 864 468 V 612 A 4 4 0 0 1 860 616 H 20 A 4 4 0 0 1 16 612 V 468 A 4 4 0 0 1 20 464 Z"/>
+  <path class="dg-driver dg-zone-line" d="M 40 464 H 860 A 4 4 0 0 1 864 468 V 612 A 4 4 0 0 1 860 616 H 20 A 4 4 0 0 1 16 612 V 488"/>
+  <path class="dg-driver dg-tile" d="M 20 464 H 40 V 488 H 16 V 468 A 4 4 0 0 1 20 464 Z"/>
+  <use class="dg-glyph dg-glyph-tab" href="#dg-fit-proc-24" x="16" y="464" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="480">Driver process</text>
+  <path id="dg-fit-read" class="dg-wire" d="M 288 72 V 136" marker-end="url(#dg-fit-head)"/>
+  <path id="dg-fit-persist" class="dg-wire" d="M 256 184 V 228 A 8 8 0 0 0 264 236 H 280" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 300 284 V 308" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 348 284 V 308" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 396 284 V 308" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 444 284 V 308" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 492 284 V 308" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 564 284 V 308" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 280 336 V 348 H 320 V 336"/>
+  <path class="dg-wire" d="M 328 336 V 348 H 464 V 336"/>
+  <path class="dg-wire" d="M 472 336 V 348 H 516"/>
+  <path class="dg-wire" d="M 540 348 H 584 V 336"/>
+  <text class="dg-note" x="528" y="349" text-anchor="middle">…</text>
+  <path class="dg-wire" d="M 300 348 V 376" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 396 348 V 376" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 492 348 V 376" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 564 348 V 376" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 280 396 V 408 H 584 V 396"/>
+  <path id="dg-fit-collect" class="dg-wire" d="M 432 408 V 508" marker-end="url(#dg-fit-head)"/>
+  <path id="dg-fit-state" class="dg-loop" d="M 456 532 H 480" marker-end="url(#dg-fit-head-loop)"/>
+  <path id="dg-fit-next-pass" class="dg-loop" d="M 528 532 H 608 A 8 8 0 0 0 616 524 V 324 A 8 8 0 0 0 608 316 H 592" marker-end="url(#dg-fit-head-loop)"/>
+  <path id="dg-fit-after-moments" class="dg-wire" d="M 456 552 H 672" marker-end="url(#dg-fit-head)"/>
+  <text class="dg-label" x="296" y="116">Read</text>
+  <text class="dg-driver dg-r-label" x="628" y="344">Next pass</text>
+  <text class="dg-label" x="564" y="570" text-anchor="middle">After moments</text>
+  <rect class="dg-data dg-tile" x="40" y="24" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-fit-frame-32" x="40" y="24" width="32" height="32"/>
+  <text class="dg-name" x="84" y="37">Spark DataFrame</text>
+  <text class="dg-note" x="84" y="53">your long-format data</text>
+  <rect class="dg-paper" x="240" y="24" width="96" height="48"/>
+  <rect class="dg-data dg-r-cell" x="240" y="24" width="96" height="48"/>
+  <rect class="dg-data dg-r-head" x="240" y="24" width="96" height="12"/>
+  <path class="dg-div" d="M 264 24 V 72 M 288 24 V 72 M 312 24 V 72 M 240 36 H 336 M 240 48 H 336 M 240 60 H 336"/>
+  <rect class="dg-edge" x="240" y="24" width="96" height="48"/>
+  <rect class="dg-compute dg-tile" x="40" y="136" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-fit-build-32" x="40" y="136" width="32" height="32"/>
+  <text class="dg-name" x="84" y="149"><tspan class="dg-num">01</tspan> Table builder</text>
+  <text class="dg-note" x="84" y="165">in Spark SQL</text>
+  <rect class="dg-box" x="240" y="136" width="152" height="48" rx="4"/>
+  <text class="dg-code" x="256" y="156">build_unit_table</text>
+  <text class="dg-code" x="256" y="172">build_row_table</text>
+  <rect class="dg-data dg-tile" x="40" y="224" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-fit-store-32" x="40" y="224" width="32" height="32"/>
+  <text class="dg-name" x="84" y="237"><tspan class="dg-num">02</tspan> Cached table</text>
+  <text class="dg-note" x="84" y="253">one row per unit</text>
+  <text class="dg-note" x="84" y="269">or observation</text>
+  <path class="dg-dim" d="M 280 208 H 584 M 276 212 L 284 204 M 580 212 L 588 204 M 280 202 V 216 M 584 202 V 216"/>
+  <rect class="dg-mask" x="388" y="200" width="88" height="16"/>
+  <rect class="dg-compute dg-zone" x="388" y="200" width="88" height="16"/>
+  <text class="dg-note" x="432" y="212" text-anchor="middle"><tspan class="dg-math">P</tspan> partitions</text>
+  <rect class="dg-paper" x="280" y="224" width="40" height="60"/>
+  <rect class="dg-data dg-r-cell" x="280" y="224" width="40" height="60"/>
+  <path class="dg-div" d="M 300 224 V 284 M 280 236 H 320 M 280 248 H 320 M 280 260 H 320 M 280 272 H 320"/>
+  <rect class="dg-edge" x="280" y="224" width="40" height="60"/>
+  <rect class="dg-paper" x="328" y="224" width="40" height="60"/>
+  <rect class="dg-data dg-r-cell" x="328" y="224" width="40" height="60"/>
+  <path class="dg-div" d="M 348 224 V 284 M 328 236 H 368 M 328 248 H 368 M 328 260 H 368 M 328 272 H 368"/>
+  <rect class="dg-edge" x="328" y="224" width="40" height="60"/>
+  <rect class="dg-paper" x="376" y="224" width="40" height="60"/>
+  <rect class="dg-data dg-r-cell" x="376" y="224" width="40" height="60"/>
+  <path class="dg-div" d="M 396 224 V 284 M 376 236 H 416 M 376 248 H 416 M 376 260 H 416 M 376 272 H 416"/>
+  <rect class="dg-edge" x="376" y="224" width="40" height="60"/>
+  <rect class="dg-paper" x="424" y="224" width="40" height="60"/>
+  <rect class="dg-data dg-r-cell" x="424" y="224" width="40" height="60"/>
+  <path class="dg-div" d="M 444 224 V 284 M 424 236 H 464 M 424 248 H 464 M 424 260 H 464 M 424 272 H 464"/>
+  <rect class="dg-edge" x="424" y="224" width="40" height="60"/>
+  <rect class="dg-paper" x="472" y="224" width="40" height="60"/>
+  <rect class="dg-data dg-r-cell" x="472" y="224" width="40" height="60"/>
+  <path class="dg-div" d="M 492 224 V 284 M 472 236 H 512 M 472 248 H 512 M 472 260 H 512 M 472 272 H 512"/>
+  <rect class="dg-edge" x="472" y="224" width="40" height="60"/>
+  <rect class="dg-paper" x="544" y="224" width="40" height="60"/>
+  <rect class="dg-data dg-r-cell" x="544" y="224" width="40" height="60"/>
+  <path class="dg-div" d="M 564 224 V 284 M 544 236 H 584 M 544 248 H 584 M 544 260 H 584 M 544 272 H 584"/>
+  <rect class="dg-edge" x="544" y="224" width="40" height="60"/>
+  <path class="dg-leader" d="M 168 264 H 288"/>
+  <circle class="dg-dot" cx="288" cy="264" r="2"/>
+  <text class="dg-note" x="528" y="258" text-anchor="middle">…</text>
+  <rect class="dg-compute dg-tile" x="40" y="308" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-fit-task-32" x="40" y="308" width="32" height="32"/>
+  <text class="dg-name" x="84" y="321"><tspan class="dg-num">03</tspan> Pass tasks</text>
+  <text class="dg-note" x="84" y="337"><tspan class="dg-code">mapInArrow</tspan>,</text>
+  <text class="dg-note" x="84" y="353">one task per partition</text>
+  <rect class="dg-frame" x="272" y="300" width="320" height="28" rx="4"/>
+  <rect class="dg-paper" x="280" y="308" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="280" y="308" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 290 308 V 320 M 300 308 V 320 M 310 308 V 320"/>
+  <rect class="dg-compute dg-r-edge" x="280" y="308" width="40" height="12"/>
+  <rect class="dg-paper" x="328" y="308" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="328" y="308" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 338 308 V 320 M 348 308 V 320 M 358 308 V 320"/>
+  <rect class="dg-compute dg-r-edge" x="328" y="308" width="40" height="12"/>
+  <rect class="dg-paper" x="376" y="308" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="376" y="308" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 386 308 V 320 M 396 308 V 320 M 406 308 V 320"/>
+  <rect class="dg-compute dg-r-edge" x="376" y="308" width="40" height="12"/>
+  <rect class="dg-paper" x="424" y="308" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="424" y="308" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 434 308 V 320 M 444 308 V 320 M 454 308 V 320"/>
+  <rect class="dg-compute dg-r-edge" x="424" y="308" width="40" height="12"/>
+  <rect class="dg-paper" x="472" y="308" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="472" y="308" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 482 308 V 320 M 492 308 V 320 M 502 308 V 320"/>
+  <rect class="dg-compute dg-r-edge" x="472" y="308" width="40" height="12"/>
+  <rect class="dg-paper" x="544" y="308" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="544" y="308" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 554 308 V 320 M 564 308 V 320 M 574 308 V 320"/>
+  <rect class="dg-compute dg-r-edge" x="544" y="308" width="40" height="12"/>
+  <text class="dg-note" x="528" y="318" text-anchor="middle">…</text>
+  <rect class="dg-compute dg-tile" x="40" y="376" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-fit-fold-32" x="40" y="376" width="32" height="32"/>
+  <text class="dg-name" x="84" y="389"><tspan class="dg-num">04</tspan> Grouped stage</text>
+  <text class="dg-note" x="84" y="405">about √<tspan class="dg-math">P</tspan> groups,</text>
+  <text class="dg-note" x="84" y="421">folded in task order</text>
+  <rect class="dg-paper" x="280" y="376" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="280" y="376" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 290 376 V 388 M 300 376 V 388 M 310 376 V 388"/>
+  <rect class="dg-compute dg-r-edge" x="280" y="376" width="40" height="12"/>
+  <rect class="dg-paper" x="376" y="376" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="376" y="376" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 386 376 V 388 M 396 376 V 388 M 406 376 V 388"/>
+  <rect class="dg-compute dg-r-edge" x="376" y="376" width="40" height="12"/>
+  <rect class="dg-paper" x="472" y="376" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="472" y="376" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 482 376 V 388 M 492 376 V 388 M 502 376 V 388"/>
+  <rect class="dg-compute dg-r-edge" x="472" y="376" width="40" height="12"/>
+  <rect class="dg-paper" x="544" y="376" width="40" height="12"/>
+  <rect class="dg-compute dg-r-cell" x="544" y="376" width="40" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 554 376 V 388 M 564 376 V 388 M 574 376 V 388"/>
+  <rect class="dg-compute dg-r-edge" x="544" y="376" width="40" height="12"/>
+  <text class="dg-note" x="528" y="386" text-anchor="middle">…</text>
+  <rect class="dg-driver dg-tile" x="40" y="508" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-fit-sigma-32" x="40" y="508" width="32" height="32"/>
+  <text class="dg-name" x="84" y="521"><tspan class="dg-num">05</tspan> Driver</text>
+  <text class="dg-note" x="84" y="537">collects the groups' rows</text>
+  <rect class="dg-driver dg-r-box" x="280" y="508" width="176" height="64" rx="4"/>
+  <text class="dg-body" x="292" y="528">combine partials</text>
+  <text class="dg-body" x="292" y="544">finalize keyed sums</text>
+  <text class="dg-body" x="292" y="560">solve the next pass's state</text>
+  <text class="dg-driver dg-r-label" x="480" y="518">State</text>
+  <rect class="dg-paper" x="480" y="524" width="48" height="16"/>
+  <rect class="dg-driver dg-r-cell" x="480" y="524" width="48" height="16"/>
+  <path class="dg-driver dg-r-div" d="M 496 524 V 540 M 512 524 V 540"/>
+  <rect class="dg-driver dg-r-edge" x="480" y="524" width="48" height="16"/>
+  <rect class="dg-result dg-tile" x="628" y="508" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-fit-study-32" x="628" y="508" width="32" height="32"/>
+  <text class="dg-name" x="672" y="521"><tspan class="dg-num">06</tspan> <tspan class="dg-code">att_gt</tspan> result</text>
+  <rect class="dg-result dg-r-box" x="672" y="532" width="160" height="40" rx="4"/>
+  <rect class="dg-result dg-r-cell" x="684" y="540" width="136" height="24"/>
+  <rect class="dg-result dg-r-edge1" x="684" y="540" width="136" height="24"/>
+  <text class="dg-code" x="752" y="556" text-anchor="middle">InfluenceMoments</text>
+  <text class="dg-note" x="672" y="592">feeds <tspan class="dg-code">aggte</tspan> and <tspan class="dg-code">honest_did</tspan></text>
+  <text class="dg-callout" x="628" y="364">One Spark action per pass</text>
+  <path class="dg-leader" d="M 588 256 H 608 V 228 M 608 212 V 180"/>
+  <rect class="dg-detail" x="540" y="220" width="48" height="68" rx="4"/>
+  <circle class="dg-badge" cx="608" cy="220" r="9"/>
+  <text class="dg-badge-text" x="608" y="224" text-anchor="middle">A</text>
+  <rect class="dg-inset" x="424" y="24" width="440" height="156" rx="4"/>
+  <circle class="dg-badge" cx="440" cy="40" r="9"/>
+  <text class="dg-badge-text" x="440" y="44" text-anchor="middle">A</text>
+  <text class="dg-zone-label" x="456" y="44">One task</text>
+  <path class="dg-wire" d="M 584 108 H 612" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 668 108 H 696" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-wire" d="M 760 108 H 788" marker-end="url(#dg-fit-head)"/>
+  <path class="dg-loop" d="M 728 68 V 92" marker-end="url(#dg-fit-head-loop)"/>
+  <rect class="dg-paper" x="536" y="52" width="48" height="112"/>
+  <rect class="dg-data dg-r-cell" x="536" y="52" width="48" height="112"/>
+  <path class="dg-div" d="M 560 52 V 164 M 536 68 H 584 M 536 84 H 584 M 536 100 H 584 M 536 116 H 584 M 536 132 H 584 M 536 148 H 584"/>
+  <path class="dg-edge" d="M 536 52 V 164 M 584 52 V 164"/>
+  <path class="dg-edge" d="M 530 52 H 552 L 556 46 L 564 58 L 568 52 H 590"/>
+  <path class="dg-edge" d="M 530 164 H 552 L 556 158 L 564 170 L 568 164 H 590"/>
+  <rect class="dg-data dg-r-cell" x="536" y="84" width="48" height="48"/>
+  <rect class="dg-data dg-r-edge" x="536" y="84" width="48" height="48"/>
+  <path class="dg-dim" d="M 524 84 V 132 M 520 88 L 528 80 M 520 136 L 528 128 M 518 84 H 534 M 518 132 H 534"/>
+  <text class="dg-note" x="512" y="112" text-anchor="end">4096-row slice</text>
+  <rect class="dg-compute dg-r-cell" x="612" y="84" width="8" height="48"/>
+  <rect class="dg-compute dg-r-edge" x="612" y="84" width="8" height="48"/>
+  <rect class="dg-compute dg-r-cell" x="624" y="84" width="8" height="48"/>
+  <rect class="dg-compute dg-r-edge" x="624" y="84" width="8" height="48"/>
+  <rect class="dg-compute dg-r-cell" x="636" y="84" width="32" height="48"/>
+  <path class="dg-compute dg-r-div" d="M 644 84 V 132 M 652 84 V 132 M 660 84 V 132"/>
+  <rect class="dg-compute dg-r-edge" x="636" y="84" width="32" height="48"/>
+  <text class="dg-label" x="640" y="152" text-anchor="middle">Shard</text>
+  <rect class="dg-compute dg-r-box" x="696" y="92" width="64" height="32" rx="4"/>
+  <text class="dg-body" x="728" y="112" text-anchor="middle">Kernel</text>
+  <rect class="dg-paper" x="704" y="56" width="48" height="12"/>
+  <rect class="dg-driver dg-r-cell" x="704" y="56" width="48" height="12"/>
+  <path class="dg-driver dg-r-div" d="M 720 56 V 68 M 736 56 V 68"/>
+  <rect class="dg-driver dg-r-edge" x="704" y="56" width="48" height="12"/>
+  <text class="dg-driver dg-r-label" x="760" y="66">State</text>
+  <rect class="dg-paper" x="788" y="100" width="48" height="16"/>
+  <rect class="dg-compute dg-r-cell" x="788" y="100" width="48" height="16"/>
+  <path class="dg-compute dg-r-div" d="M 800 100 V 116 M 812 100 V 116 M 824 100 V 116"/>
+  <rect class="dg-compute dg-r-edge" x="788" y="100" width="48" height="16"/>
+  <text class="dg-label" x="812" y="152" text-anchor="middle">Partial</text>
+  <text class="dg-note" x="812" y="168" text-anchor="middle">one row of sums</text>
+</svg>

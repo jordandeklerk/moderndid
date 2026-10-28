@@ -15,7 +15,8 @@ the whole library first. When you need to follow an estimator's implementation
 or extend it, the guides on how the package works trace the calculation from the
 data a user supplies to the result they read. The architecture guide comes first
 because it explains which parts you can reuse and where estimators need their own
-approach.
+approach. If your change touches fits on Spark, the distributed estimation guides
+show how a fit runs on shards of the data, first in memory and then on a cluster.
 
 .. _contributing-index:
 
@@ -62,30 +63,46 @@ How the package works
      - Description
    * - :doc:`architecture`
      - Follow data preparation, estimation, inference, and result presentation.
-   * - :doc:`shards`
-     - Rebuild a fit from sums over blocks of units, as a fit on Spark does.
-   * - :doc:`row_shards`
-     - Fit repeated cross-sections and unbalanced panels from shards of rows.
-   * - :doc:`spark_fits`
-     - Follow a fit on Spark from the table it builds to the tasks of each pass.
    * - :doc:`new_estimator`
-     - Develop an estimator from its target through computation and inference.
+     - Turn a paper's method into an estimator, from its target to a checked fit and a printed report.
    * - :doc:`debugging`
      - Locate a difference in the data, fitted effects, or uncertainty.
    * - :doc:`benchmarking`
-     - Measure a defined workload and compare performance across revisions.
+     - Profile a fit, measure defined workloads, and compare performance across revisions.
 
 .. toctree::
    :hidden:
    :maxdepth: 1
 
    architecture
-   shards
-   row_shards
-   spark_fits
    new_estimator
    debugging
    benchmarking
+
+Distributed estimation
+======================
+
+.. list-table::
+   :class: section-index-table
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Guide
+     - Description
+   * - :doc:`shards`
+     - Rebuild a fit from sums over blocks of units, as a fit on Spark does.
+   * - :doc:`row_shards`
+     - Fit repeated cross-sections and unbalanced panels from shards of rows.
+   * - :doc:`spark_fits`
+     - Follow a fit on Spark from the table it builds to the tasks of each pass.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   shards
+   row_shards
+   spark_fits
 
 .. raw:: html
 

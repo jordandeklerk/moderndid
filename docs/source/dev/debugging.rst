@@ -3,183 +3,279 @@
 Debugging an analysis
 =====================
 
-When an estimate changes unexpectedly, we need to find out where the
-difference comes from before deciding whether the code or the expectation
-should change. It may come from the observations entering the comparison,
-the effect calculation, or the way uncertainty is calculated. This guide
-follows a failing test through those possibilities and shows you how to
-inspect the GPU path when it's involved.
+When a fit comes back with warnings, with effects missing, or with numbers that
+disagree with a reference, the cause sits in one of three layers. It can be in
+the units that enter each comparison, in the estimator that a cell runs on
+them, or in the uncertainty around the result. This guide shows how to find the
+layer before you change the code, the data, or an expected value, since a
+change made before you know the cause can hide a real error.
 
-Run the commands from the repository root in the development environment
-described in :doc:`../contributing/guide`. The :doc:`architecture` guide maps
-the calculation to its source files if you need help finding the next place
-to inspect.
+We'll follow one investigation from the first report to its cause. When a
+colleague adds a dummy for the counties of Illinois to control for that state's
+labor market, every group-time effect in the minimum wage analysis disappears.
+By the end, you'll have checked what each comparison held, rebuilt one
+comparison on its own, and found why no estimator can fit it.
 
-Reproduce the smallest failing comparison
------------------------------------------
+Reproduce the failure in a script
+---------------------------------
 
-Start with the test that exposed the problem so you retain its data,
-specification, and expected result. You can select a single test by its node
-identifier rather than running an entire estimator's suite. The following
-command selects an existing test of the minimum wage fit.
-
-.. code-block:: console
-
-   pixi run -e dev pytest tests/did/test_att_gt.py::test_att_gt_basic_functionality -vv -x
-
-Replace that identifier with the failing case and add ``--pdb`` to inspect
-its state at the first failure. The debugger's ``p`` command reads a value,
-``n`` advances within the current function, and ``s`` steps into a call. An
-IDE debugger can inspect the same test if it uses the development environment's
-Python interpreter.
-
-Before reducing the data, preserve the treatment cohorts and untreated
-comparisons that trigger the failure. Removing a cohort, a cluster, or a
-missing observation can remove the condition you are trying to investigate.
-For a stochastic calculation, record the seed and recreate the random
-generator for each comparison rather than reusing a generator whose state
-has already advanced.
-
-If a parallel fit fails, repeat it with ``n_jobs=1`` where that argument is
-supported so you can inspect one comparison at a time. A difference
-between sequential and threaded runs is a reason to examine shared state
-and backend propagation rather than assume the numerical formula is wrong.
-
-Read the warnings alongside the failure
----------------------------------------
-
-Warnings can explain why a fit uses fewer observations or cannot estimate a
-comparison. The filters in ``tests/conftest.py`` suppress selected numerical
-and dependency warnings during tests. Library ``UserWarning`` messages remain
-visible unless a particular test filters them. To inspect the warnings that
-the usual run hides, request the default warning behavior explicitly.
-
-.. code-block:: console
-
-   pixi run -e dev pytest tests/did/test_att_gt.py::test_att_gt_basic_functionality -vv -W default
-
-The warning gives you a place to start looking before changing the
-calculation. If rows were dropped, check the required columns to see which
-observations remain in the sample. If the warning concerns overlap, look
-at the treated and comparison observations used by that particular fit.
-
-Separate the effect from its uncertainty
-----------------------------------------
-
-A mismatch in standard errors can arise even when the fitted effects agree.
-We first compare the observations, cohort and period labels, and point
-estimates before examining influence functions, clustering, and critical
-values. For ``att_gt``, a small fit without bootstrap standard errors or
-simultaneous bands makes a useful starting point.
+The investigation starts from the smallest script that shows the problem. In
+the county data, a cohort holds the counties whose state first raised its
+minimum wage in the same year. :func:`~moderndid.att_gt` estimates one effect
+for each cohort in each year from 2004 to 2007. Each of these 12 pairs of a
+cohort and a year is a cell. We turn off the bootstrap and the uniform
+confidence bands so that no random draws play a part. The script also records
+the warnings so that it can count them.
 
 .. code-block:: python
+
+   import warnings
 
    import moderndid as did
+   import numpy as np
+   import polars as pl
 
-   data = did.load_mpdta()
-   spec = dict(
-       data=data,
-       yname="lemp",
-       tname="year",
-       idname="countyreal",
-       gname="first.treat",
-       xformla="~lpop",
-       control_group="nevertreated",
-       base_period="universal",
-       boot=False,
-       cband=False,
-       n_jobs=1,
-       random_state=42,
+   # The colleague's dummy marks the counties of Illinois, whose state code is 17.
+   data = did.load_mpdta().with_columns(
+       illinois=(pl.col("countyreal") // 1000 == 17).cast(pl.Int64)
    )
-   result = did.att_gt(**spec)
+   spec = {
+       "yname": "lemp",
+       "tname": "year",
+       "idname": "countyreal",
+       "gname": "first.treat",
+       "boot": False,
+       "cband": False,
+   }
 
-Before comparing two arrays of effects, inspect ``result.groups`` and
-``result.times`` alongside ``result.att_gt`` so you know that each position
-refers to the same comparison. The same care applies to the
-``influence_func`` rows because they must represent the same units or
-observations on both sides. Once those contributions agree, you can follow
-the variance calculation and aggregation weights to understand any remaining
-difference in confidence limits. After finding the cause in this simpler
-fit, return to the original bootstrap and clustering settings.
+   # Record the warnings so that the script can count them.
+   with warnings.catch_warnings(record=True) as caught:
+       warnings.simplefilter("always")
+       failing = did.att_gt(data, **spec, xformla="~ lpop + illinois")
 
-The :doc:`testing guide <../contributing/testing>` explains how to choose
-assertions for these quantities. An absolute tolerance matters near zero
-where a relative tolerance alone provides little room for rounding error.
-Choose both from the quantity's scale and the reference calculation rather
-than assigning one tolerance to every estimate and standard error.
+   messages = [str(w.message) for w in caught]
+   print("Effects estimated:", len(failing.att_gt))
+   print("Cells short of control units:", sum("Not enough control units" in m for m in messages))
+   print("Cells that violate overlap:", sum("Overlap condition violated" in m for m in messages))
 
-.. admonition:: Preserve the statistical comparison
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Effects estimated: 0
+         Cells short of control units: 12
+         Cells that violate overlap: 4
+
+Each of the 12 cells failed with the same warning about its own cohort and
+year. For the first cell it reads "Not enough control units for group 2004 in
+time period 2004 to run specified regression". The four cells of the 2004
+cohort also report that overlap is violated. :func:`~moderndid.aggte` refuses
+the empty result with an error that points back to these warnings. If a
+failing test reported the problem instead, the :doc:`testing guide
+<../contributing/testing>` shows how to run it alone. Adding ``-x --pdb`` to
+that command stops in Python's debugger at the first failure.
+
+.. admonition:: Show the warnings a test run hides
+   :class: tip
+
+   ``tests/conftest.py`` tells pytest to ignore a few numerical and dependency
+   warnings, such as statsmodels' perfect separation warning. Adding
+   ``-W default`` to the pytest command shows them again. To find the line that
+   raises a warning, turn warnings into errors with
+   ``warnings.simplefilter("error")`` and read the traceback.
+
+Check what each cell compared
+-----------------------------
+
+Since a shortage of control units would mean that the comparisons ran out of
+counties, the next check counts them. With no cells left in the failing fit,
+the counts come from the fit without the dummy. Its influence functions hold
+one row per county and one column per cell. Because a county outside a cell's
+cohort and comparison group contributes exactly zero to that column, the
+nonzero entries count the counties that the cell compared.
+
+.. code-block:: python
+
+   # The same analysis without the dummy.
+   original = did.att_gt(data, **spec, xformla="~ lpop")
+
+   # Count the counties with a nonzero contribution to each cell.
+   compared = did.to_df(original).with_columns(
+       counties=np.count_nonzero(original.influence_func, axis=0)
+   )
+   print(compared.pivot("time", index="group", values="counties"))
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         shape: (3, 5)
+         ┌───────┬──────┬──────┬──────┬──────┐
+         │ group ┆ 2004 ┆ 2005 ┆ 2006 ┆ 2007 │
+         │ ---   ┆ ---  ┆ ---  ┆ ---  ┆ ---  │
+         │ i64   ┆ i64  ┆ i64  ┆ i64  ┆ i64  │
+         ╞═══════╪══════╪══════╪══════╪══════╡
+         │ 2004  ┆ 329  ┆ 329  ┆ 329  ┆ 329  │
+         │ 2006  ┆ 349  ┆ 349  ┆ 349  ┆ 349  │
+         │ 2007  ┆ 440  ┆ 440  ┆ 440  ┆ 440  │
+         └───────┴──────┴──────┴──────┴──────┘
+
+Each cell compares the 309 never-treated counties with the 20 to 131 counties
+of its cohort. With that many counties in every comparison, the shortage that
+the warnings describe can't be a matter of numbers. The same counts tell you,
+when two fits disagree, whether they compared the same counties at all.
+
+Rebuild one cell on its own
+---------------------------
+
+Cell (2006, 2006), like every cell, is a two-period comparison. It sets the
+change in teen employment from 2005 to 2006 in the 2006 cohort against the
+change in the never-treated counties. Running that comparison on those rows
+alone with :func:`~moderndid.drdid` turns a 12-cell fit into one small problem
+that you can inspect line by line. Before you trust the rebuilt cell with the
+failing specification, check that it reproduces the working one.
+
+.. code-block:: python
+
+   # Cell (2006, 2006) compares the 2006 cohort with the never-treated counties from 2005 to 2006.
+   rows = data.filter(pl.col("first.treat").is_in([0, 2006]) & pl.col("year").is_in([2005, 2006]))
+   rows = rows.with_columns(treated=(pl.col("first.treat") == 2006).cast(pl.Int64))
+   cell = {
+       "yname": "lemp",
+       "tname": "year",
+       "idname": "countyreal",
+       "treatname": "treated",
+       "est_method": "trad",
+   }
+
+   rebuilt = did.drdid(rows, **cell, xformla="~ lpop")
+   index = np.flatnonzero((original.groups == 2006) & (original.times == 2006))[0]
+   print(f"Rebuilt: {rebuilt.att:.6f} (standard error {rebuilt.se:.6f})")
+   print(f"att_gt:  {original.att_gt[index]:.6f} (standard error {original.se_gt[index]:.6f})")
+
+.. container:: cell_output
+
+   .. container:: output stream
+
+      .. code-block:: text
+
+         Rebuilt: 0.000961 (standard error 0.019400)
+         att_gt:  0.000961 (standard error 0.019400)
+
+The rebuilt cell matches the estimate and standard error of ``att_gt`` to every
+printed digit. The same rebuild matches all 12 cells up to rounding.
+
+.. admonition:: Rebuild a cell with the estimator it used
    :class: important
 
-   Clipping propensity scores, adding regularization, or changing the retained
-   sample can change the estimator. Establish why a calculation fails before
-   introducing one of these changes as a numerical fix.
+   Since ``att_gt`` estimates its doubly robust cells with the traditional form
+   of the estimator, a rebuild with ``drdid`` passes ``est_method="trad"``. Left
+   at its default of ``"imp"``, ``drdid`` runs the improved form instead. On the
+   county data, the improved form moves a cell's estimate by as much as 0.00014
+   and could send you looking for a bug that isn't there.
 
-Compare supported CPU and GPU calculations
-------------------------------------------
-
-Before comparing backends, check that the calculation you're investigating
-supports GPU execution. The :doc:`GPU user guide <../user_guide/gpu>` explains
-which estimators support it and what you need to install. If you explicitly
-request the CuPy backend when CuPy or a CUDA device is unavailable, the
-request raises an error rather than silently becoming a CPU fit.
-
-On a machine with a working CUDA installation, reuse the same specification
-to compare the CPU and GPU effects. The context manager restores the previous
-backend when its block ends.
+Once the dummy enters its formula, the rebuilt cell fails as well and gives a
+message that names the cause.
 
 .. code-block:: python
 
-   import numpy as np
+   did.drdid(rows, **cell, xformla="~ lpop + illinois")
 
-   cpu = did.att_gt(**spec, backend="numpy")
-   with did.use_backend("cupy"):
-       gpu = did.att_gt(**spec)
+.. container:: cell_output
 
-   difference = np.asarray(cpu.att_gt) - np.asarray(gpu.att_gt)
-   print(np.max(np.abs(difference)))
+   .. container:: output stream
 
-This calculation checks the effects without treating one fixed precision
-threshold as appropriate for every problem. If the discrepancy matters at
-the scale of your application, compare the nuisance fits and influence
-functions before adding bootstrap randomness. NumPy arrays in these result
-fields have already returned to the CPU even when the internal fit used CuPy.
+      .. code-block:: text
 
-If allocation fails on the GPU, start by checking the array sizes and how
-often data move between host and device. Before reducing the
-workload, preserve the comparison that causes the failure so you can still
-investigate it in the smaller fit.
+         UserWarning: The propensity score model dropped 1 covariate that is collinear with the others.
+         ValueError: The regression design matrix of the comparison group is singular. Consider removing covariates that are constant or collinear among the comparison units.
 
-Profile the workload you intend to improve
-------------------------------------------
+The propensity score model drops the dummy because it adds nothing to the
+other covariates. The outcome regression that ``drdid`` fits on the comparison
+counties keeps every covariate and stops on its singular design.
 
-Once the result is correct, profiling can tell you whether time is spent
-preparing data, fitting comparisons, or drawing inference. Save the small
-``att_gt`` script above as ``profile_analysis.py`` and profile it from the
-development environment.
+Find the cause in the cell's data
+---------------------------------
 
-.. code-block:: console
-
-   pixi run -e dev python -m cProfile -s cumulative profile_analysis.py
-
-The report includes imports and the first fit's setup costs. To profile
-a fit after its warmup, start the profiler around that call rather than
-around the whole script.
+A singular design means that some covariate repeats what the others already
+say among the comparison counties. Counting the cell's counties by the dummy
+shows which one.
 
 .. code-block:: python
 
-   import cProfile
+   # How the dummy splits the counties of this cell in its first year.
+   print(rows.filter(pl.col("year") == 2005).group_by("treated", "illinois").len().sort("treated"))
 
-   did.att_gt(**spec)
-   profiler = cProfile.Profile()
-   profiler.runcall(did.att_gt, **spec)
-   profiler.print_stats(sort="cumulative")
+.. container:: cell_output
 
-Python profiling shows calls into compiled libraries such as NumPy and Polars
-but does not reveal the work inside them.
+   .. container:: output stream
 
-For GPU timings, account for asynchronous execution by synchronizing the
-device around the measured operation. Otherwise the host can finish timing
-before the device finishes its work. The :doc:`benchmarking` guide describes
-the project's CPU workloads and revision comparisons once you are ready to
-measure a proposed change consistently.
+      .. code-block:: text
+
+         shape: (2, 3)
+         ┌─────────┬──────────┬─────┐
+         │ treated ┆ illinois ┆ len │
+         │ ---     ┆ ---      ┆ --- │
+         │ i64     ┆ i64      ┆ u32 │
+         ╞═════════╪══════════╪═════╡
+         │ 0       ┆ 0        ┆ 309 │
+         │ 1       ┆ 0        ┆ 40  │
+         └─────────┴──────────┴─────┘
+
+Every county in this cell, treated or not, has a dummy of 0. A column that
+never changes adds nothing to the intercept. The comparison regression is then
+left with one coefficient more than it can identify. The cells of the 2004
+cohort have a second problem. Since all 20 of its counties are in Illinois, the
+dummy matches treatment exactly in those cells. That perfect prediction is the
+overlap violation that the fit reported for them.
+
+Decide what to change
+---------------------
+
+Both failures trace back to the specification rather than to the code. A
+covariate asks the estimator to compare counties that share its value. With
+the dummy in the formula, the counties of Illinois need never-treated counties
+in Illinois as their comparison. Since every never-treated county lies outside
+Illinois, no such comparison exists. In every other cell the dummy is 0
+throughout and gives the estimator nothing to compare.
+
+Dropping the dummy fixes both failures and costs the analysis nothing that the
+data could support. Any difference in the labor market of Illinois that stays
+fixed over time already cancels in the change in employment that each cell
+compares.
+
+.. admonition:: Find the cause before a numerical fix
+   :class: important
+
+   Clipping propensity scores, adding regularization, or changing which units a
+   fit keeps can make a failing calculation run. Each of these fixes also
+   changes what the estimator measures. Establish why the calculation fails
+   before you reach for one.
+
+Rebuilding the cell paid off because the error from ``drdid`` names the cause
+behind the warning from ``att_gt``. When an investigation does end in the code,
+the fix comes with a test that fails without it. The :ref:`testing guide
+<testing-numerical-tolerances>` describes how to choose that test's expected
+value and tolerances.
+
+Effects before uncertainty
+--------------------------
+
+When two fits differ, settle the point estimates first, the influence functions
+behind them next, and the standard errors built from those last. Two fits that
+agree on every effect and every influence function but not on the standard
+errors point to the variance step. A clustered fit, for example, sums the
+contributions within each cluster before it forms the variance. If two fits
+differ only in their uniform confidence bands, the cause is the critical value
+that the bands take from bootstrap draws. Since ``aggte`` makes those draws
+even when ``boot=False``, two runs agree only when each gets the same integer
+``random_state``. The :doc:`architecture guide <architecture>` rebuilds the
+standard errors from the influence functions.
+
+The same checks apply when one result comes from a GPU or from Spark. The
+:ref:`GPU section of the testing guide <testing-gpu>` and :doc:`fits on Spark
+<spark_fits>` show how far those results agree with the in-memory fit and why.
