@@ -13,17 +13,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-
-from moderndid import (
-    aggte,
-    att_gt,
-    drdid_panel,
-    drdid_rc,
-    reg_did_panel,
-    reg_did_rc,
-    std_ipw_did_panel,
-    std_ipw_did_rc,
-)
+from moderndid import aggte, att_gt, drdid_panel, drdid_rc, reg_did_panel, reg_did_rc, std_ipw_did_panel, std_ipw_did_rc
 from moderndid.core.preprocess import preprocess_did
 from moderndid.did.att_gt import _finish_att_gt
 from moderndid.did.mboot import _mboot
@@ -1245,16 +1235,17 @@ def test_att_gt_drops_nan_rows_from_pandas_and_polars_alike(mpdta_one_nan, spec,
     np.testing.assert_array_equal(result.se_gt, expected.se_gt)
 
 
-def test_att_gt_drops_nan_cohort_instead_of_making_it_never_treated(mpdta_nan_cohort):
+@pytest.mark.parametrize("convert", [pl.DataFrame.clone, pl.DataFrame.to_pandas], ids=["polars", "pandas"])
+def test_att_gt_drops_nan_cohort_instead_of_making_it_never_treated(mpdta_nan_cohort, convert):
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
     expected = att_gt(mpdta_nan_cohort.filter(pl.col("first.treat").is_not_nan()), **spec)
 
-    for data in (mpdta_nan_cohort, mpdta_nan_cohort.to_pandas()):
-        with pytest.warns(UserWarning, match="^Dropped 50 rows from original data due to missing values$"):
-            result = att_gt(data, **spec)
-        assert result.n_units == 490
-        np.testing.assert_array_equal(result.att_gt, expected.att_gt)
-        np.testing.assert_array_equal(result.se_gt, expected.se_gt)
+    with pytest.warns(UserWarning, match="^Dropped 50 rows from original data due to missing values$"):
+        result = att_gt(convert(mpdta_nan_cohort), **spec)
+
+    assert result.n_units == 490
+    np.testing.assert_array_equal(result.att_gt, expected.att_gt)
+    np.testing.assert_array_equal(result.se_gt, expected.se_gt)
 
 
 def test_att_gt_rejects_negative_cohort(mpdta_negative_never_treated):
@@ -1307,7 +1298,8 @@ def test_att_gt_infinite_cohort_marks_never_treated(mpdta_data, mpdta_infinite_n
         "outcome-unbalanced",
     ],
 )
-def test_att_gt_drops_infinite_rows_like_missing_ones(mpdta_one_infinite, spec):
+@pytest.mark.parametrize("convert", [pl.DataFrame.clone, pl.DataFrame.to_pandas], ids=["polars", "pandas"])
+def test_att_gt_drops_infinite_rows_like_missing_ones(mpdta_one_infinite, spec, convert):
     spec = {
         "yname": "lemp",
         "tname": "year",
@@ -1318,19 +1310,20 @@ def test_att_gt_drops_infinite_rows_like_missing_ones(mpdta_one_infinite, spec):
     }
     expected = att_gt(mpdta_one_infinite.filter(pl.all_horizontal(pl.col(pl.Float64).is_finite())), **spec)
 
-    for data in (mpdta_one_infinite, mpdta_one_infinite.to_pandas()):
-        with pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"):
-            result = att_gt(data, **spec)
-        assert result.n_units == expected.n_units
-        np.testing.assert_array_equal(result.groups, expected.groups)
-        np.testing.assert_array_equal(result.times, expected.times)
-        np.testing.assert_array_equal(result.att_gt, expected.att_gt)
-        np.testing.assert_array_equal(result.se_gt, expected.se_gt)
+    with pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"):
+        result = att_gt(convert(mpdta_one_infinite), **spec)
+
+    assert result.n_units == expected.n_units
+    np.testing.assert_array_equal(result.groups, expected.groups)
+    np.testing.assert_array_equal(result.times, expected.times)
+    np.testing.assert_array_equal(result.att_gt, expected.att_gt)
+    np.testing.assert_array_equal(result.se_gt, expected.se_gt)
 
 
 @pytest.mark.parametrize("mpdta_one_nan", ["first.treat", "cluster"], indirect=True)
 @pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
-def test_att_gt_checks_cohorts_and_clusters_on_the_rows_that_remain(mpdta_one_nan, allow_unbalanced_panel):
+@pytest.mark.parametrize("convert", [pl.DataFrame.clone, pl.DataFrame.to_pandas], ids=["polars", "pandas"])
+def test_att_gt_checks_cohorts_and_clusters_on_the_rows_that_remain(mpdta_one_nan, allow_unbalanced_panel, convert):
     spec = {
         "yname": "lemp",
         "tname": "year",
@@ -1348,16 +1341,18 @@ def test_att_gt_checks_cohorts_and_clusters_on_the_rows_that_remain(mpdta_one_na
     keep = ~missing if allow_unbalanced_panel else pl.col("countyreal") != county
     expected = att_gt(mpdta_one_nan.filter(keep), **spec)
 
-    for data in (mpdta_one_nan, mpdta_one_nan.to_pandas()):
-        result = att_gt(data, **spec)
-        assert result.n_units == (500 if allow_unbalanced_panel else 499)
-        np.testing.assert_array_equal(result.att_gt, expected.att_gt)
-        np.testing.assert_array_equal(result.se_gt, expected.se_gt)
+    result = att_gt(convert(mpdta_one_nan), **spec)
+
+    assert result.n_units == (500 if allow_unbalanced_panel else 499)
+    np.testing.assert_array_equal(result.att_gt, expected.att_gt)
+    np.testing.assert_array_equal(result.se_gt, expected.se_gt)
 
 
 @pytest.mark.parametrize(("anticipation", "n_dropped"), [(0, 10), (1, 43)])
 def test_att_gt_warns_once_about_units_treated_in_the_first_period(mpdta_early_cohorts, anticipation, n_dropped):
-    with pytest.warns(UserWarning) as record:
+    message = f"Dropped {n_dropped} units that were already treated in the first period"
+
+    with pytest.warns(UserWarning, match=f"^{message}$") as record:
         result = att_gt(
             mpdta_early_cohorts,
             yname="lemp",
@@ -1369,12 +1364,12 @@ def test_att_gt_warns_once_about_units_treated_in_the_first_period(mpdta_early_c
         )
 
     messages = [str(warning.message) for warning in record if "first period" in str(warning.message)]
-    assert messages == [f"Dropped {n_dropped} units that were already treated in the first period"]
+    assert messages == [message]
     assert result.n_units == 500 - n_dropped
 
 
 def test_att_gt_warns_once_about_units_dropped_to_balance_the_panel(mpdta_unbalanced):
-    with pytest.warns(UserWarning) as record:
+    with pytest.warns(UserWarning, match="^Dropped 74 units while converting to balanced panel$") as record:
         result = att_gt(
             mpdta_unbalanced, yname="lemp", tname="year", idname="countyreal", gname="first.treat", est_method="reg"
         )
@@ -1385,7 +1380,7 @@ def test_att_gt_warns_once_about_units_dropped_to_balance_the_panel(mpdta_unbala
 
 @pytest.mark.parametrize("mpdta_one_infinite", [("year", float("-inf"))], indirect=True)
 def test_att_gt_warns_only_about_the_rows_and_units_it_drops(mpdta_one_infinite):
-    with pytest.warns(UserWarning) as record:
+    with pytest.warns(UserWarning, match="^Dropped 1 units while converting to balanced panel$") as record:
         result = att_gt(
             mpdta_one_infinite, yname="lemp", tname="year", idname="countyreal", gname="first.treat", est_method="reg"
         )
@@ -1460,8 +1455,8 @@ def test_att_gt_reads_decimal_outcome_covariate_and_weights_as_doubles(mpdta_dec
     assert result.n_units == 499
     np.testing.assert_array_equal(result.groups, expected.groups)
     np.testing.assert_array_equal(result.times, expected.times)
-    np.testing.assert_allclose(result.att_gt, expected.att_gt, rtol=1e-12)
-    np.testing.assert_allclose(result.se_gt, expected.se_gt, rtol=1e-12)
+    np.testing.assert_array_equal(result.att_gt, expected.att_gt)
+    np.testing.assert_array_equal(result.se_gt, expected.se_gt)
 
 
 def test_att_gt_keeps_decimal_unit_ids_above_two_to_the_53_apart(mpdta_large_ids):
@@ -1475,8 +1470,8 @@ def test_att_gt_keeps_decimal_unit_ids_above_two_to_the_53_apart(mpdta_large_ids
     assert result.n_units == expected.n_units == 500
     np.testing.assert_array_equal(result.groups, expected.groups)
     np.testing.assert_array_equal(result.times, expected.times)
-    np.testing.assert_allclose(result.att_gt, expected.att_gt, rtol=1e-12)
-    np.testing.assert_allclose(result.se_gt, expected.se_gt, rtol=1e-12)
+    np.testing.assert_array_equal(result.att_gt, expected.att_gt)
+    np.testing.assert_array_equal(result.se_gt, expected.se_gt)
 
 
 @pytest.mark.parametrize("mpdta_bad_weights", ["one negative"], indirect=True)
@@ -1489,8 +1484,40 @@ def test_att_gt_rejects_negative_decimal_weights_like_float_weights(mpdta_bad_we
         att_gt(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat", weightsname="w")
 
 
-@pytest.mark.parametrize("base_period", ["varying", "universal"])
-def test_att_gt_without_never_treated_leaves_latest_cohort_out(mpdta_without_never_treated, base_period):
+@pytest.mark.parametrize(
+    ("base_period", "cells"),
+    [
+        (
+            "varying",
+            [
+                (2004, 2004, 2003, [2006, 2007]),
+                (2004, 2005, 2003, [2006, 2007]),
+                (2004, 2006, 2003, [2007]),
+                (2006, 2004, 2003, [2007]),
+                (2006, 2005, 2004, [2007]),
+                (2006, 2006, 2005, [2007]),
+            ],
+        ),
+        (
+            "universal",
+            [
+                (2004, 2003, 2003, [2006, 2007]),
+                (2004, 2004, 2003, [2006, 2007]),
+                (2004, 2005, 2003, [2006, 2007]),
+                (2004, 2006, 2003, [2007]),
+                (2006, 2003, 2005, [2007]),
+                (2006, 2004, 2005, [2007]),
+                (2006, 2005, 2005, [2007]),
+                (2006, 2006, 2005, [2007]),
+            ],
+        ),
+    ],
+)
+def test_att_gt_without_never_treated_leaves_latest_cohort_out(
+    mpdta_without_never_treated, mean_change_cells, base_period, cells
+):
+    pre = np.array([g > t and t != base for g, t, base, _ in cells])
+
     result = att_gt(
         data=mpdta_without_never_treated,
         yname="lemp",
@@ -1501,20 +1528,31 @@ def test_att_gt_without_never_treated_leaves_latest_cohort_out(mpdta_without_nev
         base_period=base_period,
         est_method="reg",
     )
-    post = result.groups <= result.times
+    att, influence = mean_change_cells(mpdta_without_never_treated, cells)
+    n_units = len(influence)
+    se = np.sqrt(np.mean(influence**2, axis=0) / n_units)
+    wald = n_units * att[pre] @ np.linalg.solve(influence[:, pre].T @ influence[:, pre] / n_units, att[pre])
 
-    assert set(result.groups.tolist()) == {2004.0, 2006.0}
-    np.testing.assert_allclose(
-        result.att_gt[post], [-0.0353990145, -0.0925872029, -0.1339523822, 0.0264925124], rtol=0, atol=1e-9
-    )
-    np.testing.assert_allclose(
-        result.se_gt[post], [0.0233767705, 0.0325760704, 0.0387084579, 0.0193805130], rtol=0, atol=1e-9
-    )
-    np.testing.assert_allclose(result.wald_stat, 0.997741952504902, rtol=1e-10)
-    assert result.wald_pvalue == 0.60722
+    assert pre.sum() == 2
+    np.testing.assert_array_equal(result.groups, [g for g, _, _, _ in cells])
+    np.testing.assert_array_equal(result.times, [t for _, t, _, _ in cells])
+    np.testing.assert_allclose(result.att_gt, att, rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(result.se_gt, np.where(se == 0, np.nan, se), rtol=1e-12)
+    np.testing.assert_allclose(result.wald_stat, wald, rtol=1e-12)
+    np.testing.assert_allclose(result.wald_pvalue, np.exp(-wald / 2), rtol=0, atol=5e-6)
 
 
-def test_att_gt_without_never_treated_event_study(mpdta_without_never_treated):
+def test_att_gt_without_never_treated_event_study(mpdta_without_never_treated, mean_change_cells):
+    cells = [
+        (2004, 2004, 2003, [2006, 2007]),
+        (2004, 2005, 2003, [2006, 2007]),
+        (2004, 2006, 2003, [2007]),
+        (2006, 2004, 2003, [2007]),
+        (2006, 2005, 2004, [2007]),
+        (2006, 2006, 2005, [2007]),
+    ]
+    cohorts = mpdta_without_never_treated.unique("countyreal").sort("countyreal")["first.treat"].to_numpy()
+
     result = att_gt(
         data=mpdta_without_never_treated,
         yname="lemp",
@@ -1523,60 +1561,42 @@ def test_att_gt_without_never_treated_event_study(mpdta_without_never_treated):
         gname="first.treat",
         control_group="notyettreated",
         est_method="reg",
+        random_state=7,
     )
     dynamic = aggte(result, type="dynamic")
+    att, influence = mean_change_cells(mpdta_without_never_treated, cells)
+    shares = np.array([np.mean(cohorts == 2004), np.mean(cohorts == 2006)])
+    deviations = np.column_stack([cohorts == 2004, cohorts == 2006]) - shares
+    share_influence = deviations / shares.sum() - np.outer(deviations.sum(axis=1), shares / shares.sum() ** 2)
+    on_impact = influence[:, [0, 5]] @ (shares / shares.sum()) + share_influence @ att[[0, 5]]
+    by_event = np.column_stack([influence[:, 3], influence[:, 4], on_impact, influence[:, 1], influence[:, 2]])
 
     np.testing.assert_array_equal(result.groups, [2004, 2004, 2004, 2006, 2006, 2006])
     np.testing.assert_array_equal(result.times, [2004, 2005, 2006, 2004, 2005, 2006])
     np.testing.assert_array_equal(dynamic.event_times, [-2, -1, 0, 1, 2])
     np.testing.assert_allclose(
         dynamic.att_by_event,
-        [-0.0239865432, -0.0000249259, 0.0058620035, -0.0925872029, -0.1339523822],
-        rtol=0,
-        atol=1e-9,
+        [att[3], att[4], shares @ att[[0, 5]] / shares.sum(), att[1], att[2]],
+        rtol=1e-12,
+        atol=1e-13,
     )
-    np.testing.assert_allclose(
-        dynamic.se_by_event,
-        [0.0240558316, 0.0224579722, 0.0157330074, 0.0325760704, 0.0387084579],
-        rtol=0,
-        atol=1e-9,
-    )
+    np.testing.assert_allclose(dynamic.se_by_event, np.sqrt(np.mean(by_event**2, axis=0) / len(cohorts)), rtol=1e-12)
 
 
 @pytest.mark.parametrize(
-    ("control_group", "expected_att"),
+    ("control_group", "comparisons"),
     [
-        (
-            "nevertreated",
-            [
-                0.0065201124,
-                -0.0027508188,
-                -0.0073454257,
-                -0.0439752903,
-                0.0305066556,
-                -0.0027258929,
-                -0.0310871194,
-                -0.0260544107,
-            ],
-        ),
-        (
-            "notyettreated",
-            [
-                -0.0025625509,
-                -0.0019392461,
-                0.0027216302,
-                -0.0439752903,
-                0.0297593648,
-                -0.0027258929,
-                -0.0310871194,
-                -0.0260544107,
-            ],
-        ),
+        ("nevertreated", [[0]] * 8),
+        ("notyettreated", [[0, 2008], [0, 2008], [0, 2008], [0], [0, 2006], [0], [0], [0]]),
     ],
 )
 def test_att_gt_anticipation_keeps_cohort_that_starts_after_panel(
-    mpdta_cohort_after_panel, control_group, expected_att
+    mpdta_cohort_after_panel, mean_change_cells, control_group, comparisons
 ):
+    groups = [2006] * 4 + [2008] * 4
+    times = [2004, 2005, 2006, 2007] * 2
+    cells = list(zip(groups, times, [2003, 2004, 2004, 2004, 2003, 2004, 2005, 2006], comparisons, strict=True))
+
     with pytest.warns(UserWarning, match="^Dropped 20 units that were already treated in the first period$"):
         result = att_gt(
             data=mpdta_cohort_after_panel,
@@ -1588,10 +1608,40 @@ def test_att_gt_anticipation_keeps_cohort_that_starts_after_panel(
             anticipation=1,
             est_method="reg",
         )
+    att, influence = mean_change_cells(mpdta_cohort_after_panel, cells)
 
-    np.testing.assert_array_equal(result.groups, [2006] * 4 + [2008] * 4)
-    np.testing.assert_array_equal(result.times, [2004, 2005, 2006, 2007] * 2)
-    np.testing.assert_allclose(result.att_gt, expected_att, rtol=0, atol=1e-9)
+    np.testing.assert_array_equal(result.groups, groups)
+    np.testing.assert_array_equal(result.times, times)
+    np.testing.assert_allclose(result.att_gt, att, rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(result.se_gt, np.sqrt(np.mean(influence**2, axis=0) / len(influence)), rtol=1e-12)
+
+
+def test_att_gt_leaves_anticipating_cohorts_out_of_the_comparison_on_repeated_cross_sections(
+    mpdta_cohort_after_panel, period_mean_cells
+):
+    groups = [2006] * 4 + [2008] * 4
+    times = [2004, 2005, 2006, 2007] * 2
+    comparisons = [[0, 2008], [0, 2008], [0, 2008], [0], [0, 2006], [0], [0], [0]]
+    cells = list(zip(groups, times, [2003, 2004, 2004, 2004, 2003, 2004, 2005, 2006], comparisons, strict=True))
+
+    with pytest.warns(UserWarning, match="^Dropped 100 observations that were already treated in the first period$"):
+        result = att_gt(
+            data=mpdta_cohort_after_panel,
+            yname="lemp",
+            tname="year",
+            gname="first.treat",
+            control_group="notyettreated",
+            anticipation=1,
+            est_method="reg",
+            panel=False,
+            boot=False,
+        )
+    att, influence = period_mean_cells(mpdta_cohort_after_panel, cells)
+
+    np.testing.assert_array_equal(result.groups, groups)
+    np.testing.assert_array_equal(result.times, times)
+    np.testing.assert_allclose(result.att_gt, att, rtol=1e-12, atol=1e-13)
+    np.testing.assert_allclose(result.se_gt, np.sqrt(np.mean(influence**2, axis=0) / len(influence)), rtol=1e-12)
 
 
 @pytest.mark.filterwarnings("error:.*unbalanced:UserWarning")
@@ -1645,6 +1695,30 @@ def test_att_gt_critical_value_skips_cells_with_a_small_bootstrap_scale(
     np.testing.assert_allclose(result.critical_value, expected, rtol=1e-12)
 
 
+def test_att_gt_bootstrap_gives_no_standard_error_where_its_draws_do_not_spread(
+    monkeypatch, draws_from_weights, offsetting_spike_weights, did_offsetting_cohort_data
+):
+    kwargs = {
+        "data": did_offsetting_cohort_data,
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~1",
+    }
+    cells = att_gt(**kwargs)
+    weights = offsetting_spike_weights(cells.n_units, *np.flatnonzero(np.abs(cells.influence_func[:, 0]) > 1e-8))
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(weights))
+
+    result = att_gt(**kwargs, boot=True, biters=999, cband=True)
+    q75, q25 = np.percentile(weights @ cells.influence_func / cells.n_units, [75, 25], axis=0, method="inverted_cdf")
+    scale = (q75 - q25) / 1.3489795
+
+    assert np.all(cells.se_gt > 0.02)
+    np.testing.assert_array_equal(result.groups[scale < 1.5e-7], [2, 2, 2, 2, 2])
+    np.testing.assert_allclose(result.se_gt, np.where(scale < 1.5e-7, np.nan, scale), rtol=1e-12)
+
+
 def test_att_gt_warns_once_when_the_critical_value_is_large(monkeypatch, mpdta_data):
     counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
     monkeypatch.setattr(
@@ -1661,9 +1735,36 @@ def test_att_gt_warns_once_when_the_critical_value_is_large(monkeypatch, mpdta_d
             boot=True,
             biters=20,
             cband=True,
+            random_state=7,
         )
 
     assert sum("too large" in str(warning.message) for warning in record) == 1
+
+
+def test_att_gt_stays_silent_about_a_critical_value_below_seven(monkeypatch, mpdta_data):
+    counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    monkeypatch.setattr(
+        import_module("moderndid.did.att_gt"),
+        "_mboot",
+        lambda **kwargs: {**_mboot(**kwargs), "crit_val": np.nextafter(7.0, 0.0)},
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = att_gt(
+            data=mpdta_data.filter(pl.col("countyreal").is_in(counties)),
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            boot=True,
+            biters=20,
+            cband=True,
+            random_state=7,
+        )
+
+    assert result.critical_value == np.nextafter(7.0, 0.0)
+    assert not [w for w in caught if "too large" in str(w.message)]
 
 
 @pytest.mark.filterwarnings("error:Overlap condition violated:UserWarning")
@@ -1798,8 +1899,8 @@ def test_att_gt_drops_cohort_without_weight(zero_weight_cohort_panel, est_method
     assert 3 not in result.groups
     np.testing.assert_array_equal(result.groups, reference.groups)
     np.testing.assert_array_equal(result.times, reference.times)
-    np.testing.assert_allclose(result.att_gt, reference.att_gt, rtol=1e-10)
-    np.testing.assert_allclose(result.se_gt, reference.se_gt, rtol=1e-10)
+    np.testing.assert_allclose(result.att_gt, reference.att_gt, rtol=1e-12)
+    np.testing.assert_allclose(result.se_gt, reference.se_gt, rtol=1e-12)
 
 
 def test_att_gt_drops_cells_of_custom_estimator_returning_nan(zero_weight_cohort_panel):
@@ -1845,7 +1946,19 @@ def test_att_gt_drops_cells_of_custom_estimator_without_influence_function(zero_
     assert result.att_gt.size == 0
 
 
-def test_att_gt_drops_cells_whose_comparison_units_have_no_weight(zero_weight_never_treated_panel):
+def test_att_gt_records_a_custom_estimator_as_custom(mpdta_data):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "boot": False}
+
+    custom = att_gt(mpdta_data, est_method=drdid_panel, **spec)
+    built_in = att_gt(mpdta_data, est_method="dr", **spec)
+
+    assert custom.estimation_params["estimation_method"] == "custom"
+    assert " Estimation Method:  custom" in str(custom).splitlines()
+    np.testing.assert_array_equal(custom.att_gt, built_in.att_gt)
+    np.testing.assert_array_equal(custom.se_gt, built_in.se_gt)
+
+
+def test_att_gt_drops_cells_whose_comparison_units_have_no_weight(zero_weight_never_treated_panel, mean_change_cells):
     spec = {
         "yname": "y",
         "tname": "t",
@@ -1854,6 +1967,7 @@ def test_att_gt_drops_cells_whose_comparison_units_have_no_weight(zero_weight_ne
         "weightsname": "w",
         "control_group": "notyettreated",
     }
+    cells = [(3, 2, 1, [0, 4]), (3, 3, 2, [0, 4]), (4, 2, 1, [0, 3])]
 
     with pytest.warns(
         UserWarning,
@@ -1862,15 +1976,18 @@ def test_att_gt_drops_cells_whose_comparison_units_have_no_weight(zero_weight_ne
         ),
     ):
         result = att_gt(zero_weight_never_treated_panel, **spec, est_method=drdid_panel)
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning, match="^Overlap condition violated for 4 in time period 3$"):
         screened = att_gt(zero_weight_never_treated_panel, **spec, est_method="dr")
+    att, _ = mean_change_cells(
+        zero_weight_never_treated_panel, cells, weightsname="w", yname="y", tname="t", idname="id", gname="g"
+    )
 
     assert list(zip(result.groups.tolist(), result.times.tolist(), strict=True)) == [(3, 2), (3, 3), (4, 2)]
-    np.testing.assert_allclose(result.att_gt, [-0.050613, 0.938563, 0.050613], atol=1e-6)
+    np.testing.assert_allclose(result.att_gt, att, rtol=1e-12, atol=1e-13)
     np.testing.assert_array_equal(result.groups, screened.groups)
     np.testing.assert_array_equal(result.times, screened.times)
-    np.testing.assert_allclose(result.att_gt, screened.att_gt, rtol=1e-10)
-    np.testing.assert_allclose(result.se_gt, screened.se_gt, rtol=1e-10)
+    np.testing.assert_array_equal(result.att_gt, screened.att_gt)
+    np.testing.assert_array_equal(result.se_gt, screened.se_gt)
 
 
 @pytest.mark.filterwarnings("error::RuntimeWarning")
@@ -1891,8 +2008,8 @@ def test_att_gt_names_the_period_whose_treated_rows_have_no_weight(zero_weight_t
     assert result.groups.tolist() == [3]
     assert result.times.tolist() == [2]
     assert unweighted.times.tolist() == [2, 3]
-    np.testing.assert_allclose(result.att_gt, unweighted.att_gt[:1], rtol=1e-10)
-    np.testing.assert_allclose(result.se_gt, unweighted.se_gt[:1], rtol=1e-10)
+    np.testing.assert_allclose(result.att_gt, unweighted.att_gt[:1], rtol=1e-12)
+    np.testing.assert_allclose(result.se_gt, unweighted.se_gt[:1], rtol=1e-12)
 
 
 def test_att_gt_failure_warning_names_the_cell(tiny_late_cohort_panel):
@@ -1928,3 +2045,359 @@ def test_att_gt_failure_warning_names_the_cell(tiny_late_cohort_panel):
 def test_att_gt_rejects_options_that_are_not_strings(mpdta_data, option, message):
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         att_gt(mpdta_data, yname="lemp", tname="year", idname="countyreal", gname="first.treat", **{option: None})
+
+
+@pytest.mark.parametrize(
+    ("option", "message"),
+    [
+        ({"alpha": 1}, "alpha=1 is not valid. Must be between 0 and 1 (exclusive)."),
+        ({"biters": 0}, "biters=0 is not valid. Must be a positive integer."),
+        ({"biters": 99.5}, "biters=99.5 is not valid. Must be a positive integer."),
+        ({"anticipation": -1}, "anticipation=-1 is not valid. Must be a non-negative number."),
+        ({"n_jobs": 0}, "n_jobs=0 is not valid. Must be a positive integer or -1 for all cores."),
+        ({"n_jobs": 0, "backend": "numpy"}, "n_jobs=0 is not valid. Must be a positive integer or -1 for all cores."),
+        ({"gname": None}, "gname is required. Please specify the treatment group column."),
+        ({"idname": None}, "idname must be provided when panel=True."),
+    ],
+)
+def test_att_gt_rejects_invalid_arguments(mpdta_data, option, message):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"} | option
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        att_gt(mpdta_data, **spec)
+
+
+def test_att_gt_with_all_cores_matches_the_sequential_fit(mpdta_data):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
+
+    parallel = att_gt(mpdta_data, n_jobs=-1, **spec)
+    sequential = att_gt(mpdta_data, **spec)
+
+    np.testing.assert_array_equal(parallel.groups, sequential.groups)
+    np.testing.assert_array_equal(parallel.times, sequential.times)
+    np.testing.assert_array_equal(parallel.att_gt, sequential.att_gt)
+    np.testing.assert_array_equal(parallel.se_gt, sequential.se_gt)
+
+
+def test_att_gt_rejects_a_string_of_cluster_variables(mpdta_data):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"}
+    message = "clustervars must be a list of strings, not a string. Use clustervars=['countyreal']."
+
+    with pytest.raises(TypeError, match=f"^{re.escape(message)}$"):
+        att_gt(mpdta_data, clustervars="countyreal", **spec)
+
+
+@pytest.mark.parametrize("est_method", ["reg", "ipw", "dr"])
+def test_att_gt_matches_independent_fits_on_twenty_weighted_covariates(weighted_wide_panel, logit_scores, est_method):
+    covariates = [f"cov{j}" for j in range(1, 21)]
+    units = weighted_wide_panel.filter(pl.col("time") == 1).sort("id")
+    outcomes = weighted_wide_panel.pivot(on="time", index="id", values="y").sort("id")
+    design = np.column_stack([np.ones(units.height), units.select(covariates).to_numpy()])
+    cohorts = units["group"].to_numpy()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = att_gt(
+            weighted_wide_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            xformla="~" + " + ".join(covariates),
+            weightsname="w",
+            control_group="notyettreated",
+            est_method=est_method,
+        )
+    expected = []
+    scores = []
+    for group, time in zip(result.groups, result.times, strict=True):
+        base = group - 1 if time >= group else time - 1
+        cell = (cohorts == group) | (cohorts == 0) | (cohorts > max(time, base))
+        treated = cohorts[cell] == group
+        change = (outcomes[str(int(time))] - outcomes[str(int(base))]).to_numpy()[cell]
+        weights = units["w"].to_numpy()[cell]
+        x = design[cell]
+        root = np.sqrt(weights[~treated])
+        coefficients = np.linalg.lstsq(x[~treated] * root[:, None], change[~treated] * root, rcond=None)[0]
+        residual = change if est_method == "ipw" else change - x @ coefficients
+        scores.append(logit_scores(x, treated, weights))
+        odds = scores[-1] / (1 - scores[-1])
+        control = 0.0 if est_method == "reg" else np.average(residual[~treated], weights=(weights * odds)[~treated])
+        expected.append(np.average(residual[treated], weights=weights[treated]) - control)
+
+    assert list(zip(result.groups.tolist(), result.times.tolist(), strict=True)) == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    assert [str(warning.message) for warning in caught] == []
+    assert 1e-6 < np.concatenate(scores).min() < np.concatenate(scores).max() < 0.995
+    np.testing.assert_allclose(result.att_gt, expected, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["reg", "ipw"])
+@pytest.mark.parametrize(
+    "layout",
+    [{"panel": False}, {"idname": "id", "allow_unbalanced_panel": True}],
+    ids=["repeated_cross_sections", "unbalanced_panel"],
+)
+def test_att_gt_rows_match_independent_fits_on_twenty_weighted_covariates(
+    weighted_wide_panel, logit_scores, est_method, layout
+):
+    data = weighted_wide_panel.filter(~((pl.col("id") % 7 == 0) & (pl.col("time") == 2)))
+    covariates = [f"cov{j}" for j in range(1, 21)]
+    design = np.column_stack([np.ones(data.height), data.select(covariates).to_numpy()])
+    cohorts = data["group"].to_numpy()
+    periods = data["time"].to_numpy()
+    outcome = data["y"].to_numpy()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = att_gt(
+            data,
+            yname="y",
+            tname="time",
+            gname="group",
+            xformla="~" + " + ".join(covariates),
+            weightsname="w",
+            control_group="notyettreated",
+            est_method=est_method,
+            **layout,
+        )
+    expected = []
+    scores = []
+    for group, time in zip(result.groups, result.times, strict=True):
+        base = group - 1 if time >= group else time - 1
+        rows = np.isin(periods, [time, base]) & ((cohorts == group) | (cohorts == 0) | (cohorts > max(time, base)))
+        treated = cohorts[rows] == group
+        post = periods[rows] == time
+        x, y, weights = design[rows], outcome[rows], data["w"].to_numpy()[rows]
+        scores.append(logit_scores(x, treated, weights))
+        if est_method == "reg":
+            fitted = []
+            for period in (post, ~post):
+                comparison = ~treated & period
+                root = np.sqrt(weights[comparison])
+                fitted.append(x @ np.linalg.lstsq(x[comparison] * root[:, None], y[comparison] * root, rcond=None)[0])
+            control = np.average((fitted[0] - fitted[1])[treated], weights=weights[treated])
+        else:
+            odds = weights * scores[-1] / (1 - scores[-1])
+            after = np.average(y[~treated & post], weights=odds[~treated & post])
+            control = after - np.average(y[~treated & ~post], weights=odds[~treated & ~post])
+        expected.append(
+            np.average(y[treated & post], weights=weights[treated & post])
+            - np.average(y[treated & ~post], weights=weights[treated & ~post])
+            - control
+        )
+
+    assert list(zip(result.groups.tolist(), result.times.tolist(), strict=True)) == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    assert [str(warning.message) for warning in caught] == []
+    assert 1e-6 < np.concatenate(scores).min() < np.concatenate(scores).max() < 0.995
+    np.testing.assert_allclose(result.att_gt, expected, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("est_method", "change"),
+    [
+        ("reg", pl.col("cov5") * 1e4),
+        ("ipw", pl.col("cov5") * 1e4),
+        ("dr", pl.col("cov5") * 1e4),
+        ("reg", pl.col("cov5") + 1e3),
+        ("ipw", pl.col("cov5") + 1e3),
+        ("dr", pl.col("cov5") + 1e3),
+        ("ipw", pl.col("cov5") * 1e12),
+    ],
+    ids=["reg-x1e4", "ipw-x1e4", "dr-x1e4", "reg-plus1e3", "ipw-plus1e3", "dr-plus1e3", "ipw-x1e12"],
+)
+def test_att_gt_estimates_stay_put_when_one_of_twenty_covariates_is_rescaled_or_shifted(
+    weighted_wide_panel, est_method, change
+):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~" + " + ".join(f"cov{j}" for j in range(1, 21)),
+        "weightsname": "w",
+        "est_method": est_method,
+    }
+
+    original = att_gt(weighted_wide_panel, **spec)
+    changed = att_gt(weighted_wide_panel.with_columns(change), **spec)
+
+    assert original.att_gt.size == 4
+    assert np.isfinite(original.att_gt).all()
+    assert np.isfinite(original.se_gt).all()
+    np.testing.assert_array_equal(changed.groups, original.groups)
+    np.testing.assert_array_equal(changed.times, original.times)
+    np.testing.assert_allclose(changed.att_gt, original.att_gt, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(changed.se_gt, original.se_gt, rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["reg", "dr"])
+def test_att_gt_regression_screen_skips_each_cell_when_a_covariate_repeats_another(weighted_wide_panel, est_method):
+    covariates = " + ".join(f"cov{j}" for j in range(1, 21))
+    cells = [(2, 2), (2, 3), (3, 2), (3, 3)]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = att_gt(
+            weighted_wide_panel.with_columns(pl.col("cov7").alias("copy")),
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            xformla=f"~ {covariates} + copy",
+            weightsname="w",
+            est_method=est_method,
+        )
+
+    messages = [str(warning.message) for warning in caught]
+    assert messages[:-1] == [
+        f"Not enough control units for group {group} in time period {time} to run specified regression"
+        for group, time in cells
+    ]
+    assert messages[-1].startswith("No pre-treatment periods available for the Wald pre-test")
+    assert result.att_gt.size == 0
+
+
+@pytest.mark.parametrize(
+    ("est_method", "copy"),
+    [
+        ("reg", pl.col("cov3") - 2 * pl.col("cov11")),
+        ("reg", pl.lit(2.5)),
+        ("dr", pl.col("cov3") - 2 * pl.col("cov11")),
+    ],
+    ids=["reg-combination", "reg-constant", "dr-combination"],
+)
+def test_att_gt_skips_each_cell_with_a_warning_that_names_it_when_a_covariate_combines_others(
+    weighted_wide_panel, est_method, copy
+):
+    covariates = " + ".join(f"cov{j}" for j in range(1, 21))
+    cells = [(2, 2), (2, 3), (3, 2), (3, 3)]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = att_gt(
+            weighted_wide_panel.with_columns(copy.alias("copy")),
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            xformla=f"~ {covariates} + copy",
+            weightsname="w",
+            est_method=est_method,
+        )
+
+    messages = [str(warning.message) for warning in caught]
+    named = [
+        (group, time)
+        for group, time in cells
+        if any(f"group {group} in time period {time}" in message for message in messages)
+    ]
+    assert result.att_gt.size == 0
+    assert named == cells
+
+
+def test_att_gt_rejects_never_treated_group_smaller_than_covariate_count_plus_five(weighted_wide_panel):
+    never_treated = weighted_wide_panel.filter(pl.col("group") == 0)["id"].unique().sort()
+    accepted = weighted_wide_panel.filter((pl.col("group") != 0) | pl.col("id").is_in(never_treated.head(25).implode()))
+    rejected = weighted_wide_panel.filter((pl.col("group") != 0) | pl.col("id").is_in(never_treated.head(24).implode()))
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "xformla": "~" + " + ".join(f"cov{j}" for j in range(1, 21)),
+        "weightsname": "w",
+    }
+    message = (
+        "The never-treated group is too small to serve as the comparison group. "
+        "Pass control_group='notyettreated' to compare with units not yet treated."
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        att_gt(accepted, **spec)
+    with (
+        pytest.warns(UserWarning, match="^Be aware that there are some small groups in your dataset\\."),
+        pytest.raises(ValueError, match=f"^{re.escape(message)}$"),
+    ):
+        att_gt(rejected, **spec)
+
+    messages = [str(warning.message) for warning in caught]
+    assert [text for text in messages if text.startswith("Be aware that there are some small groups")] == []
+
+
+@pytest.mark.parametrize("est_method", ["ipw", "dr"])
+def test_att_gt_trims_comparison_units_whose_scores_pass_0995_with_twenty_covariates(
+    wide_trimming_panel, logit_scores, est_method
+):
+    covariates = [f"x{j}" for j in range(20)]
+    units = wide_trimming_panel.filter(pl.col("t") == 1).sort("id")
+    outcomes = wide_trimming_panel.pivot(on="t", index="id", values="y").sort("id")
+    design = np.column_stack([np.ones(units.height), units.select(covariates).to_numpy()])
+    treated = units["g"].to_numpy() == 3
+    weights = units["w"].to_numpy()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = att_gt(
+            wide_trimming_panel,
+            yname="y",
+            tname="t",
+            idname="id",
+            gname="g",
+            xformla="~" + " + ".join(covariates),
+            weightsname="w",
+            est_method=est_method,
+        )
+    scores = logit_scores(design, treated, weights)
+    kept = np.where(treated | (scores < 0.995), 1.0, 0.0)
+    expected = []
+    for time in (2, 3):
+        change = (outcomes[str(time)] - outcomes[str(time - 1)]).to_numpy()
+        root = np.sqrt(weights[~treated])
+        coefficients = np.linalg.lstsq(design[~treated] * root[:, None], change[~treated] * root, rcond=None)[0]
+        residual = change if est_method == "ipw" else change - design @ coefficients
+        control_weights = (kept * weights * scores / (1 - scores))[~treated]
+        expected.append(
+            np.average(residual[treated], weights=weights[treated])
+            - np.average(residual[~treated], weights=control_weights)
+        )
+
+    assert np.flatnonzero(~treated & (scores > 0.99)).tolist() == [6, 13]
+    assert scores[13] < 0.995
+    assert 0.9988 < scores[6] == scores.max() < 0.999
+    assert [str(warning.message) for warning in caught] == []
+    np.testing.assert_array_equal(result.times, [2, 3])
+    np.testing.assert_allclose(result.att_gt, expected, rtol=1e-10, atol=0)
+
+
+@pytest.mark.parametrize("est_method", ["ipw", "dr"])
+def test_att_gt_skips_cells_whose_scores_reach_0999_with_twenty_covariates(
+    wide_trimming_panel, logit_scores, est_method
+):
+    data = wide_trimming_panel.with_columns(pl.when(pl.col("id") < 6).then(250.0).otherwise(pl.col("w")).alias("w"))
+    covariates = [f"x{j}" for j in range(20)]
+    units = data.filter(pl.col("t") == 1).sort("id")
+    design = np.column_stack([np.ones(units.height), units.select(covariates).to_numpy()])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = att_gt(
+            data,
+            yname="y",
+            tname="t",
+            idname="id",
+            gname="g",
+            xformla="~" + " + ".join(covariates),
+            weightsname="w",
+            est_method=est_method,
+        )
+    scores = logit_scores(design, units["g"].to_numpy() == 3, units["w"].to_numpy())
+
+    messages = [str(warning.message) for warning in caught]
+    assert 0.999 < scores.max() < 0.9995
+    assert messages[:-1] == [
+        "Overlap condition violated for 3 in time period 2",
+        "Overlap condition violated for 3 in time period 3",
+    ]
+    assert messages[-1].startswith("No pre-treatment periods available for the Wald pre-test")
+    assert result.att_gt.size == 0
