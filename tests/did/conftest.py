@@ -679,3 +679,57 @@ def collinear_pretrend_panel():
             for t in (1, 2, 3, 4)
         ]
     )
+
+
+@pytest.fixture
+def weighted_wide_panel():
+    """Generated panel of 600 units over three periods with twenty covariates and unequal unit weights."""
+    data = gen_did_scalable(600, n_periods=3, n_cohorts=2, n_covariates=20, random_state=42)["data"]
+    weights = np.random.default_rng(42).uniform(0.2, 3.0, 600)
+    return data.with_columns(pl.Series("w", weights[data["id"].to_numpy() - 1]))
+
+
+@pytest.fixture
+def logit_scores():
+    """Function that fits a weighted logit by Newton's method and returns its fitted scores."""
+
+    def fit(design, treated, weights):
+        coefficients = np.zeros(design.shape[1])
+        for _ in range(100):
+            scores = 1 / (1 + np.exp(-design @ coefficients))
+            gradient = design.T @ (weights * (treated - scores))
+            hessian = design.T @ ((weights * scores * (1 - scores))[:, None] * design)
+            coefficients = coefficients + np.linalg.solve(hessian, gradient)
+        return 1 / (1 + np.exp(-design @ coefficients))
+
+    return fit
+
+
+@pytest.fixture
+def wide_trimming_panel():
+    """Panel with twenty covariates whose dummy clusters give comparison units 6 and 13 scores 840/841 and 120/121."""
+    rng = np.random.default_rng(7)
+    cohorts = np.r_[np.full(6, 3), 0, np.full(6, 3), 0, np.full(120, 3), np.zeros(240)]
+    weights = np.r_[np.full(6, 140.0), 1.0, np.full(6, 20.0), 1.0, rng.uniform(0.5, 2.0, 360)]
+    covariates = np.zeros((374, 20))
+    covariates[:7, 0] = 1.0
+    covariates[7:14, 1] = 1.0
+    covariates[14:, 2:] = rng.normal(size=(360, 18))
+    covariates[14:, 2] += 0.8 * (cohorts[14:] == 3)
+    drift = np.zeros(374)
+    drift[[6, 13]] = [6.0, -4.0]
+    level = rng.normal(size=374)
+    t = np.tile([1, 2, 3], 374)
+    unit = np.repeat(np.arange(374), 3)
+    treated_after = (cohorts[unit] == 3) & (t == 3)
+    y = level[unit] + t * covariates[unit, 2] + (t - 1) * drift[unit] + rng.normal(size=t.size) + 2.0 * treated_after
+    return pl.DataFrame(
+        {
+            "id": unit,
+            "t": t,
+            "g": cohorts[unit],
+            "w": weights[unit],
+            "y": y,
+            **{f"x{j}": covariates[unit, j] for j in range(20)},
+        }
+    )
