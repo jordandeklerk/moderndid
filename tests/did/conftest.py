@@ -801,6 +801,18 @@ def rcs_with_empty_cell_periods():
 
 
 @pytest.fixture
+def zero_weight_outlier_panel():
+    """Panel whose one comparison unit beyond the covariate range of the treated units has zero weight."""
+    return _balanced_panel(
+        np.r_[np.full(40, 3), np.zeros(61)],
+        np.r_[np.ones(100), 0.0],
+        np.r_[np.linspace(0, 2, 40), np.linspace(-1, 1, 60), 8.0],
+        3,
+        lambda ids, t, g, x: x + t + np.sin(ids + 2 * t) + ((g == 3) & (t == 3)),
+    )
+
+
+@pytest.fixture
 def weighted_wide_panel():
     """Generated panel of 600 units over three periods with twenty covariates and unequal unit weights."""
     data = gen_did_scalable(600, n_periods=3, n_cohorts=2, n_covariates=20, random_state=42)["data"]
@@ -852,3 +864,178 @@ def wide_trimming_panel():
             **{f"x{j}": covariates[unit, j] for j in range(20)},
         }
     )
+
+
+def _with_unit_draws(data, n_units, n_periods):
+    """Add a uniform weight w and a standard normal draw noise for each unit of generated data sorted by unit."""
+    rng = np.random.default_rng(1)
+    weights = rng.uniform(0.5, 1.5, n_units)
+    noise = rng.normal(size=n_units)
+    return data.with_columns(
+        pl.Series("w", np.repeat(weights, n_periods)), pl.Series("noise", np.repeat(noise, n_periods))
+    )
+
+
+@pytest.fixture
+def wide_panel():
+    """Generated panel of 1000 units over three periods with 20 covariates and a unit weight w and draw noise."""
+    data = gen_did_scalable(1000, n_periods=3, n_cohorts=2, n_covariates=20, random_state=42)["data"]
+    return _with_unit_draws(data, 1000, 3)
+
+
+@pytest.fixture
+def wider_panel():
+    """Generated panel of 1000 units over three periods with 50 covariates and a unit weight w and draw noise."""
+    data = gen_did_scalable(1000, n_periods=3, n_cohorts=2, n_covariates=50, random_state=42)["data"]
+    return _with_unit_draws(data, 1000, 3)
+
+
+@pytest.fixture
+def wide_cross_section():
+    """Generated cross sections of 400 rows in each of three periods with 20 covariates and row draws w and noise."""
+    data = gen_did_scalable(400, n_periods=3, n_cohorts=2, n_covariates=20, panel=False, random_state=42)["data"]
+    return _with_unit_draws(data, data.height, 1)
+
+
+@pytest.fixture
+def hub_overlap_panel():
+    """Function that builds a two-period panel with 20 covariates whose first marks a hub of 600 treated units."""
+
+    def build(n_hub_controls):
+        rng = np.random.default_rng(0)
+        cohort = np.repeat([2, 0, 2, 0], [600, n_hub_controls, 300, 600])
+        n_units = cohort.size
+        x = np.column_stack([np.r_[np.ones(600 + n_hub_controls), np.zeros(900)], rng.normal(size=(n_units, 19))])
+        weights = rng.uniform(0.5, 1.5, n_units)
+        y0 = x[:, :3] @ np.array([1.0, -1.0, 0.5]) + rng.normal(size=n_units)
+        y1 = y0 + x[:, :3] @ np.array([0.5, 0.2, -0.3]) + (cohort == 2) + rng.normal(size=n_units)
+        covariates = {f"cov{j + 1}": x[:, j] for j in range(20)}
+        return pl.concat(
+            [
+                pl.DataFrame({"id": np.arange(n_units), "time": t, "group": cohort, "y": y, "w": weights, **covariates})
+                for t, y in ((1, y0), (2, y1))
+            ]
+        )
+
+    return build
+
+
+@pytest.fixture
+def hub_overlap_cross_section():
+    """Function that builds two cross sections with 20 covariates whose first marks a hub of 600 treated rows each."""
+
+    def build(n_hub_controls):
+        rng = np.random.default_rng(0)
+        cohort = np.tile(np.repeat([2, 0, 2, 0], [600, n_hub_controls, 300, 600]), 2)
+        time = np.repeat([1, 2], cohort.size // 2)
+        hub = np.tile(np.r_[np.ones(600 + n_hub_controls), np.zeros(900)], 2)
+        x = np.column_stack([hub, rng.normal(size=(cohort.size, 19))])
+        weights = rng.uniform(0.5, 1.5, cohort.size)
+        y = (
+            x[:, :3] @ np.array([1.0, -1.0, 0.5])
+            + (time == 2) * (x[:, :3] @ np.array([0.5, 0.2, -0.3]) + (cohort == 2))
+            + rng.normal(size=cohort.size)
+        )
+        covariates = {f"cov{j + 1}": x[:, j] for j in range(20)}
+        return pl.DataFrame(
+            {"id": np.arange(cohort.size), "time": time, "group": cohort, "y": y, "w": weights, **covariates}
+        )
+
+    return build
+
+
+@pytest.fixture
+def newton_logit():
+    """Function that fits a weighted logit by Newton steps and returns its scores clipped like the estimators."""
+
+    def fit(d, x, weights):
+        beta = np.zeros(x.shape[1])
+        for _ in range(50):
+            scores = 1 / (1 + np.exp(-x @ beta))
+            hessian = x.T @ ((weights * scores * (1 - scores))[:, None] * x)
+            beta = beta + np.linalg.lstsq(hessian, x.T @ (weights * (d - scores)), rcond=None)[0]
+        return np.clip(1 / (1 + np.exp(-x @ beta)), 1e-6, 1 - 1e-6)
+
+    return fit
+
+
+@pytest.fixture
+def reference_cell_att(newton_logit):
+    """Function that computes the ATT of one cell of generated data from least squares fits and a Newton logit."""
+
+    def fitted(y, x, weights, rows):
+        root = np.sqrt(weights[rows])
+        return x @ np.linalg.lstsq(x[rows] * root[:, None], y[rows] * root, rcond=None)[0]
+
+    def mean(values, weights, rows):
+        return np.sum(weights[rows] * values[rows]) / np.sum(weights[rows])
+
+    def estimate(data, covariates, cell, est_method, panel=True, trim_level=0.995):
+        group, later, base, comparison = cell
+        in_cell = pl.col("group").is_in([group, *comparison])
+        if panel:
+            at = {period: data.filter((pl.col("time") == period) & in_cell).sort("id") for period in (later, base)}
+            units = at[min(later, base)]
+            y = at[later]["y"].to_numpy() - at[base]["y"].to_numpy()
+        else:
+            units = data.filter(pl.col("time").is_in([later, base]) & in_cell)
+            y = units["y"].to_numpy()
+            post = (units["time"] == later).to_numpy()
+        d = (units["group"] == group).to_numpy()
+        x = np.column_stack([np.ones(units.height), units.select(covariates).to_numpy()])
+        weights = units["w"].to_numpy()
+        scores = newton_logit(d.astype(float), x, weights)
+        kept = weights * (d | (scores < trim_level))
+        odds = kept * scores / (1 - scores)
+        if panel:
+            outcome = fitted(y, x, weights, ~d)
+            if est_method == "reg":
+                return mean(y - outcome, weights, d)
+            change = y - outcome if est_method == "dr" else y
+            return mean(change, kept, d) - mean(change, odds, ~d)
+        sides = {(1, 1): d & post, (1, 0): d & ~post, (0, 1): ~d & post, (0, 0): ~d & ~post}
+        if est_method == "ipw":
+            treated = mean(y, kept, sides[1, 1]) - mean(y, kept, sides[1, 0])
+            return treated - mean(y, odds, sides[0, 1]) + mean(y, odds, sides[0, 0])
+        fits = {side: fitted(y, x, weights, rows) for side, rows in sides.items()}
+        if est_method == "reg":
+            treated = mean(y, weights, sides[1, 1]) - mean(y, weights, sides[1, 0])
+            return treated - mean(fits[0, 1] - fits[0, 0], weights, d)
+        residual = y - np.where(post, fits[0, 1], fits[0, 0])
+        gaps = {period: fits[1, period] - fits[0, period] for period in (0, 1)}
+        return (
+            mean(residual, kept, sides[1, 1])
+            - mean(residual, kept, sides[1, 0])
+            - mean(residual, odds, sides[0, 1])
+            + mean(residual, odds, sides[0, 0])
+            + mean(gaps[1], kept, d)
+            - mean(gaps[1], kept, sides[1, 1])
+            - mean(gaps[0], kept, d)
+            + mean(gaps[0], kept, sides[1, 0])
+        )
+
+    return estimate
+
+
+@pytest.fixture
+def wide_panel_atts_with_scaled_unit_weights():
+    """Function that refits a generated panel after scaling the weight w of each unit by its own factor."""
+
+    def refit(rows, units, factors, **spec):
+        scaled = rows.with_columns(pl.col("w") * pl.col("id").replace_strict(units, factors))
+        data = preprocess_did(scaled, yname="y", tname="time", idname="id", gname="group", weightsname="w", **spec)
+        return np.array([cell.att for cell in compute_att_gt(data).attgt_list])
+
+    return refit
+
+
+@pytest.fixture
+def wide_cross_section_atts_with_scaled_row_weights():
+    """Function that refits generated cross sections after scaling the weight w of each row by its own factor."""
+
+    def refit(rows, factors, **spec):
+        scaled = rows.with_columns(pl.col("w") * pl.Series(factors))
+        data = preprocess_did(scaled, yname="y", tname="time", gname="group", weightsname="w", panel=False, **spec)
+        return np.array([cell.att for cell in compute_att_gt(data).attgt_list])
+
+    return refit
