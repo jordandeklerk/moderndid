@@ -515,3 +515,86 @@ def unit_generator_bootstrap_weights(monkeypatch):
             return np.ones(size)
 
     monkeypatch.setattr(np.random, "default_rng", lambda seed=None: UnitGenerator())
+
+
+@pytest.fixture
+def least_squares_fit():
+    """Fit weighted least squares on the chosen rows by lstsq and return the fitted values of every row."""
+
+    def fit(y, x, weights, rows):
+        root = np.sqrt(weights[rows])
+        coefficients = np.linalg.lstsq(x[rows] * root[:, None], y[rows] * root, rcond=None)[0]
+        return x @ coefficients
+
+    return fit
+
+
+@pytest.fixture
+def maximum_likelihood_scores():
+    """Fit a weighted logistic propensity score by Newton steps on its log likelihood and return the scores."""
+
+    def fit(d, x, weights):
+        gamma = np.zeros(x.shape[1])
+        for _ in range(30):
+            score = 1 / (1 + np.exp(-x @ gamma))
+            hessian = (x * (weights * score * (1 - score))[:, None]).T @ x
+            gamma = gamma + np.linalg.solve(hessian, x.T @ (weights * (d - score)))
+        return 1 / (1 + np.exp(-x @ gamma))
+
+    return fit
+
+
+@pytest.fixture
+def tilting_scores():
+    """Solve the tilting conditions that match the weighted covariate means of both groups and return the scores."""
+
+    def fit(d, x, weights):
+        gamma = np.zeros(x.shape[1])
+        for _ in range(30):
+            tilt = weights * (1 - d) * np.exp(x @ gamma)
+            gamma = gamma + np.linalg.solve((x * tilt[:, None]).T @ x, x.T @ (weights * d - tilt))
+        return 1 / (1 + np.exp(-x @ gamma))
+
+    return fit
+
+
+@pytest.fixture
+def panel_dr_att(least_squares_fit):
+    """Compute the panel doubly robust ATT of the paper from given propensity scores."""
+
+    def att(delta_y, d, x, weights, ps, improved, trim_level=1.0):
+        odds = ps / (1 - ps)
+        residual = delta_y - least_squares_fit(delta_y, x, weights * odds if improved else weights, d == 0)
+        comparison = weights * odds * (1 - d) * (ps < trim_level)
+        scale = np.sum(weights * d) if improved else np.sum(comparison)
+        return np.average(residual, weights=weights * d) - np.sum(comparison * residual) / scale
+
+    return att
+
+
+@pytest.fixture(scope="module")
+def panel_planted_effect_arrays():
+    """Panel arrays with correct score and outcome models whose treated units gain exactly one."""
+    rng = np.random.default_rng(42)
+    n = 5000
+    x = rng.normal(size=(4, n))
+    y0 = x[0] + x[1] + rng.normal(size=n)
+    trend = x[0] + x[2] + rng.normal(size=n)
+    d = (rng.uniform(size=n) < 1 / (1 + np.exp(-(x[0] + x[2])))).astype(int)
+    return {"y1": y0 + trend + d, "y0": y0, "d": d, "covariates": np.column_stack([np.ones(n), x.T])}
+
+
+@pytest.fixture(scope="module")
+def separated_two_period_arrays():
+    """Panel and repeated cross-section outcomes whose covariate separates the treated units from the others."""
+    rng = np.random.default_rng(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.linspace(-10, 10, n)])
+    d = (x[:, 1] > 0).astype(int)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
+    y0 = x @ [1, 0.5] + rng.standard_normal(n)
+    return {
+        "panel": {"y1": y0 + 2 * d + rng.standard_normal(n), "y0": y0, "d": d, "covariates": x},
+        "repeated_cross_sections": {"y": y, "post": post, "d": d, "covariates": x},
+    }
