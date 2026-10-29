@@ -901,6 +901,42 @@ def draws_from_leading_weights():
 
 
 @pytest.fixture
+def weighted_cohorts_mp_result():
+    """Hand-built att_gt result with cohorts of unequal size and weight whose units share shocks by index mod 20."""
+    rng = np.random.default_rng(42)
+    n_units = 200
+    cohorts = np.repeat([2004, 2006, 2007, np.inf], [30, 50, 80, 40])
+    weights = rng.uniform(0.5, 1.5, n_units) * np.repeat([3.0, 1.0, 0.5, 1.0], [30, 50, 80, 40])
+    influence_func = rng.normal(size=(n_units, 12)) + 2 * rng.normal(size=(20, 12))[np.arange(n_units) % 20]
+    influence_func -= influence_func.mean(axis=0)
+    vcov = influence_func.T @ influence_func / n_units
+    return mp(
+        groups=np.repeat([2004, 2006, 2007], 4),
+        times=np.tile([2004, 2005, 2006, 2007], 3),
+        att_gt=rng.normal(size=12),
+        vcov_analytical=vcov,
+        se_gt=np.sqrt(np.diag(vcov) / n_units),
+        critical_value=1.96,
+        influence_func=influence_func,
+        n_units=n_units,
+        estimation_params={"bootstrap": False, "uniform_bands": False},
+        G=cohorts,
+        weights_ind=weights,
+    )
+
+
+@pytest.fixture
+def reweighted_mp_result():
+    """Rescale the unit weights of an att_gt result and move its cells along their influence functions to match."""
+
+    def rebuild(result, multipliers):
+        moved = result.att_gt + (multipliers - 1) @ result.influence_func / result.n_units
+        return result._replace(att_gt=moved, weights_ind=result.weights_ind * multipliers)
+
+    return rebuild
+
+
+@pytest.fixture
 def weighted_wide_panel():
     """Generated panel of 600 units over three periods with twenty covariates and unequal unit weights."""
     data = gen_did_scalable(600, n_periods=3, n_cohorts=2, n_covariates=20, random_state=42)["data"]
