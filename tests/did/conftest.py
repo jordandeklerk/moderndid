@@ -682,6 +682,22 @@ def collinear_pretrend_panel():
 
 
 @pytest.fixture
+def weighted_unit_period_panel(unit_period_panel):
+    """Two-period panel of five units with unit weights w and a covariate x that varies over time except for unit 5."""
+    return unit_period_panel.with_columns(
+        pl.Series("x", [0.5, 1.5, -1.0, 2.0, 0.0, 3.0, 4.0, -2.0, 1.0, 1.0]),
+        pl.Series("w", [1.0, 1.0, 3.0, 3.0, 1.0, 1.0, 3.0, 3.0, 2.0, 2.0]),
+    )
+
+
+@pytest.fixture
+def mpdta_cohort_switched_off(mpdta_data):
+    """mpdta in which county 17005 of the 2004 cohort reads as never treated in 2007."""
+    row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2007)
+    return mpdta_data.with_columns(pl.when(row).then(0).otherwise(pl.col("first.treat")).alias("first.treat"))
+
+
+@pytest.fixture
 def mpdta_cells():
     """Function that lists each mpdta cell as its cohort and period and base period and comparison cohorts."""
 

@@ -1,6 +1,7 @@
 """Tests for DiD preprocessing functions."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -9,26 +10,23 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+from moderndid import aggte, att_gt, drdid_panel, preprocess_did
 from moderndid.core.preprocess import (
-    NEVER_TREATED_VALUE,
     ROW_ID_COLUMN,
     WEIGHTS_COLUMN,
     BasePeriod,
     CompositeValidator,
     ContDIDConfig,
     ControlGroup,
+    DataFormat,
     DataTransformerPipeline,
     DIDConfig,
     DIDData,
     EstimationMethod,
     PreprocessDataBuilder,
     TensorFactorySelector,
-    preprocess_did,
 )
-from moderndid.core.preprocess.transformers import (
-    TreatmentEncoder,
-    WeightNormalizer,
-)
+from moderndid.core.preprocess.transformers import TreatmentEncoder, WeightNormalizer
 from moderndid.core.preprocess.validators import (
     ArgumentValidator,
     ColumnValidator,
@@ -36,9 +34,358 @@ from moderndid.core.preprocess.validators import (
     TreatmentValidator,
     check_columns,
 )
-from moderndid.did.aggte import aggte
-from moderndid.did.att_gt import att_gt
-from moderndid.drdid.estimators.drdid_panel import drdid_panel
+
+
+def test_column_validator(mpdta_data):
+    present = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+    missing = DIDConfig(yname="employment", tname="year", idname="countyreal", gname="first.treat")
+
+    valid = ColumnValidator().validate(mpdta_data, present)
+    invalid = ColumnValidator().validate(mpdta_data, missing)
+
+    assert valid.is_valid
+    assert valid.errors == []
+    assert not invalid.is_valid
+    assert invalid.errors == ["yname='employment' is not a column in the data."]
+
+
+def test_treatment_validator(mpdta_data, mpdta_cohort_switched_off):
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+    message = (
+        "The value of gname (treatment variable) must be the same across all periods for each particular unit. "
+        "The treatment must be irreversible."
+    )
+
+    valid = TreatmentValidator().validate(mpdta_data, config)
+    invalid = TreatmentValidator().validate(mpdta_cohort_switched_off, config)
+
+    assert valid.is_valid
+    assert valid.errors == []
+    assert not invalid.is_valid
+    assert invalid.errors == [message]
+
+
+def test_treatment_validator_lets_the_cohort_change_across_rows_without_a_panel(mpdta_cohort_switched_off):
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat", panel=False)
+
+    result = TreatmentValidator().validate(mpdta_cohort_switched_off, config)
+
+    assert result.errors == []
+
+
+def test_argument_validator(mpdta_data):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"}
+    accepted = DIDConfig(
+        control_group=ControlGroup.NOT_YET_TREATED, base_period="universal", est_method=EstimationMethod.IPW, **spec
+    )
+    rejected = DIDConfig(control_group="all", base_period="fixed", est_method="ols", **spec)
+
+    valid = ArgumentValidator().validate(mpdta_data, accepted)
+    invalid = ArgumentValidator().validate(mpdta_data, rejected)
+
+    assert valid.errors == []
+    assert invalid.errors == [
+        "control_group='all' is not valid. Must be 'nevertreated' or 'notyettreated'.",
+        "base_period='fixed' is not valid. Must be 'varying' or 'universal'.",
+        "est_method='ols' is not valid. Must be 'dr', 'ipw', or 'reg'.",
+    ]
+
+
+def test_composite_validator(mpdta_data):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"}
+    string_periods = mpdta_data.with_columns(pl.col("year").cast(pl.Utf8))
+
+    columns = CompositeValidator().validate(string_periods, DIDConfig(control_group="all", **spec))
+    structure = CompositeValidator(phase="structure").validate(mpdta_data, DIDConfig(panel=False, **spec))
+
+    assert not columns.is_valid
+    assert columns.errors == [
+        "control_group='all' is not valid. Must be 'nevertreated' or 'notyettreated'.",
+        "tname = 'year' is not numeric. Please convert it",
+    ]
+    assert structure.is_valid
+    assert structure.errors == []
+    assert structure.warnings == [
+        "panel=False was specified, but units appear across all time periods. Your data appears to be panel data. "
+        "Consider setting panel=True to use the panel estimator."
+    ]
+
+
+def test_weight_normalizer(weighted_unit_period_panel):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "g"}
+
+    weighted = WeightNormalizer().transform(weighted_unit_period_panel, DIDConfig(weightsname="w", **spec))
+    unweighted = WeightNormalizer().transform(weighted_unit_period_panel, DIDConfig(**spec))
+
+    np.testing.assert_array_equal(
+        weighted[WEIGHTS_COLUMN].to_numpy(), [0.5, 0.5, 1.5, 1.5, 0.5, 0.5, 1.5, 1.5, 1.0, 1.0]
+    )
+    np.testing.assert_array_equal(unweighted[WEIGHTS_COLUMN].to_numpy(), np.ones(10))
+
+
+def test_treatment_encoder_keeps_a_cohort_that_starts_in_the_last_period(cohort_codes_panel):
+    data = cohort_codes_panel.with_columns(pl.Series("g", [0, 0, 3, 3, 2, 2]))
+    config = DIDConfig(yname="y", tname="time", gname="g")
+
+    result = TreatmentEncoder().transform(data, config)
+
+    assert result["g"].to_list() == [np.inf, np.inf, 3.0, 3.0, 2.0, 2.0]
+
+
+def test_transformer_pipeline(weighted_unit_period_panel):
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", weightsname="w")
+
+    result = DataTransformerPipeline.get_did_pipeline().transform(weighted_unit_period_panel, config)
+
+    assert result.select("time", "g", "id").rows() == [
+        (1, 2.0, 2),
+        (1, 2.0, 4),
+        (1, np.inf, 1),
+        (1, np.inf, 3),
+        (1, np.inf, 5),
+        (2, 2.0, 2),
+        (2, 2.0, 4),
+        (2, np.inf, 1),
+        (2, np.inf, 3),
+        (2, np.inf, 5),
+    ]
+    np.testing.assert_array_equal(result[WEIGHTS_COLUMN].to_numpy(), [1.5, 1.5, 0.5, 0.5, 1.0] * 2)
+    np.testing.assert_array_equal(config.time_periods, [1, 2])
+    np.testing.assert_array_equal(config.treated_groups, [2.0])
+    assert config.id_count == 5
+    assert config.data_format == DataFormat.PANEL
+
+
+def test_panel_tensor_factory(weighted_unit_period_panel):
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", xformla="~ x", weightsname="w")
+    data = DataTransformerPipeline.get_did_pipeline().transform(weighted_unit_period_panel, config)
+
+    tensors = TensorFactorySelector.create_tensors(data, config)
+
+    np.testing.assert_array_equal(tensors["outcomes_tensor"], [[0.2, 0.6, 0.1, 0.3, 0.2], [0.9, 1.1, 0.4, 0.5, 0.8]])
+    np.testing.assert_array_equal(
+        tensors["covariates_tensor"],
+        [
+            [[1.0, -1.0], [1.0, 4.0], [1.0, 0.5], [1.0, 0.0], [1.0, 1.0]],
+            [[1.0, 2.0], [1.0, -2.0], [1.0, 1.5], [1.0, 3.0], [1.0, 1.0]],
+        ],
+    )
+    np.testing.assert_array_equal(tensors["weights_tensor"], [[1.5, 1.5, 0.5, 0.5, 1.0]] * 2)
+    np.testing.assert_array_equal(tensors["weights"], [1.5, 1.5, 0.5, 0.5, 1.0])
+    assert tensors["time_invariant_data"].rows() == [
+        (2, 2.0, 1.5),
+        (4, 2.0, 1.5),
+        (1, np.inf, 0.5),
+        (3, np.inf, 0.5),
+        (5, np.inf, 1.0),
+    ]
+    assert tensors["covariates_matrix"] is None
+
+
+def test_rcs_tensor_factory(weighted_unit_period_panel):
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", xformla="~ x", panel=False)
+    data = DataTransformerPipeline.get_did_pipeline().transform(weighted_unit_period_panel, config)
+
+    tensors = TensorFactorySelector.create_tensors(data, config)
+
+    assert tensors["data"][ROW_ID_COLUMN].to_list() == [2, 6, 0, 4, 8, 3, 7, 1, 5, 9]
+    np.testing.assert_array_equal(
+        tensors["covariates_matrix"],
+        [
+            [1.0, -1.0],
+            [1.0, 4.0],
+            [1.0, 0.5],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [1.0, 2.0],
+            [1.0, -2.0],
+            [1.0, 1.5],
+            [1.0, 3.0],
+            [1.0, 1.0],
+        ],
+    )
+    assert tensors["outcomes_tensor"] is None
+    assert tensors["covariates_tensor"] is None
+
+
+def test_basic_preprocessing(mpdta_data):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = preprocess_did(mpdta_data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+
+    assert [str(warning.message) for warning in caught] == []
+    assert result.config.data_format == DataFormat.PANEL
+    np.testing.assert_array_equal(result.config.time_periods, [2003, 2004, 2005, 2006, 2007])
+    np.testing.assert_array_equal(result.config.treated_groups, [2004, 2006, 2007])
+    assert result.config.id_count == 500
+    assert result.cohort_counts.sort("cohort").rows() == [(2004.0, 20), (2006.0, 40), (2007.0, 131), (np.inf, 309)]
+    assert result.period_counts.sort("period").rows() == [(year, 500) for year in range(2003, 2008)]
+    assert result.crosstable_counts.columns == ["period", "2004.0", "2006.0", "2007.0", "inf"]
+    assert result.crosstable_counts.sort("period").rows() == [(year, 20, 40, 131, 309) for year in range(2003, 2008)]
+    np.testing.assert_array_equal(result.weights, np.ones(500))
+
+
+def test_with_all_options(mpdta_varying_weights_and_states):
+    with pytest.warns(UserWarning, match="^Dropped 20 units that were already treated in the first period$"):
+        result = preprocess_did(
+            data=mpdta_varying_weights_and_states,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            xformla="~ lpop",
+            panel=True,
+            allow_unbalanced_panel=False,
+            control_group="notyettreated",
+            anticipation=1,
+            weightsname="w",
+            clustervars=["countyreal", "state"],
+            est_method="ipw",
+            base_period="universal",
+        )
+
+    assert result.config.control_group == ControlGroup.NOT_YET_TREATED
+    assert result.config.anticipation == 1
+    assert result.config.weightsname == "w"
+    assert result.config.est_method == EstimationMethod.IPW
+    assert result.config.base_period == BasePeriod.UNIVERSAL
+    assert result.config.clustervars == ["countyreal", "state"]
+    assert result.config.id_count == 480
+    np.testing.assert_array_equal(result.cluster, result.time_invariant_data["countyreal"].to_numpy() // 1000)
+
+
+def test_repeated_cross_section_preprocessing(mpdta_data):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = preprocess_did(
+            mpdta_data.drop("countyreal"), yname="lemp", tname="year", gname="first.treat", panel=False
+        )
+
+    assert [str(warning.message) for warning in caught] == []
+    assert result.config.true_repeated_cross_sections is True
+    assert result.config.idname == ROW_ID_COLUMN
+    assert result.config.data_format == DataFormat.REPEATED_CROSS_SECTION
+    assert result.config.id_count == 2500
+    np.testing.assert_array_equal(result.data[ROW_ID_COLUMN].sort().to_numpy(), np.arange(2500))
+    np.testing.assert_array_equal(result.covariates_matrix, np.ones((2500, 1)))
+    assert result.outcomes_tensor is None
+
+
+@pytest.mark.parametrize(
+    ("control_group", "n_never_treated", "messages"),
+    [
+        (
+            "nevertreated",
+            131,
+            ["No never-treated group is available. The last treated cohort is being coerced as 'never-treated' units."],
+        ),
+        ("notyettreated", 0, []),
+    ],
+)
+def test_no_never_treated(mpdta_without_never_treated, control_group, n_never_treated, messages):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = preprocess_did(
+            mpdta_without_never_treated,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            control_group=control_group,
+        )
+    cohorts = result.time_invariant_data["first.treat"]
+
+    assert [str(warning.message) for warning in caught] == messages
+    assert cohorts.is_infinite().sum() == n_never_treated
+    assert (cohorts == 2007).sum() == 131 - n_never_treated
+
+
+def test_empty_groups_error(mpdta_data):
+    data = mpdta_data.with_columns(pl.lit(2003).alias("first.treat"))
+    message = (
+        "No valid groups. The variable in 'gname' should be expressed as the time a unit is first treated "
+        "(0 if never-treated)"
+    )
+
+    with (
+        pytest.warns(UserWarning, match="^Dropped 500 units that were already treated in the first period$"),
+        pytest.raises(ValueError, match=f"^{re.escape(message)}$"),
+    ):
+        preprocess_did(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+
+
+def test_invalid_control_group(mpdta_data):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "^Validation failed:\ncontrol_group='invalid' is not valid\\. Must be 'nevertreated' or 'notyettreated'\\.$"
+        ),
+    ):
+        preprocess_did(
+            data=mpdta_data,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            control_group="invalid",
+        )
+
+
+def test_missing_data_handling(mpdta_data):
+    missing = (pl.col("countyreal") == 8001) & (pl.col("year") >= 2006)
+    data = mpdta_data.with_columns(pl.when(missing).then(float("nan")).otherwise(pl.col("lemp")).alias("lemp"))
+
+    with pytest.warns(UserWarning, match="^Dropped 2 rows from original data due to missing values$"):
+        result = preprocess_did(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+
+    assert result.data.height == 2498
+    assert result.data.filter(pl.col("countyreal") == 8001)["year"].to_list() == [2003, 2004, 2005]
+
+
+def test_string_time_periods(mpdta_data):
+    data = mpdta_data.with_columns(pl.col("year").cast(pl.Utf8))
+    message = "Validation failed:\ntname = 'year' is not numeric. Please convert it"
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        preprocess_did(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+
+
+def test_single_treated_unit(mpdta_data):
+    data = mpdta_data.filter((pl.col("first.treat") != 2004) | (pl.col("countyreal") == 17005))
+    message = "Be aware that there are some small groups in your dataset.\nCheck groups: 2004"
+
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$"):
+        result = preprocess_did(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+
+    np.testing.assert_array_equal(result.config.treated_groups, [2004, 2006, 2007])
+    assert result.config.id_count == 481
+
+
+def test_panel_true_with_rcs_data(rcs_df):
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", panel=True)
+
+    result = PanelStructureValidator().validate(rcs_df, config)
+
+    assert not result.is_valid
+    assert result.errors == [
+        "panel=True was specified, but no units appear in multiple time periods. "
+        "Your data appears to be repeated cross-sections. "
+        "Set panel=False to use the repeated cross-section estimator."
+    ]
+    assert result.warnings == []
+
+
+def test_panel_false_with_panel_data(panel_df):
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", panel=False)
+
+    result = PanelStructureValidator().validate(panel_df, config)
+
+    assert result.is_valid
+    assert result.errors == []
+    assert result.warnings == [
+        "panel=False was specified, but units appear across all time periods. Your data appears to be panel data. "
+        "Consider setting panel=True to use the panel estimator."
+    ]
 
 
 def create_test_panel_data(
@@ -86,45 +433,6 @@ def create_test_panel_data(
     return df
 
 
-def create_test_repeated_cross_section(
-    n_per_period=100,
-    n_periods=4,
-    treat_fraction=0.5,
-    treat_period=3,
-    seed=42,
-):
-    np.random.seed(seed)
-
-    n_total = n_per_period * n_periods
-
-    periods = np.repeat(np.arange(1, n_periods + 1), n_per_period)
-
-    treated = np.random.binomial(1, treat_fraction, n_total)
-    post = (periods >= treat_period).astype(int)
-    d = treated * post
-
-    g = np.where(treated == 1, treat_period, 0)
-
-    time_fe = np.random.normal(0, 0.5, n_periods)[periods - 1]
-    treatment_effect = 2.0
-    y = time_fe + treated * 0.5 + d * treatment_effect + np.random.normal(0, 1, n_total)
-
-    x1 = np.random.normal(0, 1, n_total)
-    x2 = np.random.normal(0, 1, n_total)
-
-    df = pl.DataFrame(
-        {
-            "time": periods,
-            "y": y,
-            "g": g,
-            "x1": x1,
-            "x2": x2,
-        }
-    )
-
-    return df
-
-
 def create_unbalanced_panel_data(n_units=100, n_periods=4, missing_fraction=0.2, seed=42):
     np.random.seed(seed)
 
@@ -154,463 +462,6 @@ def create_unbalanced_panel_data(n_units=100, n_periods=4, missing_fraction=0.2,
             "x1": np.random.normal(0, 1, len(units)),
         }
     )
-
-
-def test_column_validator():
-    df = create_test_panel_data()
-    validator = ColumnValidator()
-
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-    )
-    result = validator.validate(df, config)
-    assert result.is_valid
-
-    config = DIDConfig(
-        yname="missing_column",
-        tname="time",
-        idname="id",
-        gname="g",
-    )
-    result = validator.validate(df, config)
-    assert not result.is_valid
-    assert len(result.errors) > 0
-
-
-def test_treatment_validator():
-    df = create_test_panel_data()
-    validator = TreatmentValidator()
-
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        panel=True,
-    )
-
-    result = validator.validate(df, config)
-    assert result.is_valid
-
-    df_invalid = df.clone()
-    df_invalid = df_invalid.with_columns(
-        pl.when((pl.col("id") == 0) & (pl.col("time") == 4)).then(0).otherwise(pl.col("g")).alias("g")
-    )
-    result = validator.validate(df_invalid, config)
-    assert not result.is_valid
-
-
-def test_argument_validator():
-    df = create_test_panel_data()
-    validator = ArgumentValidator()
-
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        control_group=ControlGroup.NEVER_TREATED,
-        base_period="universal",
-        anticipation=0,
-        alpha=0.05,
-    )
-    result = validator.validate(df, config)
-    assert result.is_valid
-
-    config_invalid_alpha = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        alpha=1.5,
-    )
-    result = validator.validate(df, config_invalid_alpha)
-    assert result.is_valid
-
-    config_negative_anticipation = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        anticipation=-1,
-    )
-    result = validator.validate(df, config_negative_anticipation)
-    assert result.is_valid
-
-
-def test_composite_validator():
-    df = create_test_panel_data()
-    validator = CompositeValidator()
-
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        control_group=ControlGroup.NEVER_TREATED,
-    )
-
-    result = validator.validate(df, config)
-    assert result.is_valid
-
-
-def test_weight_normalizer():
-    df = create_test_panel_data()
-    transformer = WeightNormalizer()
-
-    config = DIDConfig(yname="y", tname="time", gname="g")
-
-    df_transformed = transformer.transform(df, config)
-    assert WEIGHTS_COLUMN in df_transformed.columns
-    assert np.isclose(df_transformed[WEIGHTS_COLUMN].mean(), 1.0)
-
-
-def test_treatment_encoder():
-    df = create_test_panel_data()
-    transformer = TreatmentEncoder()
-
-    config = DIDConfig(yname="y", tname="time", gname="g")
-
-    df_transformed = transformer.transform(df, config)
-    assert df_transformed["g"].is_infinite().any()
-    assert (df_transformed.filter(pl.col("g").is_finite())["g"] > 0).all()
-
-
-def test_transformer_pipeline():
-    df = create_test_panel_data()
-    pipeline = DataTransformerPipeline.get_did_pipeline()
-
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        panel=True,
-        allow_unbalanced_panel=True,
-    )
-
-    df_transformed = pipeline.transform(df, config)
-
-    assert WEIGHTS_COLUMN in df_transformed.columns
-    assert df_transformed["g"].is_infinite().any()
-    assert len(df_transformed) > 0
-
-    assert config.time_periods_count > 0
-    assert config.treated_groups_count > 0
-    assert config.id_count > 0
-
-
-def test_panel_tensor_factory():
-    df = create_test_panel_data()
-
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        panel=True,
-        allow_unbalanced_panel=False,
-    )
-
-    pipeline = DataTransformerPipeline.get_did_pipeline()
-    df_transformed = pipeline.transform(df, config)
-
-    tensors = TensorFactorySelector.create_tensors(df_transformed, config)
-
-    assert tensors["outcomes_tensor"] is not None
-    assert len(tensors["outcomes_tensor"]) == config.time_periods_count
-    assert all(len(y) == config.id_count for y in tensors["outcomes_tensor"])
-
-    assert tensors["time_invariant_data"] is not None
-    assert len(tensors["time_invariant_data"]) == config.id_count
-    assert tensors["weights"] is not None
-    assert len(tensors["weights"]) == config.id_count
-
-
-def test_rcs_tensor_factory():
-    df = create_test_repeated_cross_section()
-
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        gname="g",
-        panel=False,
-        xformla="~ x1 + x2",
-    )
-
-    pipeline = DataTransformerPipeline.get_did_pipeline()
-    df_transformed = pipeline.transform(df, config)
-
-    tensors = TensorFactorySelector.create_tensors(df_transformed, config)
-
-    assert tensors["outcomes_tensor"] is None
-
-    assert tensors["covariates_matrix"] is not None
-    assert tensors["covariates_matrix"].shape[1] == 3
-
-
-def test_basic_preprocessing():
-    df = create_test_panel_data()
-
-    result = preprocess_did(
-        data=df,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        panel=True,
-        allow_unbalanced_panel=True,
-    )
-
-    assert isinstance(result, DIDData)
-
-    assert result.data is not None
-    assert result.weights is not None
-    assert result.config.yname == "y"
-    assert result.config.panel is True
-
-    assert result.config.time_periods_count > 0
-    assert result.config.treated_groups_count > 0
-    assert result.config.id_count > 0
-
-
-def test_with_all_options():
-    df = create_test_panel_data()
-
-    df = df.with_columns(pl.Series("w", np.random.uniform(0.5, 1.5, len(df))))
-
-    result = preprocess_did(
-        data=df,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        xformla="~ x1 + x2",
-        panel=True,
-        allow_unbalanced_panel=False,
-        control_group="notyettreated",
-        anticipation=1,
-        weightsname="w",
-        clustervars=["id"],
-        est_method="ipw",
-        base_period="universal",
-    )
-
-    assert result.config.control_group == ControlGroup.NOT_YET_TREATED
-    assert result.config.anticipation == 1
-    assert result.config.weightsname == "w"
-    assert result.config.est_method.value == "ipw"
-    assert result.cluster is not None
-    assert np.array_equal(result.cluster, result.time_invariant_data["id"].to_numpy())
-    assert result.config.clustervars == ["id"]
-
-    assert result.outcomes_tensor is not None
-    assert result.covariates_tensor is not None
-
-
-def test_repeated_cross_section_preprocessing():
-    df = create_test_repeated_cross_section()
-
-    result = preprocess_did(
-        data=df,
-        yname="y",
-        tname="time",
-        gname="g",
-        panel=False,
-    )
-
-    assert result.config.true_repeated_cross_sections is True
-    assert result.config.idname == ".rowid"
-    assert result.outcomes_tensor is None
-    assert result.covariates_matrix is not None
-
-
-@pytest.mark.filterwarnings("ignore:No never-treated group is available:UserWarning")
-def test_no_never_treated():
-    df = create_test_panel_data(n_periods=6, treat_period=3)
-    df = df.with_columns(
-        pl.when(pl.col("id").is_in(list(range(70, 80))) & (pl.col("g") == 0)).then(5).otherwise(pl.col("g")).alias("g")
-    )
-    df = df.filter(pl.col("g") != 0)
-
-    result = preprocess_did(
-        data=df,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        control_group="nevertreated",
-    )
-
-    assert (result.data["g"] == NEVER_TREATED_VALUE).any()
-    assert len(result.config.treated_groups) > 0
-
-
-@pytest.mark.filterwarnings("ignore:Dropped.*units:UserWarning")
-def test_empty_groups_error():
-    df = create_test_panel_data()
-    df = df.with_columns(pl.lit(1).alias("g"))
-
-    with pytest.raises(ValueError, match="No valid time periods remaining|No valid groups"):
-        preprocess_did(
-            data=df,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="g",
-        )
-
-
-def test_invalid_control_group():
-    df = create_test_panel_data()
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "^Validation failed:\ncontrol_group='invalid' is not valid\\. Must be 'nevertreated' or 'notyettreated'\\.$"
-        ),
-    ):
-        preprocess_did(
-            data=df,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="g",
-            control_group="invalid",
-        )
-
-
-def test_missing_data_handling():
-    df = create_test_panel_data()
-
-    df_missing_y = df.clone().with_row_index("_idx")
-    df_missing_y = df_missing_y.with_columns(
-        pl.when(pl.col("_idx") < 10).then(pl.lit(np.nan)).otherwise(pl.col("y")).alias("y")
-    ).drop("_idx")
-
-    result = preprocess_did(
-        data=df_missing_y,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-    )
-
-    assert len(result.data) > 0
-    assert not result.data["y"].is_null().any()
-
-
-def test_string_time_periods():
-    df = create_test_panel_data()
-    df = df.with_columns(
-        [
-            pl.col("time")
-            .cast(pl.Utf8)
-            .replace_strict({"1": "Q1", "2": "Q2", "3": "Q3", "4": "Q4"}, default=None)
-            .alias("time_str"),
-            pl.col("g")
-            .cast(pl.Utf8)
-            .replace_strict({"0": "never", "0.0": "never", "3": "Q3", "3.0": "Q3"}, default="other")
-            .alias("g_str"),
-        ]
-    )
-
-    df = df.with_columns(
-        [
-            pl.col("time_str")
-            .replace_strict({"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}, return_dtype=pl.Int64)
-            .alias("time_numeric"),
-            pl.col("g_str")
-            .replace_strict({"never": 0, "Q3": 3, "other": -1}, return_dtype=pl.Int64)
-            .alias("g_numeric"),
-        ]
-    )
-
-    result = preprocess_did(
-        data=df,
-        yname="y",
-        tname="time_numeric",
-        idname="id",
-        gname="g_numeric",
-    )
-
-    assert result.config.time_periods is not None
-    assert len(result.config.time_periods) == 4
-
-
-@pytest.mark.filterwarnings("ignore:Be aware that there are some small groups:UserWarning")
-def test_single_treated_unit():
-    df = create_test_panel_data(n_units=100)
-    treated_ids = df.filter(pl.col("g") > 0)["id"].unique().to_numpy()
-    control_ids = df.filter(pl.col("g") == 0)["id"].unique().to_numpy()
-    keep_ids = np.concatenate([control_ids, treated_ids[:1]])
-    df = df.filter(pl.col("id").is_in(keep_ids.tolist()))
-
-    result = preprocess_did(
-        data=df,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-    )
-
-    assert result.config.treated_groups_count == 1
-
-
-def test_panel_structure_validation():
-    df = create_test_panel_data()
-    df = pl.concat([df, df.head(1)])
-
-    validator = PanelStructureValidator()
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        panel=True,
-    )
-
-    result = validator.validate(df, config)
-    assert not result.is_valid
-    assert any("observed more than once" in err for err in result.errors)
-
-
-def test_panel_true_with_rcs_data():
-    df = create_test_repeated_cross_section()
-    df = df.with_row_index("id")
-
-    validator = PanelStructureValidator()
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        panel=True,
-    )
-
-    result = validator.validate(df, config)
-    assert not result.is_valid
-    assert any("panel=True was specified" in err for err in result.errors)
-
-
-def test_panel_false_with_panel_data():
-    df = create_test_panel_data()
-
-    validator = PanelStructureValidator()
-    config = DIDConfig(
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="g",
-        panel=False,
-    )
-
-    result = validator.validate(df, config)
-    assert result.is_valid
-    assert any("panel=False was specified" in w for w in result.warnings)
 
 
 def test_treatment_reversibility():
