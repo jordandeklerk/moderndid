@@ -1055,3 +1055,41 @@ def wide_cross_section_atts_with_scaled_row_weights():
         return np.array([cell.att for cell in compute_att_gt(data).attgt_list])
 
     return refit
+
+
+@pytest.fixture
+def wide_cohort_panel():
+    """Function that builds a shuffled three-period panel from cohort sizes with covariates that change each period."""
+
+    def build(cohort_sizes, n_covariates):
+        rng = np.random.default_rng(23)
+        cohorts = np.repeat(list(cohort_sizes), list(cohort_sizes.values()))
+        level = rng.normal(size=(cohorts.size, n_covariates))
+        periods = [
+            pl.DataFrame(
+                {
+                    "id": np.arange(cohorts.size),
+                    "t": np.full(cohorts.size, t),
+                    "g": cohorts,
+                    "y": rng.normal(size=cohorts.size) + t,
+                    **{f"x{j}": x for j, x in enumerate((level + rng.normal(size=level.shape)).T)},
+                }
+            )
+            for t in (1, 2, 3)
+        ]
+        return pl.concat(periods).sample(fraction=1.0, shuffle=True, seed=5)
+
+    return build
+
+
+@pytest.fixture
+def wide_panel_with_holes(wide_cohort_panel):
+    """Panel with twenty covariates whose missing values are nulls and NaNs and infinities."""
+    data = wide_cohort_panel({0: 60, 2: 45, 3: 45}, 20)
+    rng = np.random.default_rng(31)
+    x = data.select(f"x{j}" for j in range(20)).to_numpy()
+    x.flat[rng.choice(x.size, 20, replace=False)] = np.nan
+    x[rng.choice(len(x), 2, replace=False), [19, 0]] = [np.inf, -np.inf]
+    holed = data.with_columns(pl.Series(f"x{j}", x[:, j]) for j in range(20))
+    row = (pl.col("id") == 11) & (pl.col("t") == 2)
+    return holed.with_columns(pl.when(row).then(None).otherwise(pl.col("x5")).alias("x5"))
