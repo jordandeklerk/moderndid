@@ -462,3 +462,56 @@ def seeded_default_rng(monkeypatch):
     """np.random.default_rng that starts every unseeded generator from seed 6."""
     default_rng = np.random.default_rng
     monkeypatch.setattr(np.random, "default_rng", lambda seed=None: default_rng(6 if seed is None else seed))
+
+
+@pytest.fixture(scope="module")
+def nsw_weighted(nsw_data):
+    """NSW panel with exponential sampling weights in w that stay constant within each unit."""
+    ids = nsw_data["id"].unique().sort()
+    weights = pl.DataFrame({"id": ids, "w": np.random.default_rng(42).exponential(1, ids.len())})
+    return nsw_data.join(weights, on="id", how="left", maintain_order="left")
+
+
+@pytest.fixture(scope="module")
+def nsw_units(nsw_weighted):
+    """One row per NSW unit sorted by id with its weight in w and its change in earnings from 1975 to 1978 in dy."""
+    pre = nsw_weighted.filter(pl.col("year") == 1975).sort("id")
+    post = nsw_weighted.filter(pl.col("year") == 1978).sort("id")
+    return post.with_columns((post["re"] - pre["re"]).alias("dy"))
+
+
+@pytest.fixture(scope="module")
+def trimmed_two_period_panel(trimmed_two_period_data):
+    """The trimmed_two_period_data draw in the long panel format that ipwdid takes."""
+    data = trimmed_two_period_data
+    n = data["d"].size
+    return pl.DataFrame(
+        {
+            "id": np.tile(np.arange(n), 2),
+            "year": np.repeat([2000, 2001], n),
+            "y": np.r_[data["y0"], data["y1"]],
+            "d": np.tile(data["d"], 2),
+            "x1": np.tile(data["x"][:, 1], 2),
+        }
+    )
+
+
+@pytest.fixture(scope="module")
+def trimmed_two_period_cross_sections(trimmed_two_period_data):
+    """The trimmed_two_period_data draw as the repeated cross-sections that ipwdid takes."""
+    data = trimmed_two_period_data
+    return pl.DataFrame({"year": 2000 + data["post"], "y": data["y"], "d": data["d"], "x1": data["x"][:, 1]})
+
+
+@pytest.fixture
+def unit_generator_bootstrap_weights(monkeypatch):
+    """Exponential draws of np.random.default_rng that all equal one and leave every weight unchanged."""
+
+    class UnitGenerator(np.random.Generator):
+        def __init__(self):
+            super().__init__(np.random.PCG64(0))
+
+        def exponential(self, scale=1.0, size=None):
+            return np.ones(size)
+
+    monkeypatch.setattr(np.random, "default_rng", lambda seed=None: UnitGenerator())
