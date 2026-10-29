@@ -2,7 +2,7 @@
 
 import re
 import warnings
-from unittest.mock import patch
+from importlib import import_module
 
 import numpy as np
 import pytest
@@ -12,27 +12,100 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import aggte, att_gt
-from moderndid.did.mboot import mboot as real_mboot
+
+
+def test_aggte_simple_weighs_each_post_treatment_cell_by_the_size_of_its_cohort(mp_result, mpdta_cohort_sizes):
+    post = mp_result.groups <= mp_result.times
+    sizes = [mpdta_cohort_sizes[g] for g in mp_result.groups[post]]
+
+    result = aggte(mp_result, type="simple", cband=False)
+
+    assert result.aggregation_type == "simple"
+    assert result.event_times is None
+    assert result.att_by_event is None
+    assert result.se_by_event is None
+    np.testing.assert_allclose(result.overall_att, np.average(mp_result.att_gt[post], weights=sizes), rtol=1e-12)
+
+
+def test_aggte_group_averages_each_cohort_and_weighs_the_cohorts_by_size(mp_result, mpdta_cohort_sizes):
+    cohorts = [2004, 2006, 2007]
+    expected = [mp_result.att_gt[(mp_result.groups == g) & (mp_result.times >= g)].mean() for g in cohorts]
+
+    result = aggte(mp_result, type="group", cband=False)
+
+    assert result.aggregation_type == "group"
+    np.testing.assert_array_equal(result.event_times, cohorts)
+    np.testing.assert_allclose(result.att_by_event, expected, rtol=1e-12)
+    np.testing.assert_allclose(
+        result.overall_att, np.average(expected, weights=[mpdta_cohort_sizes[g] for g in cohorts]), rtol=1e-12
+    )
+
+
+def test_aggte_dynamic_weighs_the_cohorts_at_each_event_time_by_size(mp_result, mpdta_cohort_sizes):
+    event = mp_result.times - mp_result.groups
+    sizes = np.array([mpdta_cohort_sizes[g] for g in mp_result.groups])
+    expected = [np.average(mp_result.att_gt[event == e], weights=sizes[event == e]) for e in range(-3, 4)]
+
+    result = aggte(mp_result, type="dynamic", cband=False)
+
+    assert result.aggregation_type == "dynamic"
+    np.testing.assert_array_equal(result.event_times, np.arange(-3, 4))
+    np.testing.assert_allclose(result.att_by_event, expected, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att, np.mean(expected[3:]), rtol=1e-12)
+
+
+def test_aggte_calendar_weighs_the_treated_cohorts_of_each_period_by_size(mp_result, mpdta_cohort_sizes):
+    treated = mp_result.groups <= mp_result.times
+    sizes = np.array([mpdta_cohort_sizes[g] for g in mp_result.groups])
+    in_period = [treated & (mp_result.times == t) for t in range(2004, 2008)]
+    expected = [np.average(mp_result.att_gt[cells], weights=sizes[cells]) for cells in in_period]
+
+    result = aggte(mp_result, type="calendar", cband=False)
+
+    assert result.aggregation_type == "calendar"
+    np.testing.assert_array_equal(result.event_times, np.arange(2004, 2008))
+    np.testing.assert_allclose(result.att_by_event, expected, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att, np.mean(expected), rtol=1e-12)
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
-def test_aggte_basic_structure(mp_result, agg_type):
+def test_aggte_analytic_overall_standard_error_is_the_root_mean_square_of_its_influence_function(mp_result, agg_type):
     result = aggte(mp_result, type=agg_type, cband=False)
 
-    assert result.aggregation_type == agg_type
-    assert isinstance(result.overall_att, float | np.floating)
-    assert isinstance(result.overall_se, float | np.floating)
+    np.testing.assert_allclose(
+        result.overall_se, np.sqrt(np.mean(result.influence_func_overall**2) / mp_result.n_units), rtol=1e-12
+    )
 
-    if agg_type == "simple":
-        assert result.event_times is None
-        assert result.att_by_event is None
-        assert result.se_by_event is None
-    else:
-        assert result.event_times is not None
-        assert result.att_by_event is not None
-        assert result.se_by_event is not None
-        assert len(result.event_times) == len(result.att_by_event)
-        assert len(result.event_times) == len(result.se_by_event)
+
+@pytest.mark.parametrize("agg_type", ["dynamic", "group", "calendar"])
+def test_aggte_analytic_standard_errors_are_the_root_mean_square_of_the_influence_functions(mp_result, agg_type):
+    result = aggte(mp_result, type=agg_type, cband=False)
+    influence = result.influence_func
+
+    np.testing.assert_allclose(
+        result.se_by_event, np.sqrt(np.mean(influence**2, axis=0) / mp_result.n_units), rtol=1e-12
+    )
+    np.testing.assert_allclose(result.vcov_analytical, influence.T @ influence / mp_result.n_units, rtol=1e-12)
+
+
+def test_aggte_influence_functions_match_the_weight_derivative(weighted_staggered_panel, weight_derivative):
+    spec = {"yname": "y", "tname": "t", "idname": "id", "gname": "g", "weightsname": "w", "est_method": "reg"}
+    agg_types = ("simple", "dynamic", "group", "calendar")
+
+    def effects(factors):
+        data = weighted_staggered_panel.with_columns(pl.col("w") * pl.Series(np.repeat(factors, 5)))
+        fit = att_gt(data, cband=False, **spec)
+        results = [aggte(fit, type=agg_type, cband=False) for agg_type in agg_types]
+        overall = [result.overall_att for result in results]
+        return np.concatenate([overall] + [result.att_by_event for result in results[1:]])
+
+    fit = att_gt(weighted_staggered_panel, cband=False, **spec)
+    results = [aggte(fit, type=agg_type, cband=False) for agg_type in agg_types]
+    influence = np.column_stack(
+        [result.influence_func_overall for result in results] + [result.influence_func for result in results[1:]]
+    )
+
+    np.testing.assert_allclose(influence, weight_derivative(effects, 30, range(30)), rtol=0, atol=1e-5)
 
 
 def test_aggte_invalid_type(mp_result):
@@ -40,47 +113,162 @@ def test_aggte_invalid_type(mp_result):
         aggte(mp_result, type="invalid")
 
 
-def test_aggte_dynamic_with_balance(mp_result):
-    result = aggte(mp_result, type="dynamic", balance_e=1, cband=False)
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"alpha": 1.0}, "alpha=1.0 is not valid. Must be between 0 and 1 (exclusive)."),
+        ({"alpha": 0.0}, "alpha=0.0 is not valid. Must be between 0 and 1 (exclusive)."),
+        ({"biters": 0}, "biters=0 is not valid. Must be a positive integer."),
+        ({"biters": 99.0}, "biters=99.0 is not valid. Must be a positive integer."),
+        ({"balance_e": -1}, "balance_e=-1 is not valid. Must be a non-negative integer."),
+        ({"balance_e": 1.5}, "balance_e=1.5 is not valid. Must be a non-negative integer."),
+        ({"min_e": 2, "max_e": 1}, "min_e=2 must be less than or equal to max_e=1."),
+    ],
+)
+def test_aggte_rejects_invalid_arguments(mp_result, arguments, message):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        aggte(mp_result, type="dynamic", **arguments)
+
+
+def test_aggte_rejects_a_string_for_clustervars(mp_result):
+    message = "clustervars must be a list of strings, not a string. Use clustervars=['state']."
+
+    with pytest.raises(TypeError, match=f"^{re.escape(message)}$"):
+        aggte(mp_result, type="dynamic", clustervars="state")
+
+
+def test_aggte_dynamic_accepts_a_window_of_one_event_time_balanced_on_it(mp_result, mpdta_cohort_sizes):
+    on_impact = mp_result.times == mp_result.groups
+    sizes = [mpdta_cohort_sizes[g] for g in mp_result.groups[on_impact]]
+    expected = np.average(mp_result.att_gt[on_impact], weights=sizes)
+
+    result = aggte(mp_result, type="dynamic", balance_e=0, min_e=0, max_e=0, cband=False)
+
+    np.testing.assert_array_equal(result.event_times, [0])
+    np.testing.assert_allclose(result.att_by_event, [expected], rtol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("balance_e", "cells"),
+    [
+        (1, {-2: [(2006, 2004)], -1: [(2006, 2005)], 0: [(2004, 2004), (2006, 2006)], 1: [(2004, 2005), (2006, 2007)]}),
+        (2, {0: [(2004, 2004)], 1: [(2004, 2005)], 2: [(2004, 2006)]}),
+    ],
+)
+def test_aggte_dynamic_with_balance(mp_result, mpdta_cohort_sizes, balance_e, cells):
+    att = dict(zip(zip(mp_result.groups, mp_result.times), mp_result.att_gt))
+    expected = [
+        np.average([att[cell] for cell in kept], weights=[mpdta_cohort_sizes[g] for g, _ in kept])
+        for kept in cells.values()
+    ]
+
+    result = aggte(mp_result, type="dynamic", balance_e=balance_e, cband=False)
 
     assert result.aggregation_type == "dynamic"
-    assert result.balanced_event_threshold == 1
-    assert isinstance(result.overall_att, float)
-    assert isinstance(result.overall_se, float)
+    assert result.balanced_event_threshold == balance_e
+    np.testing.assert_array_equal(result.event_times, list(cells))
+    np.testing.assert_allclose(result.att_by_event, expected, rtol=1e-12)
+    np.testing.assert_allclose(
+        result.overall_att, np.mean([value for e, value in zip(cells, expected) if e >= 0]), rtol=1e-12
+    )
 
 
-def test_aggte_dynamic_with_min_max_e(mp_result):
+def test_aggte_dynamic_with_min_max_e(mp_result, mpdta_cohort_sizes):
+    event = mp_result.times - mp_result.groups
+    sizes = np.array([mpdta_cohort_sizes[g] for g in mp_result.groups])
+    expected = [np.average(mp_result.att_gt[event == e], weights=sizes[event == e]) for e in range(-1, 3)]
+
     result = aggte(mp_result, type="dynamic", min_e=-1, max_e=2, cband=False)
 
     assert result.aggregation_type == "dynamic"
-    assert result.min_event_time == -1
-    assert result.max_event_time == 2
-    assert np.all(result.event_times >= -1)
-    assert np.all(result.event_times <= 2)
+    assert (result.min_event_time, result.max_event_time) == (-1, 2)
+    np.testing.assert_array_equal(result.event_times, [-1, 0, 1, 2])
+    np.testing.assert_allclose(result.att_by_event, expected, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att, np.mean(expected[1:]), rtol=1e-12)
+
+
+def test_aggte_max_e_limits_the_cells_that_the_simple_and_group_aggregations_average(mp_result, mpdta_cohort_sizes):
+    event = mp_result.times - mp_result.groups
+    kept = (event >= 0) & (event <= 1)
+    sizes = np.array([mpdta_cohort_sizes[g] for g in mp_result.groups])
+    cohorts = [2004, 2006, 2007]
+    group_effects = [mp_result.att_gt[kept & (mp_result.groups == g)].mean() for g in cohorts]
+
+    simple = aggte(mp_result, type="simple", max_e=1, cband=False)
+    group = aggte(mp_result, type="group", max_e=1, cband=False)
+
+    np.testing.assert_allclose(simple.overall_att, np.average(mp_result.att_gt[kept], weights=sizes[kept]), rtol=1e-12)
+    np.testing.assert_allclose(group.att_by_event, group_effects, rtol=1e-12)
+    np.testing.assert_allclose(
+        group.overall_att, np.average(group_effects, weights=[mpdta_cohort_sizes[g] for g in cohorts]), rtol=1e-12
+    )
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "group", "calendar", "dynamic"])
 def test_aggte_with_na_rm(mp_result, agg_type):
-    result = aggte(mp_result, type=agg_type, na_rm=True, cband=False)
+    failed = (mp_result.groups == 2006) & (mp_result.times == 2007)
+    with_nan = mp_result._replace(att_gt=np.where(failed, np.nan, mp_result.att_gt))
+    without = mp_result._replace(
+        groups=mp_result.groups[~failed],
+        times=mp_result.times[~failed],
+        att_gt=mp_result.att_gt[~failed],
+        influence_func=mp_result.influence_func[:, ~failed],
+    )
+
+    result = aggte(with_nan, type=agg_type, na_rm=True, cband=False)
+    expected = aggte(without, type=agg_type, cband=False)
 
     assert result.aggregation_type == agg_type
-    assert isinstance(result.overall_att, float)
-    assert isinstance(result.overall_se, float)
+    np.testing.assert_allclose(result.overall_att, expected.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_se, expected.overall_se, rtol=1e-12)
+    np.testing.assert_allclose(result.vcov_analytical, expected.vcov_analytical, rtol=1e-12)
 
 
-@pytest.mark.parametrize(
-    "params,expected",
-    [
-        ({"boot": True, "biters": 99}, {"bootstrap": True, "biters": 99}),
-        ({"cband": True, "boot": True, "biters": 99}, {"uniform_bands": True, "bootstrap": True}),
-        ({"alpha": 0.1}, {"alpha": 0.1}),
-    ],
-)
-def test_aggte_parameter_passing(mp_result, params, expected):
-    result = aggte(mp_result, type="simple", **params)
+@pytest.mark.parametrize("agg_type", ["dynamic", "group", "calendar"])
+def test_aggte_bootstrap_takes_standard_errors_and_band_from_the_requested_draws(
+    monkeypatch, draws_from_leading_weights, mp_result, agg_type
+):
+    signs = np.where(np.random.default_rng(5).random((400, mp_result.n_units)) < 0.5, 1.0, -1.0)
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_leading_weights(signs)
+    )
 
-    for key, value in expected.items():
-        assert result.estimation_params.get(key) == value
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = aggte(mp_result, type=agg_type, boot=True, cband=True, biters=299, alpha=0.1, random_state=1)
+    params = result.estimation_params
+    influence = np.column_stack([result.influence_func, result.influence_func_overall])
+    draws = signs[:299] @ influence / mp_result.n_units
+    q75, q25 = np.percentile(draws, [75, 25], axis=0, method="inverted_cdf")
+    scale = (q75 - q25) / 1.3489795
+    band = np.percentile(np.max(np.abs(draws[:, :-1]) / scale[:-1], axis=1), 90, method="inverted_cdf")
+
+    assert [str(w.message) for w in caught] == []
+    assert (params["bootstrap"], params["biters"], params["uniform_bands"], params["alpha"]) == (True, 299, True, 0.1)
+    np.testing.assert_allclose(result.se_by_event, scale[:-1], rtol=1e-12)
+    np.testing.assert_allclose(result.overall_se, scale[-1], rtol=1e-12)
+    np.testing.assert_allclose(result.critical_values, band, rtol=1e-12)
+
+
+def test_aggte_bootstrap_defaults_to_the_settings_of_the_fit(monkeypatch, draws_from_leading_weights, mpdta_data):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
+    fit = att_gt(mpdta_data, boot=True, biters=123, cband=True, alpha=0.1, random_state=3, **spec)
+    signs = np.where(np.random.default_rng(5).random((400, fit.n_units)) < 0.5, 1.0, -1.0)
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_leading_weights(signs)
+    )
+
+    result = aggte(fit, type="dynamic", random_state=3)
+    draws = signs[:123] @ result.influence_func / fit.n_units
+    q75, q25 = np.percentile(draws, [75, 25], axis=0, method="inverted_cdf")
+    scale = (q75 - q25) / 1.3489795
+
+    np.testing.assert_allclose(result.se_by_event, scale, rtol=1e-12)
+    np.testing.assert_allclose(
+        result.critical_values,
+        np.percentile(np.max(np.abs(draws) / scale, axis=1), 90, method="inverted_cdf"),
+        rtol=1e-12,
+    )
 
 
 def test_aggte_rejects_the_removed_alp_argument(mp_result):
@@ -149,11 +337,10 @@ def test_aggte_rejects_recorded_clusters_without_a_cluster_vector(mp_result, req
 @pytest.mark.parametrize(
     "fit_args", [{"clustervars": ["state"]}, {"clustervars": ["countyreal", "state"], "panel": False}]
 )
-def test_aggte_unit_id_request_on_clustered_fit_gives_unit_level_inference(mpdta_data, fit_args, recwarn):
-    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+def test_aggte_unit_id_request_on_clustered_fit_gives_unit_level_inference(mpdta_with_states, fit_args, recwarn):
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
     with pytest.warns(UserWarning, match="^The units fall in only 29 clusters\\. "):
-        fit = att_gt(data, boot=True, biters=99, random_state=7, **spec, **fit_args)
+        fit = att_gt(mpdta_with_states, boot=True, biters=99, random_state=7, **spec, **fit_args)
     draws = {"type": "dynamic", "boot": True, "biters": 199, "cband": False, "random_state": 3}
     recwarn.clear()
 
@@ -175,36 +362,40 @@ def test_aggte_unit_id_request_on_clustered_fit_gives_unit_level_inference(mpdta
 
 
 @pytest.mark.parametrize("boot", [True, False], ids=["bootstrap", "analytic"])
-def test_aggte_leaves_the_few_clusters_warning_to_att_gt(mpdta_data, boot):
-    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+def test_aggte_leaves_the_few_clusters_warning_to_att_gt(mpdta_with_states, boot):
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
+    agg_types = ("simple", "dynamic", "group", "calendar")
+    requests = [(agg_type, agg_boot) for agg_type in agg_types for agg_boot in (True, False)]
+    kinds = ["Bootstrap" if agg_boot else "Analytical" for _, agg_boot in requests]
 
     with warnings.catch_warnings(record=True) as at_fit:
         warnings.simplefilter("always")
-        fit = att_gt(data, clustervars=["state"], boot=boot, biters=99, random_state=7, **spec)
+        fit = att_gt(mpdta_with_states, clustervars=["state"], boot=boot, biters=99, random_state=7, **spec)
     with warnings.catch_warnings(record=True) as at_aggregation:
         warnings.simplefilter("always")
         aggregations = [
-            aggte(fit, type=agg_type, boot=agg_boot, biters=99, random_state=7)
-            for agg_type in ("simple", "dynamic", "group", "calendar")
-            for agg_boot in (True, False)
+            aggte(fit, type=agg_type, boot=agg_boot, biters=99, random_state=7) for agg_type, agg_boot in requests
         ]
 
     assert len([w for w in at_fit if "very few clusters" in str(w.message)]) == 1
     assert not [w for w in at_aggregation if "very few clusters" in str(w.message)]
-    for result in aggregations:
-        kind = "Bootstrap" if result.estimation_params["bootstrap"] else "Analytical"
-        assert f" {kind} standard errors clustered by state" in str(result).splitlines()
-        assert result.__maketables_stat__("se_type") == f"{kind} clustered by state"
-        assert result.__maketables_vcov_info__ == {"vcov_type": kind.lower(), "clustervar": "state"}
+    assert [[line for line in str(result).splitlines() if "standard errors" in line] for result in aggregations] == [
+        [f" {kind} standard errors clustered by state"] for kind in kinds
+    ]
+    assert [result.__maketables_stat__("se_type") for result in aggregations] == [
+        f"{kind} clustered by state" for kind in kinds
+    ]
+    assert [result.__maketables_vcov_info__ for result in aggregations] == [
+        {"vcov_type": kind.lower(), "clustervar": "state"} for kind in kinds
+    ]
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
-def test_aggte_without_the_bootstrap_sums_the_overall_influence_function_within_clusters(mpdta_data, agg_type):
-    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+def test_aggte_without_the_bootstrap_sums_the_overall_influence_function_within_clusters(mpdta_with_states, agg_type):
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
-    fit = att_gt(data, clustervars=["state"], **spec)
-    plain_fit = att_gt(data, **spec)
+    with pytest.warns(UserWarning, match="^The units fall in only 29 clusters\\. "):
+        fit = att_gt(mpdta_with_states, clustervars=["state"], **spec)
+    plain_fit = att_gt(mpdta_with_states, **spec)
 
     result = aggte(fit, type=agg_type, cband=False)
     plain = aggte(plain_fit, type=agg_type, cband=False)
@@ -217,11 +408,13 @@ def test_aggte_without_the_bootstrap_sums_the_overall_influence_function_within_
 
 
 @pytest.mark.parametrize("agg_type", ["dynamic", "group", "calendar"])
-def test_aggte_without_the_bootstrap_sums_each_disaggregated_influence_function_within_clusters(mpdta_data, agg_type):
-    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+def test_aggte_without_the_bootstrap_sums_each_disaggregated_influence_function_within_clusters(
+    mpdta_with_states, agg_type
+):
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
-    fit = att_gt(data, clustervars=["state"], **spec)
-    plain_fit = att_gt(data, **spec)
+    with pytest.warns(UserWarning, match="^The units fall in only 29 clusters\\. "):
+        fit = att_gt(mpdta_with_states, clustervars=["state"], **spec)
+    plain_fit = att_gt(mpdta_with_states, **spec)
 
     result = aggte(fit, type=agg_type, cband=False)
     plain = aggte(plain_fit, type=agg_type, cband=False)
@@ -235,51 +428,10 @@ def test_aggte_without_the_bootstrap_sums_each_disaggregated_influence_function_
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
-def test_aggte_result_attributes(mp_result, agg_type):
+def test_aggte_call_info_names_the_requested_aggregation(mp_result, agg_type):
     result = aggte(mp_result, type=agg_type, cband=False)
 
-    required_attrs = [
-        "overall_att",
-        "overall_se",
-        "aggregation_type",
-        "event_times",
-        "att_by_event",
-        "se_by_event",
-        "critical_values",
-        "influence_func",
-        "estimation_params",
-        "call_info",
-    ]
-
-    for attr in required_attrs:
-        assert hasattr(result, attr)
-
-    assert "function" in result.call_info
-    assert "aggte" in result.call_info["function"]
-
-
-def test_aggte_influence_function(mp_result):
-    result = aggte(mp_result, type="simple")
-
-    assert result.influence_func is not None
-    assert isinstance(result.influence_func, np.ndarray)
-    assert len(result.influence_func) == mp_result.n_units
-
-
-@pytest.mark.parametrize(
-    "agg_type,expected_text",
-    [
-        ("simple", "Aggregate Treatment Effects"),
-        ("dynamic", "Event Study"),
-        ("group", "Group/Cohort"),
-        ("calendar", "Calendar Time"),
-    ],
-)
-def test_aggte_print_output(mp_result, agg_type, expected_text):
-    result = aggte(mp_result, type=agg_type, cband=False)
-    output = str(result)
-    assert "Aggregate Treatment Effects" in output
-    assert expected_text in output
+    assert result.call_info == {"function": f"aggte(MP, type='{agg_type}')", "type": agg_type}
 
 
 def test_aggte_with_missing_values_no_na_rm(mp_result):
@@ -315,15 +467,34 @@ def test_aggte_dynamic_rejects_window_without_event_times(mp_result, window, mes
 def test_aggte_infinite_values_in_att(mp_result):
     mp_result.att_gt[0] = np.inf
 
-    result = aggte(mp_result, type="simple")
-    assert not np.isnan(result.overall_att)
+    result = aggte(mp_result, type="simple", cband=False)
+
+    assert result.overall_att == np.inf
 
 
-def test_aggte_very_small_standard_errors(mp_result):
-    mp_result.influence_func[:] = 1e-15
+def test_aggte_reports_nan_standard_errors_when_the_influence_functions_vanish(mp_result):
+    flat = mp_result._replace(att_gt=np.full(12, 0.1), influence_func=np.zeros_like(mp_result.influence_func))
 
-    result = aggte(mp_result, type="simple")
-    assert np.isnan(result.overall_se) or result.overall_se > 0
+    result = aggte(flat, type="dynamic", cband=False)
+
+    np.testing.assert_allclose(result.att_by_event, np.full(7, 0.1), rtol=1e-12)
+    assert np.isnan(result.overall_se)
+    assert np.isnan(result.se_by_event).all()
+
+
+def test_aggte_reports_nan_bootstrap_standard_errors_when_the_draws_have_no_spread(
+    monkeypatch, draws_from_leading_weights, mp_result
+):
+    weights = np.zeros((999, mp_result.n_units))
+    weights[:, 0] = np.r_[np.zeros(799), np.full(100, 1.0), np.full(100, -1.0)]
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_leading_weights(weights)
+    )
+
+    result = aggte(mp_result, type="group", boot=True, cband=False, biters=999, random_state=7)
+
+    assert np.isnan(result.overall_se)
+    assert np.isnan(result.se_by_event).all()
 
 
 def test_aggte_extreme_event_times(mp_result):
@@ -354,8 +525,8 @@ def test_aggte_calendar_with_shifted_periods(mpdta_data, mp_result):
     original = aggte(mp_result, type="calendar", cband=False)
 
     np.testing.assert_array_equal(shifted.event_times, [3004, 3005, 3006, 3007])
-    np.testing.assert_allclose(shifted.att_by_event, original.att_by_event, rtol=1e-10)
-    np.testing.assert_allclose(shifted.se_by_event, original.se_by_event, rtol=1e-10)
+    np.testing.assert_allclose(shifted.att_by_event, original.att_by_event, rtol=1e-12)
+    np.testing.assert_allclose(shifted.se_by_event, original.se_by_event, rtol=1e-12)
 
 
 def test_aggte_all_treated_same_time(mpdta_data):
@@ -377,6 +548,7 @@ def test_aggte_all_treated_same_time(mpdta_data):
     agg_result = aggte(result, type="group", cband=False)
 
     np.testing.assert_array_equal(agg_result.event_times, [2004])
+    np.testing.assert_allclose(agg_result.att_by_event, [result.att_gt[result.times >= 2004].mean()], rtol=1e-12)
     np.testing.assert_allclose(agg_result.overall_att, agg_result.att_by_event[0], rtol=1e-12)
 
 
@@ -393,36 +565,36 @@ def test_aggte_uniform_bands_without_bootstrap(mp_result, agg_type, band_args):
 def test_aggte_critical_value_nan_handling(mp_result):
     mp_result.influence_func[:] = 0
 
-    with pytest.warns(UserWarning, match="critical value is NaN"):
-        result = aggte(
-            mp_result,
-            type="group",
-            cband=True,
-            boot=True,
-            biters=99,
-        )
+    with pytest.warns(
+        UserWarning,
+        match="^Simultaneous critical value is NaN, likely because the standard errors could not be computed\\. ",
+    ):
+        result = aggte(mp_result, type="group", cband=True, boot=True, biters=99, random_state=7)
 
-    assert result.aggregation_type == "group"
-    assert not result.estimation_params.get("uniform_bands", True)
+    assert not result.estimation_params["uniform_bands"]
+    np.testing.assert_allclose(result.critical_values, np.full(3, 1.959963984540054), rtol=1e-12)
 
 
-def test_aggte_dynamic_no_post_treatment(mp_result):
+def test_aggte_dynamic_no_post_treatment(mp_result, mpdta_cohort_sizes):
+    event = mp_result.times - mp_result.groups
+    sizes = np.array([mpdta_cohort_sizes[g] for g in mp_result.groups])
+    expected = [np.average(mp_result.att_gt[event == e], weights=sizes[event == e]) for e in (-3, -2, -1)]
+
     with pytest.warns(
         UserWarning,
         match="^The overall effect is NaN because max_e=-1 leaves out every post-treatment group-time effect\\. "
         "Pass a larger max_e to estimate it\\.$",
     ):
         agg_result = aggte(mp_result, type="dynamic", max_e=-1, cband=False)
-    full_result = aggte(mp_result, type="dynamic", cband=False)
 
     np.testing.assert_array_equal(agg_result.event_times, [-3, -2, -1])
-    np.testing.assert_allclose(agg_result.att_by_event, full_result.att_by_event[:3], rtol=1e-12)
+    np.testing.assert_allclose(agg_result.att_by_event, expected, rtol=1e-12)
     assert np.isnan(agg_result.overall_att)
     assert np.isnan(agg_result.overall_se)
 
 
-@pytest.mark.parametrize("aggregation", ["simple", "group"])
-def test_aggte_max_e_before_treatment_reports_nan(mp_result, aggregation):
+@pytest.mark.parametrize(("aggregation", "event_times"), [("simple", None), ("group", [])])
+def test_aggte_max_e_before_treatment_reports_nan(mp_result, aggregation, event_times):
     with pytest.warns(
         UserWarning,
         match="^The overall effect is NaN because max_e=-1 leaves out every post-treatment group-time effect\\. ",
@@ -431,96 +603,101 @@ def test_aggte_max_e_before_treatment_reports_nan(mp_result, aggregation):
 
     assert np.isnan(result.overall_att)
     assert np.isnan(result.overall_se)
-    if aggregation == "group":
-        assert len(result.event_times) == 0
+    np.testing.assert_array_equal(result.event_times, event_times)
 
 
-def test_aggte_dynamic_with_extreme_balance(mp_result):
-    agg_result = aggte(mp_result, type="dynamic", balance_e=2, cband=False)
-
-    assert agg_result.aggregation_type == "dynamic"
-    assert agg_result.balanced_event_threshold == 2
-
-
-def test_aggte_very_large_bootstrap_iterations(mp_result):
-    agg_result = aggte(
-        mp_result,
-        type="simple",
-        boot=True,
-        biters=10,
+def test_aggte_simple_bootstrap_standard_error_uses_the_requested_number_of_draws(
+    monkeypatch, draws_from_leading_weights, mp_result
+):
+    signs = np.where(np.random.default_rng(5).random((400, mp_result.n_units)) < 0.5, 1.0, -1.0)
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_leading_weights(signs)
     )
 
-    assert agg_result.aggregation_type == "simple"
-    assert agg_result.estimation_params.get("biters") == 10
+    agg_result = aggte(mp_result, type="simple", boot=True, biters=10, random_state=2)
+    draws = signs[:10] @ agg_result.influence_func / mp_result.n_units
+    q75, q25 = np.percentile(draws, [75, 25], method="inverted_cdf")
+
+    assert agg_result.estimation_params["biters"] == 10
+    np.testing.assert_allclose(agg_result.overall_se, (q75 - q25) / 1.3489795, rtol=1e-12)
 
 
-def test_aggte_cband_narrower_than_pointwise_fallback(mp_result):
-    def mock_mboot(*args, **kwargs):
-        real_result = real_mboot(*args, **kwargs)
-        real_result["crit_val"] = 1.0
-        return real_result
+def test_aggte_cband_narrower_than_pointwise_fallback(monkeypatch, draws_from_leading_weights, mp_result):
+    weights = np.zeros((999, mp_result.n_units))
+    weights[:, 0] = np.linspace(-1.0, 1.0, 999)
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_leading_weights(weights)
+    )
 
-    with (
-        patch("moderndid.did.compute_aggte.mboot", side_effect=mock_mboot),
-        pytest.warns(UserWarning, match="simultaneous confidence band is narrower than the pointwise"),
+    with pytest.warns(
+        UserWarning,
+        match="^The simultaneous confidence band is narrower than the pointwise confidence interval\\. ",
     ):
-        agg_result = aggte(mp_result, type="group", cband=True, boot=True, biters=99)
+        agg_result = aggte(mp_result, type="group", cband=True, boot=True, biters=999, random_state=7)
 
-    assert not agg_result.estimation_params.get("uniform_bands", True)
+    assert not agg_result.estimation_params["uniform_bands"]
+    np.testing.assert_allclose(agg_result.critical_values, np.full(3, 1.959963984540054), rtol=1e-12)
 
 
-def test_aggte_cband_very_large_cv_warning(mp_result):
-    def mock_mboot(*args, **kwargs):
-        real_result = real_mboot(*args, **kwargs)
-        real_result["crit_val"] = 8.0
-        return real_result
+def test_aggte_cband_very_large_cv_warning(monkeypatch, draws_from_leading_weights, mp_result):
+    spikes = np.r_[np.linspace(-1.0, 1.0, 899), np.full(50, 100.0), np.full(50, -100.0)]
+    weights = np.zeros((999, mp_result.n_units))
+    weights[:, 0] = spikes
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_leading_weights(weights)
+    )
+    q75, q25 = np.percentile(spikes, [75, 25], method="inverted_cdf")
 
-    with (
-        patch("moderndid.did.compute_aggte.mboot", side_effect=mock_mboot),
-        pytest.warns(UserWarning, match="Simultaneous critical value is very large"),
-    ):
-        agg_result = aggte(mp_result, type="group", cband=True, boot=True, biters=99)
+    with pytest.warns(UserWarning, match="^Simultaneous critical value is very large and may be unreliable\\. "):
+        agg_result = aggte(mp_result, type="group", cband=True, boot=True, biters=999, random_state=7)
 
-    assert agg_result.estimation_params.get("uniform_bands", False)
-    assert np.all(agg_result.critical_values == 8.0)
+    assert agg_result.estimation_params["uniform_bands"]
+    np.testing.assert_allclose(
+        agg_result.critical_values,
+        np.full(3, np.percentile(np.abs(spikes) / ((q75 - q25) / 1.3489795), 95, method="inverted_cdf")),
+        rtol=1e-12,
+    )
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
 def test_aggte_bootstrap_reproducibility(mp_result, agg_type):
-    result1 = aggte(mp_result, type=agg_type, boot=True, biters=50, random_state=42)
-    result2 = aggte(mp_result, type=agg_type, boot=True, biters=50, random_state=42)
+    spec = {"type": agg_type, "boot": True, "biters": 50}
 
+    result1 = aggte(mp_result, **spec, random_state=42)
+    result2 = aggte(mp_result, **spec, random_state=42)
+    other = aggte(mp_result, **spec, random_state=43)
+
+    assert result1.estimation_params["random_state"] == 42
     assert result1.overall_se == result2.overall_se
-    assert result1.estimation_params.get("random_state") == 42
+    np.testing.assert_array_equal(result1.se_by_event, result2.se_by_event)
+    np.testing.assert_array_equal(result1.critical_values, result2.critical_values)
+    assert other.overall_se != result1.overall_se
 
-    if agg_type != "simple":
-        np.testing.assert_array_equal(result1.se_by_event, result2.se_by_event)
 
-
-def test_aggte_band_without_bootstrap_draws_one_multiplier_per_cluster(mpdta_data):
-    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+def test_aggte_band_without_bootstrap_draws_one_multiplier_per_cluster(
+    monkeypatch, draws_from_leading_weights, mpdta_with_states
+):
     spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "est_method": "reg"}
-    clustered = att_gt(data, clustervars=["state"], **spec)
-    plain = att_gt(data, **spec)
-    band = {"type": "dynamic", "boot": False, "cband": True, "biters": 999, "random_state": 11}
+    with pytest.warns(UserWarning, match="^The units fall in only 29 clusters\\. "):
+        clustered = att_gt(mpdta_with_states, clustervars=["state"], **spec)
+    signs = np.where(np.random.default_rng(11).random((999, clustered.n_units)) < 0.5, 1.0, -1.0)
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_leading_weights(signs)
+    )
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        from_clustered = aggte(clustered, **band)
-    from_plain = aggte(plain, **band)
-    draws = real_mboot(
-        from_clustered.influence_func,
-        n_units=clustered.n_units,
-        biters=999,
-        alpha=0.05,
-        cluster=clustered.estimation_params["cluster"],
-        random_state=11,
-    )
+        from_clustered = aggte(clustered, type="dynamic", boot=False, cband=True, biters=599, random_state=11)
+    _, codes = np.unique(clustered.estimation_params["cluster"], return_inverse=True)
+    sums = np.column_stack([np.bincount(codes, weights=column) for column in from_clustered.influence_func.T])
+    draws = signs[:599, :29] @ sums
+    q75, q25 = np.percentile(draws, [75, 25], axis=0, method="inverted_cdf")
+    band = np.percentile(np.max(np.abs(draws) / ((q75 - q25) / 1.3489795), axis=1), 95, method="inverted_cdf")
 
     assert [str(w.message) for w in caught] == ["Used bootstrap procedure to compute simultaneous confidence band"]
     assert from_clustered.estimation_params["uniform_bands"]
-    np.testing.assert_allclose(from_clustered.critical_values, draws["crit_val"], rtol=1e-12)
-    assert from_clustered.critical_values[0] != from_plain.critical_values[0]
+    assert sums.shape == (29, 7)
+    np.testing.assert_allclose(from_clustered.critical_values, np.full(7, band), rtol=1e-12)
 
 
 def test_aggte_unit_id_clusters_give_unit_level_inference(mpdta_data, mp_result):
@@ -647,12 +824,25 @@ def test_aggte_without_post_treatment_effects_reports_nan(no_post_treatment_resu
     assert np.isnan(result.overall_se)
 
 
+@pytest.mark.parametrize("aggregation", ["simple", "group"])
+def test_aggte_names_the_failed_cells_when_max_e_leaves_out_no_post_treatment_effect(
+    no_post_treatment_result, aggregation
+):
+    with pytest.warns(
+        UserWarning,
+        match="^The overall effect is NaN because no post-treatment group-time effect is left to average\\. ",
+    ):
+        result = aggte(no_post_treatment_result, type=aggregation, max_e=-2, cband=False)
+
+    assert np.isnan(result.overall_att)
+
+
 def test_aggte_without_post_treatment_effects_keeps_pre_treatment_event_times(no_post_treatment_result):
     with pytest.warns(UserWarning, match="^The overall effect is NaN because no post-treatment group-time effect is "):
         result = aggte(no_post_treatment_result, type="dynamic", cband=False)
 
     np.testing.assert_array_equal(result.event_times, [-1])
-    np.testing.assert_allclose(result.att_by_event, no_post_treatment_result.att_gt)
+    np.testing.assert_allclose(result.att_by_event, no_post_treatment_result.att_gt, rtol=1e-12)
 
 
 @pytest.mark.parametrize("na_rm", [False, True])
@@ -694,6 +884,6 @@ def test_aggte_calendar_leaves_out_periods_without_treated_estimates(mpdta_separ
 
     np.testing.assert_array_equal(from_universal.event_times, [2006, 2007])
     np.testing.assert_array_equal(from_varying.event_times, [2006, 2007])
-    np.testing.assert_allclose(from_universal.att_by_event, from_varying.att_by_event, rtol=1e-10)
-    np.testing.assert_allclose(from_universal.se_by_event, from_varying.se_by_event, rtol=1e-10)
-    np.testing.assert_allclose(from_universal.overall_att, from_varying.overall_att, rtol=1e-10)
+    np.testing.assert_allclose(from_universal.att_by_event, from_varying.att_by_event, rtol=1e-12)
+    np.testing.assert_allclose(from_universal.se_by_event, from_varying.se_by_event, rtol=1e-12)
+    np.testing.assert_allclose(from_universal.overall_att, from_varying.overall_att, rtol=1e-12)
