@@ -2248,7 +2248,7 @@ def test_att_gt_regression_screen_skips_each_cell_when_a_covariate_repeats_anoth
             est_method=est_method,
         )
 
-    messages = [str(warning.message) for warning in caught]
+    messages = [str(warning.message) for warning in caught if warning.category is UserWarning]
     assert messages[:-1] == [
         f"Not enough control units for group {group} in time period {time} to run specified regression"
         for group, time in cells
