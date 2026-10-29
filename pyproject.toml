@@ -93,7 +93,7 @@ all = [
 ]
 test = [
     "duckdb>=1.1",
-    "pytest",
+    "pytest<9.2",
     "pytest-benchmark",
     "pytest-cov",
     "pytest-timeout",

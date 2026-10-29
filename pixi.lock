@@ -32931,7 +32931,7 @@ packages:
   - pyspark[connect]>=3.5 ; extra == 'spark'
   - pandas<3 ; extra == 'spark'
   - duckdb>=1.1 ; extra == 'test'
-  - pytest ; extra == 'test'
+  - pytest<9.2 ; extra == 'test'
   - pytest-benchmark ; extra == 'test'
   - pytest-cov ; extra == 'test'
   - pytest-timeout ; extra == 'test'
