@@ -655,3 +655,66 @@ def separated_two_period_arrays():
         "panel": {"y1": y0 + 2 * d + rng.standard_normal(n), "y0": y0, "d": d, "covariates": x},
         "repeated_cross_sections": {"y": y, "post": post, "d": d, "covariates": x},
     }
+
+
+@pytest.fixture(scope="module")
+def panel_cell_arrays():
+    """Panel arrays whose covariates indicate three cells and whose third cell has one comparison unit."""
+    rng = np.random.default_rng(12)
+    cell = np.repeat([0, 1, 2], [120, 120, 31])
+    d = np.r_[rng.uniform(size=240) < np.repeat([0.3, 0.6], 120), np.ones(30), 0].astype(int)
+    y0 = cell + rng.normal(size=cell.size)
+    y1 = y0 + 1 + 0.5 * cell + d * (1 + cell) + 3 * (1 - d) * (cell == 2) + rng.normal(size=cell.size)
+    covariates = np.column_stack([np.ones(cell.size), cell == 1, cell == 2]).astype(float)
+    return {"y1": y1, "y0": y0, "d": d, "covariates": covariates, "i_weights": rng.uniform(0.5, 2, size=cell.size)}
+
+
+@pytest.fixture
+def cell_panel_att():
+    """Compute the closed-form IPW ATT of panel arrays whose covariates indicate cells."""
+
+    def att(y1, y0, d, covariates, i_weights, trim_level=0.995, normalized=False):
+        cell = np.rint(covariates[:, 1:] @ np.arange(1, covariates.shape[1])).astype(int)
+        treated = np.bincount(cell, weights=i_weights * d)
+        controls = np.bincount(cell, weights=i_weights * (1 - d))
+        control_means = np.bincount(cell, weights=i_weights * (1 - d) * (y1 - y0)) / controls
+        kept = treated / (treated + controls) < trim_level
+        counterfactual = np.sum((treated * control_means)[kept]) / np.sum(treated[kept] if normalized else treated)
+        return np.sum(i_weights * d * (y1 - y0)) / np.sum(treated) - counterfactual
+
+    return att
+
+
+@pytest.fixture
+def cell_panel_inf_func():
+    """Compute the influence function of the untrimmed IPW ATT of panel arrays whose covariates indicate cells."""
+
+    def inf_func(y1, y0, d, covariates, i_weights):
+        cell = np.rint(covariates[:, 1:] @ np.arange(1, covariates.shape[1])).astype(int)
+        treated = np.bincount(cell, weights=i_weights * d)
+        controls = np.bincount(cell, weights=i_weights * (1 - d))
+        gaps = y1 - y0 - (np.bincount(cell, weights=i_weights * (1 - d) * (y1 - y0)) / controls)[cell]
+        att = np.sum(i_weights * d * gaps) / np.sum(treated)
+        return d.size * i_weights * (d * (gaps - att) - (1 - d) * (treated / controls)[cell] * gaps) / np.sum(treated)
+
+    return inf_func
+
+
+@pytest.fixture
+def preset_bootstrap_weights(monkeypatch):
+    """Hand the weighted bootstraps the rows of a preset matrix as their exponential draws."""
+
+    def install(draws):
+        rows = iter(draws)
+
+        class PresetWeights:
+            def __init__(self, seed=None):
+                pass
+
+            def exponential(self, scale=1.0, size=None):
+                return next(rows)
+
+        monkeypatch.setattr(np.random, "RandomState", PresetWeights)
+        monkeypatch.setattr(np.random, "default_rng", PresetWeights)
+
+    return install
