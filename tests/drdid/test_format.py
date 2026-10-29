@@ -1,5 +1,6 @@
 """Tests for DR-DiD result formatting."""
 
+import math
 from collections import namedtuple
 
 import numpy as np
@@ -13,8 +14,6 @@ from moderndid.drdid.format import (
     format_did_result,
     print_did_result,
 )
-
-_DRPanel = namedtuple("DRDIDPanelResult", ["att", "se", "lci", "uci", "args"])
 
 
 @pytest.mark.parametrize(
@@ -47,22 +46,22 @@ def test_infer_panel_type(name, expected):
 
 
 @pytest.mark.parametrize(
-    "etype, method, expected_substr",
+    "etype, method, title",
     [
-        ("dr", "imp", "Improved"),
-        ("dr", "trad", "Traditional"),
-        ("dr", "default", "Doubly Robust"),
-        ("dr", "nonexistent", "Doubly Robust"),
-        ("ipw", "ipw", "Inverse Probability"),
-        ("ipw", "std_ipw", "Hajek"),
-        ("ipw", "default", "Inverse Probability"),
-        ("or", "default", "Outcome Regression"),
-        ("twfe", "default", "Two-Way Fixed Effects"),
-        ("unknown_type", "any", "Difference-in-Differences"),
+        ("dr", "imp", "Doubly Robust DiD Estimator (Improved Method)"),
+        ("dr", "trad", "Doubly Robust DiD Estimator (Traditional Method)"),
+        ("dr", "default", "Doubly Robust DiD Estimator"),
+        ("dr", "nonexistent", "Doubly Robust DiD Estimator"),
+        ("ipw", "ipw", "Inverse Probability Weighted DiD Estimator"),
+        ("ipw", "std_ipw", "Standardized IPW DiD Estimator (Hajek-type)"),
+        ("ipw", "default", "Inverse Probability Weighted DiD Estimator"),
+        ("or", "default", "Outcome Regression DiD Estimator"),
+        ("twfe", "default", "Two-Way Fixed Effects DiD Estimator"),
+        ("unknown_type", "any", "Difference-in-Differences Estimator"),
     ],
 )
-def test_get_estimator_title(etype, method, expected_substr):
-    assert expected_substr in _get_estimator_title(etype, method)
+def test_get_estimator_title(etype, method, title):
+    assert _get_estimator_title(etype, method) == title
 
 
 @pytest.mark.parametrize(
@@ -78,16 +77,15 @@ def test_get_estimator_title_names_only_the_dr_methods_drdid_records(method, tit
 
 
 @pytest.mark.parametrize(
-    "etype, method, args, expected_substr",
+    "etype, method, details",
     [
-        ("dr", "other_method", {}, "propensity score"),
-        ("or", "default", {}, "Ordinary least squares"),
-        ("twfe", "default", {}, "Unit and time"),
+        ("dr", "other_method", ["Outcome regression and propensity score models"]),
+        ("or", "default", ["Estimation method: Ordinary least squares"]),
+        ("twfe", "default", ["Fixed effects: Unit and time", "Estimation method: Within transformation"]),
     ],
 )
-def test_get_method_description(etype, method, args, expected_substr):
-    details = _get_method_description(etype, method, args)
-    assert any(expected_substr.lower() in d.lower() for d in details)
+def test_get_method_description(etype, method, details):
+    assert _get_method_description(etype, method, {}) == details
 
 
 @pytest.mark.parametrize(
@@ -119,6 +117,8 @@ def test_get_method_description_names_the_fits_of_each_dr_method(method, panel, 
         ("ipw", {"normalized": False}, "Weight type: Unnormalized (Horvitz-Thompson-type)"),
         ("std_ipw", {}, "Weight type: Normalized (Hajek-type estimator)"),
         ("ipw", {}, "Weight type: Unnormalized (Horvitz-Thompson-type)"),
+        ("ipw", {"normalized": True}, "Weight type: Normalized (Hajek-type estimator)"),
+        ("std_ipw", {"normalized": False}, "Weight type: Unnormalized (Horvitz-Thompson-type)"),
     ],
 )
 def test_get_method_description_weight_type_follows_the_flag_or_the_method(method, args, weight_type):
@@ -130,55 +130,70 @@ def test_method_description_unknown_returns_empty():
 
 
 def test_format_basic_dr_panel(dr_panel_result):
-    formatted = format_did_result(dr_panel_result)
-    assert isinstance(formatted, str)
-    assert "ATT" in formatted
-    assert "1.5" in formatted
+    lines = format_did_result(dr_panel_result).splitlines()
+    table = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert lines[1] == " Doubly Robust DiD Estimator"
+    assert table == [
+        ["ATT", "Std. Error", "Pr(>|t|)", "[95% Conf. Interval]"],
+        ["1.5000", "0.3000", "<0.001", "[  0.9000,   2.1000] *"],
+    ]
+    assert " Data structure: Panel data" in lines
 
 
-def test_format_explicit_args():
-    args = {
-        "type": "dr",
-        "est_method": "trad",
-        "panel": True,
-        "boot": True,
-        "biters": 500,
-        "boot_type": "weighted",
-    }
-    result = _DRPanel(att=2.0, se=0.5, lci=1.0, uci=3.0, args=args)
-    formatted = format_did_result(result)
-    assert "Traditional" in formatted
-    assert "Panel data" in formatted
-    assert "Bootstrapped" in formatted
-    assert "500" in formatted
+def test_format_reports_the_two_sided_normal_p_value(dr_panel_result):
+    result = dr_panel_result._replace(att=-0.5, se=0.25, lci=-0.99, uci=-0.01)
+
+    lines = format_did_result(result).splitlines()
+    table = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert table[1] == ["-0.5000", "0.2500", f"{math.erfc(2 / math.sqrt(2)):.4f}", "[ -0.9900,  -0.0100] *"]
+
+
+def test_format_explicit_args(dr_panel_result):
+    args = {"type": "dr", "est_method": "trad", "panel": True, "boot": True, "biters": 500, "boot_type": "weighted"}
+    result = dr_panel_result._replace(att=2.0, se=0.5, lci=1.0, uci=3.0, args=args)
+
+    lines = format_did_result(result).splitlines()
+
+    assert {
+        " Doubly Robust DiD Estimator (Traditional Method)",
+        " Data structure: Panel data",
+        " Outcome regression: Ordinary least squares",
+        " Propensity score: Logistic regression",
+        " Standard errors: Bootstrapped (500 replications)",
+        " Bootstrap type: Weighted",
+    } <= set(lines)
 
 
 def test_format_analytical_se(dr_panel_result):
     result = dr_panel_result._replace(args={"boot": False})
-    formatted = format_did_result(result)
-    assert "Analytical" in formatted
+
+    lines = format_did_result(result).splitlines()
+
+    assert " Standard errors: Analytical" in lines
+    assert [line for line in lines if "Bootstrap" in line] == []
 
 
 def test_format_rc_data(dr_rc_result):
-    formatted = format_did_result(dr_rc_result)
-    assert "Repeated cross-sections" in formatted
+    assert " Data structure: Repeated cross-sections" in format_did_result(dr_rc_result).splitlines()
 
 
 @pytest.mark.parametrize(
-    "etype, trim_level, should_show_trim",
+    "etype, trim_level, trim_lines",
     [
-        ("ipw", 0.01, True),
-        ("dr", 0.05, True),
-        ("or", 0.01, False),
+        ("ipw", 0.01, [" Propensity score trimming: 0.01"]),
+        ("dr", 0.05, [" Propensity score trimming: 0.05"]),
+        ("or", 0.01, []),
+        ("twfe", 0.01, []),
     ],
 )
-def test_format_trim_level(etype, trim_level, should_show_trim):
-    result = _DRPanel(att=1.0, se=0.3, lci=0.4, uci=1.6, args={"type": etype, "trim_level": trim_level})
-    formatted = format_did_result(result)
-    if should_show_trim:
-        assert "trimming" in formatted.lower()
-    else:
-        assert "trimming" not in formatted.lower()
+def test_format_trim_level(dr_panel_result, etype, trim_level, trim_lines):
+    result = dr_panel_result._replace(att=1.0, se=0.3, lci=0.4, uci=1.6, args={"type": etype, "trim_level": trim_level})
+
+    lines = format_did_result(result).splitlines()
+
+    assert [line for line in lines if "trimming" in line.lower()] == trim_lines
 
 
 @pytest.mark.parametrize(
@@ -189,46 +204,65 @@ def test_format_trim_level(etype, trim_level, should_show_trim):
         (1.0, 0.3, False),
     ],
 )
-def test_format_nan_warning(att, se, has_warning):
-    result = _DRPanel(att=att, se=se, lci=np.nan, uci=np.nan, args={})
+def test_format_nan_warning(dr_panel_result, att, se, has_warning):
+    result = dr_panel_result._replace(att=att, se=se, lci=np.nan, uci=np.nan, args={})
     formatted = format_did_result(result)
     assert ("Warning" in formatted) == has_warning
 
 
-def test_format_nan_with_custom_warning_msg():
-    result = _DRPanel(
-        att=np.nan,
-        se=np.nan,
-        lci=np.nan,
-        uci=np.nan,
-        args={"warning_msg": "Custom error detail"},
-    )
-    formatted = format_did_result(result)
-    assert "Custom error detail" in formatted
+def test_format_nan_with_custom_warning_msg(dr_panel_result):
+    args = {"warning_msg": "Custom error detail"}
+    result = dr_panel_result._replace(att=np.nan, se=np.nan, lci=np.nan, uci=np.nan, args=args)
+
+    lines = format_did_result(result).splitlines()
+    start = lines.index("Warning: Estimation failed. Check for data issues:")
+
+    assert lines[start + 1 : lines.index("=" * 78, start)] == ["     Custom error detail"]
 
 
-def test_format_nan_default_suggestions():
-    result = _DRPanel(att=np.nan, se=0.3, lci=np.nan, uci=np.nan, args={})
-    formatted = format_did_result(result)
-    for expected in ("Insufficient variation", "Perfect separation", "Collinearity"):
-        assert expected in formatted
+def test_format_nan_default_suggestions(dr_panel_result):
+    result = dr_panel_result._replace(att=np.nan, se=0.3, lci=np.nan, uci=np.nan, args={})
+
+    lines = format_did_result(result).splitlines()
+    start = lines.index("Warning: Estimation failed. Check for data issues:")
+
+    assert lines[start + 1 : lines.index("=" * 78, start)] == [
+        "     - Insufficient variation in treatment/control groups",
+        "     - Perfect separation in propensity score",
+        "     - Collinearity in covariates",
+    ]
 
 
-def test_format_zero_se():
-    result = _DRPanel(att=1.0, se=0.0, lci=0.5, uci=1.5, args={})
-    assert isinstance(format_did_result(result), str)
+@pytest.mark.parametrize("se", [0.0, np.float64(0.0)], ids=["python_float", "numpy_float"])
+def test_format_zero_se(dr_panel_result, se):
+    result = dr_panel_result._replace(att=1.0, se=se, lci=0.5, uci=1.5, args={})
+
+    lines = format_did_result(result).splitlines()
+    table = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert table[1] == ["1.0000", "0.0000", "NaN", "[  0.5000,   1.5000] *"]
 
 
-def test_format_significance_marker_when_zero_excluded(dr_panel_result):
-    assert "*" in format_did_result(dr_panel_result)
+@pytest.mark.parametrize(
+    "lci, uci, interval",
+    [(0.9, 2.1, "[  0.9000,   2.1000] *"), (-2.1, -0.9, "[ -2.1000,  -0.9000] *")],
+)
+def test_format_significance_marker_when_zero_excluded(dr_panel_result, lci, uci, interval):
+    result = dr_panel_result._replace(att=(lci + uci) / 2, lci=lci, uci=uci)
+
+    lines = format_did_result(result).splitlines()
+    table = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert table[1][-1] == interval
 
 
-def test_format_no_significance_when_interval_includes_zero():
-    result = _DRPanel(att=0.1, se=0.5, lci=-0.9, uci=1.1, args={})
-    formatted = format_did_result(result)
-    lines_with_att = [line for line in formatted.split("\n") if "ATT" in line and "0.1" in line]
-    for line in lines_with_att:
-        assert "***" not in line
+def test_format_no_significance_when_interval_includes_zero(dr_panel_result):
+    result = dr_panel_result._replace(att=0.1, se=0.5, lci=-0.9, uci=1.1, args={})
+
+    lines = format_did_result(result).splitlines()
+    table = [[cell.strip() for cell in line.split("│")[1:-1]] for line in lines if line.startswith("│")]
+
+    assert table[1][-1] == "[ -0.9000,   1.1000]"
 
 
 @pytest.mark.parametrize(
@@ -239,8 +273,9 @@ def test_format_no_significance_when_interval_includes_zero():
         (0, " Computed from 500 observations and 0 covariates."),
     ],
 )
-def test_format_header_counts_the_rows_and_covariates_used(n_covariates, header):
-    result = _DRPanel(att=1.0, se=0.2, lci=0.6, uci=1.4, args={"n_obs": 500, "n_covariates": n_covariates})
+def test_format_header_counts_the_rows_and_covariates_used(dr_panel_result, n_covariates, header):
+    args = {"n_obs": 500, "n_covariates": n_covariates}
+    result = dr_panel_result._replace(att=1.0, se=0.2, lci=0.6, uci=1.4, args=args)
     assert header in format_did_result(result).splitlines()
 
 
@@ -249,28 +284,30 @@ def test_format_header_needs_the_recorded_counts(result_with_call_params):
 
 
 @pytest.mark.parametrize(
-    "fixture_name, expected_text",
+    "fixture_name, title",
     [
-        ("twfe_result", "Two-Way Fixed Effects"),
-        ("unknown_result", "Difference-in-Differences"),
+        ("twfe_result", " Two-Way Fixed Effects DiD Estimator"),
+        ("unknown_result", " Difference-in-Differences Estimator"),
     ],
 )
-def test_format_estimator_type_in_output(fixture_name, expected_text, request):
+def test_format_estimator_type_in_output(fixture_name, title, request):
     result = request.getfixturevalue(fixture_name)
-    assert expected_text in format_did_result(result)
+    assert format_did_result(result).splitlines()[1] == title
 
 
 @pytest.mark.parametrize(
-    "etype, expected_ref",
+    "etype, last_line",
     [
-        ("dr", "Sant'Anna"),
-        ("ipw", "Abadie"),
-        ("or", "Heckman"),
+        ("dr", " Reference: Sant'Anna and Zhao (2020), Journal of Econometrics"),
+        ("ipw", " Reference: Abadie (2005), Review of Economic Studies"),
+        ("or", " Reference: Heckman et al. (1997), Review of Economic Studies"),
+        ("twfe", "=" * 78),
+        ("unknown", "=" * 78),
     ],
 )
-def test_format_reference_by_type(etype, expected_ref):
-    result = _DRPanel(att=1.0, se=0.2, lci=0.6, uci=1.4, args={"type": etype})
-    assert expected_ref in format_did_result(result)
+def test_format_reference_by_type(dr_panel_result, etype, last_line):
+    result = dr_panel_result._replace(att=1.0, se=0.2, lci=0.6, uci=1.4, args={"type": etype})
+    assert format_did_result(result).splitlines()[-1] == last_line
 
 
 def test_format_panel_none_omitted(unknown_result):
@@ -280,15 +317,28 @@ def test_format_panel_none_omitted(unknown_result):
     assert "Repeated cross-sections" not in formatted
 
 
-def test_format_boot_type_capitalized():
+def test_format_falls_back_to_the_documented_bootstrap_defaults(dr_panel_result):
+    result = dr_panel_result._replace(args={"boot": True})
+
+    lines = format_did_result(result).splitlines()
+
+    assert " Standard errors: Bootstrapped (999 replications)" in lines
+    assert " Bootstrap type: Weighted" in lines
+
+
+def test_format_boot_type_capitalized(dr_panel_result):
     args = {"boot": True, "biters": 200, "boot_type": "multiplier"}
-    result = _DRPanel(att=1.0, se=0.2, lci=0.6, uci=1.4, args=args)
-    assert "Multiplier" in format_did_result(result)
+    result = dr_panel_result._replace(att=1.0, se=0.2, lci=0.6, uci=1.4, args=args)
+
+    lines = format_did_result(result).splitlines()
+
+    assert " Standard errors: Bootstrapped (200 replications)" in lines
+    assert " Bootstrap type: Multiplier" in lines
 
 
-def test_format_estmethod_from_camel_case_key():
-    result = _DRPanel(att=1.0, se=0.2, lci=0.6, uci=1.4, args={"type": "dr", "estMethod": "trad"})
-    assert "Traditional" in format_did_result(result)
+def test_format_estmethod_from_camel_case_key(dr_panel_result):
+    result = dr_panel_result._replace(att=1.0, se=0.2, lci=0.6, uci=1.4, args={"type": "dr", "estMethod": "trad"})
+    assert format_did_result(result).splitlines()[1] == " Doubly Robust DiD Estimator (Traditional Method)"
 
 
 @pytest.mark.parametrize("dunder", ["__str__", "__repr__"])
