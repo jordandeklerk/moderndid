@@ -770,3 +770,18 @@ def preset_bootstrap_weights(monkeypatch):
         monkeypatch.setattr(np.random, "default_rng", PresetWeights)
 
     return install
+
+
+@pytest.fixture(scope="module")
+def wide_rc_two_period_data():
+    """Two-period repeated cross-sections from gen_did_scalable with an intercept and twenty covariates."""
+    simulated = gen_did_scalable(
+        n=1000, dgp_type=1, n_periods=2, n_cohorts=1, n_covariates=20, panel=False, random_state=42
+    )
+    data = simulated["data"]
+    return {
+        "y": data["y"].to_numpy(),
+        "post": (data["time"] == 2).cast(pl.Int64).to_numpy(),
+        "d": (data["group"] == 2).cast(pl.Int64).to_numpy(),
+        "x": np.column_stack([np.ones(data.height), data.select([f"cov{j}" for j in range(1, 21)]).to_numpy()]),
+    }
