@@ -1967,7 +1967,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=8.0.0" },
     { name = "pyfixest", marker = "extra == 'etwfe'", specifier = ">=0.40.0,<0.50.0" },
     { name = "pyspark", extras = ["connect"], marker = "extra == 'spark'", specifier = ">=3.5" },
-    { name = "pytest", marker = "extra == 'test'" },
+    { name = "pytest", marker = "extra == 'test'", specifier = "<9.2" },
     { name = "pytest-benchmark", marker = "extra == 'test'" },
     { name = "pytest-cov", marker = "extra == 'test'" },
     { name = "pytest-timeout", marker = "extra == 'test'" },
