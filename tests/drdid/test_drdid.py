@@ -5,8 +5,10 @@ import warnings
 
 import numpy as np
 import pytest
+from scipy import stats
 
-from moderndid.drdid import (
+from moderndid import (
+    drdid,
     drdid_imp_local_rc,
     drdid_imp_panel,
     drdid_imp_rc,
@@ -15,6 +17,8 @@ from moderndid.drdid import (
     drdid_trad_rc,
     ipw_did_panel,
     ipw_did_rc,
+    ipwdid,
+    ordid,
     reg_did_panel,
     reg_did_rc,
     std_ipw_did_panel,
@@ -22,182 +26,322 @@ from moderndid.drdid import (
     twfe_did_panel,
     twfe_did_rc,
 )
-from moderndid.drdid.drdid import drdid
-from moderndid.drdid.ipwdid import ipwdid
-from moderndid.drdid.ordid import ordid
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
 
+@pytest.mark.parametrize("xformla", [None, "~ 1"])
 @pytest.mark.parametrize("est_method", ["imp", "trad"])
-def test_drdid_panel_basic(nsw_data, est_method):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        panel=True,
-        est_method=est_method,
-    )
+def test_drdid_panel_without_covariates_gives_the_difference_in_mean_changes(
+    nsw_data, nsw_changes, est_method, xformla
+):
+    treated = nsw_changes.filter(pl.col("experimental") == 1)["dre"].to_numpy()
+    comparison = nsw_changes.filter(pl.col("experimental") == 0)["dre"].to_numpy()
+    att = treated.mean() - comparison.mean()
+    se = np.sqrt(treated.var() / treated.size + comparison.var() / comparison.size)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla=xformla,
+            panel=True,
+            est_method=est_method,
+        )
 
     assert isinstance(result.att, float)
     assert isinstance(result.se, float)
-    assert result.se > 0
-    assert result.lci < result.att < result.uci
+    np.testing.assert_allclose(
+        [result.att, result.se, result.lci, result.uci], [att, se, att - 1.96 * se, att + 1.96 * se], rtol=1e-12
+    )
     assert result.boots is None
     assert result.att_inf_func is None
     assert result.call_params["panel"] is True
     assert result.call_params["est_method"] == est_method
     assert result.args["type"] == "dr"
     assert result.args["estMethod"] == est_method
-
-
-def test_drdid_panel_with_covariates(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla="~ age + educ + black + married + nodegree + hisp",
-        panel=True,
-        est_method="imp",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-    assert result.call_params["xformla"] == "~ age + educ + black + married + nodegree + hisp"
-
-
-@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
-def test_drdid_panel_with_weights(nsw_data):
-    rng = np.random.default_rng(42)
-    unique_ids = nsw_data["id"].unique().to_list()
-    unit_weights = rng.exponential(1, len(unique_ids))
-    weight_dict = dict(zip(unique_ids, unit_weights))
-    nsw_data = nsw_data.with_columns(pl.col("id").replace_strict(weight_dict, default=1.0).alias("weight"))
-
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla="~ age + educ",
-        panel=True,
-        weightsname="weight",
-        est_method="imp",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-    assert result.call_params["weightsname"] == "weight"
-
-
-def test_drdid_panel_with_influence_func(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        panel=True,
-        inf_func=True,
-        est_method="imp",
-    )
-
-    assert result.att_inf_func is not None
-    n_units = len(nsw_data["id"].unique())
-    assert len(result.att_inf_func) == n_units
-    assert np.isclose(np.mean(result.att_inf_func), 0, atol=1e-10)
-
-
-@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
-@pytest.mark.parametrize(
-    "boot_type,est_method",
-    [
-        ("weighted", "imp"),
-        ("multiplier", "trad"),
-    ],
-)
-def test_drdid_panel_bootstrap(nsw_data, boot_type, est_method):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla="~ age + educ",
-        panel=True,
-        boot=True,
-        boot_type=boot_type,
-        biters=10,
-        inf_func=(boot_type == "multiplier"),
-        est_method=est_method,
-    )
-
-    assert result.boots is not None
-    assert len(result.boots) == 10
-    assert not np.all(np.isnan(result.boots))
-    assert result.args["boot"] is True
-    assert result.args["boot_type"] == boot_type
-    if boot_type == "multiplier":
-        assert result.att_inf_func is not None
+    assert [str(warning.message) for warning in caught] == []
 
 
 @pytest.mark.parametrize("est_method", ["imp", "trad"])
-def test_drdid_repeated_cross_section(nsw_data, est_method):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        panel=False,
-        xformla="~ age + educ + black",
-        est_method=est_method,
+def test_drdid_panel_with_binary_covariates_gives_the_exact_matching_estimate(
+    nsw_data, nsw_changes, panel_matching_did, est_method
+):
+    att, inf_func = panel_matching_did(
+        nsw_changes["dre"].to_numpy(),
+        nsw_changes["experimental"].to_numpy(),
+        (nsw_changes["black"] + 2 * nsw_changes["hisp"]).to_numpy(),
+        np.ones(nsw_changes.height),
     )
 
-    assert isinstance(result.att, float)
-    assert result.se > 0
-    assert result.args["panel"] is False
-    assert result.args["estMethod"] == est_method
-
-
-@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
-def test_drdid_rc_with_bootstrap(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        panel=False,
-        xformla="~ age + educ",
-        boot=True,
-        biters=10,
-        est_method="imp",
-    )
-
-    assert result.boots is not None
-    assert len(result.boots) == 10
-
-
-@pytest.mark.parametrize("trim_level", [0.99, 0.995])
-def test_drdid_trim_level(nsw_data, trim_level):
     result = drdid(
         data=nsw_data,
         yname="re",
         tname="year",
         treatname="experimental",
         idname="id",
+        xformla="~ black + hisp",
         panel=True,
-        trim_level=trim_level,
-        est_method="imp",
+        inf_func=True,
+        est_method=est_method,
     )
 
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / inf_func.size], rtol=1e-10)
+    assert np.shape(result.att_inf_func) == inf_func.shape
+    np.testing.assert_allclose(result.att_inf_func, inf_func, rtol=1e-9, atol=1e-6)
+    assert result.call_params["xformla"] == "~ black + hisp"
+
+
+@pytest.mark.parametrize(
+    ("est_method", "data_fixture"), [("imp", "nsw_data"), ("trad", "nsw_data"), ("trad", "nsw_thinned")]
+)
+def test_drdid_repeated_cross_sections_with_binary_covariates_give_the_exact_matching_estimate(
+    request, rc_matching_did, est_method, data_fixture
+):
+    data = request.getfixturevalue(data_fixture)
+    att, inf_func = rc_matching_did(
+        data["re"].to_numpy(),
+        (data["year"] == 1978).cast(pl.Int64).to_numpy(),
+        data["experimental"].to_numpy(),
+        (data["black"] + 2 * data["hisp"]).to_numpy(),
+        np.ones(data.height),
+    )
+
+    result = drdid(
+        data=data,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        xformla="~ black + hisp",
+        panel=False,
+        inf_func=True,
+        est_method=est_method,
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / inf_func.size], rtol=1e-10)
+    assert np.shape(result.att_inf_func) == inf_func.shape
+    np.testing.assert_allclose(result.att_inf_func, inf_func, rtol=1e-9, atol=1e-6)
+
+
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+def test_drdid_panel_weights_enter_the_estimate_and_its_standard_error(
+    nsw_data, nsw_changes, panel_matching_did, est_method
+):
+    weight = (1 + (pl.col("id") % 5) / 2).alias("weight")
+    units = nsw_changes.with_columns(weight)
+    att, inf_func = panel_matching_did(
+        units["dre"].to_numpy(),
+        units["experimental"].to_numpy(),
+        (units["black"] + 2 * units["hisp"]).to_numpy(),
+        units["weight"].to_numpy(),
+    )
+
+    result = drdid(
+        data=nsw_data.with_columns(weight),
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ black + hisp",
+        panel=True,
+        weightsname="weight",
+        est_method=est_method,
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / inf_func.size], rtol=1e-10)
+    assert result.call_params["weightsname"] == "weight"
+
+
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+def test_drdid_repeated_cross_section_weights_enter_the_estimate_and_its_standard_error(
+    nsw_data, rc_matching_did, est_method
+):
+    data = nsw_data.with_columns((1 + (pl.col("id") % 5) / 2).alias("weight"))
+    att, inf_func = rc_matching_did(
+        data["re"].to_numpy(),
+        (data["year"] == 1978).cast(pl.Int64).to_numpy(),
+        data["experimental"].to_numpy(),
+        (data["black"] + 2 * data["hisp"]).to_numpy(),
+        data["weight"].to_numpy(),
+    )
+
+    result = drdid(
+        data=data,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        xformla="~ black + hisp",
+        panel=False,
+        weightsname="weight",
+        est_method=est_method,
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / inf_func.size], rtol=1e-10)
+
+
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_weighted_bootstrap_reestimates_the_att_under_each_draw_of_weights(
+    trimmed_two_period_data,
+    trimmed_two_period_frames,
+    panel_matching_did,
+    rc_matching_did,
+    seeded_exponential_draws,
+    panel,
+    est_method,
+):
+    data = trimmed_two_period_data
+    n = data["d"].size
+    weights = np.vstack([np.ones(n), np.random.default_rng(8).exponential(1.0, (5, n))])
+    if panel:
+        estimates = [panel_matching_did(data["y1"] - data["y0"], data["d"], np.zeros(n), w)[0] for w in weights]
+    else:
+        estimates = [rc_matching_did(data["y"], data["post"], data["d"], np.zeros(n), w)[0] for w in weights]
+    quartiles = np.percentile(np.array(estimates[1:]) - estimates[0], [25, 75])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = drdid(
+            data=trimmed_two_period_frames["panel" if panel else "repeated_cross_sections"],
+            yname="y",
+            tname="year",
+            treatname="d",
+            idname="id" if panel else None,
+            panel=panel,
+            boot=True,
+            boot_type="weighted",
+            biters=5,
+            est_method=est_method,
+        )
+
+    assert np.shape(result.boots) == (5,)
+    np.testing.assert_allclose(result.boots, estimates[1:], rtol=1e-10)
+    np.testing.assert_allclose(
+        [result.att, result.se],
+        [estimates[0], (quartiles[1] - quartiles[0]) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))],
+        rtol=1e-10,
+    )
+    assert result.args["boot"] is True
+    assert result.args["boot_type"] == "weighted"
+    assert [str(warning.message) for warning in caught] == []
+
+
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_multiplier_bootstrap_draws_center_on_zero_and_return_the_influence_function(
+    trimmed_two_period_data,
+    trimmed_two_period_frames,
+    panel_matching_did,
+    rc_matching_did,
+    seeded_default_rng,
+    panel,
+    est_method,
+):
+    data = trimmed_two_period_data
+    n = data["d"].size
+    biters = 499
+    if panel:
+        _, inf_func = panel_matching_did(data["y1"] - data["y0"], data["d"], np.zeros(n), np.ones(n))
+    else:
+        _, inf_func = rc_matching_did(data["y"], data["post"], data["d"], np.zeros(n), np.ones(n))
+    se = np.sqrt(np.sum(inf_func**2)) / n
+
+    result = drdid(
+        data=trimmed_two_period_frames["panel" if panel else "repeated_cross_sections"],
+        yname="y",
+        tname="year",
+        treatname="d",
+        idname="id" if panel else None,
+        panel=panel,
+        boot=True,
+        boot_type="multiplier",
+        biters=biters,
+        inf_func=True,
+        est_method=est_method,
+    )
+
+    assert np.shape(result.boots) == (biters,)
+    assert abs(np.mean(result.boots)) < 5 * se / np.sqrt(biters)
+    np.testing.assert_allclose(
+        result.se,
+        np.subtract(*np.percentile(result.boots, [75, 25])) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25)),
+        rtol=1e-12,
+    )
+    assert np.shape(result.att_inf_func) == inf_func.shape
+    np.testing.assert_allclose(result.att_inf_func, inf_func, rtol=1e-9, atol=1e-12)
+    assert result.args["boot"] is True
+    assert result.args["boot_type"] == "multiplier"
+
+
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+def test_drdid_repeated_cross_sections_without_covariates_give_the_difference_of_cell_means(nsw_data, est_method):
+    y = nsw_data["re"].to_numpy()
+    post = nsw_data["year"].to_numpy() == 1978
+    treated = nsw_data["experimental"].to_numpy() == 1
+    cells = [y[treated & post], y[treated & ~post], y[~treated & post], y[~treated & ~post]]
+    att = cells[0].mean() - cells[1].mean() - cells[2].mean() + cells[3].mean()
+    se = np.sqrt(sum(cell.var() / cell.size for cell in cells))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            panel=False,
+            est_method=est_method,
+        )
+
     assert isinstance(result.att, float)
-    assert result.args["trim_level"] == trim_level
+    np.testing.assert_allclose(
+        [result.att, result.se, result.lci, result.uci], [att, se, att - 1.96 * se, att + 1.96 * se], rtol=1e-12
+    )
+    assert result.att_inf_func is None
+    assert result.args["panel"] is False
+    assert result.args["estMethod"] == est_method
+    assert [str(warning.message) for warning in caught] == []
+
+
+@pytest.mark.parametrize(
+    ("panel", "est_method", "estimator"),
+    [
+        (True, "imp", drdid_imp_panel),
+        (True, "trad", drdid_panel),
+        (False, "imp", drdid_imp_local_rc),
+        (False, "trad", drdid_rc),
+    ],
+)
+def test_drdid_passes_trim_level_to_the_estimator(
+    trimmed_two_period_data, trimmed_two_period_frames, panel, est_method, estimator
+):
+    data = trimmed_two_period_data
+    outcomes = {"y1": data["y1"], "y0": data["y0"]} if panel else {"y": data["y"], "post": data["post"]}
+    expected = estimator(d=data["d"], covariates=data["x"], trim_level=0.9, **outcomes)
+    untrimmed = estimator(d=data["d"], covariates=data["x"], **outcomes)
+
+    result = drdid(
+        data=trimmed_two_period_frames["panel" if panel else "repeated_cross_sections"],
+        yname="y",
+        tname="year",
+        treatname="d",
+        idname="id" if panel else None,
+        xformla="~ x1",
+        panel=panel,
+        trim_level=0.9,
+        est_method=est_method,
+    )
+
+    assert abs(expected.att - untrimmed.att) > 1e-2
+    assert np.all(np.isfinite([expected.att, expected.se]))
+    assert expected.se > 0
+    np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
+    assert result.args["trim_level"] == 0.9
 
 
 @pytest.mark.parametrize("panel", [True, False])
@@ -237,31 +381,7 @@ def test_drdid_missing_id_col_panel():
         )
 
 
-@pytest.mark.parametrize(
-    "formula",
-    [
-        "~ age + educ + age:educ",
-        "~ age + I(age**2) + educ",
-    ],
-)
-def test_drdid_formula_variations(nsw_data, formula):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla=formula,
-        panel=True,
-        est_method="imp",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-
-
-@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
-def test_drdid_call_params_stored(nsw_data):
+def test_drdid_call_params_stored(nsw_data, seeded_default_rng):
     result = drdid(
         data=nsw_data,
         yname="re",
@@ -271,6 +391,7 @@ def test_drdid_call_params_stored(nsw_data):
         xformla="~ age + educ",
         panel=True,
         boot=True,
+        boot_type="multiplier",
         biters=50,
         inf_func=True,
         est_method="imp",
@@ -284,20 +405,21 @@ def test_drdid_call_params_stored(nsw_data):
     assert result.call_params["xformla"] == "~ age + educ"
     assert result.call_params["panel"] is True
     assert result.call_params["boot"] is True
+    assert result.call_params["boot_type"] == "multiplier"
     assert result.call_params["biters"] == 50
     assert result.call_params["inf_func"] is True
     assert result.call_params["est_method"] == "imp"
     assert result.call_params["trim_level"] == 0.99
-    assert "data_shape" in result.call_params
+    assert result.call_params["weightsname"] is None
+    assert result.call_params["data_shape"] == nsw_data.shape
 
 
-@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
-def test_drdid_args_output(nsw_data):
+def test_drdid_args_output(trimmed_two_period_frames, seeded_exponential_draws):
     result = drdid(
-        data=nsw_data,
-        yname="re",
+        data=trimmed_two_period_frames["panel"],
+        yname="y",
         tname="year",
-        treatname="experimental",
+        treatname="d",
         idname="id",
         panel=True,
         boot=True,
@@ -315,103 +437,52 @@ def test_drdid_args_output(nsw_data):
     assert result.args["estMethod"] == "trad"
 
 
-def test_drdid_reproducibility(nsw_data):
-    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:50].to_list()
-    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:50].to_list()
-    selected_ids = treated_ids + control_ids
-    small_data = nsw_data.filter(pl.col("id").is_in(selected_ids))
-
-    result1 = drdid(
-        data=small_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla="~ age + educ",
-        panel=True,
-        est_method="imp",
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+def test_drdid_panel_pairs_the_two_periods_of_each_unit_by_id(nsw_data, nsw_changes, panel_matching_did, est_method):
+    shuffled = nsw_data[np.random.default_rng(3).permutation(nsw_data.height)]
+    att, inf_func = panel_matching_did(
+        nsw_changes["dre"].to_numpy(),
+        nsw_changes["experimental"].to_numpy(),
+        (nsw_changes["black"] + 2 * nsw_changes["hisp"]).to_numpy(),
+        np.ones(nsw_changes.height),
     )
-
-    result2 = drdid(
-        data=small_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla="~ age + educ",
-        panel=True,
-        est_method="imp",
-    )
-
-    assert result1.att == result2.att
-    assert result1.se == result2.se
-
-
-def test_drdid_subset_columns(nsw_data):
-    subset_cols = ["id", "year", "re", "experimental", "age", "educ"]
-    subset_data = nsw_data.select(subset_cols)
 
     result = drdid(
-        data=subset_data,
+        data=shuffled,
         yname="re",
         tname="year",
         treatname="experimental",
         idname="id",
-        xformla="~ age + educ",
+        xformla="~ black + hisp",
         panel=True,
-        est_method="imp",
+        est_method=est_method,
     )
 
-    assert isinstance(result.att, float)
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / inf_func.size], rtol=1e-10)
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_ignores_data_columns_outside_the_model(nsw_data, panel):
+    spec = {
+        "yname": "re",
+        "tname": "year",
+        "treatname": "experimental",
+        "idname": "id",
+        "xformla": "~ age + educ",
+        "panel": panel,
+    }
+
+    result = drdid(data=nsw_data, **spec)
+    expected = drdid(data=nsw_data.select("id", "year", "re", "experimental", "age", "educ"), **spec)
+
+    assert np.all(np.isfinite([result.att, result.se]))
     assert result.se > 0
+    assert result.att == expected.att
+    assert result.se == expected.se
 
 
-@pytest.mark.parametrize("covariates_formula", [None, "~ 1"])
-def test_drdid_no_covariates(nsw_data, covariates_formula):
-    result = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla=covariates_formula,
-        panel=True,
-        est_method="imp",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-
-
-def test_drdid_no_covariates_equivalence(nsw_data):
-    result1 = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla=None,
-        panel=True,
-        est_method="imp",
-    )
-
-    result2 = drdid(
-        data=nsw_data,
-        yname="re",
-        tname="year",
-        treatname="experimental",
-        idname="id",
-        xformla="~ 1",
-        panel=True,
-        est_method="imp",
-    )
-
-    assert np.isclose(result1.att, result2.att, rtol=1e-10)
-    assert np.isclose(result1.se, result2.se, rtol=1e-10)
-
-
-def test_drdid_categorical_covariates(nsw_data):
-    nsw_data = nsw_data.with_columns(
+def test_drdid_categorical_covariate_gives_the_exact_matching_estimate(nsw_data, nsw_changes, panel_matching_did):
+    age_group = (
         pl.when(pl.col("age") <= 25)
         .then(pl.lit("young"))
         .when(pl.col("age") <= 35)
@@ -419,25 +490,28 @@ def test_drdid_categorical_covariates(nsw_data):
         .otherwise(pl.lit("old"))
         .alias("age_group")
     )
+    units = nsw_changes.with_columns(age_group)
+    att, inf_func = panel_matching_did(
+        units["dre"].to_numpy(),
+        units["experimental"].to_numpy(),
+        units["age_group"].to_numpy(),
+        np.ones(units.height),
+    )
 
     result = drdid(
-        data=nsw_data,
+        data=nsw_data.with_columns(age_group),
         yname="re",
         tname="year",
         treatname="experimental",
         idname="id",
-        xformla="~ C(age_group) + educ + black",
+        xformla="~ C(age_group)",
         panel=True,
         est_method="imp",
     )
 
-    assert isinstance(result.att, float)
-    assert result.se > 0
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / inf_func.size], rtol=1e-10)
 
 
-@pytest.mark.filterwarnings("ignore:Missing values found:UserWarning")
-@pytest.mark.filterwarnings("ignore:Dropped.*rows due to missing values:UserWarning")
-@pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
 def test_drdid_missing_values_error():
     rng = np.random.default_rng(42)
     y_vals = rng.standard_normal(100)
@@ -452,7 +526,7 @@ def test_drdid_missing_values_error():
         }
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"^Missing values found in panel data\. Dropped 1 rows\."):
         drdid(
             data=df,
             yname="y",
@@ -464,29 +538,24 @@ def test_drdid_missing_values_error():
         )
 
 
-@pytest.mark.filterwarnings("ignore:Small group size detected:UserWarning")
-@pytest.mark.filterwarnings("ignore:Only.*control units available:UserWarning")
-def test_drdid_unbalanced_panel_warning():
-    rng = np.random.default_rng(42)
-    df = pl.DataFrame(
-        {
-            "id": [1, 1, 2, 2, 3],
-            "time": [0, 1, 0, 1, 0],
-            "y": rng.standard_normal(5),
-            "treat": [0, 0, 1, 1, 0],
-        }
-    )
+def test_drdid_unbalanced_panel_warns_and_drops_the_units_seen_once(nsw_data, nsw_changes):
+    unbalanced = nsw_data.filter(~((pl.col("id") == 15995) & (pl.col("year") == 1978)))
+    balanced = nsw_changes.filter(pl.col("id") != 15995)
+    treated = balanced.filter(pl.col("experimental") == 1)["dre"].to_numpy()
+    comparison = balanced.filter(pl.col("experimental") == 0)["dre"].to_numpy()
+    message = "Panel data is unbalanced. Dropping units with incomplete observations."
 
-    with pytest.warns(UserWarning, match="Panel data is unbalanced"):
-        result = drdid(
-            data=df,
-            yname="y",
-            tname="time",
-            treatname="treat",
-            idname="id",
-            panel=True,
-        )
-        assert isinstance(result.att, float)
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$"):
+        result = drdid(data=unbalanced, yname="re", tname="year", treatname="experimental", idname="id", panel=True)
+
+    np.testing.assert_allclose(
+        [result.att, result.se],
+        [
+            treated.mean() - comparison.mean(),
+            np.sqrt(treated.var() / treated.size + comparison.var() / comparison.size),
+        ],
+        rtol=1e-12,
+    )
 
 
 def test_drdid_more_than_two_periods_error():
@@ -500,7 +569,9 @@ def test_drdid_more_than_two_periods_error():
         }
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match=re.escape("This package currently supports only two time periods (pre and post).")
+    ):
         drdid(
             data=df,
             yname="y",
@@ -512,19 +583,28 @@ def test_drdid_more_than_two_periods_error():
 
 
 @pytest.mark.parametrize(
-    "panel,method",
+    ("panel", "method", "estimator", "other"),
     [
-        (True, "imp"),
-        (True, "trad"),
-        (False, "imp"),
-        (False, "trad"),
+        (True, "imp", drdid_imp_panel, drdid_panel),
+        (True, "trad", drdid_panel, drdid_imp_panel),
+        (False, "imp", drdid_imp_local_rc, drdid_rc),
+        (False, "trad", drdid_rc, drdid_imp_local_rc),
     ],
 )
-def test_drdid_all_estimators_consistency(nsw_data, panel, method):
-    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:50].to_list()
-    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:50].to_list()
-    selected_ids = treated_ids + control_ids
-    small_data = nsw_data.filter(pl.col("id").is_in(selected_ids))
+def test_drdid_runs_the_estimator_that_panel_and_est_method_select(nsw_data, panel, method, estimator, other):
+    first_units = nsw_data.filter(pl.col("year") == 1978).sort("id").group_by("experimental").head(50)
+    small_data = nsw_data.filter(pl.col("id").is_in(first_units["id"].to_list()))
+    post = small_data.filter(pl.col("year") == 1978).sort("id")
+    pre = small_data.filter(pl.col("year") == 1975).sort("id")
+    rows = post if panel else small_data
+    outcomes = (
+        {"y1": post["re"].to_numpy(), "y0": pre["re"].to_numpy()}
+        if panel
+        else {"y": rows["re"].to_numpy(), "post": (rows["year"] == 1978).cast(pl.Int64).to_numpy()}
+    )
+    covariates = np.column_stack([np.ones(rows.height), rows.select("age", "educ").to_numpy()])
+    expected = estimator(d=rows["experimental"].to_numpy(), covariates=covariates, **outcomes)
+    alternative = other(d=rows["experimental"].to_numpy(), covariates=covariates, **outcomes)
 
     result = drdid(
         data=small_data,
@@ -538,12 +618,18 @@ def test_drdid_all_estimators_consistency(nsw_data, panel, method):
     )
 
     assert isinstance(result.att, float)
+    assert np.all(np.isfinite([result.att, result.se]))
     assert result.se > 0
-    assert np.isfinite(result.att)
-    assert -10000 < result.att < 10000
+    assert abs(expected.att - alternative.att) > 100
+    np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
 
 
-def test_drdid_comparison_with_ordid(nsw_data):
+def test_drdid_matches_ordid_without_covariates(nsw_data, nsw_changes):
+    treated = nsw_changes.filter(pl.col("experimental") == 1)["dre"].to_numpy()
+    comparison = nsw_changes.filter(pl.col("experimental") == 0)["dre"].to_numpy()
+    att = treated.mean() - comparison.mean()
+    se = np.sqrt(treated.var() / treated.size + comparison.var() / comparison.size)
+
     or_result = ordid(
         data=nsw_data,
         yname="re",
@@ -552,7 +638,6 @@ def test_drdid_comparison_with_ordid(nsw_data):
         idname="id",
         panel=True,
     )
-
     dr_result = drdid(
         data=nsw_data,
         yname="re",
@@ -563,7 +648,8 @@ def test_drdid_comparison_with_ordid(nsw_data):
         est_method="trad",
     )
 
-    assert abs(or_result.att - dr_result.att) < abs(or_result.att) * 2
+    np.testing.assert_allclose([or_result.att, or_result.se], [att, se], rtol=1e-12)
+    np.testing.assert_allclose([dr_result.att, dr_result.se], [att, se], rtol=1e-12)
 
 
 @pytest.mark.parametrize(
@@ -588,6 +674,8 @@ def test_drdid_transformed_covariates_match_explicit_columns(nsw_data, transform
     result = drdid(data=data, xformla=transformed, **spec)
     expected = drdid(data=data, xformla=explicit, **spec)
 
+    assert np.all(np.isfinite([result.att, result.se]))
+    assert result.se > 0
     np.testing.assert_allclose(result.att, expected.att, rtol=1e-10)
     np.testing.assert_allclose(result.se, expected.se, rtol=1e-10)
 
@@ -625,6 +713,7 @@ def test_drdid_reads_decimal_outcome_treatment_covariates_and_weights_as_doubles
     result = drdid(data=data, **spec)
     expected = drdid(data=floats, **spec)
 
+    assert np.all(np.isfinite([result.att, result.se]))
     np.testing.assert_allclose(result.att, expected.att, rtol=1e-12)
     np.testing.assert_allclose(result.se, expected.se, rtol=1e-12)
 
@@ -663,6 +752,7 @@ def test_drdid_panel_plain_covariates_without_formulaic(nsw_data, without_formul
         xformla="~ age + educ + black",
     )
 
+    assert np.all(np.isfinite([result.att, result.se]))
     np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
 
 
@@ -685,6 +775,7 @@ def test_drdid_rc_plain_covariates_without_formulaic(nsw_data, without_formulaic
         xformla="~ age + educ + black",
     )
 
+    assert np.all(np.isfinite([result.att, result.se]))
     np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
 
 
@@ -989,39 +1080,71 @@ def test_drdid_panel_header_and_table_count_the_balanced_units(nsw_data):
     assert result.__maketables_stat__("N") == 32832
 
 
-@pytest.mark.parametrize(
-    ("est_method", "estimator", "att", "se"),
-    [
-        ("imp", drdid_imp_local_rc, 0.08027838510, 0.2008845114),
-        ("trad", drdid_rc, 0.1013594144, 0.2052425977),
-    ],
-)
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
 def test_drdid_rc_methods_run_the_locally_efficient_estimators(
-    rc_correct_models, rc_correct_models_arrays, est_method, estimator, att, se
+    nsw_thinned, rc_matching_did, rc_period_matching_did, est_method
 ):
+    arrays = (
+        nsw_thinned["re"].to_numpy(),
+        (nsw_thinned["year"] == 1978).cast(pl.Int64).to_numpy(),
+        nsw_thinned["experimental"].to_numpy(),
+        (nsw_thinned["black"] + 2 * nsw_thinned["hisp"]).to_numpy(),
+        np.ones(nsw_thinned.height),
+    )
+    att, _ = rc_matching_did(*arrays)
+    period_att, _ = rc_period_matching_did(*arrays)
+
     result = drdid(
-        data=rc_correct_models,
-        yname="y",
+        data=nsw_thinned,
+        yname="re",
         tname="year",
-        treatname="d",
-        xformla="~ z1 + z2 + z3 + z4",
+        treatname="experimental",
+        xformla="~ black + hisp",
         panel=False,
         est_method=est_method,
     )
-    expected = estimator(**rc_correct_models_arrays)
 
-    np.testing.assert_allclose([result.att, result.se], [att, se], rtol=1e-6)
-    np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-10)
+    assert abs(att - period_att) > 50
+    np.testing.assert_allclose(result.att, att, rtol=1e-10)
+
+
+@pytest.mark.parametrize("estimator", [drdid_imp_rc, drdid_trad_rc])
+def test_rc_estimators_that_are_not_locally_efficient_stay_reachable(
+    nsw_thinned, rc_matching_did, rc_period_matching_did, estimator
+):
+    y = nsw_thinned["re"].to_numpy()
+    post = (nsw_thinned["year"] == 1978).cast(pl.Int64).to_numpy()
+    d = nsw_thinned["experimental"].to_numpy()
+    cells = (nsw_thinned["black"] + 2 * nsw_thinned["hisp"]).to_numpy()
+    att, _ = rc_period_matching_did(y, post, d, cells, np.ones(y.size))
+    local_att, _ = rc_matching_did(y, post, d, cells, np.ones(y.size))
+    covariates = np.column_stack([np.ones(y.size), nsw_thinned.select("black", "hisp").to_numpy()])
+
+    result = estimator(y=y, post=post, d=d, covariates=covariates)
+
+    assert abs(att - local_att) > 50
+    np.testing.assert_allclose(result.att, att, rtol=1e-10)
 
 
 @pytest.mark.parametrize(
-    ("estimator", "att", "se"),
-    [(drdid_imp_rc, -1.941300004, 3.104453917), (drdid_trad_rc, -1.918270052, 3.105298316)],
+    ("estimator", "data_fixture"),
+    [(drdid_imp_rc, "nsw_data"), (drdid_trad_rc, "nsw_data"), (drdid_trad_rc, "nsw_thinned")],
 )
-def test_rc_estimators_that_are_not_locally_efficient_stay_reachable(rc_correct_models_arrays, estimator, att, se):
-    result = estimator(**rc_correct_models_arrays)
+def test_rc_estimators_that_are_not_locally_efficient_return_the_matching_influence_function(
+    request, rc_period_matching_did, estimator, data_fixture
+):
+    data = request.getfixturevalue(data_fixture)
+    y = data["re"].to_numpy()
+    post = (data["year"] == 1978).cast(pl.Int64).to_numpy()
+    d = data["experimental"].to_numpy()
+    covariates = np.column_stack([np.ones(y.size), data.select("black", "hisp").to_numpy()])
+    att, inf_func = rc_period_matching_did(y, post, d, covariates[:, 1] + 2 * covariates[:, 2], np.ones(y.size))
 
-    np.testing.assert_allclose([result.att, result.se], [att, se], rtol=1e-6)
+    result = estimator(y=y, post=post, d=d, covariates=covariates, influence_func=True)
+
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / y.size], rtol=1e-10)
+    assert np.shape(result.att_inf_func) == inf_func.shape
+    np.testing.assert_allclose(result.att_inf_func, inf_func, rtol=1e-9, atol=1e-6)
 
 
 @pytest.mark.parametrize(
@@ -1155,6 +1278,7 @@ def test_rc_estimators_without_treated_regressions_fit_an_unidentified_treated_c
 
     result = estimator(**arrays, influence_func=True)
 
+    assert np.isfinite(result.se)
     np.testing.assert_allclose(result.att, att, rtol=1e-12)
     np.testing.assert_allclose(result.se, np.std(result.att_inf_func) / np.sqrt(y.size), rtol=1e-12)
 
@@ -1275,9 +1399,72 @@ def test_estimators_give_the_same_estimate_whatever_the_scale_of_a_covariate(
         d=design["d"], covariates=np.column_stack([ones, design["z"][:, 0], scale * design["z"][:, 1]]), **outcomes
     )
 
+    assert np.all(np.isfinite([result.att, result.se]))
     np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=rtol)
 
 
 def test_drdid_rejects_the_removed_n_boot_argument(nsw_data):
     with pytest.raises(TypeError, match="unexpected keyword argument 'n_boot'"):
         drdid(data=nsw_data, yname="re", tname="year", treatname="experimental", idname="id", boot=True, n_boot=50)
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"treatname": None}, "treatname is required. Please specify the treatment column."),
+        ({"trim_level": 1.0}, "trim_level=1.0 is not valid. Must be between 0 and 1 (exclusive)."),
+        ({"trim_level": 0}, "trim_level=0 is not valid. Must be between 0 and 1 (exclusive)."),
+        ({"boot_type": "wild"}, "boot_type='wild' is not valid. Must be 'weighted' or 'multiplier'."),
+        ({"biters": 0}, "biters=0 is not valid. Must be a positive integer."),
+        ({"biters": 10.0}, "biters=10.0 is not valid. Must be a positive integer."),
+    ],
+)
+def test_drdid_rejects_invalid_settings(nsw_data, changes, message):
+    spec = {"yname": "re", "tname": "year", "treatname": "experimental", "idname": "id"} | changes
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        drdid(data=nsw_data, **spec)
+
+
+def test_drdid_repeated_cross_sections_ignore_idname(
+    trimmed_two_period_data, trimmed_two_period_frames, rc_matching_did
+):
+    data = trimmed_two_period_data
+    n = data["d"].size
+    att, inf_func = rc_matching_did(data["y"], data["post"], data["d"], np.zeros(n), np.ones(n))
+
+    result = drdid(
+        data=trimmed_two_period_frames["repeated_cross_sections"],
+        yname="y",
+        tname="year",
+        treatname="d",
+        idname="id",
+        panel=False,
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [att, np.sqrt(np.sum(inf_func**2)) / n], rtol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("column", "message"),
+    [
+        (
+            "experimental",
+            "Treatment indicator ('experimental') must be unique for each ID ('id'). IDs with varying treatment: [1].",
+        ),
+        ("w", "Weights must be time-invariant in panel data."),
+    ],
+)
+def test_drdid_panel_rejects_a_treatment_or_weight_that_changes_over_time(nsw_data, column, message):
+    row = (pl.col("id") == 1) & (pl.col("year") == 1978)
+    data = nsw_data.with_columns(pl.lit(1.0).alias("w"))
+
+    with pytest.raises(ValueError, match=f"{re.escape(message)}$"):
+        drdid(
+            data=data.with_columns(pl.when(row).then(1 - pl.col(column)).otherwise(pl.col(column)).alias(column)),
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            weightsname="w",
+        )
