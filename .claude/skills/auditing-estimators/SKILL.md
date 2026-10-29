@@ -33,4 +33,4 @@ Write down each equation behind the estimand under audit, with its number in the
 
 ## Report
 
-Give each finding with the equation, the code line, a reproduction, and its size. A departure that follows the paper stays and is recorded beside the comparison. A bug is fixed under writing-moderndid-code once the user agrees. When other sessions or agents run estimators on the same checkout, report rather than fix, since moderndid is an editable install and a half-done fix moves everyone's numbers.
+Give each finding with the equation, the code line, a reproduction, and its size. A departure that follows the paper stays and is recorded beside the comparison. A bug is fixed under writing-moderndid-code and writing-moderndid-tests once the user agrees. When other sessions or agents run estimators on the same checkout, report rather than fix, since moderndid is an editable install and a half-done fix moves everyone's numbers.
