@@ -698,6 +698,45 @@ def mpdta_cohort_switched_off(mpdta_data):
 
 
 @pytest.fixture
+def mpdta_varying_covariate(mpdta_with_states):
+    """mpdta with states and a covariate that differs in every year of each county."""
+    return mpdta_with_states.with_columns(
+        (pl.col("lpop") + 0.2 * ((pl.col("countyreal") + pl.col("year")) % 5)).alias("x")
+    )
+
+
+@pytest.fixture
+def mpdta_outlying_controls(mpdta_data):
+    """Weighted mpdta in which a few never-treated counties lie far from the rest in the covariate or the weight."""
+    never = pl.col("first.treat") == 0
+    below = never & (pl.col("countyreal") % 40 == 0)
+    above = never & (pl.col("countyreal") % 40 == 20)
+    light = never & (pl.col("countyreal") % 40 == 10)
+    covariate = (pl.col("first.treat") > 0).cast(pl.Float64) + pl.col("countyreal").cast(pl.Float64).sin()
+    return mpdta_data.with_columns(
+        pl.when(below).then(covariate - 10).when(above).then(covariate + 10).otherwise(covariate).alias("x"),
+        pl.when(above)
+        .then(0.0)
+        .when(light)
+        .then(1e-7 * pl.col("lpop").exp())
+        .otherwise(pl.col("lpop").exp())
+        .alias("w"),
+    )
+
+
+@pytest.fixture
+def mpdta_shifted_covariate(mpdta_data):
+    """mpdta with a covariate that is lpop plus 0.3."""
+    return mpdta_data.with_columns((pl.col("lpop") + 0.3).alias("lpop_shifted"))
+
+
+@pytest.fixture
+def mpdta_county_clusters(mpdta_data):
+    """mpdta with a cluster variable that gives each county a cluster of its own."""
+    return mpdta_data.with_columns((10 * pl.col("countyreal")).alias("county_cluster"))
+
+
+@pytest.fixture
 def mpdta_cells():
     """Function that lists each mpdta cell as its cohort and period and base period and comparison cohorts."""
 
@@ -1055,6 +1094,162 @@ def wide_cross_section_atts_with_scaled_row_weights():
         return np.array([cell.att for cell in compute_att_gt(data).attgt_list])
 
     return refit
+
+
+def _weighted_scalable_panel(n_covariates):
+    """Generate a panel of 800 units over three periods with unequal unit weights."""
+    data = gen_did_scalable(800, n_periods=3, n_cohorts=2, n_covariates=n_covariates, random_state=42)["data"]
+    weights = np.exp(np.random.default_rng(3).normal(size=800))
+    return data.join(pl.DataFrame({"id": np.arange(1, 801), "w": weights}), on="id")
+
+
+@pytest.fixture
+def wide_scalable_panel():
+    """Generated panel of 800 units over three periods with 20 covariates and unequal unit weights."""
+    return _weighted_scalable_panel(20)
+
+
+@pytest.fixture
+def wider_scalable_panel():
+    """Generated panel of 800 units over three periods with 50 covariates and unequal unit weights."""
+    return _weighted_scalable_panel(50)
+
+
+def _small_comparison_panel(n_never):
+    """Build a panel with 20 covariates whose cohorts 2 and 3 have 150 units each beside the never-treated units."""
+    rng = np.random.default_rng(0)
+    cohorts = np.r_[np.full(150, 2), np.full(150, 3), np.zeros(n_never)]
+    n_units = len(cohorts)
+    x = rng.normal(size=(n_units, 20))
+    trend = x @ rng.normal(size=20) / np.sqrt(20)
+    level = rng.normal(size=n_units)
+    frames = [
+        pl.DataFrame(
+            {
+                "id": np.arange(n_units),
+                "t": t,
+                "g": cohorts,
+                "y": level + t * trend + ((cohorts > 0) & (t >= cohorts)) + rng.normal(size=n_units),
+                **{f"x{j}": x[:, j] for j in range(20)},
+            }
+        )
+        for t in (1, 2, 3)
+    ]
+    return pl.concat(frames)
+
+
+@pytest.fixture
+def twenty_never_treated_panel():
+    """Panel with 20 covariates whose 20 never-treated units number one fewer than the regression coefficients."""
+    return _small_comparison_panel(20)
+
+
+@pytest.fixture
+def twenty_five_never_treated_panel():
+    """Panel with 20 covariates whose 25 never-treated units outnumber the regression coefficients by four."""
+    return _small_comparison_panel(25)
+
+
+def _confounded_panel(n_units, strength):
+    """Build a panel with four confounders among 20 covariates and effects of t - g + 1 after treatment."""
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=(n_units, 20))
+    index = strength * x[:, :4] @ np.array([1.0, -1.0, 0.5, 0.5])
+    odds = np.column_stack([np.ones(n_units), np.exp(index), np.exp(-index)])
+    shares = np.cumsum(odds / odds.sum(axis=1, keepdims=True), axis=1)
+    cohorts = np.array([0, 2, 3])[(rng.random(n_units)[:, None] > shares).sum(axis=1)]
+    trend = x[:, :4] @ np.array([2.0, 1.0, -1.0, 0.5])
+    level = x[:, 0] + rng.normal(size=n_units)
+    frames = [
+        pl.DataFrame(
+            {
+                "id": np.arange(n_units),
+                "t": t,
+                "g": cohorts,
+                "y": level
+                + t * trend
+                + np.where((cohorts > 0) & (t >= cohorts), t - cohorts + 1.0, 0.0)
+                + rng.normal(size=n_units),
+                **{f"x{j}": x[:, j] for j in range(20)},
+            }
+        )
+        for t in (1, 2, 3)
+    ]
+    return pl.concat(frames)
+
+
+@pytest.fixture
+def planted_effects_panel():
+    """Panel of 4000 units with four confounders among 20 covariates and effects of t - g + 1 after treatment."""
+    return _confounded_panel(4000, 0.6)
+
+
+@pytest.fixture
+def separated_cohort_panel():
+    """Panel with 20 covariates whose cohort 2 propensity scores pass 0.999 while those of cohort 3 stay below."""
+    return _confounded_panel(1000, 1.5)
+
+
+@pytest.fixture
+def trimmed_comparison_panel():
+    """Panel with 20 covariates in which two comparison units share the profile of many treated units."""
+    rng = np.random.default_rng(0)
+    cohorts = np.r_[np.full(400, 3), 0, np.full(150, 3), 0, np.full(120, 3), np.zeros(300)]
+    n_units = len(cohorts)
+    x = np.zeros((n_units, 20))
+    x[:401, 0] = 1.0
+    x[401:552, 1] = 1.0
+    x[552:, 2:] = rng.normal(size=(n_units - 552, 18))
+    jump = np.zeros(n_units)
+    jump[[400, 551]] = [4.0, -3.0]
+    level = rng.normal(size=n_units)
+    frames = [
+        pl.DataFrame(
+            {
+                "id": np.arange(n_units),
+                "t": t,
+                "g": cohorts,
+                "y": level
+                + t * (x[:, 2] - 0.5 * x[:, 3] + jump)
+                + ((cohorts == 3) & (t >= 3)) * (t - 2.0)
+                + rng.normal(size=n_units),
+                **{f"x{j}": x[:, j] for j in range(20)},
+            }
+        )
+        for t in (1, 2, 3, 4)
+    ]
+    return pl.concat(frames)
+
+
+@pytest.fixture
+def two_by_two_by_hand():
+    """Function that estimates one cell of a panel by hand with a Newton logit and least squares."""
+
+    def estimate(outcomes, cohorts, covariates, weights, cell, method, trim_level=0.995):
+        group, time, base, comparison = cell
+        rows = (cohorts == group) | np.isin(cohorts, comparison)
+        dy = outcomes[rows, time] - outcomes[rows, base]
+        d = (cohorts[rows] == group).astype(float)
+        x = covariates[rows]
+        w = weights[rows]
+        root = np.sqrt(w[d == 0])
+        beta = np.linalg.lstsq(root[:, None] * x[d == 0], root * dy[d == 0], rcond=None)[0]
+        if method == "reg":
+            return np.sum(w * d * (dy - x @ beta)) / np.sum(w * d)
+        gamma = np.zeros(x.shape[1])
+        for _ in range(50):
+            score = 1 / (1 + np.exp(-x @ gamma))
+            gamma = gamma + np.linalg.solve(x.T @ ((w * score * (1 - score))[:, None] * x), x.T @ (w * (d - score)))
+        score = np.clip(1 / (1 + np.exp(-x @ gamma)), 1e-6, 1 - 1e-6)
+        kept = (d == 1) | (score < trim_level)
+        treated_weights = kept * w * d
+        comparison_weights = kept * w * score * (1 - d) / (1 - score)
+        residual = dy - x @ beta if method == "dr" else dy
+        treated_mean = np.sum(treated_weights * residual) / np.sum(treated_weights)
+        comparison_mean = np.sum(comparison_weights * residual) / np.sum(comparison_weights)
+        return treated_mean - comparison_mean
+
+    return estimate
 
 
 @pytest.fixture
