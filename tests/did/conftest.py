@@ -682,6 +682,125 @@ def collinear_pretrend_panel():
 
 
 @pytest.fixture
+def mpdta_cells():
+    """Function that lists each mpdta cell as its cohort and period and base period and comparison cohorts."""
+
+    def cells(base_period="varying", control_group="nevertreated", anticipation=0):
+        cohorts = [group for group in (2004, 2006, 2007) if group > 2003 + anticipation]
+        listed = []
+        for group in cohorts:
+            for period in range(2003 if base_period == "universal" else 2004, 2008):
+                base = period - 1 if base_period == "varying" and period < group else group - 1 - anticipation
+                later = max(period, base) + anticipation
+                not_yet = [other for other in cohorts if other > later and other != group]
+                listed.append((group, period, base, [0, *not_yet] if control_group == "notyettreated" else [0]))
+        return listed
+
+    return cells
+
+
+@pytest.fixture
+def four_means():
+    """Function that computes a weighted difference in mean changes and the share of each row in its derivative."""
+
+    def compute(y, treated, control, later, earlier, weights):
+        att = 0.0
+        share = np.zeros(len(y))
+        parts = ((treated & later, 1), (treated & earlier, -1), (control & later, -1), (control & earlier, 1))
+        for part, sign in parts:
+            mean = np.sum(weights[part] * y[part]) / np.sum(weights[part])
+            att += sign * mean
+            share += sign * part * weights * (y - mean) / np.sum(weights[part])
+        return att, share
+
+    return compute
+
+
+@pytest.fixture
+def cells_from_weighted_means(four_means):
+    """Function that computes the ATT and influence function of mpdta cells from weighted means of lemp."""
+
+    def compute(rows, keys, cells, weights="pop"):
+        lemp = rows["lemp"].to_numpy()
+        year = rows["year"].to_numpy()
+        cohort = rows["first.treat"].to_numpy()
+        row_of = {key: position for position, key in enumerate(keys.iter_rows())}
+        positions = np.array([row_of[key] for key in rows.select(keys.columns).iter_rows()])
+        atts = []
+        columns = []
+        for group, period, base, controls in cells:
+            att, share = four_means(
+                lemp, cohort == group, np.isin(cohort, controls), year == period, year == base, rows[weights].to_numpy()
+            )
+            atts.append(att)
+            columns.append(len(row_of) * np.bincount(positions, weights=share, minlength=len(row_of)))
+        return np.array(atts), np.column_stack(columns)
+
+    return compute
+
+
+@pytest.fixture
+def cells_from_estimator():
+    """Function that runs a 2x2 estimator on the units of each mpdta cell and spreads its influence function."""
+
+    def compute(rows, keys, cells, estimator, panel=True, weights="pop"):
+        row_of = {key: position for position, key in enumerate(keys.iter_rows())}
+        atts = []
+        columns = []
+        for group, period, base, controls in cells:
+            if period == base:
+                atts.append(0.0)
+                columns.append(np.zeros(len(row_of)))
+                continue
+            cell = rows.filter(pl.col("first.treat").is_in([group, *controls]) & pl.col("year").is_in([period, base]))
+            if panel:
+                at_period = cell.filter(pl.col("year") == period).sort("countyreal")
+                at_base = cell.filter(pl.col("year") == base).sort("countyreal")
+                units = at_period if period < base else at_base
+                outcomes = {"y1": at_period["lemp"].to_numpy(), "y0": at_base["lemp"].to_numpy()}
+            else:
+                units = cell
+                outcomes = {"y": cell["lemp"].to_numpy(), "post": (cell["year"] == period).cast(pl.Int64).to_numpy()}
+            fit = estimator(
+                **outcomes,
+                d=(units["first.treat"] == group).cast(pl.Float64).to_numpy(),
+                covariates=np.column_stack([np.ones(units.height), units["lpop"].to_numpy()]),
+                i_weights=None if weights is None else units[weights].to_numpy(),
+                influence_func=True,
+            )
+            positions = [row_of[key] for key in units.select(keys.columns).iter_rows()]
+            column = np.zeros(len(row_of))
+            column[positions] = len(row_of) / len(positions) * fit.att_inf_func
+            atts.append(fit.att)
+            columns.append(column)
+        return np.array(atts), np.column_stack(columns)
+
+    return compute
+
+
+@pytest.fixture
+def mpdta_atts_with_scaled_unit_weights(mpdta_pop_weighted):
+    """Function that refits the mpdta cells after scaling the pop weight of each county by its own factor."""
+
+    def refit(units, factors, **spec):
+        scaled = mpdta_pop_weighted.with_columns(pl.col("pop") * pl.col("countyreal").replace_strict(units, factors))
+        return np.array([cell.att for cell in compute_att_gt(preprocess_did(scaled, **spec)).attgt_list])
+
+    return refit
+
+
+@pytest.fixture
+def rcs_with_empty_cell_periods():
+    """Repeated cross sections whose cohort 3 misses period 2 and whose never-treated rows miss periods 1 and 4."""
+    rng = np.random.default_rng(13)
+    present = {3: [1, 3, 4, 5], 5: [1, 2, 3, 4, 5], 0: [2, 3, 5]}
+    cohort, period = np.array([(g, t) for g, periods in present.items() for t in periods for _ in range(30)]).T
+    return pl.DataFrame(
+        {"t": period, "g": cohort, "y": period + (cohort > 0) * (period >= cohort) + rng.normal(size=len(period))}
+    )
+
+
+@pytest.fixture
 def weighted_wide_panel():
     """Generated panel of 600 units over three periods with twenty covariates and unequal unit weights."""
     data = gen_did_scalable(600, n_periods=3, n_cohorts=2, n_covariates=20, random_state=42)["data"]
