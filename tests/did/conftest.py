@@ -868,6 +868,39 @@ def zero_weight_outlier_panel():
 
 
 @pytest.fixture
+def mpdta_cohort_sizes(mpdta_data):
+    """Number of counties in each treated cohort of mpdta."""
+    counties = mpdta_data.filter((pl.col("year") == 2003) & (pl.col("first.treat") > 0))
+    return dict(counties.group_by("first.treat").len().iter_rows())
+
+
+@pytest.fixture
+def weighted_staggered_panel():
+    """Panel of 30 units over five periods with unequal weights and ids ordered by cohort with never-treated last."""
+    noise = np.random.default_rng(13).normal(size=150)
+    return _balanced_panel(
+        np.repeat([3, 4, 5, 0], [5, 8, 6, 11]),
+        0.5 + 2 * np.random.default_rng(14).random(30),
+        np.zeros(30),
+        5,
+        lambda ids, t, g, x: np.sin(ids) + 0.3 * t + noise + ((g > 0) & (t >= g)) * (0.5 + 0.4 * (t - g) + 0.2 * g),
+    )
+
+
+@pytest.fixture
+def draws_from_leading_weights():
+    """Turn fixed multiplier weights into a draw function that reads the leading rows and columns it needs."""
+
+    def build(weights):
+        def draws(inf_func, biters, random_state=None):
+            return weights[:biters, : inf_func.shape[0]] @ inf_func / inf_func.shape[0]
+
+        return draws
+
+    return build
+
+
+@pytest.fixture
 def weighted_wide_panel():
     """Generated panel of 600 units over three periods with twenty covariates and unequal unit weights."""
     data = gen_did_scalable(600, n_periods=3, n_cohorts=2, n_covariates=20, random_state=42)["data"]
