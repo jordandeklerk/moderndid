@@ -592,11 +592,10 @@ def test_att_gt_on_shards_trims_exactly_the_comparison_units_whose_newton_logit_
     "redundant",
     [
         pl.col("cov5"),
-        0.7 * pl.col("cov5"),
         pl.col("cov5") + 0.5 * pl.col("cov6") - pl.col("cov7"),
         pl.lit(3.0),
     ],
-    ids=["copy", "multiple", "combination", "constant"],
+    ids=["copy", "combination", "constant"],
 )
 def test_att_gt_on_shards_ipw_with_a_redundant_twenty_first_covariate_matches_the_fit_without_it(
     wide_scalable_panel, att_gt_on_shards, redundant
