@@ -330,3 +330,135 @@ def regression_specs(two_period_specs):
         "ols_rc": cross_section_spec,
         "wols_rc": {**cross_section_spec, "ps": ps},
     }
+
+
+@pytest.fixture(scope="module")
+def nsw_changes(nsw_data):
+    """NSW units sorted by id with their change in earnings from 1975 to 1978 in dre."""
+    pre = nsw_data.filter(pl.col("year") == 1975).sort("id")
+    post = nsw_data.filter(pl.col("year") == 1978).sort("id")
+    return post.with_columns((pl.col("re") - pre["re"]).alias("dre"))
+
+
+@pytest.fixture(scope="module")
+def nsw_thinned(nsw_data):
+    """NSW rows without the 1975 rows of the treated black units with even ids."""
+    dropped = (
+        (pl.col("experimental") == 1) & (pl.col("black") == 1) & (pl.col("year") == 1975) & (pl.col("id") % 2 == 0)
+    )
+    return nsw_data.filter(~dropped)
+
+
+@pytest.fixture(scope="module")
+def trimmed_two_period_frames(trimmed_two_period_data):
+    """The trimmed_two_period_data draw as the long panel and repeated cross-section data that drdid takes."""
+    data = trimmed_two_period_data
+    n = data["d"].size
+    d = data["d"].astype(int)
+    panel = pl.DataFrame(
+        {
+            "id": np.tile(np.arange(n), 2),
+            "year": np.repeat([2000, 2001], n),
+            "y": np.r_[data["y0"], data["y1"]],
+            "d": np.tile(d, 2),
+            "x1": np.tile(data["x"][:, 1], 2),
+        }
+    )
+    cross_sections = pl.DataFrame(
+        {"year": 2000 + data["post"].astype(int), "y": data["y"], "d": d, "x1": data["x"][:, 1]}
+    )
+    return {"panel": panel, "repeated_cross_sections": cross_sections}
+
+
+@pytest.fixture
+def panel_matching_did():
+    """Function that computes the exact matching DiD of a panel and its influence function by hand."""
+
+    def estimate(delta_y, d, cells, weights):
+        weights = weights / weights.mean()
+        labels = np.unique(cells, return_inverse=True)[1]
+        comparison = np.bincount(labels, weights=weights * (1 - d))
+        treated = np.bincount(labels, weights=weights * d)
+        mu = (np.bincount(labels, weights=weights * (1 - d) * delta_y) / comparison)[labels]
+        odds = (treated / comparison)[labels]
+        att = np.sum(weights * d * (delta_y - mu)) / np.sum(weights * d)
+        inf_func = weights * (d * (delta_y - mu - att) - (1 - d) * odds * (delta_y - mu)) / np.mean(weights * d)
+        return att, inf_func
+
+    return estimate
+
+
+@pytest.fixture
+def rc_matching_did():
+    """Function that averages the cell DiDs of repeated cross-sections over all treated rows by hand."""
+
+    def estimate(y, post, d, cells, weights):
+        weights = weights / weights.mean()
+        d = d.astype(int)
+        post = post.astype(int)
+        labels = np.unique(cells, return_inverse=True)[1]
+        n_cells = labels.max() + 1
+        group = 4 * labels + 2 * d + post
+        mass = np.bincount(group, weights=weights, minlength=4 * n_cells)
+        means = np.bincount(group, weights=weights * y, minlength=4 * n_cells) / mass
+        cell_means = means.reshape(n_cells, 2, 2)
+        did = cell_means[:, 1, 1] - cell_means[:, 1, 0] - cell_means[:, 0, 1] + cell_means[:, 0, 0]
+        share = np.bincount(labels, weights=weights * d, minlength=n_cells) / np.sum(weights * d)
+        att = np.sum(share * did)
+        sign = np.where(d == post, 1.0, -1.0)
+        inf_func = weights * (
+            d * (did[labels] - att) / np.mean(weights * d)
+            + share[labels] * sign * (y - means[group]) * y.size / mass[group]
+        )
+        return att, inf_func
+
+    return estimate
+
+
+@pytest.fixture
+def rc_period_matching_did():
+    """Function that matches the treated rows of each period to the comparison cells of that period by hand."""
+
+    def estimate(y, post, d, cells, weights):
+        weights = weights / weights.mean()
+        d = d.astype(int)
+        post = post.astype(int)
+        labels = np.unique(cells, return_inverse=True)[1]
+        group = 4 * labels + 2 * d + post
+        share = np.bincount(group, weights=weights, minlength=4 * (labels.max() + 1)) / y.size
+        means = np.bincount(group, weights=weights * y, minlength=4 * (labels.max() + 1)) / (share * y.size)
+        residual = y - means[4 * labels + post]
+        treated_post = np.mean(weights * d * post)
+        treated_pre = np.mean(weights * d * (1 - post))
+        after = np.mean(weights * d * post * residual) / treated_post
+        before = np.mean(weights * d * (1 - post) * residual) / treated_pre
+        treated_share = np.where(post == 1, share[4 * labels + 3] / treated_post, share[4 * labels + 2] / treated_pre)
+        inf_func = weights * (
+            d * post * (residual - after) / treated_post
+            - d * (1 - post) * (residual - before) / treated_pre
+            - (1 - d) * (2 * post - 1) * residual * treated_share / share[4 * labels + post]
+        )
+        return after - before, inf_func
+
+    return estimate
+
+
+@pytest.fixture
+def seeded_exponential_draws(monkeypatch):
+    """Weighted bootstrap draws taken from default_rng(8) in place of the unseeded RandomState."""
+
+    class SeededWeights:
+        def __init__(self, seed=None):
+            self._rng = np.random.default_rng(8)
+
+        def exponential(self, scale=1.0, size=None):
+            return self._rng.exponential(scale, size)
+
+    monkeypatch.setattr(np.random, "RandomState", SeededWeights)
+
+
+@pytest.fixture
+def seeded_default_rng(monkeypatch):
+    """np.random.default_rng that starts every unseeded generator from seed 6."""
+    default_rng = np.random.default_rng
+    monkeypatch.setattr(np.random, "default_rng", lambda seed=None: default_rng(6 if seed is None else seed))
