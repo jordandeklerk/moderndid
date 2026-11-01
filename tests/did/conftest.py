@@ -901,6 +901,35 @@ def draws_from_leading_weights():
 
 
 @pytest.fixture
+def rademacher_weights():
+    """Build fixed Rademacher multipliers with one row for each draw and one column for each unit."""
+
+    def build(n_draws, n_units):
+        return np.where(np.random.default_rng(11).random((n_draws, n_units)) < 0.5, 1.0, -1.0)
+
+    return build
+
+
+@pytest.fixture
+def influence_vector(request):
+    """Influence function of 300 units with the shape or distribution that the scenario names."""
+    rng = np.random.default_rng(3)
+    vectors = {
+        "constant": lambda: np.full(300, 5.0),
+        "linear_trend": lambda: np.linspace(0, 10, 300),
+        "high_variance": lambda: rng.normal(0, 100, 300),
+        "low_variance": lambda: rng.normal(0, 0.01, 300),
+        "normal": lambda: rng.standard_normal(300),
+        "uniform": lambda: rng.uniform(-np.sqrt(3), np.sqrt(3), 300),
+        "t3": lambda: rng.standard_t(3, 300),
+        "t10": lambda: rng.standard_t(10, 300),
+        "chi2": lambda: rng.chisquare(5, 300) - 5,
+        "exponential": lambda: rng.exponential(1, 300) - 1,
+    }
+    return vectors[request.param]()
+
+
+@pytest.fixture
 def weighted_cohorts_mp_result():
     """Hand-built att_gt result with cohorts of unequal size and weight whose units share shocks by index mod 20."""
     rng = np.random.default_rng(42)
