@@ -572,6 +572,51 @@ def panel_dr_att(least_squares_fit):
     return att
 
 
+@pytest.fixture
+def rc_dr_att(least_squares_fit):
+    """Compute the repeated cross-section doubly robust ATT of the paper from given propensity scores."""
+
+    def att(y, post, d, x, weights, ps, improved, locally_efficient, trim_level=1.0):
+        odds = ps / (1 - ps)
+        regression_weights = weights * odds if improved else weights
+        fits = [least_squares_fit(y, x, regression_weights, (d == 0) & (post == period)) for period in (0, 1)]
+        residual = y - np.where(post == 1, fits[1], fits[0])
+        comparison = odds * (1 - d) * (ps < trim_level)
+        estimate = (
+            np.average(residual, weights=weights * d * post)
+            - np.average(residual, weights=weights * d * (1 - post))
+            - np.average(residual, weights=weights * comparison * post)
+            + np.average(residual, weights=weights * comparison * (1 - post))
+        )
+        if not locally_efficient:
+            return estimate
+        for period, sign in ((1, 1), (0, -1)):
+            gap = least_squares_fit(y, x, weights, (d == 1) & (post == period)) - fits[period]
+            in_period = d * (post == period)
+            estimate += sign * (np.average(gap, weights=weights * d) - np.average(gap, weights=weights * in_period))
+        return estimate
+
+    return att
+
+
+@pytest.fixture(scope="module")
+def rc_period_balanced_binary_arrays():
+    """Repeated cross-section arrays whose groups have equal weighted binary covariate shares in both periods."""
+    rng = np.random.default_rng(13)
+    counts = [30, 20, 60, 40, 50, 50, 70, 70]
+    d = np.repeat([1, 1, 1, 1, 0, 0, 0, 0], counts)
+    post = np.repeat([0, 0, 1, 1, 0, 0, 1, 1], counts)
+    b = np.repeat([0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0], counts)
+    y = 1 + b + post * (0.5 + b) + d * (0.5 + post * (1 + b)) + rng.normal(size=d.size)
+    return {
+        "y": y,
+        "post": post,
+        "d": d,
+        "covariates": np.column_stack([np.ones(d.size), b]),
+        "i_weights": (1 + b) * (1.5 - 0.5 * d),
+    }
+
+
 @pytest.fixture(scope="module")
 def panel_planted_effect_arrays():
     """Panel arrays with correct score and outcome models whose treated units gain exactly one."""
@@ -582,6 +627,18 @@ def panel_planted_effect_arrays():
     trend = x[0] + x[2] + rng.normal(size=n)
     d = (rng.uniform(size=n) < 1 / (1 + np.exp(-(x[0] + x[2])))).astype(int)
     return {"y1": y0 + trend + d, "y0": y0, "d": d, "covariates": np.column_stack([np.ones(n), x.T])}
+
+
+@pytest.fixture(scope="module")
+def rc_planted_effect_arrays():
+    """Repeated cross-section arrays with correct score and outcome models whose treated rows gain exactly one."""
+    rng = np.random.default_rng(42)
+    n = 20000
+    x = rng.normal(size=(4, n))
+    post = rng.binomial(1, 0.5, n)
+    d = (rng.uniform(size=n) < 1 / (1 + np.exp(-(x[0] + x[2])))).astype(int)
+    y = 1 + np.array([2.0, 3.0, 4.0, 5.0]) @ x + post + d * post + rng.normal(size=n)
+    return {"y": y, "post": post, "d": d, "covariates": np.column_stack([np.ones(n), x.T])}
 
 
 @pytest.fixture(scope="module")
