@@ -32906,7 +32906,7 @@ packages:
   - tqdm>=4.0.0 ; extra == 'doc'
   - seaborn>=0.13.0 ; extra == 'doc'
   - great-tables>=0.15.0 ; extra == 'doc'
-  - maketables>=0.1.9,<0.2 ; extra == 'doc'
+  - maketables>=0.2,<0.3 ; extra == 'doc'
   - colorama ; extra == 'doc'
   - commonmark ; extra == 'doc'
   - faicons ; extra == 'doc'

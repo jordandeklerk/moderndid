@@ -113,7 +113,7 @@ doc = [
     "tqdm>=4.0.0",
     "seaborn>=0.13.0",
     "great-tables>=0.15.0",
-    "maketables>=0.1.9,<0.2",
+    "maketables>=0.2,<0.3",
     "colorama",
     "commonmark",
     "faicons",
