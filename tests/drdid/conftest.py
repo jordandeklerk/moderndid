@@ -120,6 +120,23 @@ def trimmed_two_period_data():
 
 
 @pytest.fixture(scope="module")
+def wide_two_period_data():
+    """Two-period panel from gen_did_scalable with an intercept and twenty covariates."""
+    simulated = gen_did_scalable(
+        n=1500, dgp_type=1, n_periods=2, n_cohorts=1, n_covariates=20, panel=True, random_state=42
+    )
+    data = simulated["data"].sort(["id", "time"])
+    pre = data.filter(pl.col("time") == 1)
+    post = data.filter(pl.col("time") == 2)
+    return {
+        "y1": post["y"].to_numpy(),
+        "y0": pre["y"].to_numpy(),
+        "d": (pre["group"] == 2).cast(pl.Int64).to_numpy(),
+        "x": np.column_stack([np.ones(pre.height), pre.select([f"cov{j}" for j in range(1, 21)]).to_numpy()]),
+    }
+
+
+@pytest.fixture(scope="module")
 def rc_correct_models():
     """Repeated cross-sections in which the logistic score and linear outcome models are all correct."""
     rng = np.random.default_rng(7)
