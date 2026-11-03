@@ -669,6 +669,24 @@ def panel_cell_arrays():
     return {"y1": y1, "y0": y0, "d": d, "covariates": covariates, "i_weights": rng.uniform(0.5, 2, size=cell.size)}
 
 
+@pytest.fixture(scope="module")
+def rc_cell_arrays():
+    """Repeated cross-sections whose covariates indicate three cells and whose third cell has two comparison rows."""
+    rng = np.random.default_rng(13)
+    cell = np.repeat([0, 1, 2], [160, 160, 62])
+    post = np.r_[rng.uniform(size=320) < 0.5, np.tile([0, 1], 31)].astype(int)
+    d = np.r_[rng.uniform(size=320) < np.repeat([0.3, 0.6], 160), np.ones(60), 0, 0].astype(int)
+    trend = cell + post * (1 + 0.5 * cell) + d * (0.5 + post * (1 + cell)) + 3 * (1 - d) * (cell == 2) * post
+    covariates = np.column_stack([np.ones(cell.size), cell == 1, cell == 2]).astype(float)
+    return {
+        "y": trend + rng.normal(size=cell.size),
+        "post": post,
+        "d": d,
+        "covariates": covariates,
+        "i_weights": rng.uniform(0.5, 2, size=cell.size),
+    }
+
+
 @pytest.fixture
 def cell_panel_att():
     """Compute the closed-form IPW ATT of panel arrays whose covariates indicate cells."""
@@ -698,6 +716,23 @@ def cell_panel_inf_func():
         return d.size * i_weights * (d * (gaps - att) - (1 - d) * (treated / controls)[cell] * gaps) / np.sum(treated)
 
     return inf_func
+
+
+@pytest.fixture
+def cell_rc_att():
+    """Compute the closed-form IPW ATT of repeated cross-section arrays whose covariates indicate cells."""
+
+    def att(y, post, d, covariates, i_weights, trim_level=0.995, normalized=False):
+        cell = np.rint(covariates[:, 1:] @ np.arange(1, covariates.shape[1])).astype(int)
+        ps = (np.bincount(cell, weights=i_weights * d) / np.bincount(cell, weights=i_weights))[cell]
+        weights = i_weights * np.where(d == 1, 1.0, (ps < trim_level) * ps / (1 - ps))
+        if normalized:
+            means = [np.average(y, weights=weights * (d == g) * (post == t)) for g in (1, 0) for t in (1, 0)]
+            return means[0] - means[1] - means[2] + means[3]
+        lam = np.sum(i_weights * post) / np.sum(i_weights)
+        return np.sum(weights * (2 * d - 1) * (post - lam) / (lam * (1 - lam)) * y) / np.sum(i_weights * d)
+
+    return att
 
 
 @pytest.fixture
