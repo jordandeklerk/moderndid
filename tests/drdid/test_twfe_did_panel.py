@@ -1,9 +1,11 @@
 """Tests for the two-way fixed effects DiD estimator with panel data."""
 
 import re
+from importlib import import_module
 
 import numpy as np
 import pytest
+from scipy import stats
 
 from moderndid import twfe_did_panel
 
@@ -14,86 +16,128 @@ pl = importorskip("polars")
 pytestmark = pytest.mark.slow
 
 
-def dgp_panel_for_test(n=2000, seed=42):
-    rng = np.random.default_rng(seed)
-    x1 = rng.normal(0, 1, n)
-    x2 = rng.normal(0, 1, n)
+def test_twfe_did_panel_with_time_invariant_covariates_is_the_difference_in_mean_changes(two_period_specs):
+    spec = two_period_specs["panel"]
+    d, w = spec["d"], spec["i_weights"]
+    delta_y = spec["y1"] - spec["y0"]
+    expected = np.average(delta_y[d == 1], weights=w[d == 1]) - np.average(delta_y[d == 0], weights=w[d == 0])
 
-    y00 = x1 + x2 + rng.normal(0, 1, n)
-    y10 = y00 + x1 + rng.normal(0, 1, n)
+    result = twfe_did_panel(**spec)
 
-    att = 1.0
-
-    d_propensity = 1 / (1 + np.exp(-(x1 + x2)))
-    d = (rng.uniform(size=n) < d_propensity).astype(int)
-
-    y1 = y10 + att * d
-    y0 = y00
-
-    covariates = np.column_stack((np.ones(n), x1, x2))
-
-    return y1, y0, d, covariates
+    np.testing.assert_allclose(result.att, expected, rtol=1e-12)
+    assert np.isfinite(result.se)
+    np.testing.assert_allclose(
+        [result.uci - result.att, result.att - result.lci], stats.norm.ppf(0.975) * result.se, rtol=1e-4
+    )
+    assert result.boots is None
+    assert result.att_inf_func is None
+    assert result.args["panel"] is True
+    assert result.args["type"] == "twfe"
 
 
-def test_basic_functionality():
-    y1, y0, d, covariates = dgp_panel_for_test()
-    result = twfe_did_panel(y1, y0, d, covariates)
+@pytest.mark.parametrize(
+    ("columns", "regressors"),
+    [([0, 1, 2], [1, 2]), ([1, 2], [1, 2]), (2, [2])],
+    ids=["with_intercept_column", "without_intercept_column", "one_dimensional"],
+)
+def test_twfe_did_panel_influence_function_matches_weight_derivative_of_the_stacked_regression(
+    two_period_specs, weight_derivative, columns, regressors
+):
+    spec = two_period_specs["panel"]
+    n = spec["d"].size
+    treated = np.tile(spec["d"], 2)
+    post = np.repeat([0.0, 1.0], n)
+    design = np.column_stack(
+        [np.ones(2 * n), treated, post, treated * post, np.tile(spec["covariates"][:, regressors], (2, 1))]
+    )
+    y = np.concatenate([spec["y0"], spec["y1"]])
+    weights = np.tile(spec["i_weights"], 2)
+    root = np.sqrt(weights)
+    expected_att = np.linalg.lstsq(design * root[:, None], y * root, rcond=None)[0][3]
+    rows = np.concatenate(
+        [np.flatnonzero((treated == group) & (post == period))[:3] for group in (0, 1) for period in (0, 1)]
+    )
 
-    assert result.att is not None
-    assert result.se is not None
-    assert result.uci is not None
-    assert result.lci is not None
-    assert -2.0 < result.att < 4.0
+    result = twfe_did_panel(**{**spec, "covariates": spec["covariates"][:, columns]}, influence_func=True)
+    expected = weight_derivative(
+        lambda scale: np.linalg.lstsq(
+            design * np.sqrt(weights * scale)[:, None], y * np.sqrt(weights * scale), rcond=None
+        )[0][3],
+        2 * n,
+        rows,
+    )
 
-
-def test_no_covariates():
-    y1, y0, d, _ = dgp_panel_for_test(n=1000)
-    result = twfe_did_panel(y1, y0, d, covariates=None)
-
-    assert result.att is not None
-    assert result.se is not None
-    assert result.uci is not None
-    assert result.lci is not None
-
-
-def test_bootstrap_weighted():
-    y1, y0, d, covariates = dgp_panel_for_test(n=500)
-    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", biters=99)
-
-    assert result.boots is not None
-    assert len(result.boots) == 99
-    assert result.se > 0
-    assert result.uci > result.lci
-
-
-def test_bootstrap_multiplier():
-    y1, y0, d, covariates = dgp_panel_for_test(n=500)
-    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="multiplier", biters=99)
-
-    assert result.boots is not None
-    assert len(result.boots) == 99
-    assert result.se > 0
-    assert result.uci > result.lci
+    np.testing.assert_allclose(result.att, expected_att, rtol=1e-12)
+    assert result.att_inf_func.shape == (2 * n,)
+    assert np.isfinite(result.att_inf_func).all()
+    np.testing.assert_allclose(result.att_inf_func[rows], expected, rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(result.att_inf_func.mean(), 0.0, atol=1e-12)
 
 
-def test_influence_function():
-    y1, y0, d, covariates = dgp_panel_for_test(n=500)
-    result = twfe_did_panel(y1, y0, d, covariates, influence_func=True)
+@pytest.mark.parametrize("intercept_only", [False, True])
+def test_twfe_did_panel_without_covariates_is_the_difference_in_mean_changes(two_period_specs, intercept_only):
+    spec = two_period_specs["panel"]
+    d, w = spec["d"], spec["i_weights"]
+    delta_y = spec["y1"] - spec["y0"]
+    treated_mean = np.average(delta_y[d == 1], weights=w[d == 1])
+    comparison_mean = np.average(delta_y[d == 0], weights=w[d == 0])
+    inf_func = w * d * (delta_y - treated_mean) / np.mean(w * d) - w * (1 - d) * (delta_y - comparison_mean) / np.mean(
+        w * (1 - d)
+    )
+    covariates = np.ones((d.size, 1)) if intercept_only else None
 
-    assert result.att_inf_func is not None
-    assert len(result.att_inf_func) == 2 * len(y1)
+    result = twfe_did_panel(spec["y1"], spec["y0"], d, covariates, i_weights=w, influence_func=True)
+
+    np.testing.assert_allclose(result.att, treated_mean - comparison_mean, rtol=1e-12)
+    np.testing.assert_allclose(result.att_inf_func, inf_func, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(result.se, np.sqrt(np.sum(inf_func**2)) / d.size, rtol=1e-12)
 
 
-def test_with_weights():
-    rng = np.random.default_rng(42)
-    n = 1000
-    y1, y0, d, covariates = dgp_panel_for_test(n)
-    weights = rng.uniform(0.5, 2.0, n)
+def test_twfe_did_panel_weighted_bootstrap_reproduces_the_estimate_at_unit_draws(
+    unit_bootstrap_weights, two_period_specs
+):
+    result = twfe_did_panel(**two_period_specs["panel"], boot=True, boot_type="weighted", biters=7)
 
-    result = twfe_did_panel(y1, y0, d, covariates, i_weights=weights)
+    assert np.isfinite(result.att)
+    np.testing.assert_allclose(result.boots, np.full(7, result.att), rtol=1e-12)
 
-    assert result.att is not None
-    assert result.se is not None
+
+@pytest.mark.parametrize("with_covariates", [True, False])
+@pytest.mark.parametrize(("boot_type", "centered_on_estimate"), [("weighted", True), ("multiplier", False)])
+def test_twfe_did_panel_bootstrap_standard_error_and_interval_come_from_the_draws(
+    two_period_specs, boot_type, centered_on_estimate, with_covariates
+):
+    panel = two_period_specs["panel"]
+    spec = {**panel, "covariates": panel["covariates"] if with_covariates else None}
+
+    result = twfe_did_panel(**spec, boot=True, boot_type=boot_type, biters=25)
+    estimate = twfe_did_panel(**spec).att
+
+    draws = result.boots - centered_on_estimate * result.att
+    q75, q25 = np.percentile(draws, [75, 25])
+    se = (q75 - q25) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+    critical_value = np.quantile(np.abs(draws) / se, 0.95)
+
+    np.testing.assert_allclose(result.att, estimate, rtol=1e-12)
+    assert result.boots.shape == (25,)
+    assert np.isfinite(result.boots).all()
+    np.testing.assert_allclose(result.se, se, rtol=1e-12)
+    np.testing.assert_allclose([result.uci - result.att, result.att - result.lci], critical_value * se, rtol=1e-12)
+    assert result.args["boot_type"] == boot_type
+
+
+def test_twfe_did_panel_multiplier_bootstrap_draws_from_the_stacked_influence_function(
+    monkeypatch, draws_from_weights, two_period_specs
+):
+    spec = two_period_specs["panel"]
+    unit_weights = np.where(np.random.default_rng(3).random((40, spec["d"].size)) < 0.5, 1.0, -1.0)
+    weights = np.hstack([unit_weights, unit_weights])
+    module = import_module("moderndid.drdid.estimators.twfe_did_panel")
+    monkeypatch.setattr(module, "mboot_twfep_did", draws_from_weights(weights))
+
+    result = twfe_did_panel(**spec, boot=True, boot_type="multiplier", influence_func=True)
+
+    np.testing.assert_allclose(result.boots, weights @ result.att_inf_func / (2 * spec["d"].size), rtol=1e-12)
 
 
 def test_twfe_did_panel_rejects_data_without_comparison_units():
@@ -122,12 +166,11 @@ def test_twfe_did_panel_rejects_data_without_treated_units():
         twfe_did_panel(y1, y0, d, covariates)
 
 
-def test_invalid_weights():
-    y1, y0, d, covariates = dgp_panel_for_test(n=100)
-    invalid_weights = np.array([-1] * 100)
+def test_invalid_weights(two_period_specs):
+    spec = two_period_specs["panel"]
 
     with pytest.raises(ValueError, match="i_weights must be non-negative"):
-        twfe_did_panel(y1, y0, d, covariates, i_weights=invalid_weights)
+        twfe_did_panel(**{**spec, "i_weights": np.full(spec["d"].size, -1.0)})
 
 
 def test_singular_design_matrix():
@@ -139,39 +182,25 @@ def test_singular_design_matrix():
 
     x1 = rng.normal(0, 1, n)
     covariates = np.column_stack((np.ones(n), x1, x1))
+    message = (
+        "Failed to fit TWFE regression model. The regression design matrix is singular. Consider removing "
+        "covariates that are constant or collinear."
+    )
 
-    with pytest.raises(ValueError, match="singular"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         twfe_did_panel(y1, y0, d, covariates)
 
 
-def test_small_sample():
-    n = 20
-    y1, y0, d, covariates = dgp_panel_for_test(n)
-    result = twfe_did_panel(y1, y0, d, covariates)
+def test_twfe_did_panel_on_twenty_units_is_the_difference_in_mean_changes(two_period_specs):
+    spec = {name: values[:20] for name, values in two_period_specs["panel"].items()}
+    d, w = spec["d"], spec["i_weights"]
+    delta_y = spec["y1"] - spec["y0"]
+    expected = np.average(delta_y[d == 1], weights=w[d == 1]) - np.average(delta_y[d == 0], weights=w[d == 0])
 
-    assert result.att is not None
-    assert result.se is not None
+    result = twfe_did_panel(**spec)
 
-
-def test_single_covariate():
-    rng = np.random.default_rng(42)
-    n = 500
-    y1, y0, d, _ = dgp_panel_for_test(n)
-    single_cov = rng.normal(0, 1, n)
-
-    result = twfe_did_panel(y1, y0, d, single_cov)
-
-    assert result.att is not None
-    assert result.se is not None
-
-
-def test_intercept_removal():
-    n = 500
-    y1, y0, d, covariates = dgp_panel_for_test(n)
-
-    result1 = twfe_did_panel(y1, y0, d, covariates)
-    result2 = twfe_did_panel(y1, y0, d, covariates[:, 1:])
-    assert np.isclose(result1.att, result2.att, rtol=1e-5)
+    np.testing.assert_allclose(result.att, expected, rtol=1e-12)
+    assert np.isfinite(result.se)
 
 
 @pytest.mark.parametrize(
@@ -183,8 +212,11 @@ def test_intercept_removal():
     ],
 )
 def test_invalid_input_types(invalid_input):
-    with pytest.raises((TypeError, ValueError)):
-        twfe_did_panel(invalid_input, np.ones(10), np.ones(10), np.ones((10, 2)))
+    d = np.repeat([0, 1], 5)
+    message = "all the input array dimensions except for the concatenation axis must match exactly"
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        twfe_did_panel(invalid_input, np.ones(10), d, np.arange(10.0))
 
 
 def test_mismatched_dimensions():
@@ -193,14 +225,14 @@ def test_mismatched_dimensions():
     y1 = rng.normal(0, 1, n)
     y0 = rng.normal(0, 1, n - 10)
     d = rng.binomial(1, 0.5, n)
+    message = "height of column 'post' (200) does not match height of column 'y' (190)"
 
-    with pytest.raises((ValueError, IndexError, pl.exceptions.ShapeError)):
+    with pytest.raises(pl.exceptions.ShapeError, match=re.escape(message)):
         twfe_did_panel(y1, y0, d)
 
 
-def test_args_output():
-    y1, y0, d, covariates = dgp_panel_for_test(n=100)
-    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", biters=10)
+def test_args_output(two_period_specs):
+    result = twfe_did_panel(**two_period_specs["panel"], boot=True, boot_type="weighted", biters=10)
 
     assert result.args["panel"] is True
     assert result.args["boot"] is True
