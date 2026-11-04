@@ -785,3 +785,41 @@ def wide_rc_two_period_data():
         "d": (data["group"] == 2).cast(pl.Int64).to_numpy(),
         "x": np.column_stack([np.ones(data.height), data.select([f"cov{j}" for j in range(1, 21)]).to_numpy()]),
     }
+
+
+@pytest.fixture
+def aipw_panel_arrays():
+    """Panel arguments of aipw_did_panel with three treated and three comparison units of unit weight."""
+    return {
+        "delta_y": np.array([1.0, 2.0, 0.0, 1.0, 3.0, 2.0]),
+        "d": np.array([1, 1, 0, 0, 1, 0]),
+        "ps": np.array([0.6, 0.7, 0.3, 0.4, 0.65, 0.35]),
+        "out_reg": np.array([0.5, 0.6, 0.2, 0.3, 0.55, 0.25]),
+        "i_weights": np.ones(6),
+    }
+
+
+@pytest.fixture
+def aipw_rc_imp1_arrays():
+    """Repeated cross-sections for aipw_did_rc_imp1 with two comparison rows and three treated rows per period."""
+    return {
+        "y": np.array([12.0, 9.0, 16.0, 22.0, 13.0, 17.0, 20.0, 21.0, 15.0, 25.0]),
+        "post": np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1]),
+        "d": np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1]),
+        "ps": np.array([0.5, 0.75, 0.25, 0.8, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68]),
+        "out_reg": np.array([10.0, 11.0, 15.0, 16.0, 10.0, 12.0, 13.0, 17.0, 14.0, 15.0]),
+        "i_weights": np.ones(10),
+    }
+
+
+@pytest.fixture
+def aipw_rc_imp2_arrays(aipw_rc_imp1_arrays):
+    """The aipw_rc_imp1_arrays rows with outcome regressions of both groups in both periods for aipw_did_rc_imp2."""
+    shared = {name: aipw_rc_imp1_arrays[name] for name in ("y", "post", "d", "ps", "i_weights")}
+    return {
+        **shared,
+        "out_y_treat_post": np.array([14.0, 16.0, 18.0, 20.0, 16.0, 19.0, 14.0, 20.0, 22.0, 20.0]),
+        "out_y_treat_pre": np.array([13.0, 12.0, 14.0, 18.0, 11.0, 14.0, 15.0, 15.0, 17.0, 17.0]),
+        "out_y_cont_post": np.array([13.0, 14.0, 15.0, 16.0, 14.0, 15.0, 13.0, 17.0, 16.0, 15.0]),
+        "out_y_cont_pre": np.array([10.0, 11.0, 12.0, 13.0, 10.0, 12.0, 11.0, 13.0, 14.0, 12.0]),
+    }
