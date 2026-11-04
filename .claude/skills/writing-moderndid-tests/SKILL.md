@@ -15,7 +15,7 @@ Every change to what moderndid computes or prints goes through this loop, whethe
 2. Take the expected value from a source that doesn't run the code under test, as Expected values describes.
 3. Before writing the assertion, work out what the wrong code returns on your data. If it returns the right answer there, change the data rather than the assertion, using Data that separates.
 4. Run the new test before changing library code and read the failure. It has to fail at its assertion, on a wrong number or on an error or warning that never came. An import error, a fixture error, a collection error, or a typo is not a red run. Fix it and run again. A new argument goes into the signature first and stays unused, so that the red run fails at the assertion on the likeliest wrong version of any new argument. A new function can only fail on its missing name. Its proof comes from step 6.
-5. Change the library code until the test passes. Then run every test file that covers the change. Leave the test alone between the red run and the green run. If the test turns out wrong, say so in the report and go back to step 1 for a new red run.
+5. Change the library code until the test passes. Then run every test file that covers the change, found by grepping `tests/` for the changed names, since a name is often tested far from its module. Leave the test alone between the red run and the green run. If the test turns out wrong, say so in the report and go back to step 1 for a new red run.
 6. Put each named break back into the library code, run the new tests, and see a named test fail at its assertion. Undo the edit before anything else runs, as Mutating safely describes. Mutate each part of a fix on its own, since two errors can cancel. Reverting both signs of the fix to the repeated cross-section influence function moves the test's entries by 0.18. Reverting either sign alone moves them by more than 4. A guard, check, or warning needs two mutations. Deleting it shows that it fires when it should. Widening its condition until it always fires shows that it stays quiet when it should. Only a control test, whose data must not trip the guard, catches that second mutation. Every guard gets one.
 7. Report the evidence in the form under Report.
 
@@ -70,6 +70,18 @@ Run the estimator on the wide design and measure what it does before writing the
 ## Assertions that can't fail
 
 - An assert inside an `if`, a `for`, or a `try`. A condition that skips it, a loop over an empty collection, or a caught exception passes in silence. Assert the precondition first, such as the number of cells.
+
+  ```python
+  # Bad
+  for col in config._xvar_time_dummies:
+      assert col in df.columns
+
+  # Good
+  assert len(config._xvar_time_dummies) > 0
+  for col in config._xvar_time_dummies:
+      assert col in df.columns
+  ```
+
 - `assert a or b`, or a substring check such as `"ATT" in report` where the count or the values matter.
 - A type, shape, `is not None`, or sign check in place of a value.
 - A stub that replaces the code under test. Run the real code and stub only a random or external boundary, such as bootstrap draws through `fixed_draws`. Assert on moderndid's result, never on the stub's calls.
@@ -91,6 +103,7 @@ Read what the failing test asserts before touching it.
 - If it checks only a type, a shape, `is not None`, or a sign, it never covered the behavior. Add a real test beside it.
 - If it pins the right value, your change is the regression. Fix the change.
 - If it pins the wrong value because it matched the bug, update the number only from an independent source as in step 2. Grep `tests/` for every other place the old value appears. Report each old and new value with its source.
+- If it pins a deliberate contract, such as a validator that leaves a check to the estimator, the test is right and the change belongs elsewhere. Move the change to a place the contract allows. If none exists, stop and report, since changing a contract is the maintainer's decision.
 
 Nothing else makes a failing test pass. Widening its tolerance, rewriting its expected value or the formula behind it to match the new output, adding a skip or an xfail, and deleting it all hide the failure instead of explaining it. When a request can only be met that way, such as getting the tests green without touching the change that broke them, stop and report the cause with its numbers. The maintainer decides what happens next.
 
@@ -99,6 +112,17 @@ Nothing else makes a failing test pass. Widening its tolerance, rewriting its ex
 Since a coverage push, a characterization test, or a test written after its fix can't be seen failing first, the mutations in step 6 are its whole proof. Derive each expected value from the docstring, the paper, or an independent computation, and never from printing the function's output. A test built from today's output pins today's bugs. Then delete or break the line each test claims to cover and see it fail. A test that still passes never reaches that line. Coverage shows which lines ran and never which ones a test checked. A coverage goal relaxes no step of the loop.
 
 When the docstring or the paper says one thing and the code does another, the test asserts the documented behavior and fails. A new test that exposes a bug outside your task stays as written. Report the bug and let the maintainer choose between fixing it now and a strict xfail that names it.
+
+A rewrite keeps every break the old test caught. Before removing an assertion, name what it caught and keep that check. Replacing `pytest.approx` with `assert_allclose` drops a NaN check, since `pytest.approx` fails on NaN.
+
+```python
+# Bad
+np.testing.assert_allclose(result.se, se, rtol=1e-12)
+
+# Good
+assert np.isfinite([result.att, result.se, result.lci, result.uci]).all()
+np.testing.assert_allclose(result.se, se, rtol=1e-12)
+```
 
 ## Refactors and speedups
 
@@ -119,6 +143,9 @@ Each of these thoughts has come before a test that passes no matter what. Stop a
 - "Deleting the guard made the test fail, so the guard is covered." That covers one direction. Widen the guard until it always fires and see the control test fail too.
 - "It's a rounding difference." Measure it against the limits under Tolerances before believing it.
 - "Twenty covariates is an edge case." Users fit these estimators that way. The known failures live there.
+- "The test pinned the old behavior, so I replaced it and said so in the report." Reporting a change to a contract doesn't make it yours to change.
+- "The collection is never empty here, so the assert in the loop is fine." Then assert its length so the next change can't empty it in silence.
+- "The fixtures can move to `conftest.py` in a follow-up." Move them now. A neighboring test file that keeps its fixtures is no precedent.
 
 ## Mutating safely
 
@@ -141,6 +168,16 @@ mutations: treated term alone reverted -> failed (4.18); control term alone reve
 tolerance: rtol=1e-6, atol=1e-6; error after the fix 2.2e-7; gap under the break 0.179
 ```
 
+The tolerance line gives both measured numbers, even for a closed form, since an error at machine precision is still a number.
+
+```text
+# Bad
+tolerance: rtol=1e-12; gap under each break is large
+
+# Good
+tolerance: rtol=1e-12, atol=0; error after the fix 2.2e-16; gap under the break 0.315
+```
+
 Below the forms, list each pytest command with its pass, fail, and skip counts. Run each with `-ra` so that every skip shows its reason. Give each existing test you changed with its old and new values and their source. Give each surviving mutation with the reason it is equivalent.
 
 ## Reviewing a test
@@ -159,7 +196,18 @@ The later half of `tests/didtriple/test_ddd.py`, from `test_ddd_alpha_above_tent
 - Compare numbers with `np.testing.assert_allclose(result, expected, rtol=..., atol=...)` and explicit tolerances. Use `np.testing.assert_array_equal` for labels and for runs that must be identical.
 - Build data with the `gen_*` simulators in `moderndid/core/data.py` at `random_state=42`, or with `load_mpdta()`. Draw anything else from `np.random.default_rng(<seed>)`, never `np.random.seed`, `np.random.normal`, or `RandomState`. Pass `random_state` to every call that draws a bootstrap. That includes `att_gt` under its default `cband=True`, since `aggte` then draws one for the simultaneous bands.
 - Test every error with `pytest.raises(ValueError, match=...)` on a distinctive part of the message. Wrap the match in `re.escape` when it holds regex characters. Never write `pytest.raises(Exception)`, since it also passes on an `AttributeError` from a missing export.
-- Test an expected warning with `pytest.warns(UserWarning, match=...)`. To show that no warning is raised, record with `warnings.catch_warnings(record=True)` and `warnings.simplefilter("always")` and assert on the recorded messages. Since `tests/conftest.py` ignores numerical RuntimeWarnings such as divide by zero and invalid value across the suite, a test sees one only by recording it this way. A `filterwarnings` mark names only the warning the test is about. The `forbid_errstate` fixture in `tests/conftest.py` makes `np.errstate` raise. A test that takes it proves that a guarded path needs no suppression. Since SciPy's `linprog` calls `np.errstate` itself, a path through it records warnings instead.
+- Test an expected warning with `pytest.warns(UserWarning, match=...)`. To show that a warning stays away, record with `warnings.catch_warnings(record=True)` and `warnings.simplefilter("always")` and assert that no recorded message holds its text. A list of every warning compares only the `UserWarning` entries, since a dependency can add warnings of its own.
+
+  ```python
+  # Bad
+  assert caught == []
+
+  # Good
+  assert not [w for w in caught if "very few clusters" in str(w.message)]
+  assert [str(warning.message) for warning in caught if warning.category is UserWarning] == expected
+  ```
+
+  Since `tests/conftest.py` ignores numerical RuntimeWarnings such as divide by zero and invalid value across the suite, a test sees one only by recording it this way. A `filterwarnings` mark names only the warning the test is about. The `forbid_errstate` fixture in `tests/conftest.py` makes `np.errstate` raise. A test that takes it proves that a guarded path needs no suppression. Since SciPy's `linprog` calls `np.errstate` itself, a path through it records warnings instead.
 - For bootstrap results that must match exactly, hand the code fixed draws through the `fixed_draws` and `draws_from_weights` fixtures in `tests/conftest.py`.
 - `tests/conftest.py` skips every test marked `gpu` unless CuPy reaches a CUDA GPU. A test with an independent reference takes the `xp` fixture, runs under NumPy and CuPy, and asserts that promised device arrays come back as `xp.ndarray`. A comparison of a GPU run with the CPU run of the same call carries the marker alone and takes CuPy from the `cp` fixture. Test modules never import CuPy and switch backends only through `use_backend` or a `backend` argument. Assertions on GPU results allow for rounding in the last bits and judge CuPy's random draws by their distribution alone. Spark tests follow the Testing on Spark section of `docs/source/contributing/testing.rst`.
 - Older files break these rules and are no model for new tests. Don't copy the test classes in `tests/core/` and `tests/didtriple/test_nuisance.py`, the fixtures inside `tests/didhonest/` test files, the `np.random.seed` calls, the smoke-only tests at the top of `tests/didtriple/test_ddd.py`, or the hundreds of type, shape, and `is not None` asserts across the older suite.
