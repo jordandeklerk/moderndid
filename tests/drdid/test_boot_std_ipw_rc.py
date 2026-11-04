@@ -1,5 +1,8 @@
 """Tests for standardized IPW bootstrap estimator with repeated cross-sections."""
 
+import re
+import warnings
+
 import numpy as np
 import pytest
 
@@ -8,43 +11,57 @@ from moderndid import wboot_std_ipw_rc
 pytestmark = pytest.mark.slow
 
 
-def test_wboot_std_ipw_rc_basic():
-    rng = np.random.default_rng(42)
-    n = 200
-    p = 3
+@pytest.mark.parametrize(
+    ("data_fixture", "trim_level"),
+    [("trimmed_two_period_data", 0.9), ("trimmed_two_period_data", 0.999), ("wide_rc_two_period_data", 0.9)],
+    ids=["trimmed", "untrimmed", "wide"],
+)
+def test_wboot_std_ipw_rc_draws_refit_the_standardized_estimate_at_the_drawn_weights(
+    request, preset_bootstrap_weights, maximum_likelihood_scores, data_fixture, trim_level
+):
+    data = request.getfixturevalue(data_fixture)
+    y, post, d, x = data["y"], data["post"], data["d"], data["x"]
+    i_weights = np.random.default_rng(3).uniform(0.5, 1.5, len(d))
+    draws = np.random.default_rng(4).uniform(0.5, 1.5, (3, len(d)))
+    expected = []
+    for weights in i_weights * draws:
+        ps = maximum_likelihood_scores(d, x, weights)
+        comparison = weights * ps / (1 - ps) * (1 - d) * (ps < trim_level)
+        expected.append(
+            np.average(y, weights=weights * d * post)
+            - np.average(y, weights=weights * d * (1 - post))
+            - np.average(y, weights=comparison * post)
+            + np.average(y, weights=comparison * (1 - post))
+        )
+    preset_bootstrap_weights(draws)
 
-    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
-    d = rng.binomial(1, 0.3, n)
-    post = rng.binomial(1, 0.5, n)
-    y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
-    weights = np.ones(n)
-
-    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=20, random_state=42)
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        boot_estimates = wboot_std_ipw_rc(
+            y=y, post=post, d=d, x=x, i_weights=i_weights, biters=3, trim_level=trim_level
+        )
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 20
-    assert not np.all(np.isnan(boot_estimates))
-    assert np.std(boot_estimates) > 0
+    assert np.all(np.isfinite(boot_estimates))
+    np.testing.assert_allclose(boot_estimates, expected, rtol=1e-8)
+    assert [str(w.message) for w in record] == []
 
 
-def test_wboot_std_ipw_rc_with_covariates():
-    rng = np.random.default_rng(123)
-    n = 150
-    p = 5
+def test_wboot_std_ipw_rc_draws_do_not_depend_on_the_scale_of_the_covariates(
+    preset_bootstrap_weights, trimmed_two_period_data
+):
+    data = trimmed_two_period_data
+    n = len(data["d"])
+    x1 = data["x"][:, 1]
+    draws = np.random.default_rng(4).uniform(0.5, 1.5, (3, n))
+    preset_bootstrap_weights(np.vstack([draws, draws]))
+    spec = {"y": data["y"], "post": data["post"], "d": data["d"], "i_weights": np.ones(n), "biters": 3}
 
-    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
-    true_ps = 1 / (1 + np.exp(-x @ [0.2, -0.3, 0.1, 0.4, -0.2]))
-    d = rng.binomial(1, true_ps)
-    post = rng.binomial(1, 0.4, n)
-    y = x @ [1, 0.5, -0.3, 0.2, 0.1] + 1.5 * d * post + rng.standard_normal(n)
-    weights = rng.uniform(0.5, 1.5, n)
+    unit_scale = wboot_std_ipw_rc(x=np.column_stack([np.ones(n), x1, x1**2]), **spec, trim_level=0.9)
+    large_scale = wboot_std_ipw_rc(x=np.column_stack([np.ones(n), 1e9 * x1, (1e9 * x1) ** 2]), **spec, trim_level=0.9)
 
-    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
-
-    assert len(boot_estimates) == 10
-    finite_estimates = boot_estimates[np.isfinite(boot_estimates)]
-    assert len(finite_estimates) >= 5
-    assert np.mean(finite_estimates) > 0
+    assert np.all(np.isfinite(unit_scale))
+    np.testing.assert_allclose(large_scale, unit_scale, rtol=1e-10)
 
 
 def test_wboot_std_ipw_rc_invalid_inputs():
@@ -56,43 +73,62 @@ def test_wboot_std_ipw_rc_invalid_inputs():
     post = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match=f"^{re.escape('y must be a NumPy array.')}$"):
         wboot_std_ipw_rc(list(y), post, d, x, weights)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=f"^{re.escape('All arrays must have the same number of observations.')}$"):
         wboot_std_ipw_rc(y[:-1], post, d, x, weights)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=f"^{re.escape('biters must be a positive integer.')}$"):
         wboot_std_ipw_rc(y, post, d, x, weights, biters=0)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=f"^{re.escape('trim_level must be between 0 and 1.')}$"):
         wboot_std_ipw_rc(y, post, d, x, weights, trim_level=1.5)
 
 
-def test_wboot_std_ipw_rc_edge_cases():
+@pytest.mark.parametrize(
+    ("d", "post"),
+    [
+        (np.ones(100), np.tile([0.0, 1.0], 50)),
+        (np.zeros(100), np.tile([0.0, 1.0], 50)),
+        (np.repeat([1.0, 0.0], [40, 60]), np.zeros(100)),
+    ],
+    ids=["all_treated", "all_comparison", "no_post_period"],
+)
+def test_wboot_std_ipw_rc_marks_every_draw_nan_when_a_group_has_no_weight_in_a_period(d, post):
     rng = np.random.default_rng(42)
     n = 100
     x = np.column_stack([np.ones(n), rng.standard_normal(n)])
     y = rng.standard_normal(n)
-    weights = np.ones(n)
+    summary = "4 out of 4 bootstrap iterations failed (100.0%). Results based on 0 successful iterations."
 
-    d_all_treated = np.ones(n)
-    post = rng.binomial(1, 0.5, n)
+    with pytest.warns(UserWarning) as record:
+        boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=np.ones(n), biters=4, random_state=42)
 
-    with pytest.warns(UserWarning):
+    assert [str(w.message) for w in record if w.category is UserWarning] == [
+        *[f"Bootstrap iteration {b}: Zero weight sum in one or more groups." for b in range(4)],
+        summary,
+    ]
+    np.testing.assert_array_equal(boot_estimates, np.full(4, np.nan))
+
+
+def test_wboot_std_ipw_rc_marks_a_draw_nan_when_its_propensity_fit_fails(trimmed_two_period_data):
+    data = trimmed_two_period_data
+    d = data["d"].copy()
+    d[0] = np.nan
+    summary = "2 out of 2 bootstrap iterations failed (100.0%). Results based on 0 successful iterations."
+
+    with pytest.warns(UserWarning) as record:
         boot_estimates = wboot_std_ipw_rc(
-            y=y, post=post, d=d_all_treated, x=x, i_weights=weights, biters=10, random_state=42
+            y=data["y"], post=data["post"], d=d, x=data["x"], i_weights=np.ones(len(d)), biters=2, random_state=42
         )
+    messages = [str(w.message) for w in record]
 
-    assert np.sum(np.isnan(boot_estimates)) > 5
-
-    d_all_control = np.zeros(n)
-    with pytest.warns(UserWarning):
-        boot_estimates = wboot_std_ipw_rc(
-            y=y, post=post, d=d_all_control, x=x, i_weights=weights, biters=10, random_state=42
-        )
-
-    assert np.sum(np.isnan(boot_estimates)) > 5
+    assert [m.split(": ")[:2] for m in messages[:-1]] == [
+        [f"Bootstrap iteration {b}", "Propensity score estimation failed"] for b in range(2)
+    ]
+    assert messages[-1] == summary
+    np.testing.assert_array_equal(boot_estimates, np.full(2, np.nan))
 
 
 def test_wboot_std_ipw_rc_reproducibility():
@@ -105,28 +141,12 @@ def test_wboot_std_ipw_rc_reproducibility():
     weights = np.ones(n)
 
     boot_estimates1 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
-
     boot_estimates2 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=123)
+    boot_estimates3 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, biters=10, random_state=124)
 
+    assert np.all(np.isfinite(boot_estimates1))
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
-
-
-def test_wboot_std_ipw_rc_no_variation():
-    rng = np.random.default_rng(42)
-    n = 80
-    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
-    d = rng.binomial(1, 0.5, n)
-
-    post_no_var = np.zeros(n)
-    y = rng.standard_normal(n)
-    weights = np.ones(n)
-
-    with pytest.warns(UserWarning):
-        boot_estimates = wboot_std_ipw_rc(
-            y=y, post=post_no_var, d=d, x=x, i_weights=weights, biters=10, random_state=42
-        )
-
-    assert np.sum(np.isnan(boot_estimates)) > 0
+    assert np.all(boot_estimates1 != boot_estimates3)
 
 
 def test_wboot_std_ipw_rc_extreme_propensity():
@@ -143,27 +163,5 @@ def test_wboot_std_ipw_rc_extreme_propensity():
         y=y, post=post, d=d, x=x_extreme, i_weights=weights, biters=20, trim_level=0.95, random_state=42
     )
 
-    assert len(boot_estimates) == 20
-    assert np.sum(np.isfinite(boot_estimates)) > 0
-
-
-def test_wboot_std_ipw_rc_trimming_effect():
-    rng = np.random.default_rng(42)
-    n = 150
-    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
-
-    true_ps = 1 / (1 + np.exp(-2 * x[:, 1]))
-    d = rng.binomial(1, true_ps)
-    post = rng.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
-    weights = np.ones(n)
-
-    boot_strict = wboot_std_ipw_rc(
-        y=y, post=post, d=d, x=x, i_weights=weights, biters=10, trim_level=0.9, random_state=42
-    )
-
-    boot_loose = wboot_std_ipw_rc(
-        y=y, post=post, d=d, x=x, i_weights=weights, biters=10, trim_level=0.999, random_state=42
-    )
-
-    assert np.sum(np.isfinite(boot_strict)) <= np.sum(np.isfinite(boot_loose))
+    assert boot_estimates.shape == (20,)
+    assert np.all(np.isfinite(boot_estimates))
