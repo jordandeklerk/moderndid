@@ -7,6 +7,8 @@ description: Use when writing, changing, fixing, refactoring, porting, or review
 
 The Code section of `.claude/CLAUDE.md` sets the rules, and this skill adds the specifics behind them, taken from the code. Ruff and the pre-commit hooks already enforce formatting, import order, numpydoc layout, line length, and the `print` ban, so this skill leaves those out. `moderndid/did/` shows most of what follows in one family, and `docs/source/dev/architecture.rst` and `docs/source/dev/new_estimator.rst` explain the design behind it.
 
+The Bad and Good pairs cover what reviews keep catching. Bad lines come from older modules and past reviews. A neighbor that reads like one is no precedent.
+
 ## Before handing over
 
 1. Run `pixi run lint`. The hooks see only tracked files, so also run `pixi run -e check pre-commit run --files <path>` on each new file. The hooks rewrite what they touch, so while another session edits the tree, check with `pixi run -e check ruff check --no-fix <path>` and `pixi run -e check ruff format --check <path>` instead.
@@ -19,17 +21,39 @@ The Code section of `.claude/CLAUDE.md` sets the rules, and this skill adds the 
 Reviews of this repository keep finding the same problems, so check every new or changed function and test against this list and say which items you checked. Older modules break many of these rules, which never excuses new code, so flag every item the new code misses. Read the current code before saying what an existing function, file, or test folder does.
 
 - Signature: no type hints on a documented function, `alpha` and `biters` for new arguments, and the shared names listed under Signatures and arguments for shared ideas.
-- Checks and errors: `ValueError` or `TypeError` rather than a bare `Exception`, a message that names the argument and its value and says what to pass, no suppressed warning, and no silent NaN or empty result for an edge case.
+- Checks and errors: `ValueError` or `TypeError` rather than a bare `Exception`, a message that names the argument and its value and says what to pass, a warning in the same form with a `stacklevel`, no suppressed warning, and no silent NaN or empty result for an edge case.
 - Placement: result types in `container.py` with Attributes and `#:` comments, a formatter registered with `attach_format`, a converter in `_DISPATCH`, and the export steps and API page for every new public name.
-- Docstrings: a summary line with no comma, no Latin abbreviation, no Raises section, no pointer to its own sections such as "See Notes", Returns bullets as `- **name**: description`, long math in a `.. math::` display in Notes, authors only in an entry point's References, and no mention of R.
-- Code: imports at the top, no module-level constant for a one-off number, and comments that say why.
+- Docstrings: a summary line with no comma, no clause tacked on after a comma, no Latin abbreviation, no Raises section, no pointer to its own sections such as "See Notes", Returns bullets as `- **name**: description`, long math in a `.. math::` display in Notes, authors only in an entry point's References, and no mention of R.
+- Code: imports at the top, no module-level constant for a one-off number, and comments that say why in plain sentences without a template opener such as "Since X, Y".
 - Tests: the checks under Reviewing a test in the writing-moderndid-tests skill, starting with the red run and the mutations each new test reports.
 
 ## Package layout
 
-- An estimator family is a folder under `moderndid/`. In `did`, `att_gt.py` is the public entry point. It checks the arguments, builds the config, runs the preprocessing builder, and returns the result through the `mp()` factory. `compute_att_gt.py` holds the numerical work as plain functions of arrays, `container.py` the NamedTuple results and their factories, `format.py` the printed reports, and `README.md` a short overview that the docs link to. Larger families split the work into subfolders such as `didtriple/estimators/` and `didtriple/bootstrap/`.
-- Shared code lives in `moderndid/core/`. `core/preprocess/` checks and prepares data (`validators.py`, `config.py`, `builders.py`, `transformers.py`), `core/format.py` holds the report helpers, `core/converters.py` the `to_df` converters, `core/maketables.py` the publication-table builders, `core/parallel.py` the `parallel_map` that runs group-time cells and other independent tasks, `core/bootstrap.py` the bootstrap and variance helpers, and `core/data.py` the `load_*` datasets and `gen_*` simulators. Plots live in `moderndid/plots/` and the GPU backend in `moderndid/cupy/`. `moderndid/dev/` holds placeholders for planned families.
-- Some families predate this layout. drdid defines a result beside each estimator in `drdid/estimators/`, didhonest keeps its results in the modules that compute them, and neither didhonest nor npiv has a `format.py`. Don't copy those layouts. Move an old type only in a change of its own, since a move changes import paths, `_lazy_imports`, and the API pages.
+```text
+moderndid/
+├── did/                    # an estimator family
+│   ├── att_gt.py           # public entry point
+│   ├── compute_att_gt.py   # numerical work as plain functions of arrays
+│   ├── container.py        # NamedTuple results and their factories
+│   ├── format.py           # printed reports
+│   └── README.md           # short overview that the docs link to
+├── core/                   # code the families share
+│   ├── preprocess/         # checks and prepares data (validators.py, config.py, builders.py, transformers.py)
+│   ├── bootstrap.py        # bootstrap and variance helpers
+│   ├── converters.py       # to_df converters
+│   ├── data.py             # load_* datasets and gen_* simulators
+│   ├── format.py           # report helpers
+│   ├── maketables.py       # publication-table builders
+│   └── parallel.py         # parallel_map for group-time cells and other independent tasks
+├── plots/                  # plot functions
+├── cupy/                   # GPU backend
+├── spark/                  # Spark execution of att_gt
+└── dev/                    # placeholders for planned families
+```
+
+In `did`, `att_gt.py` checks the arguments, builds the config, runs the preprocessing builder, and returns the result through the `mp()` factory. Larger families split the work into subfolders such as `didtriple/estimators/` and `didtriple/bootstrap/`.
+
+Some families predate this layout. drdid defines a result beside each estimator in `drdid/estimators/`, didhonest keeps its results in the modules that compute them, and neither didhonest nor npiv has a `format.py`. Don't copy those layouts. Move an old type only in a change of its own, since a move changes import paths, `_lazy_imports`, and the API pages.
 
 ## Signatures and arguments
 
@@ -43,23 +67,104 @@ Reviews of this repository keep finding the same problems, so check every new or
 Check arguments at the top of a public function, before any computation. `check_columns(data, yname=yname, tname=tname, ...)` in `core/preprocess/validators.py` names every missing column and suggests the closest one, and `_option_errors` words every invalid option the same way. A family with a config dataclass in `core/preprocess/config.py` gets the remaining checks from the builder.
 
 - Raise `ValueError` for a bad value, shape, or option and `TypeError` for a wrong type. A missing optional dependency raises `ImportError` naming its extra, and `RuntimeError` is for a failure after valid input. There are no custom exception classes.
-- A message starts with the argument as the user wrote it, says what is wrong, says what to pass instead, and ends with a period, as in `control_group='never' is not valid. Must be 'nevertreated' or 'notyettreated'.` and `clustervars must be a list of strings, not a string. Use clustervars=['state'].`
+- A message starts with the argument as the user wrote it, says what is wrong, says what to pass instead, and ends with a period.
+
+  ```python
+  # Bad
+  raise ValueError("The dose aggregation doesn't use min_e.")
+  raise ValueError("No treated units found. Cannot estimate treatment effect.")
+
+  # Good
+  raise ValueError(f"control_group={control_group!r} is not valid. Must be 'nevertreated' or 'notyettreated'.")
+  raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
+  raise ValueError("dvals holds missing or infinite values. Pass finite doses at which to evaluate the curves.")
+  ```
+
 - A helper that checks arguments for several public functions takes the caller's argument names as parameters, so its message names only arguments the user passed. `ddd` passes its names to the shared helpers rather than rewriting their messages.
 - Re-raise with `raise ... from err` so the cause survives.
 
 ## Warnings
 
-- A public function warns with `warnings.warn(message, UserWarning, stacklevel=2)`, worded like an error message, as in `alpha=0.2 is above 0.10. Using alpha=0.05.`
+- A public function warns with `warnings.warn(message, UserWarning, stacklevel=2)`. A helper adds one to `stacklevel` for each frame below the public function.
+- A warning names what happened and says what the function did about it or what to pass instead.
+
+  ```python
+  # Bad
+  warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
+  warnings.warn("Bootstrap standard error is zero or NaN.", UserWarning)
+
+  # Good
+  warnings.warn(f"alpha={alpha} is above 0.10. Using alpha=0.05.", UserWarning, stacklevel=2)
+  warnings.warn(
+      f"Units in id_col='{id_col}' appear in every period. For panel data, use ddd_mp.", UserWarning, stacklevel=3
+  )
+  warnings.warn(
+      f"The regression dropped the treatment cells {_format_cells(dropped)} as collinear with its other "
+      "terms. Controls that span a cell or a cohort with no untreated period cause this. Their estimates "
+      "are NaN.",
+      UserWarning,
+      stacklevel=2,
+  )
+  ```
+
 - Never suppress a warning in library code, whether with `warnings.catch_warnings`, `simplefilter`, or `np.errstate`. Guard the computation so the warning can't arise, such as dividing only where the denominator is positive, or let the warning show. A guard keeps every number identical wherever the old expression was defined.
 
 ## Results, reports, and conversions
 
 - A result is a NamedTuple in the family's `container.py`. Its class docstring lists the fields under Attributes, and a `#:` comment above each field gives the one-line description autodoc shows, as `AGGTEResult` in `did/container.py` does. A factory such as `mp()` assembles the result when an entry point would otherwise repeat that work.
-- A printed report is `format_<name>_result(result)` in the family's `format.py`. It builds a `lines` list from the helpers in `core/format.py` (`format_title`, `format_section_header`, the table builders, `format_significance_note`, `format_footer`), returns `"\n".join(lines)`, and is registered at the bottom of the module with `attach_format(ResultClass, format_<name>_result)`. The family's `__init__.py` imports the module with a relative import, as `did/__init__.py` does with `from .format import ...`, or registration never runs. A dotted import such as `import moderndid.npiv.format as f` fails, since `moderndid.npiv`, like `drdid`, `didml`, and `etwfe`, names the function rather than its subpackage.
-- A report ends with `format_footer("Reference: <Authors> (<Year>)")`. That printed line is the one place outside an entry point's References section where authors appear, so formatter docstrings still name no one.
 - A new field on an existing result changes a public type, and the pickled results in `docs/source/prerun` stop loading when their container changes. Prefer a design that leaves the fields alone, such as an argument on the converter, and propose the field in your report.
 - Leave what an existing report prints alone unless the task is that report, and never add an HTML repr.
-- `to_df` finds a converter by class name in `_DISPATCH` in `core/converters.py`. A new result gets a `<classname>_to_polars` function there with columns named like the other converters' (`att`, `se`, `ci_lower`, `ci_upper` beside the cell's keys), and a reference row whose standard error is NaN drops out.
+- A printed report is `format_<name>_result(result)` in the family's `format.py`. A `to_df` converter is `<classname>_to_polars(result)` in `core/converters.py`. Each follows this shape.
+
+  ```python
+  # did/format.py
+  def format_aggte_result(result):
+      """Format an aggregated treatment effect result for display."""
+      lines = []
+
+      lines.extend(format_title("Aggregate Treatment Effects"))
+      lines.extend(format_event_table(...))
+      lines.extend(format_significance_note(band=True))
+
+      lines.extend(format_section_header("Data Info"))
+      lines.append(f" Control Group: {control_text}")
+
+      lines.extend(format_section_header("Estimation Details"))
+      lines.append(f" Estimation Method: {method_text}")
+
+      lines.extend(format_section_header("Inference"))
+      lines.append(f" Significance level: {alpha}")
+
+      lines.extend(format_footer("Reference: Callaway and Sant'Anna (2021)"))
+
+      return "\n".join(lines)
+
+
+  attach_format(AGGTEResult, format_aggte_result)
+
+
+  # core/converters.py
+  def aggteresult_to_polars(result):
+      data = {
+          "event_time": event_times,
+          "att": att,
+          "se": se,
+          "ci_lower": ci_lower,
+          "ci_upper": ci_upper,
+      }
+      df = pl.DataFrame(data).filter(~pl.col("se").is_nan())
+      return _whole_numbers_as_int(df, ["event_time"])
+
+
+  _DISPATCH = {
+      "MPResult": mpresult_to_polars,
+      "AGGTEResult": aggteresult_to_polars,
+  }
+  ```
+
+- A report ends with `format_footer("Reference: <Authors> (<Year>)")`. That printed line is the one place outside an entry point's References section where authors appear, so formatter docstrings still name no one.
+- The family's `__init__.py` imports `format.py` with a relative import, as in `from .format import format_aggte_result`, or `attach_format` never runs. A dotted import such as `import moderndid.npiv.format as f` fails, since `moderndid.npiv`, like `drdid`, `didml`, and `etwfe`, names the function rather than its subpackage.
+- `to_df` finds a converter by class name in `_DISPATCH`. A new result gets a `<classname>_to_polars` function there with columns named like the other converters' (`att`, `se`, `ci_lower`, `ci_upper` beside the cell's keys). The filter drops a reference row whose standard error is NaN. The docstring lists each column as a Returns bullet.
 - A plot is a function in `moderndid/plots/plots.py` that returns a plotnine `ggplot`, exported through `moderndid/plots/__init__.py` and the root `_optional_imports` with the extra `"plots"`.
 
 ## Adding a public name
@@ -83,7 +188,20 @@ Most families leave their formatters and converters out of both `__all__` lists,
 
 ## Comments
 
-A comment explains why in one or two lines, most often as "Since X, Y", as in `# Since a missing value must not pick the route, the routing reads the rows that the missing-data step keeps.` (`didtriple/ddd.py`). There are no section dividers, no TODO markers, and no field comments except the `#:` lines in containers.
+A comment explains why in one or two lines and states the reason as a plain fact, as in `# Rows that differ only in the sign of a zero share a key because adding 0.0 turns -0.0 into 0.0.` (`did/shards/layout.py`). Its opener follows from its subject. A run of comments that open with one template, such as "Since X, Y" or "As in X, Y", reads as machine-written. So does a comment that narrates what the next line does. There are no section dividers, no TODO markers, and no field comments except the `#:` lines in containers.
+
+```python
+# Bad
+# Influence function of treated component
+# Since each draw solves a small dual problem, the bootstrap runs on the CPU under every backend.
+# Since statsmodels stops on an absolute change in the deviance, the screen rescales the weights too.
+# Every route reports pointwise intervals, and agg_ddd builds the simultaneous bands.
+
+# Good
+# The bootstrap runs on the CPU because each draw solves a small dual problem.
+# Settling the inference options before routing gives every data layout the same interval level.
+# Every route reports pointwise intervals. agg_ddd builds the simultaneous bands.
+```
 
 ## Docstrings
 

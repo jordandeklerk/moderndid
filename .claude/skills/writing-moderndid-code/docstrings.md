@@ -6,6 +6,7 @@
 - Computation or helper function, the template for a public function of arrays or results
 - Result container, the template for a NamedTuple result
 - One-line docstrings, for private helpers, formatters, fixtures, and modules
+- Sentences, how a sentence stays one idea
 - Every docstring, the summary, body, type spellings, Returns bullets, math, and citation rules
 
 Sphinx renders these docstrings through numpydoc, and signatures carry no type hints, so the docstring is the only place a reader sees types. Start from the template for the kind of object and replace each `<placeholder>`. Text outside the angle brackets, including section underlines, type spellings, and default forms, is the wording new code uses.
@@ -145,10 +146,37 @@ class <Name>Result(NamedTuple):
 
 ## One-line docstrings
 
-- A private helper gets one line that states its intent or the constraint it keeps, as in `"""Return the count with the noun in the singular or the plural."""`.
+- A private helper gets one line that states its intent or the constraint it keeps, as in `"""Return the count with the noun in the singular or the plural."""`. Since the line has no comma, a helper that returns several things names the whole rather than listing the parts.
+
+  ```python
+  # Bad
+  """Return the outcome change, treatment, covariates, and weights as NumPy arrays."""
+
+  # Good
+  """Return the validated arguments as NumPy arrays."""
+  ```
+
 - A formatter gets one line such as `"""Format an aggregated treatment effect result for display."""`.
 - A conftest fixture gets one line such as `"""Generate DDD data with covariates."""`.
 - A module docstring is one line, such as `"""Result containers for multi-period DiD estimators."""`.
+
+## Sentences
+
+Each sentence holds one idea. Where a clause would trail after a comma, either end the sentence there and give the next one its own subject or lead with the clause. This holds in the body, in Parameters entries, after a math display, and in error messages.
+
+```text
+# Bad
+It needs its influence functions, which a fit on a Spark DataFrame does not keep.
+Reweights the comparison units so that their means match, using the weights of [1]_.
+The estimator balances the covariates, then compares the changes in outcomes.
+The statistic is W, and it follows a chi-squared distribution under the null.
+
+# Good
+It needs its influence functions. A fit on a Spark DataFrame does not keep them.
+The weights of [1]_ match the covariate means of the comparison units to those of the treated units.
+After balancing the covariates, the estimator compares the changes in outcomes.
+Under the null, the statistic W follows a chi-squared distribution.
+```
 
 ## Every docstring
 
@@ -156,9 +184,9 @@ class <Name>Result(NamedTuple):
 - The body runs in a few short paragraphs of one idea each, such as what the function computes, which inputs it holds fixed, how uncertainty carries through, or what a warning means. It uses no bulleted or numbered lists outside the Returns bullets and never points to its own sections, as in "See Notes". A public entry point stays a reference card, with about two paragraphs of prose before Parameters. The case for each option belongs in the Background guides and example pages, linked once, while the math stays in the docstring.
 - A Parameters entry says only what the argument is and what it requires, such as its meaning, units, shape, and allowed values. What the function as a whole does with it goes in the body.
 - Type spellings follow the existing entries: `DataFrame`, `str`, `str, optional`, `float, default=0.05`, `bool, default=True`, `list[str], optional`, `{"dr", "ipw", "reg"}, default="dr"`, `int, Generator, optional`, `ndarray`. `optional` marks a `None` default, and every other default is written `default=<value>`.
-- Returns opens with the type on its own line, then an intro sentence ending in a colon, then one bullet per field as `- **name**: Description` with no final period. Never join two fields in one bullet or quote a name as `'name'`. A plain array or scalar gets a one-line description and no bullets.
+- Returns opens with the type on its own line, then an intro sentence ending in a colon, then one bullet per field as `- **name**: Description` with no final period. Never join two fields in one bullet or quote a name as `'name'`. A field that can be empty ends as in `Lower end of an event study's window, or None without one`. A plain array or scalar gets a one-line description and no bullets.
 - The sections in use are Parameters, Returns, See Also, Notes, References, Attributes for containers, and Examples where no guide covers the function. No docstring has a Raises, Warns, or Warnings section. The body says in prose what the function raises or warns about.
 - Keep the math that defines what the function computes, such as the estimand, the estimator, weights, influence functions, and variances. It may sit in the body as `.. math::` displays or in Notes. Shortening a docstring cuts prose, not formulas. A display has a blank line after the directive, the equation indented, and ends in a period or comma. A sentence leads into each display without a colon, as in `aggte`. Inline `:math:` is for single symbols and short fragments such as :math:`0 < \zeta < 1`. Use an `r"""` docstring when it holds a backslash.
 - Each piece of math lives in one docstring. Other functions name the quantity and link to the owner with `:func:`, since a copy goes stale when one of them changes.
 - Never mention R, an R package, or another library's behavior. Describe what the code computes, as in "performs k-fold grid search over the penalty".
-- The Prose rules of `.claude/CLAUDE.md` apply in full, so write "such as", "for example", or "that is" instead of Latin abbreviations, "percent" instead of "%", and no em dashes or tacked-on ", which" and ", <verb>ing" clauses.
+- The Prose rules of `.claude/CLAUDE.md` apply in full, so write "such as", "for example", or "that is" instead of Latin abbreviations, "percent" instead of "%", and no em dashes.
