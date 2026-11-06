@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -605,6 +607,57 @@ def rcs_df():
             "g": [0, 3, 3, 0, 3, 3],
         }
     )
+
+
+@pytest.fixture
+def record_warnings():
+    """Function that returns a call's result with the category and message of every warning it raised."""
+
+    def call(function, *args, **kwargs):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = function(*args, **kwargs)
+        return result, [(warning.category, str(warning.message)) for warning in caught]
+
+    return call
+
+
+@pytest.fixture
+def mpdta_rounded_collinear_covariate(mpdta_data):
+    """mpdta with a covariate that equals 1e7 times lpop plus 3e9 up to rounding."""
+    return mpdta_data.with_columns((1e7 * pl.col("lpop") + 3e9).alias("big"))
+
+
+@pytest.fixture
+def far_comparison_cell():
+    """Treatment flags and covariate of one cell whose far comparison row overflows each iteration of its logit."""
+    rng = np.random.default_rng(0)
+    treated = np.r_[np.ones(60, dtype=bool), np.zeros(61, dtype=bool)]
+    return treated, np.r_[rng.normal(0.8, 1.0, 60), rng.normal(0.0, 1.0, 60), -1000.0]
+
+
+@pytest.fixture
+def degenerate_comparison_panel(request):
+    """Balanced panel of cohort 3 and never-treated units whose comparison changes the parameter makes degenerate."""
+    kind = request.param
+    rng = np.random.default_rng(5)
+    rows = []
+    for unit in range(32 if kind == "two_comparison_units" else 42):
+        cohort = 3 if unit < 30 else 0
+        level = float(rng.integers(0, 10))
+        x = float(rng.integers(-3, 4))
+        weight = 1.0 + unit % 3
+        if kind == "two_comparison_units" and cohort == 0:
+            x = float(unit - 30)
+        for t in (1, 2, 3, 4):
+            if cohort == 0 and kind == "constant_change":
+                y = level + 2.0 * t
+            elif cohort == 0 and kind == "exact_change":
+                y = level + t * (1.0 + 2.0 * x)
+            else:
+                y = level + t + 0.5 * x * t + rng.normal() + 1.5 * (cohort == 3 and t >= 3)
+            rows.append((unit, t, cohort, x, weight, y))
+    return pl.DataFrame(rows, schema=["id", "t", "g", "x1", "w", "y"], orient="row")
 
 
 @pytest.fixture

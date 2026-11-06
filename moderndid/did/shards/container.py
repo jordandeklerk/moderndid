@@ -313,6 +313,12 @@ class LogitFit(NamedTuple):
         treatment indicator.
     error : str, optional
         Why the fit failed, or None for a fit that finished.
+    kept : tuple, optional
+        Positions of the design columns that the fit keeps, or None when it
+        keeps every column. A finished fit gives each dropped column a zero
+        coefficient.
+    dropped : int, default=0
+        Number of covariates that the fit drops.
     """
 
     #: Coefficients on the scaled design.
@@ -325,6 +331,10 @@ class LogitFit(NamedTuple):
     separated: int
     #: Why the fit failed.
     error: str | None = None
+    #: Positions of the design columns that the fit keeps.
+    kept: tuple | None = None
+    #: Number of covariates that the fit drops.
+    dropped: int = 0
 
 
 class CellEstimate(NamedTuple):

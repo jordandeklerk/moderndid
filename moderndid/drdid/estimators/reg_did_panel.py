@@ -3,16 +3,20 @@
 from typing import NamedTuple
 
 import numpy as np
-import statsmodels.api as sm
 from scipy import stats
 
 from moderndid.cupy.backend import get_backend, to_numpy
-from moderndid.cupy.regression import cupy_wls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_reg_panel
-from ..utils import _scaled_columns, _scaled_inverse
-from .wols import _check_observations, _check_panel_groups, _has_collinear_columns, _singular_comparison_message
+from ..utils import _scaled_inverse
+from .wols import (
+    _check_observations,
+    _check_panel_groups,
+    _fit_wls,
+    _has_collinear_columns,
+    _singular_comparison_message,
+)
 
 
 class RegDIDPanelResult(NamedTuple):
@@ -131,7 +135,7 @@ def reg_did_panel(
     eta_cont = xp.mean(reg_att_cont) / mean_w_cont
     reg_att = eta_treat - eta_cont
 
-    # Since the group checks guarantee positive weights, a NaN estimate here comes from a missing outcome.
+    # The group checks guarantee positive weights. A NaN estimate here comes from a missing outcome.
     if np.isnan(float(reg_att)):
         reg_att_inf_func = np.full(n_units, np.nan)
         se_reg_att = np.nan
@@ -179,7 +183,6 @@ def reg_did_panel(
     reg_att_inf_func = to_numpy(reg_att_inf_func)
     reg_att = float(reg_att)
 
-    # Inference
     if not boot:
         se_reg_att = np.std(reg_att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = reg_att + 1.96 * se_reg_att
@@ -265,30 +268,18 @@ def _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights):
     _check_observations(control_filter, int_cov, i_weights, "comparison group", "units", regressed=True, treat=False)
     if _has_collinear_columns(int_cov[control_filter], i_weights[control_filter]):
         raise ValueError(_singular_comparison_message())
+    # An infinite outcome would pass silently into the least squares coefficients. This check names it first. The filter
+    # above already keeps missing outcomes out of the fit.
+    if not bool(xp.all(xp.isfinite(delta_y[control_filter]))):
+        raise ValueError(
+            "Failed to fit outcome regression model: y1 or y0 holds infinite values for some units of the comparison "
+            "group. Pass finite outcomes for those units."
+        )
 
-    scaled = _scaled_columns(int_cov)
-    if xp is not np:
-        try:
-            beta, _ = cupy_wls(
-                xp.asarray(delta_y[control_filter]),
-                xp.asarray(scaled[control_filter]),
-                xp.asarray(i_weights[control_filter]),
-            )
-            reg_coeff = to_numpy(beta)
-        except (np.linalg.LinAlgError, RuntimeError) as e:
-            raise ValueError(f"Failed to fit outcome regression model: {e}") from e
-    else:
-        try:
-            glm_model = sm.GLM(
-                delta_y[control_filter],
-                scaled[control_filter],
-                family=sm.families.Gaussian(link=sm.families.links.Identity()),
-                var_weights=i_weights[control_filter],
-            )
-            glm_results = glm_model.fit()
-            reg_coeff = glm_results.params
-        except (np.linalg.LinAlgError, ValueError) as e:
-            raise ValueError(f"Failed to fit outcome regression model: {e}") from e
+    try:
+        reg_coeff, _ = _fit_wls(delta_y[control_filter], int_cov[control_filter], i_weights[control_filter])
+    except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
+        raise ValueError(f"Failed to fit outcome regression model: {e}") from e
 
     if np.any(np.isnan(reg_coeff)):
         raise ValueError(
@@ -296,7 +287,7 @@ def _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights):
             "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
         )
 
-    out_delta = scaled @ xp.asarray(reg_coeff)
+    out_delta = int_cov @ xp.asarray(reg_coeff)
 
     return out_delta
 
@@ -314,7 +305,6 @@ def _compute_weights(d, i_weights):
 
 def _get_influence_quantities(xp, delta_y, d, int_cov, out_delta, i_weights, n_units):
     """Compute quantities needed for influence function."""
-    # Asymptotic linear representation of OLS parameters
     weights_ols = i_weights * (1 - d)
     weighted_x = weights_ols[:, xp.newaxis] * int_cov
     weighted_resid_x = weights_ols[:, xp.newaxis] * (delta_y - out_delta)[:, xp.newaxis] * int_cov
@@ -345,22 +335,13 @@ def _compute_influence_function(
     w_cont = weights["w_cont"]
     asy_lin_rep_ols = influence_quantities["asy_lin_rep_ols"]
 
-    # Influence function of the "treat" component
-    # Leading term of the influence function
     inf_treat = (reg_att_treat - w_treat * eta_treat) / mean_w_treat
 
-    # Influence function of control component
-    # Leading term of the influence function: no estimation effect
     inf_cont_1 = reg_att_cont - w_cont * eta_cont
-    # Estimation effect from beta hat (OLS using only controls)
-    # Derivative matrix (k x 1 vector)
     control_ols_derivative = xp.mean(w_cont[:, xp.newaxis] * int_cov, axis=0)
-    # Now get the influence function related to the estimation effect related to beta's
     inf_cont_2 = asy_lin_rep_ols @ control_ols_derivative
-    # Influence function for the control component
     inf_control = (inf_cont_1 + inf_cont_2) / mean_w_cont
 
-    # Get the influence function of the OR estimator (put all pieces together)
     reg_att_inf_func = inf_treat - inf_control
 
     return reg_att_inf_func

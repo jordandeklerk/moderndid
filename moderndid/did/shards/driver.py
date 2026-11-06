@@ -16,6 +16,9 @@ from moderndid.drdid.utils import (
     _check_coefficients_validity,
     _check_extreme_weights,
     _check_wls_condition_number,
+    _dropped_covariates_message,
+    _independent_columns,
+    _numerical_rank,
     _scaled_inverse,
     _scaled_pseudo_inverse,
     _singular_pscore_message,
@@ -44,7 +47,11 @@ def fit_att_gt_on_shards(executor, config, cohort_counts, random_state, estimati
     of a kernel over the shards. The propensity score fits repeat the iterations
     of the in-memory binomial fit with one pass of
     :func:`~moderndid.did.shards.kernels.irls_kernel` for each iteration. The
-    warnings match those of the in-memory fit in content and order.
+    warnings match those of the in-memory fit in content and order. Where a
+    cell's propensity score covariates are nearly collinear, or so small or
+    large that their squares leave the range of floating point, rounding decides
+    which columns each fit keeps. The cell's warnings and estimate can then
+    differ.
 
     The influence functions never leave the shards. A last pass sums their
     outer products into :class:`~moderndid.InfluenceMoments`. When the
@@ -110,7 +117,7 @@ def fit_att_gt_on_shards(executor, config, cohort_counts, random_state, estimati
         )
 
     facts = _fit_facts(summary, len(plan.fits.group))
-    regressions = _outcome_regressions(summary, plan, facts, method) if method != "ipw" else None
+    regressions = _outcome_regressions(summary, plan, facts) if method != "ipw" else None
     logits = _propensity_fits(executor, summary, plan.fits, facts) if method != "reg" else None
 
     final = _final_state(plan.fits, facts, logits)
@@ -227,7 +234,7 @@ def _column_scales(squares, counts):
     return 2.0 ** np.where(usable, np.round(np.log2(np.where(usable, rms, 1.0))), 0.0)
 
 
-def _outcome_regressions(summary, plan, facts, method):
+def _outcome_regressions(summary, plan, facts):
     """Solve the outcome regressions of every fit from the QR factors of their comparison designs."""
     n_coefficients = facts["n_coefficients"]
     regressions = []
@@ -235,9 +242,8 @@ def _outcome_regressions(summary, plan, facts, method):
         n_rhs = int(np.sum(plan.cells.fit == f))
         r, rotated = summary.factors.get(f"regression{f}", (np.zeros((0, n_coefficients)), np.zeros((0, n_rhs))))
         collinear = _has_collinear_columns(r, int(facts["n_comparison"][f]))
-        # The doubly robust regression scales the columns over the comparison units and the outcome regression
-        # estimator over all the cell's units.
-        scale = facts["comparison_scale"][f] if method == "dr" else facts["cell_scale"][f]
+        # The in-memory regression scales the columns over the comparison units.
+        scale = facts["comparison_scale"][f]
         try:
             u, s, vt = np.linalg.svd(r / scale, full_matrices=False)
         except np.linalg.LinAlgError as e:
@@ -263,19 +269,6 @@ def _has_collinear_columns(factor, n_rows):
     return _numerical_rank(factor, n_rows) < factor.shape[1]
 
 
-def _numerical_rank(factor, n_rows):
-    """Return the rank of a weighted design from its triangular factor as a rank check on unit-norm columns sees it."""
-    norms = np.linalg.norm(factor, axis=0)
-    nonzero = norms > 0
-    if not nonzero.any():
-        return 0
-    singular_values = np.linalg.svd(factor[:, nonzero] / norms[nonzero], compute_uv=False)
-    # Since the factor stands in for the rows of the full design, the tolerance grows with that design's larger
-    # dimension as a rank check's does.
-    tolerance = singular_values.max() * max(n_rows, factor.shape[1]) * np.finfo(float).eps
-    return int(np.count_nonzero(singular_values > tolerance))
-
-
 def _least_squares(factor, rhs, n_rows, rcond):
     """Return the minimum-norm least squares solution of a factor and the right singular vectors it keeps."""
     u, s, vt = np.linalg.svd(factor, full_matrices=False)
@@ -294,6 +287,7 @@ def _propensity_fits(executor, summary, fits, facts):
     previous = summary.sums["deviance"] / facts["normalizer"]
     anchors = [None] * n_fits
     steps = [None] * n_fits
+    kept = [None] * n_fits
     iterations = np.zeros(n_fits, dtype=np.int64)
     separated = np.zeros(n_fits, dtype=np.int64)
     results = [None] * n_fits
@@ -304,11 +298,16 @@ def _propensity_fits(executor, summary, fits, facts):
     active = []
     for f in range(n_fits):
         r, rotated = summary.factors[f"logit{f}"]
-        steps[f] = (r / facts["cell_scale"][f], rotated[:, 0])
+        r = r / facts["cell_scale"][f]
+        # Every row carries the same binomial weight in the first iteration. Its factor has the rank of the
+        # sampling-weighted design and fixes the covariates that every iteration keeps.
+        columns = _independent_columns(r, n_cell[f])
+        kept[f] = None if columns is None else tuple(columns)
+        steps[f] = (_kept_columns(r, kept[f]), rotated[:, 0])
         try:
-            coefficients[f] = _least_squares(*steps[f], n_cell[f], eps)[0]
+            coefficients[f] = _full_length(_least_squares(*steps[f], n_cell[f], eps)[0], kept[f], n_coefficients)
         except np.linalg.LinAlgError:
-            results[f] = _failed_logit(n_coefficients, 0, 0)
+            results[f] = _failed_logit(n_coefficients, 0, 0, kept[f])
             continue
         active.append(f)
 
@@ -331,38 +330,73 @@ def _propensity_fits(executor, summary, fits, facts):
             converged = bool(np.isclose(previous[f], deviance, rtol=0.0, atol=1e-8))
             if converged or iterations[f] == 100:
                 try:
-                    coefficients[f] = _final_coefficients(anchors[f], steps[f], n_cell[f])
+                    coefficients[f] = _final_coefficients(anchors[f], steps[f], n_cell[f], kept[f], n_coefficients)
                 except np.linalg.LinAlgError:
-                    results[f] = _failed_logit(n_coefficients, iterations[f], separated[f])
+                    results[f] = _failed_logit(n_coefficients, iterations[f], separated[f], kept[f])
                     continue
-                results[f] = LogitFit(coefficients[f].copy(), converged, int(iterations[f]), int(separated[f]))
+                results[f] = LogitFit(
+                    coefficients[f].copy(),
+                    converged,
+                    int(iterations[f]),
+                    int(separated[f]),
+                    kept=kept[f],
+                    dropped=_dropped_count(kept[f], n_coefficients),
+                )
                 continue
             r, rotated = partial.factors[f"logit{j}"]
+            r = _kept_columns(r, kept[f])
             try:
                 step = _least_squares(r, rotated[:, 0], n_cell[f], eps)[0]
             except np.linalg.LinAlgError:
-                results[f] = _failed_logit(n_coefficients, iterations[f], separated[f])
+                results[f] = _failed_logit(n_coefficients, iterations[f], separated[f], kept[f])
                 continue
             anchors[f] = coefficients[f].copy()
             steps[f] = (r, rotated[:, 0])
-            coefficients[f] = coefficients[f] + step
+            coefficients[f] = coefficients[f] + _full_length(step, kept[f], n_coefficients)
             previous[f] = deviance
             remaining.append(f)
         active = remaining
     return results
 
 
-def _final_coefficients(anchor, step, n_rows):
+def _kept_columns(factor, kept):
+    """Return the columns of a triangular factor at the kept covariates or the whole factor when all stay."""
+    return factor if kept is None else factor[:, list(kept)]
+
+
+def _kept_block(values, kept):
+    """Return the entries of a vector or the block of a square matrix at the kept covariates or all of them."""
+    if kept is None:
+        return values
+    positions = np.asarray(kept)
+    return values[np.ix_(positions, positions)] if values.ndim == 2 else values[positions]
+
+
+def _full_length(values, kept, n_coefficients):
+    """Return values at the kept covariates at full length with zeros at the dropped ones."""
+    if kept is None:
+        return values
+    full = np.zeros(n_coefficients)
+    full[np.asarray(kept)] = values
+    return full
+
+
+def _dropped_count(kept, n_coefficients):
+    """Return the number of covariates that a propensity score fit drops."""
+    return 0 if kept is None else n_coefficients - len(kept)
+
+
+def _final_coefficients(anchor, step, n_rows, kept, n_coefficients):
     """Return the coefficients of the last iteration from its pseudo-inverse as the binomial fit reports them."""
-    # Since the last solve regresses the current fit plus the step, it projects the current coefficients onto the
-    # kept directions. A full-rank fit therefore keeps its last Newton iterate.
-    solution, kept = _least_squares(*step, n_rows, 1e-15)
-    if anchor is None:
-        return solution
-    return kept.T @ (kept @ anchor) + solution
+    # Regressing the current fit plus the step, the last solve projects the current coefficients onto the kept
+    # directions. A full-rank fit therefore keeps its last Newton iterate.
+    solution, directions = _least_squares(*step, n_rows, 1e-15)
+    if anchor is not None:
+        solution = directions.T @ (directions @ _kept_block(anchor, kept)) + solution
+    return _full_length(solution, kept, n_coefficients)
 
 
-def _failed_logit(n_coefficients, iterations, separated):
+def _failed_logit(n_coefficients, iterations, separated, kept):
     """Return a propensity score fit whose least squares solve failed."""
     return LogitFit(
         coefficients=np.full(n_coefficients, np.nan),
@@ -370,6 +404,8 @@ def _failed_logit(n_coefficients, iterations, separated):
         iterations=int(iterations),
         separated=int(separated),
         error="Failed to estimate propensity scores due to singular matrix.",
+        kept=kept,
+        dropped=_dropped_count(kept, n_coefficients),
     )
 
 
@@ -515,14 +551,18 @@ def _doubly_robust_cell(c, f, plan, facts, logit, regression, sums):
     att = eta_treat - eta_cont
 
     gram_inverse = _scaled_inverse(sums.sums["comparison_gram"][f] / n_cell, _singular_comparison_message())
-    hessian_inverse = _scaled_inverse(sums.sums["hessian"][f], _singular_pscore_message()) * n_cell
+    hessian = _kept_block(sums.sums["hessian"][f], logit.kept)
+    hessian_inverse = _scaled_inverse(hessian, _singular_pscore_message()) * n_cell
     treat_x, cont_x = sums.sums["weighted_x"][f] / n_cell
     pscore_derivative = (sums.sums["terms_x"][c] - eta_cont * sums.sums["weighted_x"][f, 1]) / n_cell
+    pscore_direction = _full_length(
+        hessian_inverse @ _kept_block(pscore_derivative, logit.kept), logit.kept, facts["n_coefficients"]
+    )
     _check_att(att)
     return CellEstimate(
         att=att,
         terms=np.array([eta_treat, eta_cont, mean_treat, mean_cont]),
-        directions=np.array([gram_inverse @ treat_x, hessian_inverse @ pscore_derivative, gram_inverse @ cont_x]),
+        directions=np.array([gram_inverse @ treat_x, pscore_direction, gram_inverse @ cont_x]),
         coefficients=coefficients,
     )
 
@@ -543,17 +583,19 @@ def _inverse_probability_cell(c, f, facts, logit, sums):
     att_cont = (sums.sums["terms"][c, 1] / mean_cont) / n_cell
     att = att_treat - att_cont
 
+    hessian = _kept_block(sums.sums["hessian"][f], logit.kept)
     try:
-        hessian_inverse = _scaled_inverse(sums.sums["hessian"][f], _singular_pscore_message()) * n_cell
+        hessian_inverse = _scaled_inverse(hessian, _singular_pscore_message()) * n_cell
     except ValueError:
-        hessian_inverse = _scaled_pseudo_inverse(sums.sums["hessian"][f]) * n_cell
+        hessian_inverse = _scaled_pseudo_inverse(hessian) * n_cell
     moment = ((sums.sums["terms_x"][c] - att_cont * sums.sums["weighted_x"][f, 1]) / n_cell) / mean_cont
     _check_att(att)
     n_coefficients = facts["n_coefficients"]
+    pscore_direction = _full_length(hessian_inverse @ _kept_block(moment, logit.kept), logit.kept, n_coefficients)
     return CellEstimate(
         att=att,
         terms=np.array([att_treat, att_cont, mean_treat, mean_cont]),
-        directions=np.array([np.zeros(n_coefficients), hessian_inverse @ moment, np.zeros(n_coefficients)]),
+        directions=np.array([np.zeros(n_coefficients), pscore_direction, np.zeros(n_coefficients)]),
         coefficients=np.zeros(n_coefficients),
     )
 
@@ -606,6 +648,9 @@ def _check_comparison_size(facts, f):
 
 def _check_logit(logit, nan_message):
     """Warn about the propensity score fit of an estimator and raise a ValueError when it failed."""
+    # The warning about dropped covariates precedes the fit's warnings in memory.
+    if logit.dropped > 0:
+        warnings.warn(_dropped_covariates_message(logit.dropped), UserWarning)
     # Since att_gt refits the logit in the estimator of every cell that passes the screens, such a cell replays the
     # separation warnings a second time here.
     _warn_separation(logit.separated)

@@ -12,7 +12,14 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_std_ipw_panel
-from ..utils import _scaled_columns, _scaled_inverse, _scaled_pseudo_inverse, _singular_pscore_message
+from ..utils import (
+    _dropped_covariates_message,
+    _propensity_columns,
+    _scaled_columns,
+    _scaled_inverse,
+    _scaled_pseudo_inverse,
+    _singular_pscore_message,
+)
 from .wols import _check_panel_groups
 
 
@@ -50,6 +57,9 @@ def std_ipw_did_panel(
         \widehat{\tau}_{std}^{ipw,p} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{p}(D) -
         \widehat{w}_{0}^{p}(D,X;\widehat{\gamma})\right)
         \left(Y_{1}-Y_{0}\right)\right].
+
+    Since a covariate collinear with the earlier ones on the weighted rows adds nothing to the
+    logistic propensity score model, the estimator drops it from that model with a warning.
 
     Parameters
     ----------
@@ -107,9 +117,9 @@ def std_ipw_did_panel(
     )
     _check_panel_groups(d, covariates, i_weights, regressions=())
 
-    ps_fit, W = _compute_propensity_score(xp, d, covariates, i_weights)
+    ps_fit, W, ps_covariates = _compute_propensity_score(xp, d, covariates, i_weights)
 
-    trim_ps = ps_fit < 1.01  # This effectively creates all True for treated units
+    trim_ps = ps_fit < 1.01  # Treated units are never trimmed because every score lies below 1.01.
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
     weights = _compute_weights(d, ps_fit, i_weights, trim_ps)
 
@@ -136,7 +146,7 @@ def std_ipw_did_panel(
 
     ipw_att = att_treat - att_cont
 
-    influence_quantities = _get_influence_quantities(xp, d, covariates, ps_fit, i_weights, W, n_units)
+    influence_quantities = _get_influence_quantities(xp, d, ps_covariates, ps_fit, i_weights, W, n_units)
 
     att_inf_func = _compute_influence_function(
         xp,
@@ -145,7 +155,7 @@ def std_ipw_did_panel(
         att_treat,
         att_cont,
         delta_y,
-        covariates,
+        ps_covariates,
         weights,
         mean_w_treat,
         mean_w_cont,
@@ -155,7 +165,6 @@ def std_ipw_did_panel(
     att_inf_func = to_numpy(att_inf_func)
     ipw_att = float(ipw_att)
 
-    # Inference
     if not boot:
         se_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = ipw_att + 1.96 * se_att
@@ -216,7 +225,6 @@ def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
 
     covariates = xp.ones((n_units, 1)) if covariates is None else xp.asarray(covariates)
 
-    # Weights
     if i_weights is None:
         i_weights = xp.ones(n_units)
     else:
@@ -225,7 +233,6 @@ def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
             raise ValueError("i_weights must be non-negative.")
     i_weights = i_weights / xp.mean(i_weights)
 
-    # Check if we have variation in treatment
     unique_d = xp.unique(d)
     if len(unique_d) < 2:
         if unique_d[0] == 0:
@@ -236,7 +243,13 @@ def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
 
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
-    """Compute propensity score using logistic regression."""
+    """Compute propensity score using logistic regression and return it with the covariates the model keeps."""
+    kept = _propensity_columns(covariates, i_weights)
+    if kept is not None:
+        warnings.warn(_dropped_covariates_message(covariates.shape[1] - len(kept)), UserWarning)
+        # Taking the columns keeps the array row-major. Its sums then round exactly like those of a design built without
+        # the dropped columns.
+        covariates = xp.take(covariates, kept, axis=1)
     scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
@@ -277,7 +290,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
     ps_fit = xp.clip(xp.asarray(ps_fit), 1e-6, 1 - 1e-6)
     W = ps_fit * (1 - ps_fit) * i_weights
 
-    return ps_fit, W
+    return ps_fit, W, covariates
 
 
 def _compute_weights(d, ps_fit, i_weights, trim_ps):
@@ -293,7 +306,6 @@ def _compute_weights(d, ps_fit, i_weights, trim_ps):
 
 def _get_influence_quantities(xp, d, covariates, ps_fit, i_weights, W, n_units):
     """Compute quantities needed for influence function."""
-    # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
 
     weighted_cov_matrix = covariates.T @ (W[:, xp.newaxis] * covariates)
@@ -327,21 +339,14 @@ def _compute_influence_function(
     w_cont = weights["w_cont"]
     asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]
 
-    # Influence function of treated component
-    # Leading term of the influence function: no estimation effect
     inf_treat = eta_treat - w_treat * att_treat / mean_w_treat
 
-    # Influence function of control component
-    # Leading term of the influence function: no estimation effect
     inf_cont = eta_cont - w_cont * att_cont / mean_w_cont
 
-    # Derivative matrix (k x 1 vector)
     mom_logit = xp.mean((w_cont * (delta_y - att_cont))[:, xp.newaxis] * covariates, axis=0) / mean_w_cont
 
-    # Now the influence function related to estimation effect of pscores
     inf_cont_ps = asy_lin_rep_ps @ mom_logit
 
-    # Get the influence function of the standardized IPW estimator (put all pieces together)
     att_inf_func = inf_treat - (inf_cont + inf_cont_ps)
 
     return att_inf_func

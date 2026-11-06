@@ -471,6 +471,32 @@ def test_ordid_missing_values_raise_in_panel():
         )
 
 
+def test_ordid_unbalanced_panel_drops_units_with_incomplete_observations():
+    rng = np.random.default_rng(42)
+    y = rng.standard_normal(5)
+    df = pl.DataFrame(
+        {
+            "id": [1, 1, 2, 2, 3],
+            "time": [0, 1, 0, 1, 0],
+            "y": y,
+            "treat": [0, 0, 1, 1, 0],
+        }
+    )
+    message = "Panel data is unbalanced. Dropping units with incomplete observations."
+
+    with pytest.warns(UserWarning, match=f"^{re.escape(message)}$"):
+        result = ordid(
+            data=df,
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
+            panel=True,
+        )
+
+    np.testing.assert_allclose(result.att, (y[3] - y[2]) - (y[1] - y[0]), rtol=1e-12)
+
+
 def test_ordid_unbalanced_panel_warning(nsw_data, nsw_units):
     unbalanced = nsw_data.filter(~((pl.col("id") == 15995) & (pl.col("year") == 1978)))
     balanced = nsw_units.filter(pl.col("id") != 15995)

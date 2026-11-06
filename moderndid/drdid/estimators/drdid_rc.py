@@ -12,7 +12,14 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc2
-from ..utils import _divide_by_complement, _scaled_columns, _scaled_inverse, _singular_pscore_message
+from ..utils import (
+    _divide_by_complement,
+    _dropped_covariates_message,
+    _propensity_columns,
+    _scaled_columns,
+    _scaled_inverse,
+    _singular_pscore_message,
+)
 from .wols import _cell_name, _check_rc_cells, _singular_cell_message, ols_rc
 
 
@@ -63,8 +70,10 @@ def drdid_rc(
     This estimator uses a logistic propensity score model and linear regression models for the
     outcome of the treated and comparison groups in each period.
 
-    The propensity score parameters are estimated by maximum likelihood. The outcome regression
-    coefficients are estimated by ordinary least squares. :func:`drdid` computes this estimator
+    The propensity score parameters are estimated by maximum likelihood. Since a covariate collinear
+    with the earlier ones on the weighted rows adds nothing to the propensity score model, the
+    estimator drops it from that model with a warning. The outcome regression coefficients are
+    estimated by ordinary least squares. :func:`drdid` computes this estimator
     for repeated cross-sections with ``est_method="trad"``.
 
     Parameters
@@ -115,7 +124,7 @@ def drdid_rc(
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
     _check_rc_cells(post, d, covariates, i_weights, regressions=("comparison", "treated"))
 
-    ps_fit = _compute_propensity_score(xp, d, covariates, i_weights)
+    ps_fit, ps_covariates = _compute_propensity_score(xp, d, covariates, i_weights)
     trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
@@ -150,6 +159,7 @@ def drdid_rc(
         post,
         d,
         covariates,
+        ps_covariates,
         ps_fit,
         out_y_cont_pre,
         out_y_cont_post,
@@ -160,7 +170,7 @@ def drdid_rc(
     )
 
     att_inf_func = _compute_influence_function(
-        y, post, out_y_cont, covariates, weights, influence_components, influence_quantities
+        y, post, out_y_cont, covariates, ps_covariates, weights, influence_components, influence_quantities
     )
 
     att_inf_func = to_numpy(att_inf_func)
@@ -171,7 +181,6 @@ def drdid_rc(
     se_dr_att = np.nan
     dr_boot = None
 
-    # Inference
     if boot is False:
         se_dr_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = dr_att + 1.96 * se_dr_att
@@ -253,7 +262,13 @@ def _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights):
 
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
-    """Compute propensity score using logistic regression."""
+    """Compute propensity score using logistic regression and return it with the covariates the model keeps."""
+    kept = _propensity_columns(covariates, i_weights)
+    if kept is not None:
+        warnings.warn(_dropped_covariates_message(covariates.shape[1] - len(kept)), UserWarning)
+        # Taking the columns keeps the array row-major. Its sums then round exactly like those of a design built without
+        # the dropped columns.
+        covariates = xp.take(covariates, kept, axis=1)
     scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
@@ -288,7 +303,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
             raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
     ps_fit = xp.clip(ps_fit, 1e-6, 1 - 1e-6)
-    return ps_fit
+    return ps_fit, covariates
 
 
 def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
@@ -329,19 +344,17 @@ def _get_influence_components(
     w_dt1 = weights["w_dt1"]
     w_dt0 = weights["w_dt0"]
 
-    # Elements of the influence function (summands)
     eta_treat_pre = w_treat_pre * (y - out_y_cont) / np.mean(w_treat_pre)
     eta_treat_post = w_treat_post * (y - out_y_cont) / np.mean(w_treat_post)
     eta_cont_pre = w_cont_pre * (y - out_y_cont) / np.mean(w_cont_pre)
     eta_cont_post = w_cont_post * (y - out_y_cont) / np.mean(w_cont_post)
 
-    # Extra elements for the locally efficient drdid
+    # The treated-group regression terms of equation (3.4) make the estimator locally efficient.
     eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / np.mean(w_d)
     eta_dt1_post = w_dt1 * (out_y_treat_post - out_y_cont_post) / np.mean(w_dt1)
     eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_d)
     eta_dt0_pre = w_dt0 * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_dt0)
 
-    # Estimator of each component
     att_treat_pre = np.mean(eta_treat_pre)
     att_treat_post = np.mean(eta_treat_post)
     att_cont_pre = np.mean(eta_cont_pre)
@@ -378,6 +391,7 @@ def _get_influence_quantities(
     post,
     d,
     covariates,
+    ps_covariates,
     ps_fit,
     out_y_cont_pre,
     out_y_cont_post,
@@ -387,7 +401,6 @@ def _get_influence_quantities(
     n_units,
 ):
     """Compute quantities needed for influence function."""
-    # Asymptotic linear representation of OLS parameters in pre-period, control group
     weights_ols_pre = i_weights * (1 - d) * (1 - post)
     weighted_x_pre = weights_ols_pre[:, xp.newaxis] * covariates
     weighted_resid_x_pre = (weights_ols_pre * (y - out_y_cont_pre))[:, xp.newaxis] * covariates
@@ -396,7 +409,6 @@ def _get_influence_quantities(
     gram_inv_pre = _scaled_inverse(gram_pre, _singular_cell_message(_cell_name(True, False), False))
     asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
 
-    # Asymptotic linear representation of OLS parameters in post-period, control group
     weights_ols_post = i_weights * (1 - d) * post
     weighted_x_post = weights_ols_post[:, xp.newaxis] * covariates
     weighted_resid_x_post = (weights_ols_post * (y - out_y_cont_post))[:, xp.newaxis] * covariates
@@ -405,7 +417,6 @@ def _get_influence_quantities(
     gram_inv_post = _scaled_inverse(gram_post, _singular_cell_message(_cell_name(False, False), False))
     asy_lin_rep_ols_post = weighted_resid_x_post @ gram_inv_post
 
-    # Asymptotic linear representation of OLS parameters in pre-period, treated
     weights_ols_pre_treat = i_weights * d * (1 - post)
     weighted_x_pre_treat = weights_ols_pre_treat[:, xp.newaxis] * covariates
     weighted_resid_x_pre_treat = (weights_ols_pre_treat * (y - out_y_treat_pre))[:, xp.newaxis] * covariates
@@ -414,7 +425,6 @@ def _get_influence_quantities(
     gram_inv_pre_treat = _scaled_inverse(gram_pre_treat, _singular_cell_message(_cell_name(True, True), True))
     asy_lin_rep_ols_pre_treat = weighted_resid_x_pre_treat @ gram_inv_pre_treat
 
-    # Asymptotic linear representation of OLS parameters in post-period, treated
     weights_ols_post_treat = i_weights * d * post
     weighted_x_post_treat = weights_ols_post_treat[:, xp.newaxis] * covariates
     weighted_resid_x_post_treat = (weights_ols_post_treat * (y - out_y_treat_post))[:, xp.newaxis] * covariates
@@ -423,10 +433,9 @@ def _get_influence_quantities(
     gram_inv_post_treat = _scaled_inverse(gram_post_treat, _singular_cell_message(_cell_name(False, True), True))
     asy_lin_rep_ols_post_treat = weighted_resid_x_post_treat @ gram_inv_post_treat
 
-    # Asymptotic linear representation of logit's beta's
-    score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
+    score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * ps_covariates
     ps_weights = ps_fit * (1 - ps_fit) * i_weights
-    ps_hessian = covariates.T @ (ps_weights[:, xp.newaxis] * covariates)
+    ps_hessian = ps_covariates.T @ (ps_weights[:, xp.newaxis] * ps_covariates)
     ps_hessian_inv = _scaled_inverse(ps_hessian, _singular_pscore_message()) * n_units
     asy_lin_rep_ps = score_ps @ ps_hessian_inv
 
@@ -439,9 +448,10 @@ def _get_influence_quantities(
     }
 
 
-def _compute_influence_function(y, post, out_y_cont, covariates, weights, influence_components, influence_quantities):
+def _compute_influence_function(
+    y, post, out_y_cont, covariates, ps_covariates, weights, influence_components, influence_quantities
+):
     """Compute the influence function for locally efficient DR estimator."""
-    # Weights
     w_treat_pre = weights["w_treat_pre"]
     w_treat_post = weights["w_treat_post"]
     w_cont_pre = weights["w_cont_pre"]
@@ -450,7 +460,6 @@ def _compute_influence_function(y, post, out_y_cont, covariates, weights, influe
     w_dt1 = weights["w_dt1"]
     w_dt0 = weights["w_dt0"]
 
-    # Influence components
     eta_treat_pre = influence_components["eta_treat_pre"]
     eta_treat_post = influence_components["eta_treat_post"]
     eta_cont_pre = influence_components["eta_cont_pre"]
@@ -469,78 +478,56 @@ def _compute_influence_function(y, post, out_y_cont, covariates, weights, influe
     att_d_pre = influence_components["att_d_pre"]
     att_dt0_pre = influence_components["att_dt0_pre"]
 
-    # Asymptotic linear representations
     asy_lin_rep_ols_pre = influence_quantities["asy_lin_rep_ols_pre"]
     asy_lin_rep_ols_post = influence_quantities["asy_lin_rep_ols_post"]
     asy_lin_rep_ols_pre_treat = influence_quantities["asy_lin_rep_ols_pre_treat"]
     asy_lin_rep_ols_post_treat = influence_quantities["asy_lin_rep_ols_post_treat"]
     asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]
 
-    # Now, the influence function of the "treat" component
-    # Leading term of the influence function: no estimation effect
     inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
     inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
 
-    # Estimation effect from beta hat from post and pre-periods
-    # Derivative matrix (k x 1 vector)
     treat_moment_post = -np.mean((w_treat_post * post)[:, np.newaxis] * covariates, axis=0) / np.mean(w_treat_post)
     treat_moment_pre = -np.mean((w_treat_pre * (1 - post))[:, np.newaxis] * covariates, axis=0) / np.mean(w_treat_pre)
 
-    # Now get the influence function related to the estimation effect related to beta's
     inf_treat_or_post = asy_lin_rep_ols_post @ treat_moment_post
     inf_treat_or_pre = asy_lin_rep_ols_pre @ treat_moment_pre
-    # Since the pre-period mean enters each component with a minus sign, so does its regression's estimation effect.
+    # The pre-period mean enters each component with a minus sign. Its regression's estimation effect does too.
     inf_treat_or = inf_treat_or_post - inf_treat_or_pre
-    # Influence function for the treated component
     inf_treat = inf_treat_post - inf_treat_pre + inf_treat_or
 
-    # Now, get the influence function of control component
-    # Leading term of the influence function: no estimation effect from nuisance parameters
     inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
     inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
 
-    # Estimation effect from gamma hat (pscore)
-    # Derivative matrix (k x 1 vector)
     cont_moment_pre = np.mean(
-        (w_cont_pre * (y - out_y_cont - att_cont_pre))[:, np.newaxis] * covariates, axis=0
+        (w_cont_pre * (y - out_y_cont - att_cont_pre))[:, np.newaxis] * ps_covariates, axis=0
     ) / np.mean(w_cont_pre)
     cont_moment_post = np.mean(
-        (w_cont_post * (y - out_y_cont - att_cont_post))[:, np.newaxis] * covariates, axis=0
+        (w_cont_post * (y - out_y_cont - att_cont_post))[:, np.newaxis] * ps_covariates, axis=0
     ) / np.mean(w_cont_post)
-    # Now the influence function related to estimation effect of pscores
     inf_cont_ps = asy_lin_rep_ps @ (cont_moment_post - cont_moment_pre)
 
-    # Estimation effect from beta hat from post and pre-periods
-    # Derivative matrix (k x 1 vector)
     cont_reg_moment_post = -np.mean((w_cont_post * post)[:, np.newaxis] * covariates, axis=0) / np.mean(w_cont_post)
     cont_reg_moment_pre = -np.mean((w_cont_pre * (1 - post))[:, np.newaxis] * covariates, axis=0) / np.mean(w_cont_pre)
 
-    # Now get the influence function related to the estimation effect related to beta's
     inf_cont_or_post = asy_lin_rep_ols_post @ cont_reg_moment_post
     inf_cont_or_pre = asy_lin_rep_ols_pre @ cont_reg_moment_pre
     inf_cont_or = inf_cont_or_post - inf_cont_or_pre
-    # Influence function for the control component
     inf_cont = inf_cont_post - inf_cont_pre + inf_cont_ps + inf_cont_or
 
-    # Now, we only need to get the influence function of the adjustment terms
-    # First, the terms as if all OR parameters were known
     inf_eff1 = eta_d_post - w_d * att_d_post / np.mean(w_d)
     inf_eff2 = eta_dt1_post - w_dt1 * att_dt1_post / np.mean(w_dt1)
     inf_eff3 = eta_d_pre - w_d * att_d_pre / np.mean(w_d)
     inf_eff4 = eta_dt0_pre - w_dt0 * att_dt0_pre / np.mean(w_dt0)
     inf_eff = (inf_eff1 - inf_eff2) - (inf_eff3 - inf_eff4)
 
-    # Now the estimation effect of the OR coefficients
     mom_post = np.mean(((w_d / np.mean(w_d)) - (w_dt1 / np.mean(w_dt1)))[:, np.newaxis] * covariates, axis=0)
     mom_pre = np.mean(((w_d / np.mean(w_d)) - (w_dt0 / np.mean(w_dt0)))[:, np.newaxis] * covariates, axis=0)
     inf_or_post = (asy_lin_rep_ols_post_treat - asy_lin_rep_ols_post) @ mom_post
     inf_or_pre = (asy_lin_rep_ols_pre_treat - asy_lin_rep_ols_pre) @ mom_pre
-    # Now the estimation effect of the OR coefficients
     inf_or = inf_or_post - inf_or_pre
 
-    # Get the influence function of the inefficient DR estimator (put all pieces together)
     dr_att_inf_func1 = inf_treat - inf_cont
-    # Get the influence function of the locally efficient DR estimator (put all pieces together)
     att_inf_func = dr_att_inf_func1 + inf_eff + inf_or
 
     return att_inf_func
