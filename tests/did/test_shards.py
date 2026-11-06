@@ -24,19 +24,6 @@ from moderndid.did.shards.local import LocalExecutor, shards_from_did_data
 from moderndid.did.shards.plan import plan_cells
 
 
-def _assert_same_fit(sharded, memory):
-    np.testing.assert_array_equal(sharded.groups, memory.groups)
-    np.testing.assert_array_equal(sharded.times, memory.times)
-    assert (sharded.groups.dtype, sharded.times.dtype) == (memory.groups.dtype, memory.times.dtype)
-    assert sharded.n_units == memory.n_units
-    np.testing.assert_allclose(sharded.att_gt, memory.att_gt, rtol=1e-12, atol=1e-12)
-    np.testing.assert_allclose(sharded.se_gt, memory.se_gt, rtol=1e-12, atol=1e-12)
-    np.testing.assert_allclose(sharded.vcov_analytical, memory.vcov_analytical, rtol=1e-12, atol=1e-12)
-    np.testing.assert_allclose(sharded.critical_value, memory.critical_value, rtol=1e-12)
-    wald = [np.nan if result.wald_stat is None else result.wald_stat for result in (sharded, memory)]
-    np.testing.assert_allclose(wald[0], wald[1], rtol=1e-12)
-
-
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
 @pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
@@ -46,6 +33,8 @@ def _assert_same_fit(sharded, memory):
 def test_att_gt_on_shards_matches_att_gt_over_the_option_matrix(
     mpdta_varying_weights_and_states,
     att_gt_on_shards,
+    record_warnings,
+    assert_same_fit,
     est_method,
     control_group,
     base_period,
@@ -68,32 +57,28 @@ def test_att_gt_on_shards_matches_att_gt_over_the_option_matrix(
         "clustervars": clustervars,
         "random_state": 7,
     }
-
-    with warnings.catch_warnings(record=True) as memory_warnings:
-        warnings.simplefilter("always")
-        memory = att_gt(data, **spec)
-    with warnings.catch_warnings(record=True) as shard_warnings:
-        warnings.simplefilter("always")
-        sharded = att_gt_on_shards(data, 3, **spec)
-    shard_messages = [(w.category, str(w.message)) for w in shard_warnings]
-
-    assert [(w.category, str(w.message)) for w in memory_warnings] == [
+    anticipation_warnings = [
         (
             UserWarning,
             "anticipation = 1. Never-treated units (with group status 0 or inf) are assumed to never anticipate "
             "treatment. Anticipation only applies to eventually-treated units.",
         )
-    ] * anticipation + shard_messages
-    assert any(text.startswith("Time-varying weights detected.") for _, text in shard_messages) == bool(weightsname)
-    assert any(text.startswith("The units fall in only") for _, text in shard_messages) == bool(clustervars)
-    _assert_same_fit(sharded, memory)
+    ] * anticipation
+
+    memory, memory_warnings = record_warnings(att_gt, data, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, data, 3, **spec)
+
+    assert memory_warnings == anticipation_warnings + shard_warnings
+    assert any(text.startswith("Time-varying weights detected.") for _, text in shard_warnings) == bool(weightsname)
+    assert any(text.startswith("The units fall in only") for _, text in shard_warnings) == bool(clustervars)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
 @pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 def test_att_gt_on_shards_matches_att_gt_on_a_generated_panel_with_four_covariates(
-    scalable_panel, att_gt_on_shards, est_method, control_group, base_period
+    scalable_panel, att_gt_on_shards, assert_same_fit, est_method, control_group, base_period
 ):
     spec = {
         "yname": "y",
@@ -110,12 +95,12 @@ def test_att_gt_on_shards_matches_att_gt_on_a_generated_panel_with_four_covariat
     memory = att_gt(scalable_panel, **spec)
     sharded = att_gt_on_shards(scalable_panel, 3, **spec)
 
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
 def test_att_gt_on_shards_matches_att_gt_with_clusters_of_a_generated_panel(
-    scalable_panel, att_gt_on_shards, est_method
+    scalable_panel, att_gt_on_shards, assert_same_fit, est_method
 ):
     spec = {
         "yname": "y",
@@ -131,12 +116,12 @@ def test_att_gt_on_shards_matches_att_gt_with_clusters_of_a_generated_panel(
     memory = att_gt(scalable_panel, **spec)
     sharded = att_gt_on_shards(scalable_panel, 7, **spec)
 
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
     assert sharded.influence_moments.n_clusters == 50
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
-def test_att_gt_on_shards_matches_att_gt_without_covariates(mpdta_data, att_gt_on_shards, est_method):
+def test_att_gt_on_shards_matches_att_gt_without_covariates(mpdta_data, att_gt_on_shards, assert_same_fit, est_method):
     spec = {
         "yname": "lemp",
         "tname": "year",
@@ -150,13 +135,13 @@ def test_att_gt_on_shards_matches_att_gt_without_covariates(mpdta_data, att_gt_o
     memory = att_gt(mpdta_data, **spec)
     sharded = att_gt_on_shards(mpdta_data, 3, **spec)
 
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 def test_att_gt_on_shards_matches_att_gt_with_a_covariate_that_varies_over_time(
-    mpdta_varying_covariate, att_gt_on_shards, est_method, base_period
+    mpdta_varying_covariate, att_gt_on_shards, assert_same_fit, est_method, base_period
 ):
     spec = {
         "yname": "lemp",
@@ -174,12 +159,12 @@ def test_att_gt_on_shards_matches_att_gt_with_a_covariate_that_varies_over_time(
     sharded = att_gt_on_shards(mpdta_varying_covariate, 3, **spec)
 
     assert mpdta_varying_covariate.group_by("countyreal").agg(pl.col("x").n_unique())["x"].min() == 5
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method, n_extreme", [("dr", 12), ("ipw", 0)])
 def test_att_gt_on_shards_matches_att_gt_with_outlying_comparison_units(
-    mpdta_outlying_controls, att_gt_on_shards, est_method, n_extreme
+    mpdta_outlying_controls, att_gt_on_shards, assert_same_fit, est_method, n_extreme
 ):
     spec = {
         "yname": "lemp",
@@ -205,11 +190,11 @@ def test_att_gt_on_shards_matches_att_gt_with_outlying_comparison_units(
     assert [(w.category, str(w.message)) for w in shard_warnings] == [
         (w.category, str(w.message)) for w in memory_warnings
     ]
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 def test_att_gt_on_shards_treats_clusters_of_one_county_each_as_counties_like_att_gt(
-    mpdta_county_clusters, att_gt_on_shards
+    mpdta_county_clusters, att_gt_on_shards, assert_same_fit
 ):
     spec = {
         "yname": "lemp",
@@ -226,12 +211,14 @@ def test_att_gt_on_shards_treats_clusters_of_one_county_each_as_counties_like_at
 
     assert sharded.influence_moments.n_clusters == 500
     assert memory.wald_stat > 0
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
 @pytest.mark.parametrize("n_shards", [1, 7])
-def test_att_gt_on_shards_matches_att_gt_for_one_or_seven_shards(mpdta_data, att_gt_on_shards, est_method, n_shards):
+def test_att_gt_on_shards_matches_att_gt_for_one_or_seven_shards(
+    mpdta_data, att_gt_on_shards, assert_same_fit, est_method, n_shards
+):
     spec = {
         "yname": "lemp",
         "tname": "year",
@@ -245,11 +232,13 @@ def test_att_gt_on_shards_matches_att_gt_for_one_or_seven_shards(mpdta_data, att
     memory = att_gt(mpdta_data, **spec)
     sharded = att_gt_on_shards(mpdta_data, n_shards, shard_seed=n_shards, **spec)
 
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
-def test_att_gt_on_shards_matches_att_gt_with_empty_and_single_unit_shards(mpdta_with_states, est_method):
+def test_att_gt_on_shards_matches_att_gt_with_empty_and_single_unit_shards(
+    mpdta_with_states, assert_same_fit, est_method
+):
     spec = {
         "yname": "lemp",
         "tname": "year",
@@ -274,7 +263,7 @@ def test_att_gt_on_shards_matches_att_gt_with_empty_and_single_unit_shards(mpdta
     )
 
     assert [len(shard.cohort) for shard in shards] == [0, 1, 1, 0, 498]
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize(
@@ -344,22 +333,18 @@ def test_att_gt_on_shards_matches_att_gt_with_empty_and_single_unit_shards(mpdta
         ),
     ],
 )
-def test_att_gt_on_shards_warns_and_drops_cells_like_att_gt(request, att_gt_on_shards, data_fixture, options, message):
+def test_att_gt_on_shards_warns_and_drops_cells_like_att_gt(
+    request, att_gt_on_shards, record_warnings, assert_same_fit, data_fixture, options, message
+):
     data = request.getfixturevalue(data_fixture)
     spec = {"yname": "y", "tname": "t", "idname": "id", "gname": "g", "random_state": 7, **options}
 
-    with warnings.catch_warnings(record=True) as memory_warnings:
-        warnings.simplefilter("always")
-        memory = att_gt(data, **spec)
-    with warnings.catch_warnings(record=True) as shard_warnings:
-        warnings.simplefilter("always")
-        sharded = att_gt_on_shards(data, 3, **spec)
+    memory, memory_warnings = record_warnings(att_gt, data, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, data, 3, **spec)
 
-    assert message in [str(w.message) for w in memory_warnings]
-    assert [(w.category, str(w.message)) for w in shard_warnings] == [
-        (w.category, str(w.message)) for w in memory_warnings
-    ]
-    _assert_same_fit(sharded, memory)
+    assert message in [text for _, text in memory_warnings]
+    assert shard_warnings == memory_warnings
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize(
@@ -370,7 +355,7 @@ def test_att_gt_on_shards_warns_and_drops_cells_like_att_gt(request, att_gt_on_s
     ],
 )
 def test_att_gt_on_shards_warns_like_att_gt_when_a_covariate_separates_a_cohort(
-    mpdta_separated_2004, att_gt_on_shards, options, message
+    mpdta_separated_2004, att_gt_on_shards, record_warnings, assert_same_fit, options, message
 ):
     spec = {
         "yname": "lemp",
@@ -382,19 +367,13 @@ def test_att_gt_on_shards_warns_like_att_gt_when_a_covariate_separates_a_cohort(
         **options,
     }
 
-    with warnings.catch_warnings(record=True) as memory_warnings:
-        warnings.simplefilter("always")
-        memory = att_gt(mpdta_separated_2004, **spec)
-    with warnings.catch_warnings(record=True) as shard_warnings:
-        warnings.simplefilter("always")
-        sharded = att_gt_on_shards(mpdta_separated_2004, 3, **spec)
+    memory, memory_warnings = record_warnings(att_gt, mpdta_separated_2004, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, mpdta_separated_2004, 3, **spec)
 
-    assert message in [str(w.message) for w in memory_warnings]
-    assert any(issubclass(w.category, PerfectSeparationWarning) for w in memory_warnings)
-    assert [(w.category, str(w.message)) for w in shard_warnings] == [
-        (w.category, str(w.message)) for w in memory_warnings
-    ]
-    _assert_same_fit(sharded, memory)
+    assert message in [text for _, text in memory_warnings]
+    assert any(issubclass(category, PerfectSeparationWarning) for category, _ in memory_warnings)
+    assert shard_warnings == memory_warnings
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize(
@@ -409,7 +388,7 @@ def test_att_gt_on_shards_warns_like_att_gt_when_a_covariate_separates_a_cohort(
     ],
 )
 def test_att_gt_on_shards_warns_about_few_clusters_only_for_cohorts_that_keep_cells(
-    mpdta_separated_2004, att_gt_on_shards, base_period, message
+    mpdta_separated_2004, att_gt_on_shards, record_warnings, assert_same_fit, base_period, message
 ):
     data = mpdta_separated_2004.with_columns((pl.col("countyreal") // 1000).alias("state"))
     spec = {
@@ -423,23 +402,17 @@ def test_att_gt_on_shards_warns_about_few_clusters_only_for_cohorts_that_keep_ce
         "random_state": 7,
     }
 
-    with warnings.catch_warnings(record=True) as memory_warnings:
-        warnings.simplefilter("always")
-        memory = att_gt(data, **spec)
-    with warnings.catch_warnings(record=True) as shard_warnings:
-        warnings.simplefilter("always")
-        sharded = att_gt_on_shards(data, 3, **spec)
+    memory, memory_warnings = record_warnings(att_gt, data, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, data, 3, **spec)
 
-    assert any(str(w.message).startswith(message) for w in memory_warnings)
-    assert [(w.category, str(w.message)) for w in shard_warnings] == [
-        (w.category, str(w.message)) for w in memory_warnings
-    ]
-    _assert_same_fit(sharded, memory)
+    assert any(text.startswith(message) for _, text in memory_warnings)
+    assert shard_warnings == memory_warnings
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method, base_period", [("dr", "varying"), ("reg", "universal")])
 def test_att_gt_on_shards_warns_like_att_gt_when_regression_covariates_are_collinear(
-    mpdta_collinear_covariates, att_gt_on_shards, est_method, base_period
+    mpdta_collinear_covariates, att_gt_on_shards, assert_same_fit, est_method, base_period
 ):
     spec = {
         "yname": "lemp",
@@ -465,12 +438,12 @@ def test_att_gt_on_shards_warns_like_att_gt_when_regression_covariates_are_colli
     assert [(w.category, str(w.message)) for w in shard_warnings] == [
         (w.category, str(w.message)) for w in memory_warnings
     ]
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 def test_att_gt_on_shards_with_a_collinear_propensity_covariate_matches_att_gt_without_it(
-    mpdta_shifted_covariate, att_gt_on_shards, base_period
+    mpdta_shifted_covariate, att_gt_on_shards, assert_same_fit, base_period
 ):
     spec = {
         "yname": "lemp",
@@ -492,12 +465,12 @@ def test_att_gt_on_shards_with_a_collinear_propensity_covariate_matches_att_gt_w
 
     assert [str(w.message) for w in memory_warnings] == []
     assert [str(w.message) for w in shard_warnings] == [dropped] * 12
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 def test_att_gt_on_shards_matches_att_gt_when_propensity_covariates_are_collinear(
-    mpdta_collinear_covariates, att_gt_on_shards, record_warnings, base_period
+    mpdta_collinear_covariates, att_gt_on_shards, assert_same_fit, record_warnings, base_period
 ):
     spec = {
         "yname": "lemp",
@@ -516,12 +489,12 @@ def test_att_gt_on_shards_matches_att_gt_when_propensity_covariates_are_collinea
 
     assert memory_warnings == [dropped] * 12
     assert shard_warnings == memory_warnings
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 def test_att_gt_on_shards_drops_a_propensity_covariate_collinear_up_to_rounding_like_att_gt(
-    mpdta_rounded_collinear_covariate, att_gt_on_shards, record_warnings, base_period
+    mpdta_rounded_collinear_covariate, att_gt_on_shards, assert_same_fit, record_warnings, base_period
 ):
     spec = {
         "yname": "lemp",
@@ -540,7 +513,7 @@ def test_att_gt_on_shards_drops_a_propensity_covariate_collinear_up_to_rounding_
 
     assert memory_warnings == [dropped] * 12
     assert shard_warnings == memory_warnings
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize(
@@ -558,7 +531,7 @@ def test_att_gt_on_shards_drops_a_propensity_covariate_collinear_up_to_rounding_
     indirect=["degenerate_comparison_panel"],
 )
 def test_att_gt_on_shards_estimates_degenerate_comparison_groups_of_reg_quietly_like_att_gt(
-    degenerate_comparison_panel, att_gt_on_shards, record_warnings, control_group, expected_warnings
+    degenerate_comparison_panel, att_gt_on_shards, assert_same_fit, record_warnings, control_group, expected_warnings
 ):
     spec = {
         "yname": "y",
@@ -579,14 +552,14 @@ def test_att_gt_on_shards_estimates_degenerate_comparison_groups_of_reg_quietly_
     assert memory_warnings == expected_warnings
     assert shard_warnings == memory_warnings
     assert np.all(np.isfinite(memory.att_gt))
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("data_fixture", ["wide_scalable_panel", "wider_scalable_panel"])
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
 @pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
 def test_att_gt_on_shards_matches_att_gt_without_warnings_on_weighted_panels_with_twenty_and_fifty_covariates(
-    request, att_gt_on_shards, data_fixture, est_method, control_group
+    request, att_gt_on_shards, assert_same_fit, data_fixture, est_method, control_group
 ):
     data = request.getfixturevalue(data_fixture)
     spec = {
@@ -614,7 +587,7 @@ def test_att_gt_on_shards_matches_att_gt_without_warnings_on_weighted_panels_wit
     np.testing.assert_array_equal(sharded.groups, [2, 2, 3, 3])
     assert np.all(np.isfinite(sharded.att_gt))
     assert np.all(np.isfinite(sharded.se_gt))
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
@@ -761,7 +734,7 @@ def test_att_gt_on_shards_skips_every_cell_like_att_gt_when_a_wide_comparison_de
 
 
 def test_att_gt_on_shards_skips_like_att_gt_the_cells_whose_comparison_group_is_smaller_than_the_coefficients(
-    twenty_never_treated_panel, att_gt_on_shards
+    twenty_never_treated_panel, att_gt_on_shards, assert_same_fit
 ):
     spec = {
         "yname": "y",
@@ -797,7 +770,7 @@ def test_att_gt_on_shards_skips_like_att_gt_the_cells_whose_comparison_group_is_
     np.testing.assert_array_equal(sharded.times, [2])
     assert np.all(np.isfinite(sharded.att_gt))
     assert np.all(np.isfinite(sharded.se_gt))
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
@@ -906,7 +879,7 @@ def test_att_gt_on_shards_recovers_the_planted_effects_beside_sixteen_irrelevant
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw"])
 def test_att_gt_on_shards_drops_like_att_gt_the_cohort_whose_twenty_covariates_push_its_scores_past_0999(
-    separated_cohort_panel, att_gt_on_shards, est_method
+    separated_cohort_panel, att_gt_on_shards, assert_same_fit, est_method
 ):
     spec = {
         "yname": "y",
@@ -935,7 +908,7 @@ def test_att_gt_on_shards_drops_like_att_gt_the_cohort_whose_twenty_covariates_p
     np.testing.assert_array_equal(sharded.groups, [3, 3])
     assert np.all(np.isfinite(sharded.att_gt))
     assert np.all(np.isfinite(sharded.se_gt))
-    _assert_same_fit(sharded, memory)
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
@@ -1631,11 +1604,8 @@ def test_fit_att_gt_on_shards_with_outcome_regressions_takes_three_passes(
     [
         (
             {"panel": False},
-            "The shard engine fits balanced panels only. Pass panel=True and allow_unbalanced_panel=False.",
-        ),
-        (
-            {"allow_unbalanced_panel": True},
-            "The shard engine fits balanced panels only. Pass panel=True and allow_unbalanced_panel=False.",
+            "fit_att_gt_on_shards fits balanced panels only. Fit repeated cross-sections and unbalanced panels "
+            "with fit_att_gt_on_row_shards.",
         ),
         (
             {"est_method": "probit"},
@@ -1643,7 +1613,7 @@ def test_fit_att_gt_on_shards_with_outcome_regressions_takes_three_passes(
         ),
         ({"est_method": drdid_panel}, " is not valid for a fit on shards. Must be 'dr', 'ipw', or 'reg'."),
     ],
-    ids=["repeated_cross_sections", "unbalanced_panel", "unknown_estimator", "custom_estimator"],
+    ids=["repeated_cross_sections", "unknown_estimator", "custom_estimator"],
 )
 def test_fit_att_gt_on_shards_rejects_configurations_it_cannot_fit(mpdta_data, change, message):
     did_data = preprocess_did(
@@ -1815,26 +1785,51 @@ def test_shards_from_did_data_rejects_repeated_cross_sections(mpdta_data):
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "shards_from_did_data needs a balanced panel. Preprocess the data with panel=True and "
-            "allow_unbalanced_panel=False."
+            "shards_from_did_data needs a balanced panel. Build the shards of repeated cross-sections and "
+            "unbalanced panels with row_shards_from_did_data."
         ),
     ):
         shards_from_did_data(did_data, 3)
 
 
-def test_shards_from_did_data_rejects_a_panel_preprocessed_as_unbalanced(mpdta_data):
+def test_shards_from_did_data_rejects_a_panel_in_which_some_unit_misses_a_period(mpdta_unbalanced):
     did_data = preprocess_did(
-        mpdta_data, yname="lemp", tname="year", idname="countyreal", gname="first.treat", allow_unbalanced_panel=True
+        mpdta_unbalanced,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        allow_unbalanced_panel=True,
     )
 
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "shards_from_did_data needs a balanced panel. Preprocess the data with panel=True and "
-            "allow_unbalanced_panel=False."
+            "shards_from_did_data needs a balanced panel. Build the shards of repeated cross-sections and "
+            "unbalanced panels with row_shards_from_did_data."
         ),
     ):
         shards_from_did_data(did_data, 3)
+
+
+def test_att_gt_on_shards_matches_att_gt_on_a_balanced_panel_preprocessed_with_allow_unbalanced_panel(
+    mpdta_data, att_gt_on_shards, record_warnings, assert_same_fit
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "allow_unbalanced_panel": True,
+        "random_state": 7,
+    }
+
+    memory, memory_warnings = record_warnings(att_gt, mpdta_data, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, mpdta_data, 3, **spec)
+
+    assert shard_warnings == memory_warnings
+    assert_same_fit(sharded, memory, 1e-12)
 
 
 def test_shard_from_arrow_reads_each_list_column_period_by_period():
