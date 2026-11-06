@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "_ext"))
 
-# Executed pages load the stored results in prerun, and the notebook kernels inherit this path.
+# Executed pages load the stored results in prerun. The notebook kernels inherit this path.
 os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [str(Path(__file__).parent), os.environ.get("PYTHONPATH")]))
 
 # -- Project information
@@ -62,7 +62,7 @@ exclude_patterns = [
 # The reST default role (used for this markup: `text`) to use for all documents.
 default_role = "autolink"
 
-# If true, '()' will be appended to :func: etc. cross-reference text.
+# If true, '()' will be appended to :func: and other cross-reference text.
 add_function_parentheses = False
 
 rst_prolog = r"""
@@ -187,8 +187,8 @@ sphinx_immaterial_custom_admonitions = [
 myst_enable_extensions = ["linkify", "colon_fence", "dollarmath"]
 myst_heading_anchors = 3
 
-# Example pages run during the build, so an example that stops working fails it. The cache reruns a page
-# only when its cells change.
+# An example that stops working fails the build because example pages run during it. The cache reruns a page only when
+# its cells change.
 nb_execution_mode = "cache"
 nb_execution_raise_on_error = True
 nb_execution_timeout = 600
@@ -239,8 +239,8 @@ def _landing_template(app, pagename, templatename, context, doctree):
 
 def _sidebar_sections(app, pagename, templatename, context, doctree):
     """Display User Guide, API, and Development sections as sidebar headings over their pages."""
-    # The theme turns only the sidebar's second level into headings. Since these indexes nest their
-    # pages under their own section headings, each page's generated entries stay folded.
+    # The theme turns only the sidebar's second level into headings. Each page's generated entries stay folded because
+    # these indexes nest their pages under their own section headings.
     guide_page = pagename.startswith("user_guide/") and not pagename.startswith("user_guide/example_")
     if guide_page or pagename.startswith(("api/", "dev/", "contributing/")):
         theme = context["config"]["theme"]
@@ -285,7 +285,7 @@ def _skip_listed_fields(app, what, name, obj, skip, options):
     """Leave out a member that its class docstring already lists under Attributes."""
     if what != "class" or skip:
         return None
-    # Since the event passes the member but not its class, the class comes from autodoc's per-document data.
+    # The event passes the member but not its class. The class comes from autodoc's per-document data.
     current = app.env.temp_data
     cls = getattr(sys.modules.get(current.get("autodoc:module")), current.get("autodoc:class") or "", None)
     return True if name in _listed_attributes(cls) else None

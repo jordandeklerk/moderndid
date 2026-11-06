@@ -157,8 +157,8 @@ def amle_weights(
     cohort_balance = covariates.T @ cp.multiply(cohort_indicator, g_main)
     interaction_balance = covariates.T @ cp.multiply(treated_cell, g_main)
 
-    # Since cvxpy infers the shape of cp.sum by summing an uninitialized array that can overflow and warn, the
-    # sums below are inner products.
+    # cvxpy infers the shape of cp.sum by summing an uninitialized array that can overflow and warn. The sums below are
+    # inner products instead.
     constraints = [
         np.ones(n) @ g_main == 0,
         post_indicator @ g_main == 0,

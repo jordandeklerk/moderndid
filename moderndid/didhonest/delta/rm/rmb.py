@@ -143,7 +143,6 @@ def compute_conditional_cs_rmb(
 
     col_idx = 0
     for s in s_values:
-        # (+) restriction
         cs_plus = _compute_conditional_cs_rmb_fixed_s(
             s=s,
             max_positive=True,
@@ -166,7 +165,6 @@ def compute_conditional_cs_rmb(
         all_accepts[:, col_idx] = cs_plus["accept"]
         col_idx += 1
 
-        # (-) restriction
         cs_minus = _compute_conditional_cs_rmb_fixed_s(
             s=s,
             max_positive=False,
@@ -189,7 +187,6 @@ def compute_conditional_cs_rmb(
         all_accepts[:, col_idx] = cs_minus["accept"]
         col_idx += 1
 
-    # Take union: accept if any (s, sign) combination accepts
     accept = np.any(all_accepts, axis=1).astype(float)
     grid = np.linspace(grid_lb, grid_ub, grid_points)
 
@@ -507,7 +504,6 @@ def _compute_conditional_cs_rmb_fixed_s(
         )
         return {"grid": result.theta_grid, "accept": result.accept_grid.astype(float)}
 
-    # Multiple post-periods case
     result = compute_arp_nuisance_ci(
         betahat=betahat,
         sigma=sigma,

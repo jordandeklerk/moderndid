@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "docs" / "source"
 OUTPUT = ROOT / "docs" / "notebooks"
 DOCS = "https://moderndid.readthedocs.io/en/stable/"
-# Since the CI run executes notebooks before a release's tag exists, the URL names the main branch.
+# The URL names the main branch because the CI run executes notebooks before a release's tag exists.
 STATIC_URL = "https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/"
 EXAMPLES = (
     "example_staggered_did",

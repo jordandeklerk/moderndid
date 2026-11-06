@@ -411,7 +411,7 @@ def _compute_inf_func(
 
         or_x = (sub_weights * pa_comp)[:, None] * sub_covariates
         or_ex = (sub_weights * pa_comp * (delta_y - or_delta))[:, None] * sub_covariates
-        # Since NumPy inverts the small matrix on the host, a GPU run warns and falls back exactly as a CPU run does.
+        # A GPU run warns and falls back exactly as a CPU run does because NumPy inverts the small matrix on the host.
         xpx = to_numpy(or_x.T @ sub_covariates / n_sub)
 
         s = np.linalg.svd(xpx, compute_uv=False)

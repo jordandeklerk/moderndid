@@ -44,7 +44,7 @@ def main():
         client.execute()
         notebook.metadata["mystnb"] = {"execution_mode": "off"}
         nbformat.validate(notebook)
-        # Preserve the previous successful outputs if any cell raises an exception.
+        # The write comes after every cell has run. A cell that raises leaves the previous outputs in place.
         nbformat.write(notebook, path)
         print(f"Saved {name}", flush=True)
 

@@ -139,7 +139,7 @@ package = "moderndid"
 
 [tool.ruff]
 line-length = 120
-# Since the generated notebooks follow their pages, the next run would undo any lint fix.
+# The generated notebooks follow their pages. The next run would undo any lint fix.
 extend-exclude = ["docs/notebooks/**/*.ipynb"]
 
 [tool.ruff.lint]

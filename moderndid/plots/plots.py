@@ -77,7 +77,7 @@ def plot_gt(
     ggplot
         A plotnine ggplot object that can be further customized.
     """
-    # Since importing didml needs packages that a plots-only install lacks, its results are matched by class name.
+    # Importing didml needs packages that a plots-only install lacks. Its results are matched by class name.
     if isinstance(result, MPResult) or type(result).__name__ == "DIDMLResult":
         df = mpresult_to_polars(result)
         plot_title = "Group-Time Average Treatment Effects"
@@ -185,7 +185,7 @@ def plot_event_study(
             raise ValueError(f"Event study plot requires eventstudy aggregation, got {result.aggregation_type}")
         df = dddaggresult_to_polars(result)
         default_title = "DDD Event Study"
-    # Since importing didml needs packages that a plots-only install lacks, its result is matched by class name.
+    # The didml result is matched by class name because importing didml needs packages that a plots-only install lacks.
     elif isinstance(result, AGGTEResult) or type(result).__name__ == "DIDMLAggResult":
         if result.aggregation_type != "dynamic":
             raise ValueError(f"Event study plot requires dynamic aggregation, got {result.aggregation_type}")

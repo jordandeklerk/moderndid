@@ -729,8 +729,8 @@ def dynbalancinghetresult_to_polars(result, parameter="att"):
 def _dynbalancing_mu_quantile(result):
     """Return the robust critical value of a potential outcome in a dynamic covariate balancing result."""
     params = result.estimation_params
-    # Since the robust quantile equals the Gaussian one only when the setting is off, a result
-    # built without the setting still reveals it.
+    # The robust quantile equals the Gaussian one only when the setting is off. A result built without the setting still
+    # reveals it.
     if not params.get("robust_quantile", result.robust_quantile != result.gaussian_quantile):
         return result.gaussian_quantile
     return math.sqrt(chi2.ppf(1.0 - params.get("alpha", 0.05), params.get("n_periods", 1)))
@@ -822,7 +822,7 @@ def blpresult_to_polars(result):
         for name in result.coefs
     ]
 
-    # Since an Int64 column would truncate a fractional event time, the cast below sets the integer dtype.
+    # An Int64 column would truncate a fractional event time. The cast below sets the integer dtype.
     df = pl.DataFrame(
         rows,
         schema={

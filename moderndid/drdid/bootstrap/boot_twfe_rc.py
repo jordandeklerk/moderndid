@@ -47,7 +47,7 @@ def wboot_twfe_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
     wboot_reg_rc : Regression-based bootstrap for repeated cross-sections.
     """
     n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level=0.5)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
     n_treated_post = np.sum((d == 1) & (post == 1))
     n_treated_pre = np.sum((d == 1) & (post == 0))

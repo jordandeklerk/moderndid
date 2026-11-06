@@ -148,30 +148,26 @@ def compute_arp_nuisance_ci(
             grid_ub = 20.0 * sd_theta
 
     theta_grid = np.linspace(grid_lb, grid_ub, grid_points)
-    # Construct invertible transformation matrix Gamma with l_vec as first row
-    # This allows us to reparametrize the problem in terms of theta = l'*beta
+    # Gamma takes l_vec as its first row so that theta = l'*beta is the first coordinate of the new parametrization.
     gamma = _construct_gamma(l_vec)
 
-    # Transform constraint matrix A using Gamma^(-1) to work in theta-space
-    # Extract columns corresponding to post-treatment periods and transform
     a_gamma_inv = a_matrix[:, num_pre_periods : num_pre_periods + num_post_periods] @ np.linalg.inv(gamma)
-    # First column corresponds to theta, remaining columns to nuisance parameters. Since a dot product with a strided
-    # column can round differently from one with a contiguous column, the theta column gets a contiguous copy.
+    # First column corresponds to theta, remaining columns to nuisance parameters. The theta column gets a contiguous
+    # copy because a dot product with a strided column can round differently from one with a contiguous column.
     a_gamma_inv_one = np.ascontiguousarray(a_gamma_inv[:, 0])
     a_gamma_inv_minus_one = a_gamma_inv[:, 1:]
 
     y = a_matrix @ betahat - d_vec
     sigma_y = a_matrix @ sigma @ a_matrix.T
 
-    # Since every linear program in this call shares W, each kind of program keeps one HiGHS model re-solved from
-    # its last basis with new right-hand sides or costs. A non-finite W gets no model so that linprog raises its error.
+    # All linear programs in this call share W. Each kind of program keeps one HiGHS model re-solved from its last basis
+    # with new right-hand sides or costs. A non-finite W gets no model so that linprog raises its error.
     rows = np.arange(len(y)) if rows_for_arp is None else rows_for_arp
     variances = np.diag(sigma_y[np.ix_(rows, rows)])
     x_arp = a_gamma_inv_minus_one[rows]
     reuse = np.isfinite(variances).all() and (variances >= 0).all() and np.isfinite(x_arp).all()
     w_t = np.column_stack([np.sqrt(variances), x_arp]) if reuse else None
 
-    # Least favorable CV if needed
     if hybrid_flag == "LF":
         hybrid_list["lf_cv"] = _compute_least_favorable_cv(
             a_gamma_inv_minus_one,
@@ -200,7 +196,7 @@ def compute_arp_nuisance_ci(
         max_model=_max_program_model(w_t) if reuse else None,
     )
 
-    # Since the accepted set need not be an interval, every grid point is tested.
+    # Every grid point is tested because the accepted set need not be an interval.
     accept_grid = np.array([float(test_fn(i)) for i in range(grid_points)])
     accepted = np.flatnonzero(accept_grid)
 
@@ -352,12 +348,10 @@ def _lp_conditional_test(
 
     x_t_arp = x_t[rows_for_arp] if x_t is not None else None
 
-    # No nuisance parameter case
     if x_t_arp is None:
         sd_vec = np.sqrt(np.diag(sigma_arp))
         eta_star = np.max(y_t_arp / sd_vec)
 
-        # Hybrid tests
         if hybrid_flag == "LF":
             mod_size = (alpha - hybrid_list["hybrid_kappa"]) / (1 - hybrid_list["hybrid_kappa"])
             if eta_star > hybrid_list.get("lf_cv", np.inf):
@@ -370,7 +364,6 @@ def _lp_conditional_test(
         else:
             mod_size = alpha
 
-        # Simple case: compare to standard normal
         cval = stats.norm.ppf(1 - mod_size)
         reject = eta_star > cval
 
@@ -381,7 +374,6 @@ def _lp_conditional_test(
             "lambda": np.array([]),
         }
 
-    # Compute eta and argmin delta
     lin_soln = _test_delta_lp(y_t_arp, x_t_arp, sigma_arp, model=test_model)
 
     if not lin_soln["success"]:
@@ -392,7 +384,6 @@ def _lp_conditional_test(
             "lambda": lin_soln["lambda"],
         }
 
-    # First-stage hybrid tests
     if hybrid_flag == "LF":
         mod_size = (alpha - hybrid_list["hybrid_kappa"]) / (1 - hybrid_list["hybrid_kappa"])
         if lin_soln["eta_star"] > hybrid_list.get("lf_cv", np.inf):
@@ -436,9 +427,8 @@ def _lp_conditional_test(
             x_tb = x_tb.reshape(-1, 1)
         full_rank_flag = np.linalg.matrix_rank(x_tb) == min(x_tb.shape)
 
-    # Use dual approach if degenerate or not full rank
-    # The dual approach handles cases where the primal problem is ill-conditioned
-    # by working with the Lagrangian dual formulation
+    # A degenerate solution or binding moments without full rank leave the primal problem ill-conditioned. The dual
+    # approach works with the Lagrange multipliers instead.
     if not full_rank_flag or degenerate_flag:
         sigma_b_dual2 = float(lin_soln["lambda"].T @ sigma_arp @ lin_soln["lambda"])
 
@@ -454,8 +444,8 @@ def _lp_conditional_test(
         if sigma_b_dual2 < 0:
             raise ValueError("Negative variance in dual approach")
 
-        # Since the critical value max(0, c) is never negative, a statistic at or below zero is accepted.
-        # Skipping its truncation bounds saves their linear programs at every such grid point.
+        # The critical value max(0, c) is never negative. A statistic at or below zero is therefore accepted. Skipping
+        # its truncation bounds saves their linear programs at every such grid point.
         if lin_soln["eta_star"] <= 0:
             return {
                 "reject": False,
@@ -464,7 +454,6 @@ def _lp_conditional_test(
                 "lambda": lin_soln["lambda"],
             }
 
-        # Work with Lagrange multipliers directly
         lp_dual_soln = _lp_dual_wrapper(
             y_t_arp, x_t_arp, lin_soln["eta_star"], lin_soln["lambda"], sigma_arp, model=max_model
         )
@@ -484,8 +473,8 @@ def _lp_conditional_test(
 
             v_flci = _compute_flci_vlo_vup(hybrid_list["vbar"], hybrid_list["dbar"], s_vec, sigma_gamma)
 
-            # Since the first stage accepted, the statistic lies within the bounds the interval implies. Widening them
-            # to include it undoes rounding at the interval's ends.
+            # Passing the first stage puts the statistic within the bounds the interval implies. Widening them to
+            # include it undoes rounding at the interval's ends.
             eta = lp_dual_soln["eta"]
             zlo_dual = max(lp_dual_soln["vlo"], min(v_flci["vlo"], eta)) / sigma_b_dual
             zup_dual = min(lp_dual_soln["vup"], max(v_flci["vup"], eta)) / sigma_b_dual
@@ -505,8 +494,7 @@ def _lp_conditional_test(
         reject = maxstat > cval
 
     else:
-        # Construct test statistic using binding constraints
-        # This approach leverages the KKT conditions at the optimum
+        # By the KKT conditions at the optimum, the binding constraints determine the test statistic.
         size_b = np.sum(b_index)
 
         sd_vec = np.sqrt(np.diag(sigma_arp))
@@ -514,31 +502,24 @@ def _lp_conditional_test(
         sd_vec_bc = sd_vec[bc_index]
 
         x_tbc = x_t_arp[bc_index]
-        # Selection matrices for binding and non-binding constraints
         s_b = np.eye(len(y_t_arp))[b_index]
         s_bc = np.eye(len(y_t_arp))[bc_index]
 
-        # Construct matrix that relates binding and non-binding constraints
-        # W matrices combine standard deviations and covariates
         w_b = np.column_stack([sd_vec_b.reshape(-1, 1), x_tb])
         w_bc = np.column_stack([sd_vec_bc.reshape(-1, 1), x_tbc])
 
-        # Project non-binding constraints onto the space of binding constraints
         gamma_b = w_bc @ np.linalg.inv(w_b) @ s_b - s_bc
 
-        # Efficient score direction for eta
-        # e1 is first basis vector, which selects eta from (eta, delta)
+        # e1 selects eta from (eta, delta).
         e1 = basis_vector(1, size_b)
         v_b_short = np.linalg.inv(w_b).T @ e1
 
-        # Project back to full space of all constraints
         v_b = s_b.T @ v_b_short
 
-        # Variance of the test statistic
         sigma2_b = float((v_b.T @ sigma_arp @ v_b).item())
 
-        # Since a statistic without sampling variance has no conditional distribution, it rejects exactly when it
-        # is positive, as in the dual approach above.
+        # Without sampling variance, the statistic has no conditional distribution. It rejects exactly when it is
+        # positive, as the dual approach above does.
         if abs(sigma2_b) < np.finfo(float).eps:
             return {
                 "reject": bool(lin_soln["eta_star"] > 0),
@@ -549,11 +530,9 @@ def _lp_conditional_test(
 
         sigma_b = np.sqrt(sigma2_b)
 
-        # Correlation vector between non-binding and binding constraints
         rho = gamma_b @ sigma_arp @ v_b / sigma2_b
 
-        # Bounds for the test stat under the null
-        # These bounds arise from the constraint that non-binding constraints remain non-binding
+        # The bounds on the test statistic under the null come from keeping the non-binding constraints non-binding.
         numerator = -gamma_b @ y_t_arp
         denominator = rho.flatten()
         v_b_y = float((v_b.T @ y_t_arp).item())
@@ -578,8 +557,8 @@ def _lp_conditional_test(
 
             v_flci = _compute_flci_vlo_vup(hybrid_list["vbar"], hybrid_list["dbar"], s_vec, sigma_gamma)
 
-            # Since the first stage accepted, the statistic lies within the bounds the interval implies. Widening them
-            # to include it undoes rounding at the interval's ends.
+            # Passing the first stage puts the statistic within the bounds the interval implies. Widening them to
+            # include it undoes rounding at the interval's ends.
             eta = lin_soln["eta_star"]
             zlo = max(vlo, min(v_flci["vlo"], eta)) / sigma_b
             zup = min(vup, max(v_flci["vup"], eta)) / sigma_b
@@ -673,21 +652,17 @@ def _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t, model=None):
     if not is_solution:
         return {"vlo": eta, "vup": np.inf}
 
-    # Upper bound for the test stat support
     result, is_solution = _check_if_solution(high_initial, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
     if is_solution:
         vup = np.inf
     else:
-        # Try shortcut method first: use LP solution to get better initial guess
-        # This exploits the structure of the problem to converge faster than bisection
+        # Starting from the LP solution, the shortcut converges faster than bisection and runs first.
         iters = 1
         sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
         b = (sigma @ gamma_tilde) / sigma_gamma
 
-        # Use first-order approximation from LP solution if successful
         mid = _round_eps(float(result.x @ s_t)) / (1 - float(result.x @ b)) if result.success else high_initial
 
-        # Iterate shortcut method for a few steps
         while iters < switch_iters:
             result, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
             if is_solution:
@@ -698,7 +673,6 @@ def _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t, model=None):
             else:
                 break
 
-        # Bisection method: guaranteed to converge but slower
         # A shortcut that lands on a solution has found the boundary itself. Only a stalled shortcut bisects.
         low, high = eta, mid
         diff = 0.0 if is_solution else tol_c + 1
@@ -716,12 +690,10 @@ def _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t, model=None):
 
         vup = mid
 
-    # Compute vlo using bisection method
     result, is_solution = _check_if_solution(low_initial, tol_equality, s_t, gamma_tilde, sigma, w_t, model=model)
     if is_solution:
         vlo = -np.inf
     else:
-        # Try shortcut method first
         iters = 1
         sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
         b = (sigma @ gamma_tilde) / sigma_gamma
@@ -738,7 +710,6 @@ def _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t, model=None):
             else:
                 break
 
-        # Bisection method now that shortcut method failed
         low, high = mid, eta
         diff = 0.0 if is_solution else tol_c + 1
 
@@ -832,15 +803,12 @@ def _compute_least_favorable_cv(
         sigma = sigma[np.ix_(rows_for_arp, rows_for_arp)]
 
     if x_t is None:
-        # No nuisance parameter case: simulate max of standardized normal vector
         xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
         sd_vec = np.sqrt(np.diag(sigma))
         xi_draws = xi_draws / sd_vec
         eta_vec = np.max(xi_draws, axis=1)
         return float(np.quantile(eta_vec, 1 - hybrid_kappa))
 
-    # Nuisance parameter case: need to solve LP for each simulation
-    # This finds the least favorable distribution that maximizes size
     if x_t.ndim == 1:
         x_t = x_t.reshape(-1, 1)
 
@@ -853,13 +821,12 @@ def _compute_least_favorable_cv(
 
     eta_vec = []
     for xi in xi_draws:
-        # Since only the optimal value is read, any optimal basis of the reused model gives the same draw.
+        # Only the optimal value is read. Any optimal basis of the reused model therefore gives the same draw.
         solution = None if model is None else _solve_with_row_upper(model, -xi)
         if solution is not None:
             eta_vec.append(solution.col_value[0])
             continue
 
-        # Dual simplex
         result = opt.linprog(
             c=c,
             A_ub=C,
@@ -947,16 +914,12 @@ def _test_delta_lp(y_t, x_t, sigma, model=None):
     dim_delta = x_t.shape[1]
     sd_vec = np.sqrt(np.diag(sigma))
 
-    # Minimize eta
     c = np.concatenate([[1.0], np.zeros(dim_delta)])
 
-    # Constraints are -sd_vec*eta - X_T*delta <= -y_T (y_T = a_matrix @ betahat - d_vec)
     A_ub = -np.column_stack([sd_vec, x_t])
 
-    # Bounds: eta and delta unbounded
     bounds = [(None, None) for _ in range(len(c))]
 
-    # Use dual simplex approach
     result = opt.linprog(
         c=c,
         A_ub=A_ub,
@@ -968,7 +931,6 @@ def _test_delta_lp(y_t, x_t, sigma, model=None):
     if result.success:
         eta_star = result.x[0]
         delta_star = result.x[1:]
-        # Get dual variables (Lagrange multipliers)
         dual_vars = -result.ineqlin.marginals if hasattr(result, "ineqlin") else np.zeros(len(b_ub))
     else:
         eta_star = np.nan
@@ -1042,8 +1004,6 @@ def _lp_dual_wrapper(
     sd_vec = np.sqrt(np.diag(sigma))
     w_t = np.column_stack([sd_vec, x_t])
 
-    # Residual after projecting out gamma_tilde direction
-    # This is the component of y_t orthogonal to gamma_tilde under the metric sigma
     gamma_sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
 
     # Rows that combine linearly, such as a row and its negative with equal multipliers, can leave this at zero.
@@ -1056,7 +1016,6 @@ def _lp_dual_wrapper(
             "gamma_tilde": gamma_tilde,
         }
 
-    # Projection matrix is I - (sigma * gamma * gamma') / (gamma' * sigma * gamma)
     s_t = (np.eye(len(y_t)) - (sigma @ np.outer(gamma_tilde, gamma_tilde)) / gamma_sigma_gamma) @ y_t
 
     v_dict = _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t, model=model)
@@ -1215,7 +1174,7 @@ def _highs_model(cost, a_matrix, row_lower, row_upper, col_lower, col_upper):
 
 def _solve_with_row_upper(model, row_upper):
     """Re-solve a reused model with new row upper bounds and return its solution if HiGHS finds an optimum."""
-    # Since linprog rejects a non-finite right-hand side with its own error, such a solve is left to linprog.
+    # linprog rejects a non-finite right-hand side with its own error. Such a solve is left to linprog.
     if not np.isfinite(row_upper).all():
         return None
     num_rows = row_upper.size
@@ -1228,7 +1187,7 @@ def _solve_with_row_upper(model, row_upper):
 
 def _solve_with_costs(model, cost):
     """Re-solve a reused model with new column costs and return its solution if HiGHS finds an optimum."""
-    # Since milp rejects non-finite costs with its own error, such a solve is left to milp.
+    # milp rejects non-finite costs with its own error. Such a solve is left to milp.
     if not np.isfinite(cost).all():
         return None
     model.changeColsCost(cost.size, np.arange(cost.size, dtype=np.int32), cost)
@@ -1240,8 +1199,8 @@ def _solve_with_costs(model, cost):
 
 def _is_near_degenerate(model, solution, row_upper):
     """Return whether a basic row of the solved eta program sits at or near its upper bound."""
-    # Since the columns are free, only a basic row can be degenerate. A basic row within a hundred times HiGHS's 1e-7
-    # feasibility tolerance of its bound, relative to 1 + |bound|, may let a fresh solve return other multipliers.
+    # With free columns, only a basic row can be degenerate. A basic row within a hundred times HiGHS's 1e-7 feasibility
+    # tolerance of its bound, relative to 1 + |bound|, may let a fresh solve return other multipliers.
     basis = model.getBasis()
     if not basis.valid:
         return True
@@ -1293,13 +1252,9 @@ def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):
     vbar_c = vbar_mat @ c_vec
     vbar_s = vbar_mat @ s_vec
 
-    # Solve for critical values where linear constraints become binding
-    # Each constraint vbar'(s + c*v) <= d gives bound on v (v = vbar)
     max_or_min = (dbar - vbar_s) / vbar_c
 
-    # Constraints with negative coefficients give lower bounds (vlo)
     vlo = np.max(max_or_min[vbar_c < 0]) if np.any(vbar_c < 0) else -np.inf
-    # Constraints with positive coefficients give upper bounds (vup)
     vup = np.min(max_or_min[vbar_c > 0]) if np.any(vbar_c > 0) else np.inf
 
     return {"vlo": vlo, "vup": vup}

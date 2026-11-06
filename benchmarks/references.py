@@ -68,8 +68,8 @@ def ddd_call(options):
 
 def two_period_call(estimator, options):
     """Return the R call that matches the benchmark's two-period workload."""
-    # Each call pairs R with the est_method default of moderndid's function of the same name.
-    # Since R's ipwdid normalizes its weights unless told otherwise, the call turns that off.
+    # Each call pairs R with the est_method default of moderndid's function of the same name. R's ipwdid normalizes its
+    # weights unless told otherwise. The call turns that off.
     method = {"drdid": ', estMethod = "imp"', "ipwdid": ", normalized = FALSE", "ordid": ""}[estimator]
     return (
         f'DRDID::{estimator}(yname = "y", tname = "time", idname = "id", dname = "treated", '
@@ -108,7 +108,7 @@ def reference_code(estimator, options):
             "std_errors = c(result$aggte_ddd$overall.se, result$aggte_ddd$se.egt))",
         )
     if estimator == "cont_did":
-        # Since the Python estimator bootstraps its dose-response errors, R draws as many samples to time the same work.
+        # The Python estimator bootstraps its dose-response errors. R draws as many samples to time the same work.
         return (
             "",
             'contdid::cont_did(yname = "y", tname = "time", idname = "id", dname = "dose", gname = "group", '
@@ -126,7 +126,7 @@ def reference_code(estimator, options):
         controls = "NULL"
         if options["covariates"]:
             controls = "c(" + ", ".join(f'"{name}"' for name in options["covariates"]) + ")"
-        # Since DIDmultiplegtDYN 2.4.0 calls polars through pl without importing it, the setup attaches polars.
+        # DIDmultiplegtDYN 2.4.0 calls polars through pl without importing it. The setup attaches polars.
         return (
             "suppressPackageStartupMessages(library(polars))",
             'suppressWarnings(DIDmultiplegtDYN::did_multiplegt_dyn(df = data, outcome = "y", group = "id", '
@@ -149,7 +149,7 @@ def reference_code(estimator, options):
 def r_environment():
     """Return the environment for R with every math library limited to one thread."""
     environment = dict(os.environ)
-    # Since the benchmark environment runs moderndid on one thread, R gets the same limit.
+    # The benchmark environment runs moderndid on one thread. R gets the same limit.
     for name in (
         "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",

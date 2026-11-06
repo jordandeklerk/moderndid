@@ -62,8 +62,8 @@ def het_prep(data, dynamic_cates_df, *, idname, tname, gname):
     else:
         df = pl.from_pandas(data) if hasattr(data, "to_pandas") or hasattr(data, "columns") else pl.DataFrame(data)
 
-    # Since formulaic reads decimal values as categories, every decimal column but the keys becomes a double.
-    # The keys keep their type for the join with the CATTs.
+    # Every decimal column but the keys becomes a double because formulaic reads decimal values as categories. The keys
+    # keep their type for the join with the CATTs.
     df = decimal_to_float(df, [name for name in df.columns if name not in (idname, tname, gname)])
 
     df = df.filter(pl.col(gname) > 0).with_columns(

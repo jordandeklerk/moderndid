@@ -118,7 +118,7 @@ class EtwfeResult(NamedTuple):
     def __maketables_fixef_string__(self) -> str | None:
         """Return fixed-effects formula string."""
         fe_spec = self.estimation_params.get("fe_spec")
-        # Since a split on "+" must return each name unchanged, the string drops the spaces the report prints.
+        # A split on "+" must return each name unchanged. The string drops the spaces the report prints.
         return fe_spec.replace(" + ", "+") if fe_spec else None
 
     @property

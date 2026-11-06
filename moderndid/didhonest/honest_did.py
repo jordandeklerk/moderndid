@@ -344,7 +344,7 @@ def _event_study_covariance(influence_func, estimation_params):
     n_clusters = int(cluster_idx.max()) + 1
     _check_cluster_count(n_clusters, k)
 
-    # Since units in one cluster share shocks, their influence functions are summed before the outer product.
+    # Units in one cluster share shocks. Their influence functions are summed before the outer product.
     cluster_sums = np.column_stack(
         [np.bincount(cluster_idx, weights=influence_func[:, j], minlength=n_clusters) for j in range(k)]
     )

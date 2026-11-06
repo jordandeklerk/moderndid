@@ -168,7 +168,6 @@ def drdid_imp_local_rc(
     att_inf_func = to_numpy(att_inf_func)
     dr_att = float(dr_att)
 
-    # Inference
     dr_boot = None
     if not boot:
         se_dr_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
@@ -275,7 +274,6 @@ def _compute_weights(
     w_cont_pre = xp.nan_to_num(w_cont_pre, nan=0.0, posinf=0.0, neginf=0.0)
     w_cont_post = xp.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Additional weights for locally efficient estimator
     w_d = i_weights * d
     w_dt1 = i_weights * d * post
     w_dt0 = i_weights * d * (1 - post)
@@ -310,7 +308,6 @@ def _get_influence_quantities(
     w_dt1 = weights["w_dt1"]
     w_dt0 = weights["w_dt0"]
 
-    # eta components (influence function summands)
     eta_treat_pre = w_treat_pre * (y - out_y_cont) / xp.mean(w_treat_pre)
     eta_treat_post = w_treat_post * (y - out_y_cont) / xp.mean(w_treat_post)
     eta_cont_pre = w_cont_pre * (y - out_y_cont) / xp.mean(w_cont_pre)
@@ -349,7 +346,6 @@ def _compute_influence_function(
     eta_d_pre = components["eta_d_pre"]
     eta_dt0_pre = components["eta_dt0_pre"]
 
-    # Get weights
     w_treat_pre = weights["w_treat_pre"]
     w_treat_post = weights["w_treat_post"]
     w_cont_pre = weights["w_cont_pre"]
@@ -358,7 +354,6 @@ def _compute_influence_function(
     w_dt1 = weights["w_dt1"]
     w_dt0 = weights["w_dt0"]
 
-    # Compute ATT
     att_treat_pre = xp.mean(eta_treat_pre)
     att_treat_post = xp.mean(eta_treat_post)
     att_cont_pre = xp.mean(eta_cont_pre)
@@ -375,27 +370,22 @@ def _compute_influence_function(
         - (att_d_pre - att_dt0_pre)
     )
 
-    # Influence functions for treatment component
     inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / xp.mean(w_treat_pre)
     inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / xp.mean(w_treat_post)
     inf_treat = inf_treat_post - inf_treat_pre
 
-    # Influence functions for control component
     inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / xp.mean(w_cont_pre)
     inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / xp.mean(w_cont_post)
     inf_cont = inf_cont_post - inf_cont_pre
 
-    # Base DR influence function
     dr_att_inf_func1 = inf_treat - inf_cont
 
-    # Adjustment terms for local efficiency
     inf_eff1 = eta_d_post - w_d * att_d_post / xp.mean(w_d)
     inf_eff2 = eta_dt1_post - w_dt1 * att_dt1_post / xp.mean(w_dt1)
     inf_eff3 = eta_d_pre - w_d * att_d_pre / xp.mean(w_d)
     inf_eff4 = eta_dt0_pre - w_dt0 * att_dt0_pre / xp.mean(w_dt0)
     inf_eff = (inf_eff1 - inf_eff2) - (inf_eff3 - inf_eff4)
 
-    # Final locally efficient influence function
     att_inf_func = dr_att_inf_func1 + inf_eff
 
     return dr_att, att_inf_func

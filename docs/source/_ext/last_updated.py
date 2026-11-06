@@ -12,7 +12,7 @@ from pathlib import Path
 
 def setup(app):
     """Register the handler that dates each page."""
-    # Run before the theme's own handler, which copies last_updated into the page's footer.
+    # Run before the theme's own handler. That handler copies last_updated into the page's footer.
     app.connect("html-page-context", _add_last_updated, priority=400)
     metadata = {"parallel_read_safe": True, "parallel_write_safe": True}
     return metadata

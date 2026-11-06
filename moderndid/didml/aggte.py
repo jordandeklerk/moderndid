@@ -335,8 +335,8 @@ def _aggregate_draws(result, indices):
         cells = indices[e]
         p = share_draws[:, [columns[float(g)] for g in cohorts[cells]]]
         total = p.sum(axis=1, keepdims=True)
-        # Since a cohort that a draw does not hold has a zero share and no refit, it leaves that draw's average.
-        # An event time whose cohorts are all missing from the draw stays NaN there.
+        # A cohort that a draw does not hold leaves that draw's average because it has a zero share and no refit. An
+        # event time whose cohorts are all missing from the draw stays NaN there.
         weights = np.divide(p, total, out=np.zeros_like(p), where=total > 0)
         terms = np.where(weights > 0, weights * draws[:, cells], 0.0)
         out[:, k] = np.where(total[:, 0] > 0, terms.sum(axis=1), np.nan)

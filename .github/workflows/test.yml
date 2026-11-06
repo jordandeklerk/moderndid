@@ -11,7 +11,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Each pytest-xdist worker takes one core, so the numerical libraries get one thread each.
+# The numerical libraries get one thread each because each pytest-xdist worker takes one core.
 env:
   OMP_NUM_THREADS: 1
   OPENBLAS_NUM_THREADS: 1
@@ -20,7 +20,7 @@ env:
   NUMEXPR_NUM_THREADS: 1
   NUMBA_NUM_THREADS: 1
   POLARS_MAX_THREADS: 1
-  # Since the default tracer slows the suite by about a third, coverage records lines through sys.monitoring.
+  # Coverage records lines through sys.monitoring because the default tracer slows the suite by about a third.
   COVERAGE_CORE: sysmon
 
 jobs:
@@ -72,7 +72,7 @@ jobs:
       - name: Run the pre-commit hooks and build the package
         run: tox -e check
         env:
-          # Since a push to main checks out the main branch, the hook that blocks commits to main would fail.
+          # A push to main checks out the main branch. The hook that blocks commits to main would fail there.
           SKIP: no-commit-to-branch
 
   polars-floor:
@@ -94,7 +94,7 @@ jobs:
       - name: Run core test suite on the oldest supported polars
         run: tox -e polars-floor
 
-  # Since every other job installs all the extras, none can catch code that imports a package a smaller install lacks.
+  # Every other job installs all the extras. None can catch code that imports a package a smaller install lacks.
   minimal:
     name: ${{ matrix.name }} (Python 3.14)
     runs-on: ubuntu-latest
@@ -122,7 +122,7 @@ jobs:
       - name: Run the fast test suite
         run: tox -e ${{ matrix.env }}
 
-  # Since a classic Spark session and a Spark Connect session can't share a process, each mode runs in a job of its own.
+  # A classic Spark session and a Spark Connect session can't share a process. Each mode runs in a job of its own.
   # One mode per job also keeps each job short.
   spark:
     name: ${{ matrix.name }} (Python ${{ matrix.python }})
@@ -170,11 +170,11 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-          # Since PyPI has pyspark only as a source archive, this cache keeps the wheel that uv builds from it.
+          # PyPI has pyspark only as a source archive. This cache keeps the wheel that uv builds from it.
           cache-suffix: ${{ matrix.tox-env }}
       - name: Install dependencies
         run: uv pip install --system tox tox-uv
-      # Since PySpark 3.5 fetches the Spark Connect server jar from Maven Central, the cache keeps Ivy's copy between runs.
+      # PySpark 3.5 fetches the Spark Connect server jar from Maven Central. The cache keeps Ivy's copy between runs.
       - name: Cache the Spark Connect jar
         if: matrix.tox-env == 'spark35' && matrix.remote != ''
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -196,7 +196,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Since Spark Connect runs the client's Python functions on the workers, the client runs the Python of the image.
+      # The client runs the Python of the image because Spark Connect runs the client's Python functions on the workers.
       - name: Set up Python 3.13
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:

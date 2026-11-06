@@ -9,8 +9,8 @@
 #
 # On macOS, Rglpk's configure script probes dyn.load("conftest.so") and always
 # fails because R builds .dylib files. On Linux the probe can still fail when
-# the GLPK headers sit in a nondefault path. Since conda provides GLPK on both
-# platforms, the script replaces the configure step with one that links conda's
+# the GLPK headers sit in a nondefault path. Conda provides GLPK on both
+# platforms. The script replaces the configure step with one that links conda's
 # GLPK directly.
 #
 # Usage:  pixi run -e validation setup-r
@@ -86,7 +86,7 @@ sed -e "s|@GLPK_INCLUDE_PATH@||" \
 ENDCFG
     chmod +x "$tmpdir/Rglpk/configure"
 
-    # Since R CMD INSTALL installs no dependencies and conda lacks Rglpk's slam, slam comes from CRAN first.
+    # Rglpk's slam comes from CRAN first because conda lacks it and R CMD INSTALL installs no dependencies.
     if ! is_installed slam; then
       R --vanilla --quiet -e "install.packages('slam', lib = file.path(R.home(), 'site-library'),
                                                repos = 'https://cloud.r-project.org/')" 2>&1
@@ -114,8 +114,8 @@ R --vanilla --quiet -e "
   available <- available.packages(repos = repos)
   installed <- installed.packages()
   installed <- installed[!duplicated(installed[, 'Package']), , drop = FALSE]
-  # Since HonestDiD 0.2.8 needs CVXR 1.8 and CVXR 1.8 needs R 4.4 through Matrix 1.7, older R gets the newest
-  # releases that work together from the CRAN archive. CVXR 1.0-15 calls the osqp interface that osqp 1.0 replaced.
+  # HonestDiD 0.2.8 needs CVXR 1.8 and CVXR 1.8 needs R 4.4 through Matrix 1.7. Older R gets the newest releases that
+  # work together from the CRAN archive. CVXR 1.0-15 calls the osqp interface that osqp 1.0 replaced.
   archived <- if (getRversion() < '4.4.0') c(osqp = '0.6.3.3', CVXR = '1.0-15', HonestDiD = '0.2.7') else character()
   pkgs <- setdiff(pkgs, names(archived))
   stale <- names(archived)[vapply(names(archived), function(pkg) {

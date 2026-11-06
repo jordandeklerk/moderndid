@@ -5,7 +5,7 @@ from pathlib import Path
 
 import modal
 
-# Since Modal imports this file again as /root/gpu_tests.py inside the container, parents[2] would raise there.
+# Modal imports this file again as /root/gpu_tests.py inside the container, where parents[2] would raise.
 ROOT = Path(__file__).resolve().parent.parent.parent
 REMOTE_ROOT = "/root/moderndid"
 
@@ -24,7 +24,7 @@ app = modal.App("moderndid-gpu-tests", image=image)
 def gpu_tests():
     """Run the tests marked gpu and fail when CuPy cannot reach the GPU."""
     subprocess.run(["nvidia-smi"], check=True)
-    # Since the tests skip when CuPy finds no GPU, a broken CUDA setup would otherwise pass with every test skipped.
+    # The tests skip when CuPy finds no GPU. A broken CUDA setup would otherwise pass with every test skipped.
     subprocess.run(["python", "-c", "import cupy; assert cupy.is_available()"], check=True)
     # The image does not mount the benchmarks package that the benchmark tests import.
     subprocess.run(

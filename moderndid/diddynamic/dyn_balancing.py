@@ -216,7 +216,7 @@ def dyn_balancing(
        *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
 
     """
-    # Since the plots module imports the diddynamic containers, this package must load without scikit-learn.
+    # This package must load without scikit-learn because the plots module imports the diddynamic containers.
     try:
         from .estimation.weights_dcb import compute_dcb_estimator, compute_imbalances
         from .estimation.weights_ipw import compute_ipw_estimator
@@ -617,7 +617,7 @@ def _covariate_labels(config, panel):
     labels = list(config.covariate_names)
     # The preprocessing names each fixed-effect dummy after its column and appends them in this order.
     for fe_col in config.fixed_effects or []:
-        # Since pooling keeps the calendar period in new_Time, its dummies get the time column's name back.
+        # Pooling keeps the calendar period in new_Time. Its dummies get the time column's name back.
         name = config.tname if config.pooled and fe_col == "new_Time" else fe_col
         labels.extend(name + c[len(fe_col) :] for c in panel.columns if c.startswith(f"{fe_col}_"))
     return labels

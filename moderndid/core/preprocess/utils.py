@@ -14,8 +14,8 @@ def extract_unit_clusters(time_invariant_data, clustervars, idname):
     """Return each unit's cluster from the cluster variables in the order att_gt uses them."""
     if not clustervars:
         return None
-    # Validation allows at most one cluster variable besides idname, and att_gt's bootstrap clusters
-    # on that one whenever it's given, so the unit id decides the clusters only when it stands alone.
+    # Validation allows at most one cluster variable besides idname. The bootstrap of att_gt clusters on that one
+    # whenever it's given. The unit id decides the clusters only when it stands alone.
     others = [var for var in clustervars if var != idname]
     return time_invariant_data[(others or clustervars)[0]].to_numpy()
 
@@ -220,7 +220,7 @@ def get_group(df, idname, tname, treatname, treat_period=None):
     # A row without a unit id belongs to no unit. It must not pool with the other such rows.
     has_unit = pl.col(idname).is_not_null()
 
-    # Since the windows below add no helper columns, no column of the data can clash with one.
+    # The windows below add no helper columns. No column of the data can clash with one.
     if treat_period is not None:
         ever_treated = (pl.col(treatname) > 0).any().over(idname)
         group = pl.when(ever_treated).then(pl.lit(treat_period, dtype=pl.Int64)).otherwise(pl.lit(0, dtype=pl.Int64))
@@ -493,9 +493,8 @@ def get_formula_columns(formula, columns):
 
     available = set(columns)
     found = []
-    # Quoted strings are skipped so that a level such as 'a' in C(g, Treatment('a')) is not read as a column.
-    # A keyword argument such as degree in poly(age, degree=2) names no column. The lookahead after the
-    # name keeps a prefix such as d in df=3 from matching instead.
+    # Quoted strings and keyword arguments name no column, such as the level 'a' in C(g, Treatment('a')) or degree in
+    # poly(age, degree=2). The lookahead after the name keeps a prefix such as d in df=3 from matching instead.
     pattern = r"`([^`]+)`|'[^']*'|\"[^\"]*\"|(?<![\w.])((?:[^\W\d]|\.+[^\W\d])[\w.]*)(?![\w.])(?!\s*=(?!=))"
     for match in re.finditer(pattern, formula):
         quoted, plain = match.group(1), match.group(2)
