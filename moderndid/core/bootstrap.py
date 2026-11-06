@@ -55,22 +55,25 @@ def canonical_keys(values):
 def keyed_rademacher(keys, random_state, biters):
     r"""Draw Rademacher multipliers that depend only on the seed and each key.
 
-    Each key gets ``biters`` signs from the Philox4x32-10 counter-based
-    generator. The generator's key holds the low and high 32 bits of the seed.
-    Its counter holds the low and high 32 bits of the identifier's key, the
-    index of a block of 128 draws, and zero. Draw :math:`b` reads bit
-    :math:`b \bmod 32` of word :math:`\lfloor b / 32 \rfloor \bmod 4` of block
+    A key's multiplier in draw :math:`b` stays the same however the keys are
+    ordered or split across calls and however many draws a call makes.
+
+    The multipliers come from the counter-based generator Philox4x32-10. The
+    generator's key holds the low and high 32 bits of the seed. Its counter
+    holds those of each key, the index of a block of 128 draws, and zero. Draw
+    :math:`b` reads bit :math:`b \bmod 32` of word
+    :math:`\lfloor b / 32 \rfloor \bmod 4` of block
     :math:`\lfloor b / 128 \rfloor`. A set bit gives 1 and a clear bit gives -1.
 
     Parameters
     ----------
     keys : ndarray
-        Keys of the units or clusters of shape (m,), as :func:`canonical_keys`
-        returns them.
+        Unsigned 64-bit keys of the units or clusters of shape (m,), such as
+        those from :func:`canonical_keys`.
     random_state : int
         Seed of the multipliers, from 0 to 2**64 - 1.
     biters : int
-        Number of bootstrap draws.
+        Number of bootstrap draws, at least 1.
 
     Returns
     -------
@@ -141,14 +144,15 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
 
     n = inf_func.shape[0]
     rng = np.random.default_rng(random_state)
-    # Since a block's float64 uniforms and the previous signs coexist, 2**24 signs per block keep the peak near 300 MB.
+    # A block's float64 uniforms coexist with the previous block's signs. With 2**24 signs per block, the peak stays
+    # near 300 MB.
     block = max(1, min((1 << 24) // n, biters))
 
     bres = np.empty((biters, inf_func.shape[1]))
     for start in range(0, biters, block):
         stop = min(start + block, biters)
-        # Since binomial(1, 0.5) returns one exactly when its uniform draw exceeds one half, comparing
-        # the same uniforms reproduces every seeded draw at a fraction of the cost.
+        # binomial(1, 0.5) returns one exactly when its uniform draw exceeds one half. Comparing the same uniforms
+        # reproduces every seeded draw at a fraction of the cost.
         signs = np.where(rng.random((stop - start, n)) > 0.5, 1.0, -1.0)
         bres[start:stop] = signs @ inf_func / n
     return bres
@@ -175,8 +179,8 @@ def gather_bootstrap_indices(sampled_cluster_ids, cluster_starts, cluster_counts
     counts = np.asarray(cluster_counts, dtype=np.int64)[sampled_cluster_ids]
     starts = np.asarray(cluster_starts, dtype=np.int64)[sampled_cluster_ids]
 
-    # Since the index at output position p is the cluster's start plus p minus its block's first position, repeating
-    # each block's shift and adding p builds every block at once.
+    # The index at output position p is the cluster's start plus p minus its block's first position. Repeating each
+    # block's shift and adding p builds every block at once.
     shifts = starts - (np.cumsum(counts) - counts)
     return np.repeat(shifts, counts) + np.arange(counts.sum(), dtype=np.int64)
 
@@ -206,7 +210,7 @@ def compute_column_std(matrix):
     deviations = np.where(observed, matrix - mean, 0.0)
     sum_sq = (deviations * deviations).sum(axis=0)
 
-    # Since a column with fewer than two values has no degrees of freedom, only the other columns divide.
+    # A column with fewer than two values has no degrees of freedom. Only the other columns divide.
     std = np.full(matrix.shape[1], np.nan)
     enough = count > 1
     std[enough] = np.sqrt(sum_sq[enough] / (count[enough] - 1))
@@ -229,7 +233,7 @@ def _cluster_codes(cluster_ids):
         - **unique_clusters**: Cluster identifiers in sorted order
         - **cluster_codes**: Position of each identifier in ``unique_clusters``
     """
-    # Since a negative or very large identifier can't index a table of sums, integers get codes too.
+    # A negative or very large identifier can't index a table of sums. Integers get codes too.
     unique_clusters, cluster_codes = np.unique(np.asarray(cluster_ids).ravel(), return_inverse=True)
     return unique_clusters, np.ascontiguousarray(cluster_codes.ravel(), dtype=np.int64)
 
@@ -246,8 +250,8 @@ def _keyed_sign_blocks(keys, seed, first_block, n_blocks):
         seed & 0xFFFFFFFF,
         seed >> 32,
     )
-    # Since a little-endian word stores bit j in byte j // 8 at position j % 8, unpacking its bytes in little bit
-    # order puts bit j of word k of a block at position 32k + j.
+    # A little-endian word stores bit j in byte j // 8 at position j % 8. Unpacking its bytes in little bit order puts
+    # bit j of word k of a block at position 32k + j.
     block_bytes = np.stack(words, axis=-1).astype("<u4").view(np.uint8)
     bits = np.unpackbits(block_bytes, axis=-1, bitorder="little").reshape(len(keys), n_blocks * 128)
     return np.where(bits == 1, 1.0, -1.0)
@@ -258,7 +262,7 @@ def _philox4x32(c0, c1, c2, c3, k0, k1):
     low = np.uint64(0xFFFFFFFF)
     k0, k1 = np.uint64(k0), np.uint64(k1)
     for _ in range(10):
-        # Since a product of two 32-bit words fits in 64 bits, its high and low halves come out exact.
+        # A product of two 32-bit words fits in 64 bits. Its high and low halves come out exact.
         product0 = np.uint64(0xD2511F53) * c0
         product1 = np.uint64(0xCD9E8D57) * c2
         c0, c1, c2, c3 = (

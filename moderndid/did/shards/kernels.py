@@ -10,25 +10,24 @@ from .container import Partial
 def summary_kernel(shard, state):
     r"""Sum what every fit needs before its first iteration.
 
-    The first iteration of a propensity score fit starts from
-    :math:`\mu_0 = (D + 1/2) / 2`. Its working response is
+    The first iteration of a propensity score fit regresses the working
+    response :math:`z_0` on the design with weights
+    :math:`w \mu_0 (1 - \mu_0)` for
 
     .. math::
 
+        \mu_0 = \frac{D + 1/2}{2}, \qquad
         z_0 = \log\frac{\mu_0}{1 - \mu_0} + \frac{D - \mu_0}{\mu_0 (1 - \mu_0)}.
 
-    The iteration regresses :math:`z_0` on the covariates with weights
-    :math:`w \mu_0 (1 - \mu_0)`. Since the mean weight of the fit's units and
-    the column scales are not known yet, the factors and the starting deviance
-    leave them out.
+    The factors and the starting deviance leave out the fit's mean weight and
+    column scales.
 
     Parameters
     ----------
     shard : Shard
         The units of one shard.
     state : SummaryState
-        The fits and the cells whose outcome changes are the right-hand sides of
-        the regressions.
+        The fits to describe and their cells.
 
     Returns
     -------
@@ -117,20 +116,10 @@ def summary_kernel(shard, state):
 def irls_kernel(shard, state):
     r"""Evaluate each propensity score fit at its current coefficients.
 
-    A fit with scores :math:`\mu = 1 / (1 + e^{-X\gamma})` on its scaled design
-    and weights :math:`w` that average one over its units has the binomial
-    deviance
-
-    .. math::
-
-        2 \sum_i w_i \left(D_i \log\frac{D_i}{\mu_i} + (1 - D_i)
-        \log\frac{1 - D_i}{1 - \mu_i}\right).
-
-    Each ratio in the logarithms is floored at machine precision. The fit's QR
-    factor comes from the design and the right-hand side
-    :math:`(D - \mu) / (\mu (1 - \mu))` weighted by
-    :math:`\sqrt{w \mu (1 - \mu)}`. Its least squares solution is the Newton
-    step of the log likelihood.
+    A fit with weights :math:`w` that average one over its units has scores
+    :math:`\mu = 1 / (1 + e^{-X\gamma})` on its scaled design. Its Newton step
+    comes from the regression of :math:`(D - \mu) / (\mu (1 - \mu))` on the
+    design with weights :math:`w \mu (1 - \mu)`.
 
     Parameters
     ----------
@@ -147,6 +136,15 @@ def irls_kernel(shard, state):
         - **sums**: Deviance of each fit
         - **maxima**: Largest distance between a unit's score and its treatment indicator in each fit
         - **factors**: QR factor of each fit's Newton step
+
+    Notes
+    -----
+    The binomial deviance of a fit is
+
+    .. math::
+
+        2 \sum_i w_i \left(D_i \log\frac{D_i}{\mu_i} + (1 - D_i)
+        \log\frac{1 - D_i}{1 - \mu_i}\right).
     """
     table = state.table
     n_fits = len(table.group)
@@ -257,13 +255,10 @@ def cell_sums_kernel(shard, state):
 def moments_kernel(shard, state):
     r"""Sum the outer products and bootstrap draws of each unit's influence function row.
 
-    Unit :math:`i` contributes the row :math:`z_i` of
-    :class:`~moderndid.InfluenceMoments` with one column for each cell in
-    ``state.kind``, one for each cohort in ``state.cohorts``, and a constant.
-    The column of the unit's cohort holds its weight in the first period. The
-    multipliers :math:`v_{bi}` of
-    :func:`~moderndid.core.bootstrap.keyed_rademacher` take the key of the
-    unit's cluster when the fit has a cluster variable and the unit's own key
+    Unit :math:`i` contributes its row :math:`z_i` of
+    :class:`~moderndid.InfluenceMoments`. Its multipliers :math:`v_{bi}` are
+    the draws of :func:`~moderndid.core.bootstrap.keyed_rademacher` for the key
+    of its cluster in a fit with a cluster variable and for its own key
     otherwise.
 
     Parameters
@@ -293,7 +288,7 @@ def moments_kernel(shard, state):
         cluster_keys, cluster_codes = np.unique(shard.cluster_keys, return_inverse=True)
         cluster_codes = cluster_codes.ravel()
         cluster_sums = np.zeros((len(cluster_keys), n_columns))
-        # Since a sorted block holds each of its clusters in one run of rows, each run sums with one reduction.
+        # Sorting puts each cluster of a block in one run of rows. Each run then sums with one reduction.
         order = np.argsort(cluster_codes, kind="stable")
     else:
         order = np.arange(n_units)
@@ -321,8 +316,8 @@ def moments_kernel(shard, state):
 
 def _add_keyed_draws(draws, keys, seed, rows):
     """Add the keyed multipliers of each bootstrap draw times the rows to its sums in blocks of draws."""
-    # Since a block of 2048 rows and 1024 draws holds 2**21 signs, the multipliers take about 40 MB whatever the
-    # number of draws. Every block keeps the fit's width, because a product with a single draw rounds differently.
+    # A block of 2048 rows and 1024 draws holds 2**21 signs. The multipliers take about 40 MB whatever the number of
+    # draws. Every block keeps the fit's width because a product with a single draw rounds differently.
     width = 128 * min(8, -(-len(draws) // 128))
     for start in range(0, len(draws), width):
         stop = min(start + width, len(draws))
