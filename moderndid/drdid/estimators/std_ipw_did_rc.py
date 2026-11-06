@@ -12,7 +12,14 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
-from ..utils import _scaled_columns, _scaled_inverse, _scaled_pseudo_inverse, _singular_pscore_message
+from ..utils import (
+    _dropped_covariates_message,
+    _propensity_columns,
+    _scaled_columns,
+    _scaled_inverse,
+    _scaled_pseudo_inverse,
+    _singular_pscore_message,
+)
 from .wols import _check_rc_cells
 
 
@@ -50,6 +57,9 @@ def std_ipw_did_rc(
     .. math::
         \widehat{\tau}_{std}^{ipw,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T) -
         \widehat{w}_{0}^{rc}(D,T,X;\widehat{\gamma})\right) Y\right].
+
+    Since a covariate collinear with the earlier ones on the weighted rows adds nothing to the
+    logistic propensity score model, the estimator drops it from that model with a warning.
 
     Parameters
     ----------
@@ -105,7 +115,7 @@ def std_ipw_did_rc(
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
     _check_rc_cells(post, d, covariates, i_weights, regressions=())
 
-    ps_fit, ps_weights = _compute_propensity_score(xp, d, covariates, i_weights)
+    ps_fit, ps_weights, ps_covariates = _compute_propensity_score(xp, d, covariates, i_weights)
     trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
@@ -117,13 +127,14 @@ def std_ipw_did_rc(
         influence_components["att_cont_post"] - influence_components["att_cont_pre"]
     )
 
-    influence_quantities = _get_influence_quantities(xp, d, covariates, ps_fit, ps_weights, i_weights, n_units)
-    att_inf_func = _compute_influence_function(xp, y, covariates, weights, influence_components, influence_quantities)
+    influence_quantities = _get_influence_quantities(xp, d, ps_covariates, ps_fit, ps_weights, i_weights, n_units)
+    att_inf_func = _compute_influence_function(
+        xp, y, ps_covariates, weights, influence_components, influence_quantities
+    )
 
     att_inf_func = to_numpy(att_inf_func)
     ipw_att = float(ipw_att)
 
-    # Inference
     if not boot:
         se_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = ipw_att + 1.96 * se_att
@@ -199,7 +210,13 @@ def _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights):
 
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
-    """Compute propensity score using logistic regression."""
+    """Compute propensity score using logistic regression and return it with the covariates the model keeps."""
+    kept = _propensity_columns(covariates, i_weights)
+    if kept is not None:
+        warnings.warn(_dropped_covariates_message(covariates.shape[1] - len(kept)), UserWarning)
+        # Taking the columns keeps the array row-major. Its sums then round exactly like those of a design built without
+        # the dropped columns.
+        covariates = xp.take(covariates, kept, axis=1)
     scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
@@ -237,7 +254,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
     ps_fit = xp.clip(ps_fit, 1e-6, 1 - 1e-6)
     ps_weights = ps_fit * (1 - ps_fit) * i_weights
 
-    return ps_fit, ps_weights
+    return ps_fit, ps_weights, covariates
 
 
 def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
@@ -262,13 +279,11 @@ def _get_influence_components(xp, y, weights):
     w_cont_pre = weights["w_cont_pre"]
     w_cont_post = weights["w_cont_post"]
 
-    # Elements of the influence function (summands)
     eta_treat_pre = w_treat_pre * y / xp.mean(w_treat_pre)
     eta_treat_post = w_treat_post * y / xp.mean(w_treat_post)
     eta_cont_pre = w_cont_pre * y / xp.mean(w_cont_pre)
     eta_cont_post = w_cont_post * y / xp.mean(w_cont_post)
 
-    # Estimator of each component
     att_treat_pre = xp.mean(eta_treat_pre)
     att_treat_post = xp.mean(eta_treat_post)
     att_cont_pre = xp.mean(eta_cont_pre)
@@ -288,7 +303,6 @@ def _get_influence_components(xp, y, weights):
 
 def _get_influence_quantities(xp, d, covariates, ps_fit, ps_weights, i_weights, n_units):
     """Compute quantities needed for influence function."""
-    # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
     ps_hessian = covariates.T @ (ps_weights[:, xp.newaxis] * covariates)
     try:
@@ -305,13 +319,11 @@ def _get_influence_quantities(xp, d, covariates, ps_fit, ps_weights, i_weights, 
 
 def _compute_influence_function(xp, y, covariates, weights, influence_components, influence_quantities):
     """Compute the influence function for standardized IPW estimator."""
-    # Weights
     w_treat_pre = weights["w_treat_pre"]
     w_treat_post = weights["w_treat_post"]
     w_cont_pre = weights["w_cont_pre"]
     w_cont_post = weights["w_cont_post"]
 
-    # Influence components
     eta_treat_pre = influence_components["eta_treat_pre"]
     eta_treat_post = influence_components["eta_treat_post"]
     eta_cont_pre = influence_components["eta_cont_pre"]
@@ -323,30 +335,21 @@ def _compute_influence_function(xp, y, covariates, weights, influence_components
 
     asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]
 
-    # Influence function of the "treat" component
-    # Leading term of the influence function: no estimation effect
     inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / xp.mean(w_treat_pre)
     inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / xp.mean(w_treat_post)
     inf_treat = inf_treat_post - inf_treat_pre
 
-    # Influence function of control component
-    # Leading term of the influence function: no estimation effect
     inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / xp.mean(w_cont_pre)
     inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / xp.mean(w_cont_post)
     inf_cont = inf_cont_post - inf_cont_pre
 
-    # Estimation effect from gamma hat (pscore)
-    # Derivative matrix (k x 1 vector)
     m2_pre = xp.mean((w_cont_pre * (y - att_cont_pre))[:, xp.newaxis] * covariates, axis=0) / xp.mean(w_cont_pre)
     m2_post = xp.mean((w_cont_post * (y - att_cont_post))[:, xp.newaxis] * covariates, axis=0) / xp.mean(w_cont_post)
 
-    # Now the influence function related to estimation effect of pscores
     inf_cont_ps = asy_lin_rep_ps @ (m2_post - m2_pre)
 
-    # Influence function for the control component
     inf_cont = inf_cont + inf_cont_ps
 
-    # Get the influence function of the standardized IPW estimator (put all pieces together)
     att_inf_func = inf_treat - inf_cont
 
     return att_inf_func

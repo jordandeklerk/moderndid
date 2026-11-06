@@ -12,7 +12,13 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_dr_tr_panel
-from ..utils import _scaled_columns, _scaled_inverse, _singular_pscore_message
+from ..utils import (
+    _dropped_covariates_message,
+    _propensity_columns,
+    _scaled_columns,
+    _scaled_inverse,
+    _singular_pscore_message,
+)
 from .wols import _check_panel_groups, _singular_comparison_message, ols_panel
 
 
@@ -55,7 +61,9 @@ def drdid_panel(
     and a linear regression model for the outcome evolution among the comparison units.
 
     The propensity score parameters are estimated using maximum likelihood, and the outcome
-    regression coefficients are estimated using ordinary least squares.
+    regression coefficients are estimated using ordinary least squares. Since a covariate collinear
+    with the earlier ones on the weighted rows adds nothing to the propensity score model, the
+    estimator drops it from that model with a warning.
 
     Parameters
     ----------
@@ -111,7 +119,7 @@ def drdid_panel(
     )
     _check_panel_groups(d, covariates, i_weights, regressions=("comparison",))
 
-    ps_fit, W = _compute_propensity_score(xp, d, covariates, i_weights)
+    ps_fit, W, ps_covariates = _compute_propensity_score(xp, d, covariates, i_weights)
     trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
@@ -137,7 +145,7 @@ def drdid_panel(
     dr_att = eta_treat - eta_cont
 
     influence_quantities = _get_influence_quantities(
-        xp, delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units
+        xp, delta_y, d, covariates, ps_covariates, ps_fit, out_delta, i_weights, W, n_units
     )
 
     att_inf_func = _compute_influence_function(
@@ -148,6 +156,7 @@ def drdid_panel(
         eta_cont,
         weights,
         covariates,
+        ps_covariates,
         mean_w_treat,
         mean_w_cont,
         influence_quantities,
@@ -233,7 +242,13 @@ def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
 
 
 def _compute_propensity_score(xp, d, covariates, i_weights):
-    """Compute propensity score using logistic regression."""
+    """Compute propensity score using logistic regression and return it with the covariates the model keeps."""
+    kept = _propensity_columns(covariates, i_weights)
+    if kept is not None:
+        warnings.warn(_dropped_covariates_message(covariates.shape[1] - len(kept)), UserWarning)
+        # Taking the columns keeps the array row-major. Its sums then round exactly like those of a design built without
+        # the dropped columns.
+        covariates = xp.take(covariates, kept, axis=1)
     scaled = _scaled_columns(covariates)
     if xp is not np:
         try:
@@ -274,7 +289,7 @@ def _compute_propensity_score(xp, d, covariates, i_weights):
 
     W = ps_fit * (1 - ps_fit) * i_weights
 
-    return ps_fit, W
+    return ps_fit, W, covariates
 
 
 def _compute_weights(d, ps_fit, i_weights, trim_ps):
@@ -288,9 +303,8 @@ def _compute_weights(d, ps_fit, i_weights, trim_ps):
     }
 
 
-def _get_influence_quantities(xp, delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units):
+def _get_influence_quantities(xp, delta_y, d, covariates, ps_covariates, ps_fit, out_delta, i_weights, W, n_units):
     """Compute quantities needed for influence function."""
-    # Influence function of the nuisance functions
     weights_ols = i_weights * (1 - d)
     wols_x = weights_ols[:, xp.newaxis] * covariates
     wols_residual_covariates = (weights_ols * (delta_y - out_delta))[:, xp.newaxis] * covariates
@@ -300,9 +314,8 @@ def _get_influence_quantities(xp, delta_y, d, covariates, ps_fit, out_delta, i_w
     weighted_cov_matrix_inv = _scaled_inverse(weighted_cov_matrix, _singular_comparison_message())
     asy_lin_rep_wols = wols_residual_covariates @ weighted_cov_matrix_inv
 
-    # Asymptotic linear representation of logit's beta's
-    score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
-    ps_hessian = covariates.T @ (W[:, xp.newaxis] * covariates)
+    score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * ps_covariates
+    ps_hessian = ps_covariates.T @ (W[:, xp.newaxis] * ps_covariates)
     Hessian_ps = _scaled_inverse(ps_hessian, _singular_pscore_message()) * n_units
     asy_lin_rep_ps = score_ps @ Hessian_ps
 
@@ -320,6 +333,7 @@ def _compute_influence_function(
     eta_cont,
     weights,
     covariates,
+    ps_covariates,
     mean_w_treat,
     mean_w_cont,
     influence_quantities,
@@ -336,7 +350,7 @@ def _compute_influence_function(
     inf_treat = (inf_treat_1 - inf_treat_2) / mean_w_treat
 
     inf_cont_1 = dr_att_cont - w_cont * eta_cont
-    control_pscore_derivative = xp.mean((dr_att_cont - w_cont * eta_cont)[:, xp.newaxis] * covariates, axis=0)
+    control_pscore_derivative = xp.mean((dr_att_cont - w_cont * eta_cont)[:, xp.newaxis] * ps_covariates, axis=0)
     inf_cont_2 = asy_lin_rep_ps @ control_pscore_derivative
 
     control_ols_derivative = xp.mean(w_cont[:, xp.newaxis] * covariates, axis=0)

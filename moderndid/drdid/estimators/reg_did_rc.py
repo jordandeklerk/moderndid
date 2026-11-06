@@ -3,16 +3,14 @@
 from typing import NamedTuple
 
 import numpy as np
-import statsmodels.api as sm
 from scipy import stats
 
 from moderndid.cupy.backend import get_backend, to_numpy
-from moderndid.cupy.regression import cupy_wls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_reg_rc import wboot_reg_rc
-from ..utils import _scaled_columns, _scaled_inverse
-from .wols import _cell_name, _check_rc_cells, _has_collinear_columns, _singular_cell_message
+from ..utils import _scaled_inverse
+from .wols import _cell_name, _check_rc_cells, _fit_wls, _has_collinear_columns, _singular_cell_message
 
 
 class RegDIDRCResult(NamedTuple):
@@ -145,7 +143,6 @@ def reg_did_rc(
     reg_att_inf_func = to_numpy(reg_att_inf_func)
     reg_att = float(reg_att)
 
-    # Inference
     if not boot:
         se_reg_att = np.std(reg_att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = reg_att + 1.96 * se_reg_att
@@ -215,35 +212,21 @@ def _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights):
 
 def _fit_outcome_regressions(xp, y, post, d, int_cov, i_weights):
     """Fit outcome regression models for control units in pre and post periods."""
-    scaled = _scaled_columns(int_cov)
-
-    # Pre-treatment period
     pre_filter = (d == 0) & (post == 0)
     if _has_collinear_columns(int_cov[pre_filter], i_weights[pre_filter]):
         raise ValueError(_singular_cell_message(_cell_name(True, False), False))
+    # The check names a missing or infinite outcome before the fit. Least squares would otherwise pass it silently into
+    # the coefficients.
+    if not bool(xp.all(xp.isfinite(y[pre_filter]))):
+        raise ValueError(
+            "Failed to fit pre-period regression: y holds missing or infinite values for some observations of the "
+            f"{_cell_name(True, False)}. Pass finite outcomes for those observations."
+        )
 
-    if xp is not np:
-        try:
-            beta_pre, _ = cupy_wls(
-                xp.asarray(y[pre_filter]),
-                xp.asarray(scaled[pre_filter]),
-                xp.asarray(i_weights[pre_filter]),
-            )
-            reg_coeff_pre = to_numpy(beta_pre)
-        except (np.linalg.LinAlgError, RuntimeError) as e:
-            raise ValueError(f"Failed to fit pre-period regression: {e}") from e
-    else:
-        try:
-            glm_pre = sm.GLM(
-                y[pre_filter],
-                scaled[pre_filter],
-                family=sm.families.Gaussian(link=sm.families.links.Identity()),
-                var_weights=i_weights[pre_filter],
-            )
-            res_pre = glm_pre.fit()
-            reg_coeff_pre = res_pre.params
-        except (np.linalg.LinAlgError, ValueError) as e:
-            raise ValueError(f"Failed to fit pre-period regression: {e}") from e
+    try:
+        reg_coeff_pre, _ = _fit_wls(y[pre_filter], int_cov[pre_filter], i_weights[pre_filter])
+    except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
+        raise ValueError(f"Failed to fit pre-period regression: {e}") from e
 
     if np.any(np.isnan(reg_coeff_pre)):
         raise ValueError(
@@ -251,35 +234,21 @@ def _fit_outcome_regressions(xp, y, post, d, int_cov, i_weights):
             "Multicollinearity of covariates is probably the reason for it."
         )
 
-    out_y_pre = scaled @ xp.asarray(reg_coeff_pre)
+    out_y_pre = int_cov @ xp.asarray(reg_coeff_pre)
 
-    # Post-treatment period
     post_filter = (d == 0) & (post == 1)
     if _has_collinear_columns(int_cov[post_filter], i_weights[post_filter]):
         raise ValueError(_singular_cell_message(_cell_name(False, False), False))
+    if not bool(xp.all(xp.isfinite(y[post_filter]))):
+        raise ValueError(
+            "Failed to fit post-period regression: y holds missing or infinite values for some observations of the "
+            f"{_cell_name(False, False)}. Pass finite outcomes for those observations."
+        )
 
-    if xp is not np:
-        try:
-            beta_post, _ = cupy_wls(
-                xp.asarray(y[post_filter]),
-                xp.asarray(scaled[post_filter]),
-                xp.asarray(i_weights[post_filter]),
-            )
-            reg_coeff_post = to_numpy(beta_post)
-        except (np.linalg.LinAlgError, RuntimeError) as e:
-            raise ValueError(f"Failed to fit post-period regression: {e}") from e
-    else:
-        try:
-            glm_post = sm.GLM(
-                y[post_filter],
-                scaled[post_filter],
-                family=sm.families.Gaussian(link=sm.families.links.Identity()),
-                var_weights=i_weights[post_filter],
-            )
-            res_post = glm_post.fit()
-            reg_coeff_post = res_post.params
-        except (np.linalg.LinAlgError, ValueError) as e:
-            raise ValueError(f"Failed to fit post-period regression: {e}") from e
+    try:
+        reg_coeff_post, _ = _fit_wls(y[post_filter], int_cov[post_filter], i_weights[post_filter])
+    except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
+        raise ValueError(f"Failed to fit post-period regression: {e}") from e
 
     if np.any(np.isnan(reg_coeff_post)):
         raise ValueError(
@@ -287,7 +256,7 @@ def _fit_outcome_regressions(xp, y, post, d, int_cov, i_weights):
             "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
         )
 
-    out_y_post = scaled @ xp.asarray(reg_coeff_post)
+    out_y_post = int_cov @ xp.asarray(reg_coeff_post)
 
     return out_y_pre, out_y_post
 
@@ -307,7 +276,6 @@ def _compute_weights(d, post, i_weights):
 
 def _get_influence_quantities(xp, y, post, d, int_cov, out_y_pre, out_y_post, i_weights, n_units):
     """Compute quantities needed for influence function."""
-    # Asymptotic linear representation of OLS parameters in pre-period
     weights_ols_pre = i_weights * (1 - d) * (1 - post)
     weighted_x_pre = weights_ols_pre[:, xp.newaxis] * int_cov
     weighted_resid_x_pre = weights_ols_pre[:, xp.newaxis] * (y - out_y_pre)[:, xp.newaxis] * int_cov
@@ -316,7 +284,6 @@ def _get_influence_quantities(xp, y, post, d, int_cov, out_y_pre, out_y_post, i_
     gram_inv_pre = _scaled_inverse(gram_pre, _singular_cell_message(_cell_name(True, False), False))
     asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
 
-    # Asymptotic linear representation of OLS parameters in post-period
     weights_ols_post = i_weights * (1 - d) * post
     weighted_x_post = weights_ols_post[:, xp.newaxis] * int_cov
     weighted_resid_x_post = weights_ols_post[:, xp.newaxis] * (y - out_y_post)[:, xp.newaxis] * int_cov
@@ -351,26 +318,16 @@ def _compute_influence_function(
     asy_lin_rep_ols_pre = influence_quantities["asy_lin_rep_ols_pre"]
     asy_lin_rep_ols_post = influence_quantities["asy_lin_rep_ols_post"]
 
-    # Influence function of the "treat" component
-    # Leading term of the influence function
     inf_treat_pre = (reg_att_treat_pre - w_treat_pre * eta_treat_pre) / xp.mean(w_treat_pre)
     inf_treat_post = (reg_att_treat_post - w_treat_post * eta_treat_post) / xp.mean(w_treat_post)
     inf_treat = inf_treat_post - inf_treat_pre
 
-    # Influence function of control component
-    # Leading term of the influence function: no estimation effect
     inf_cont_1 = reg_att_cont - w_cont * eta_cont
-    # Estimation effect from beta hat (OLS using only controls)
-    # Derivative matrix (k x 1 vector)
     control_ols_derivative = xp.mean(w_cont[:, xp.newaxis] * int_cov, axis=0)
-    # Now get the influence function related to the estimation effect related to beta's in post-treatment
     inf_cont_2_post = asy_lin_rep_ols_post @ control_ols_derivative
-    # Now get the influence function related to the estimation effect related to beta's in pre-treatment
     inf_cont_2_pre = asy_lin_rep_ols_pre @ control_ols_derivative
-    # Influence function for the control component
     inf_control = (inf_cont_1 + inf_cont_2_post - inf_cont_2_pre) / xp.mean(w_cont)
 
-    # Get the influence function of the OR estimator (put all pieces together)
     reg_att_inf_func = inf_treat - inf_control
 
     return reg_att_inf_func

@@ -3,12 +3,11 @@
 import warnings
 
 import numpy as np
-import statsmodels.api as sm
 
 from moderndid.cupy.backend import to_numpy, use_backend
 
-from ..estimators.wols import _check_rc_cells
-from ..utils import _scaled_columns, _validate_inputs
+from ..estimators.wols import _check_rc_cells, _wls_coefficients
+from ..utils import _column_scales, _validate_inputs
 
 
 def wboot_reg_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
@@ -50,20 +49,23 @@ def wboot_reg_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
     wboot_ipw_rc : IPW bootstrap for repeated cross-sections.
     """
     n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level=0.5)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
     bootstrap_estimates = np.full(biters, np.nan)
 
-    # Since every draw keeps the same rows with positive weight, a group too small for the estimator fails them all.
+    # Every draw keeps the same rows with positive weight. A group too small for the estimator fails them all.
     try:
         _check_rc_cells(post, d, x, i_weights, regressions=("comparison",))
     except ValueError as e:
         warnings.warn(f"All {biters} bootstrap draws are NaN. {e}", UserWarning, stacklevel=2)
         return bootstrap_estimates
 
-    control_pre = (d == 0) & (post == 0)
-    control_post = (d == 0) & (post == 1)
-    scaled_x = _scaled_columns(x)
+    # A draw needs only the coefficients. A full fit's diagnostics would divide by zero or warn whenever the comparison
+    # rows leave the design singular.
+    designs = []
+    for rows in ((d == 0) & (post == 0), (d == 0) & (post == 1)):
+        scales = _column_scales(x[rows])
+        designs.append((rows, x[rows] / scales, scales))
     rng = np.random.RandomState(random_state)
 
     with use_backend("numpy"):
@@ -72,20 +74,18 @@ def wboot_reg_rc(y, post, d, x, i_weights, biters=1000, random_state=None):
             b_weights = i_weights * v
 
             try:
-                coefficients = []
-                for rows in (control_pre, control_post):
-                    glm = sm.GLM(
-                        y[rows],
-                        scaled_x[rows],
-                        family=sm.families.Gaussian(link=sm.families.links.Identity()),
-                        var_weights=b_weights[rows],
-                    )
-                    coefficients.append(glm.fit().params)
+                coefficients = [
+                    _wls_coefficients(y[rows], scaled, b_weights[rows]) / scales for rows, scaled, scales in designs
+                ]
             except (np.linalg.LinAlgError, ValueError):
                 continue
+            # Least squares carries a missing or infinite outcome into its coefficients without raising. Non-finite
+            # coefficients mark the draw as failed.
+            if not np.isfinite(coefficients).all():
+                continue
 
-            out_reg_pre_b = scaled_x @ coefficients[0]
-            out_reg_post_b = scaled_x @ coefficients[1]
+            out_reg_pre_b = x @ coefficients[0]
+            out_reg_post_b = x @ coefficients[1]
 
             bootstrap_estimates[b] = (
                 np.sum(b_weights * d * post * y) / np.sum(b_weights * d * post)

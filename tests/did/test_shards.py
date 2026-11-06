@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 import pyarrow as pa
 import pytest
-from statsmodels.tools.sm_exceptions import PerfectSeparationWarning, SingularMatrixWarning
+from statsmodels.tools.sm_exceptions import PerfectSeparationWarning
 
 from moderndid import aggte, att_gt, drdid_panel, preprocess_did
 from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
@@ -454,7 +454,6 @@ def test_att_gt_on_shards_warns_like_att_gt_when_regression_covariates_are_colli
 
     with warnings.catch_warnings(record=True) as memory_warnings:
         warnings.simplefilter("always")
-        warnings.simplefilter("ignore", SingularMatrixWarning)
         memory = att_gt(mpdta_collinear_covariates, **spec)
     with warnings.catch_warnings(record=True) as shard_warnings:
         warnings.simplefilter("always")
@@ -482,6 +481,7 @@ def test_att_gt_on_shards_with_a_collinear_propensity_covariate_matches_att_gt_w
         "base_period": base_period,
         "random_state": 7,
     }
+    dropped = "The propensity score model dropped 1 covariate that is collinear with the others."
 
     with warnings.catch_warnings(record=True) as memory_warnings:
         warnings.simplefilter("always")
@@ -491,7 +491,94 @@ def test_att_gt_on_shards_with_a_collinear_propensity_covariate_matches_att_gt_w
         sharded = att_gt_on_shards(mpdta_shifted_covariate, 3, xformla="~lpop + lpop_shifted", **spec)
 
     assert [str(w.message) for w in memory_warnings] == []
-    assert [str(w.message) for w in shard_warnings] == []
+    assert [str(w.message) for w in shard_warnings] == [dropped] * 12
+    _assert_same_fit(sharded, memory)
+
+
+@pytest.mark.parametrize("base_period", ["varying", "universal"])
+def test_att_gt_on_shards_matches_att_gt_when_propensity_covariates_are_collinear(
+    mpdta_collinear_covariates, att_gt_on_shards, record_warnings, base_period
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop + lpop2",
+        "est_method": "ipw",
+        "base_period": base_period,
+        "random_state": 7,
+    }
+    dropped = (UserWarning, "The propensity score model dropped 1 covariate that is collinear with the others.")
+
+    memory, memory_warnings = record_warnings(att_gt, mpdta_collinear_covariates, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, mpdta_collinear_covariates, 3, **spec)
+
+    assert memory_warnings == [dropped] * 12
+    assert shard_warnings == memory_warnings
+    _assert_same_fit(sharded, memory)
+
+
+@pytest.mark.parametrize("base_period", ["varying", "universal"])
+def test_att_gt_on_shards_drops_a_propensity_covariate_collinear_up_to_rounding_like_att_gt(
+    mpdta_rounded_collinear_covariate, att_gt_on_shards, record_warnings, base_period
+):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop + big",
+        "est_method": "ipw",
+        "base_period": base_period,
+        "random_state": 7,
+    }
+    dropped = (UserWarning, "The propensity score model dropped 1 covariate that is collinear with the others.")
+
+    memory, memory_warnings = record_warnings(att_gt, mpdta_rounded_collinear_covariate, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, mpdta_rounded_collinear_covariate, 3, **spec)
+
+    assert memory_warnings == [dropped] * 12
+    assert shard_warnings == memory_warnings
+    _assert_same_fit(sharded, memory)
+
+
+@pytest.mark.parametrize(
+    "degenerate_comparison_panel, control_group, expected_warnings",
+    [
+        ("constant_change", "nevertreated", []),
+        ("exact_change", "nevertreated", []),
+        (
+            "two_comparison_units",
+            "notyettreated",
+            [(UserWarning, "Be aware that there are some small groups in your dataset.\nCheck groups: inf")],
+        ),
+    ],
+    ids=["constant_change", "exact_change", "two_comparison_units"],
+    indirect=["degenerate_comparison_panel"],
+)
+def test_att_gt_on_shards_estimates_degenerate_comparison_groups_of_reg_quietly_like_att_gt(
+    degenerate_comparison_panel, att_gt_on_shards, record_warnings, control_group, expected_warnings
+):
+    spec = {
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~x1",
+        "weightsname": "w",
+        "est_method": "reg",
+        "control_group": control_group,
+        "base_period": "universal",
+        "random_state": 7,
+    }
+
+    memory, memory_warnings = record_warnings(att_gt, degenerate_comparison_panel, **spec)
+    sharded, shard_warnings = record_warnings(att_gt_on_shards, degenerate_comparison_panel, 3, **spec)
+
+    assert memory_warnings == expected_warnings
+    assert shard_warnings == memory_warnings
+    assert np.all(np.isfinite(memory.att_gt))
     _assert_same_fit(sharded, memory)
 
 
@@ -588,6 +675,7 @@ def test_att_gt_on_shards_trims_exactly_the_comparison_units_whose_newton_logit_
     np.testing.assert_allclose(sharded.att_gt, expected, rtol=1e-10, atol=0)
 
 
+@pytest.mark.parametrize("position", [20, 5], ids=["last", "before_cov6"])
 @pytest.mark.parametrize(
     "redundant",
     [
@@ -598,10 +686,10 @@ def test_att_gt_on_shards_trims_exactly_the_comparison_units_whose_newton_logit_
     ids=["copy", "combination", "constant"],
 )
 def test_att_gt_on_shards_ipw_with_a_redundant_twenty_first_covariate_matches_the_fit_without_it(
-    wide_scalable_panel, att_gt_on_shards, redundant
+    wide_scalable_panel, att_gt_on_shards, redundant, position
 ):
     data = wide_scalable_panel.with_columns(redundant.alias("redundant"))
-    covariates = " + ".join(f"cov{j}" for j in range(1, 21))
+    covariates = [f"cov{j}" for j in range(1, 21)]
     spec = {
         "yname": "y",
         "tname": "time",
@@ -611,14 +699,17 @@ def test_att_gt_on_shards_ipw_with_a_redundant_twenty_first_covariate_matches_th
         "est_method": "ipw",
         "random_state": 7,
     }
+    dropped = "The propensity score model dropped 1 covariate that is collinear with the others."
 
-    reduced = att_gt_on_shards(data, 3, xformla=f"~{covariates}", **spec)
+    reduced = att_gt_on_shards(data, 3, xformla=f"~{' + '.join(covariates)}", **spec)
     with warnings.catch_warnings(record=True) as recorded:
         warnings.simplefilter("always")
-        sharded = att_gt_on_shards(data, 3, xformla=f"~{covariates} + redundant", **spec)
+        sharded = att_gt_on_shards(
+            data, 3, xformla=f"~{' + '.join([*covariates[:position], 'redundant', *covariates[position:]])}", **spec
+        )
 
     np.testing.assert_array_equal(reduced.groups, [2, 2, 3, 3])
-    assert [str(w.message) for w in recorded] == []
+    assert [str(w.message) for w in recorded] == [dropped] * 4
     np.testing.assert_array_equal(sharded.groups, reduced.groups)
     assert np.all(np.isfinite(sharded.att_gt))
     assert np.all(np.isfinite(sharded.se_gt))
