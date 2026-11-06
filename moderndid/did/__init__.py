@@ -23,7 +23,7 @@ from .container import (
 from .format import format_aggte_result, format_mp_pretest_result, format_mp_result
 from .mboot import mboot
 
-# Lazy loading for plot functions (requires plotnine)
+# The plot functions load on first use because they need plotnine.
 _PLOT_FUNCTIONS = {"plot_event_study", "plot_gt"}
 
 

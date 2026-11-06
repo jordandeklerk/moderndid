@@ -177,8 +177,7 @@ def warn_few_cluster_counts(n_clusters, n_units, cohort_counts):
         scope = " for this cohort" if len(few) == 1 else " for these cohorts"
     outcome = "a confidence interval that is" if single else "confidence intervals and bands that are"
     sentences.append(f"Cluster-robust inference{scope} rests on very few clusters and can give {outcome} too narrow.")
-    # Since estimators reach this function at different depths, the frames inside the package are skipped rather
-    # than counted.
+    # Estimators reach this function at different depths. The frames inside the package are skipped rather than counted.
     package = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep
     warnings.warn(" ".join(sentences), UserWarning, skip_file_prefixes=(package,))
 

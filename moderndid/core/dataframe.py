@@ -29,17 +29,16 @@ def to_polars(df):
         return df
 
     msg = f"Expected object implementing '__arrow_c_stream__' or a pandas DataFrame, got: {type(df).__name__}"
-    # Since a pandas 3 Series also exports an Arrow stream, a Series other than a polars one stops here before the
-    # PyCapsule branch reads it as a table.
+    # A pandas 3 Series also exports an Arrow stream. Any Series other than a polars one stops here before the PyCapsule
+    # branch reads it as a table.
     series = nw.from_native(df, series_only=True, pass_through=True)
     if isinstance(series, nw.Series) and not isinstance(df, pl.Series):
         raise TypeError(msg)
 
-    # Arrow PyCapsule Interface
     if hasattr(df, "__arrow_c_stream__"):
         return nw.from_arrow(df, backend=pl).to_native()
 
-    # Since pandas before 2.2 has no PyCapsule interface, narwhals reads its eager DataFrames instead.
+    # pandas before 2.2 has no PyCapsule interface. narwhals reads its eager DataFrames instead.
     frame = nw.from_native(df, eager_only=True, pass_through=True)
     if isinstance(frame, nw.DataFrame):
         return frame.to_polars()
@@ -65,7 +64,7 @@ def from_polars(result, like):
     if isinstance(like, pl.DataFrame):
         return result
 
-    # Since pandas before 2.2 has no PyCapsule interface, narwhals decides whether like is an eager DataFrame.
+    # narwhals decides whether like is an eager DataFrame because pandas before 2.2 has no PyCapsule interface.
     frame = nw.from_native(like, eager_only=True, pass_through=True)
     if isinstance(frame, nw.DataFrame):
         return nw.from_arrow(result.to_arrow(), backend=nw.get_native_namespace(frame)).to_native()

@@ -360,7 +360,7 @@ def _control_scores(rows, config, first_diffs, centered):
     dx = rows.select(first_diffs).to_numpy()
     dy = rows[".ctrl_first_diff_y"].to_numpy()
 
-    # Since a zero-weight row cannot set a period's mean, it only receives a fitted value.
+    # A zero-weight row cannot set a period's mean. It only receives a fitted value.
     fit = raw_weight > 0
     fitted = np.full(len(dy), np.nan)
     if fit.any():

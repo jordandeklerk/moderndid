@@ -29,9 +29,7 @@ def importorskip(modname, reason=None):
     compile(modname, "", "eval")  # to catch syntax errors
 
     with warnings.catch_warnings():
-        # Make sure to ignore ImportWarnings that might happen because
-        # of existing directories with the same name we're trying to
-        # import but without a __init__.py file.
+        # Existing directories with the module's name but no __init__.py file can raise ImportWarnings.
         warnings.simplefilter("ignore", ImportWarning)
         try:
             __import__(modname)

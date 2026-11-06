@@ -58,15 +58,12 @@ from .utils import (
 )
 
 __all__ = [
-    # B-spline and basis construction
     "BSplineBasis",
     "DoseResult",
     "GroupTimeATTResult",
     "MultivariateBasis",
-    # Result types
     "NPIVResult",
     "PTEAggteResult",
-    # Panel treatment effects setup
     "PTEParams",
     "PTEResult",
     "_get_first_difference",
@@ -81,17 +78,13 @@ __all__ = [
     "cont_did",
     "did_attgt",
     "gsl_bs",
-    # Utility functions
     "is_full_rank",
     "matrix_sqrt",
-    # Main NPIV estimation functions
     "npiv",
-    # Dimension selection functions
     "npiv_choose_j",
     "npiv_est",
     "overall_weights",
     "predict_gsl_bs",
-    # Processing functions
     "process_att_gt",
     "process_dose_gt",
     "prodspline",

@@ -67,7 +67,7 @@ def wboot_std_ipw_rc(
         "i_weights": i_weights,
     }
     n_units = _validate_inputs(arrays_dict, x, biters, trim_level)
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
 
     rng = np.random.default_rng(random_state)

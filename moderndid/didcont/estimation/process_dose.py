@@ -63,7 +63,7 @@ def process_dose_gt(
     if rng is None:
         rng = np.random.default_rng()
 
-    # Since only the cells are used below, a cell-level band would add a warning about a value nobody reads.
+    # Only the cells are used below. A cell-level band would add a warning about a value nobody reads.
     att_gt = process_att_gt(gt_results, pte_params._replace(cband=False), rng=rng)
     all_extra_gt_returns = att_gt.extra_gt_returns
 
@@ -96,7 +96,7 @@ def process_dose_gt(
         [(item.get("acrt_overall", np.nan) if item else np.nan) for item in inner_extra_gt_returns]
     )
 
-    # Since a zero weight times a NaN influence function is still NaN, a cell without a curve contributes zeros.
+    # A zero weight times a NaN influence function is still NaN. A cell without a curve contributes zeros instead.
     acrt_influence_matrix = np.where(has_curve, gt_results["influence_func"], 0.0)
     n_obs = acrt_influence_matrix.shape[0]
     biters = pte_params.biters
@@ -174,8 +174,8 @@ def process_dose_gt(
     att_d_inf_func = att_d_inf_func + weight_inf_func @ _stack_cell_curves(att_d_by_group, len(dose_values))
     acrt_d_inf_func = acrt_d_inf_func + weight_inf_func @ _stack_cell_curves(acrt_d_by_group, len(dose_values))
 
-    # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that column
-    # staying at zero, they stay in the sample.
+    # The draws that move a column with zero bootstrap scale stay in the sample. Dropping them would condition the band
+    # on that column staying at zero.
     boot_res = _mboot(
         att_d_inf_func,
         n_units=n_obs,

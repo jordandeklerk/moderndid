@@ -183,8 +183,8 @@ def _independent_columns(x):
         # A second projection removes what rounding left in the first.
         resid -= basis @ (basis.T @ resid)
         norm = np.linalg.norm(resid)
-        # Since the separation check's linear program treats violations below 1e-7 as zero, it could
-        # mistake a column this close to the earlier ones for a separating direction.
+        # The separation check's linear program treats violations below 1e-7 as zero. It could mistake a column this
+        # close to the earlier ones for a separating direction.
         if norm > 1e-7 * np.linalg.norm(col):
             keep[j] = True
             basis = np.column_stack([basis, resid / norm])

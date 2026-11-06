@@ -132,8 +132,8 @@ def aggregate_att_gt(
         valid_cols = ~np.isnan(att_by_group)
 
         if confidence_band and np.any(valid_cols):
-            # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that
-            # column staying at zero, they stay in the sample.
+            # The draws that move a column with zero bootstrap scale stay in the sample. Dropping them would condition
+            # the band on that column staying at zero.
             mb_result = _mboot(
                 inf_by_group[:, valid_cols],
                 n_units=inf_func.shape[0],
@@ -638,7 +638,7 @@ def _event_times(differences):
         Event time of each cell. The values are integers when every one is a whole number.
     """
     event_times = np.asarray(differences, dtype=float)
-    # Since labels such as 2001.1 and 2001.3 carry rounding error, equal event times match only after rounding.
+    # Labels such as 2001.1 and 2001.3 carry rounding error. Equal event times match only after rounding.
     if not np.all(event_times == np.trunc(event_times)):
         event_times = np.round(event_times, 10)
     if np.all(event_times == np.trunc(event_times)):
@@ -649,7 +649,7 @@ def _event_times(differences):
 def _first_period_units(pte_params, first_period):
     """Return the sampling weight and group of each unit in influence-function row order."""
     first_period_data = pte_params.data.filter(pl.col("period") == first_period)
-    # Since influence-function rows follow sorted unit ids, the unit-level terms must use the same order.
+    # Influence-function rows follow sorted unit ids. The unit-level terms must use the same order.
     if "id" in first_period_data.columns:
         first_period_data = first_period_data.sort("id")
     weights_ind = np.asarray(first_period_data[".w"], dtype=float)

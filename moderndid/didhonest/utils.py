@@ -264,8 +264,8 @@ def identified_set_bounds(true_beta, l_vec, a_matrix, d_vec, num_pre_periods, nu
     b_eq = true_beta[:num_pre_periods]
     d_vec = np.asarray(d_vec, dtype=float).flatten()
 
-    # Since the solver's feasibility tolerances are absolute, a program whose coefficients are all small is solved at
-    # unit scale. Shrinking a larger program would instead push a small d toward the tolerances.
+    # The solver's feasibility tolerances are absolute. A program whose coefficients are all small is solved at unit
+    # scale. Shrinking a larger program would instead push a small d toward the tolerances.
     scale = min(1.0, max(np.max(np.abs(b_eq), initial=0.0), np.max(np.abs(d_vec), initial=0.0)))
     scale = scale if scale > 0 else 1.0
     largest = _solve_trend_program(-objective, a_matrix, d_vec / scale, a_eq, b_eq / scale)
@@ -377,7 +377,7 @@ def lee_coefficient(eta, sigma):
         Coefficient vector with the same length as ``eta``.
     """
     eta = np.asarray(eta, dtype=np.float64).flatten()
-    # Since a product with a strided or transposed matrix can round differently, the covariance is made contiguous.
+    # The covariance is made contiguous because a product with a strided or transposed matrix can round differently.
     sigma = np.ascontiguousarray(sigma, dtype=np.float64)
     sigma_eta = sigma @ eta
     eta_sigma_eta = eta.T @ sigma_eta
@@ -451,7 +451,7 @@ def compute_bounds(eta, sigma, A, b, z):
         - **upper_bound**: Smallest upper bound, or ``inf`` when no inequality bounds it from above
     """
     c = lee_coefficient(eta, sigma)
-    # Since a product with a strided or transposed matrix can round differently, the matrix is made contiguous.
+    # The matrix is made contiguous because a product with a strided or transposed matrix can round differently.
     A = np.ascontiguousarray(A, dtype=np.float64)
     b = np.asarray(b, dtype=np.float64).flatten()
     z = np.asarray(z, dtype=np.float64).flatten()

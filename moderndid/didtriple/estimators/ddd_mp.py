@@ -375,7 +375,7 @@ def _ddd_mp(
         if result is None or result[0] is None:
             continue
         att_entry, inf_data, se_val = result
-        # Since a skipped cell takes no column, each kept cell's column sits at its position among the estimates.
+        # A skipped cell takes no column. Each kept cell's column sits at its position among the estimates.
         column = len(attgt_list)
         attgt_list.append(att_entry)
         if inf_data is not None:
@@ -404,7 +404,7 @@ def _ddd_mp(
     unit_weights = None if weights_col is None else unit_info[weights_col].to_numpy()
 
     if cluster_vals is not None:
-        # Since only the eligible units of an enabling cohort are treated, they alone count toward its clusters.
+        # Only the eligible units of an enabling cohort are treated. They alone count toward its clusters.
         unit_cohorts = np.where(unit_partition == 1, unit_groups, 0)
         warn_few_clusters(cluster_vals, {g: cluster_vals[unit_cohorts == g] for g in np.unique(groups_array)})
 
@@ -425,7 +425,7 @@ def _ddd_mp(
         "boot": boot,
         "biters": biters if boot else None,
         "cband": cband if boot else None,
-        # Since clusters of one unit each leave the standard errors at the unit level, the report names none.
+        # Clusters of one unit each leave the standard errors at the unit level. The report then names none.
         "cluster": cluster if _clusters_group_units(cluster_vals) else None,
         "alpha": alpha,
         "allow_unbalanced_panel": allow_unbalanced_panel,
@@ -564,10 +564,10 @@ def _check_and_prepare(
         weights_col=weights_col,
         cluster=cluster,
     )
-    # Since the estimation reads a single covariate given as a string as one column, the preparation does too.
+    # The estimation reads a single covariate given as a string as one column. The preparation does too.
     covariates = [covariate_cols] if isinstance(covariate_cols, str) else covariate_cols
     columns = [y_col, time_col, id_col, group_col, partition_col, cluster, weights_col, *(covariates or [])]
-    # As in ddd, the check reads the rows that the missing-data step keeps.
+    # The check here and in ddd reads the rows that the missing-data step keeps.
     errors, warns = _check_panel_mismatch(_complete_rows(data, columns, group_col), id_col, time_col, panel)
     if errors:
         raise ValueError(
@@ -718,11 +718,11 @@ def _preprocess_multiple_periods(
     _raise_errors(errors)
     columns = [yname, tname, idname, gname, pname, cluster, weightsname, *(covariates or [])]
     data = data.select(list(dict.fromkeys(column for column in columns if column is not None)))
-    # Since the cells compare cohorts with periods, a decimal cohort becomes a double along with the value columns.
+    # A decimal cohort becomes a double along with the value columns because the cells compare cohorts with periods.
     data = decimal_to_float(data, [yname, gname, pname, weightsname, *(covariates or [])])
     data = MissingDataHandler().transform(data, config)
 
-    # Because the missing-data step has run, a single missing value can't decide what these checks find.
+    # A single missing value can't decide what these checks find now that the missing-data step has run.
     errors = [_ddd_partition_error(data, pname, names["pname"])]
     if panel:
         errors.append(_duplicate_unit_period_error(data, idname, tname, names["idname"], names["tname"]))
@@ -737,7 +737,7 @@ def _preprocess_multiple_periods(
     _raise_errors(errors)
 
     if weightsname is not None:
-        # Since each row of a repeated cross-section is its own observation, only a panel unit keeps one weight.
+        # Each row of a repeated cross-section is its own observation. Only a panel unit keeps one weight.
         data = (DDDWeightProcessor() if panel else WeightNormalizer()).transform(data, config)
 
     cohort_dtype = data.schema[gname]
@@ -745,7 +745,7 @@ def _preprocess_multiple_periods(
     # Without a unit column, the filter counts the dropped rows of a repeated cross-section.
     early_config = replace(config, idname=None if idname == ROW_ID_COLUMN else idname)
     data = EarlyTreatmentFilter().transform(data, early_config)
-    # Since the missing-data step raises rather than empty the data, only the first-period filter can empty it here.
+    # The missing-data step raises rather than empty the data. Only the first-period filter can empty it here.
     if data.is_empty():
         raise ValueError("Every unit was already treated in the first period. No data is left to estimate from.")
     latest = None
@@ -765,7 +765,7 @@ def _preprocess_multiple_periods(
     cohorts = data[gname].unique().to_numpy()
     glist = np.sort(cohorts[cohorts > 0])
     if latest is not None:
-        # Since the latest cohort is untreated in every period that remains, it serves only as a comparison.
+        # The latest cohort is untreated in every period that remains and serves only as a comparison.
         glist = glist[glist < latest]
         if len(glist) == 0:
             start = int(latest) if float(latest).is_integer() else latest
@@ -1240,7 +1240,7 @@ def _compute_single_ddd(
     if 4 not in set(subgroup):
         return None, None, None
 
-    # Since the base period precedes treatment in every cell, its covariates cannot respond to treatment.
+    # The base period precedes treatment in every cell. Its covariates cannot respond to treatment.
     X = _design_matrix(pre_data, covariate_cols)
     i_weights = None if weights_col is None else pre_data[weights_col].to_numpy()
 

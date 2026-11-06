@@ -54,8 +54,8 @@ def compute_didml(data, *, n_jobs=1):
     n_treated = data.config.treated_groups_count
     n_time_periods = n_periods - 1
 
-    # Under a universal base the first calendar period can be a current period. Since the current period is
-    # time_idx + 1, the grid starts one step earlier.
+    # Under a universal base the first calendar period can be a current period. The grid starts one step earlier because
+    # the current period is time_idx + 1.
     t_start = -1 if data.config.base_period == BasePeriod.UNIVERSAL else 0
     pairs = [(g, t) for g in range(n_treated) for t in range(t_start, n_time_periods)]
     args_list = [(g_idx, t_idx, data) for g_idx, t_idx in pairs]
@@ -135,9 +135,8 @@ def bootstrap_didml(data, cell_results, *, biters, random_state=None, n_jobs=1):
     if n_workers == 1:
         out = _bootstrap_draws(draws, data, cells, unit_groups, cohorts)
     else:
-        # Since the refits spend much of their time in Python code that holds the interpreter lock, threads run them
-        # no faster than a loop. Spawned processes avoid both the lock and the deadlocks a fork risks in a process
-        # that already runs threads.
+        # Much of each refit runs Python code that holds the interpreter lock. Threads would be no faster than a loop.
+        # Spawned processes avoid both the lock and the deadlocks a fork risks in a process that already runs threads.
         chunks = np.array_split(np.arange(biters), n_workers)
         try:
             with ProcessPoolExecutor(n_workers, mp_context=multiprocessing.get_context("spawn")) as executor:
@@ -245,8 +244,8 @@ def _process_didml_cell(group_idx, time_idx, data):
     if time_periods[pre_treatment_idx] == time_periods[time_idx + time_factor]:
         if not universal:
             return None
-        # Since the universal base period anchors every comparison for the cohort, the cell at the base itself
-        # stays as an explicit zero reference instead of being dropped.
+        # The universal base period anchors every comparison for the cohort. The cell at the base itself stays as an
+        # explicit zero reference instead of being dropped.
         return DIDMLCellResult(
             group=float(treated_groups[group_idx]),
             year=float(time_periods[time_idx + time_factor]),
@@ -376,8 +375,8 @@ def _fit_cell_score(X, Y, T, G, gamma, unit_weights, cfg, random_state):
     if unit_weights is None:
         return float(lnw_result["TAU_hat"]), lnw_result
 
-    # Sampling weights enter the plug-in average of the CATTs over the treated cell. Since the AMLE weights already
-    # target that cell's weighted covariate mean, the residual correction keeps its plain average.
+    # Sampling weights enter the plug-in average of the CATTs over the treated cell. The residual correction keeps its
+    # plain average because the AMLE weights already target that cell's weighted covariate mean.
     treated_cell = T * G == 1
     row_weights = np.concatenate([unit_weights, unit_weights])
     att = float(np.average(lnw_result["tau_hat"][treated_cell], weights=row_weights[treated_cell]))
@@ -433,8 +432,8 @@ def _maybe_run_drdid_benchmark(data, cohort_idx, valid, pre_treatment_idx, time_
     y0 = data.outcomes_tensor[pre_treatment_idx][valid]
     d = cohort_idx[valid]
     weights = data.weights[valid]
-    # Since time_idx + 1 is the current period, the minimum picks the earlier of the base and current periods
-    # and stays valid when time_idx is -1.
+    # The current period is time_idx + 1. The minimum picks the earlier of the base and current periods and stays valid
+    # when time_idx is -1.
     covariates = data.covariates_tensor[min(pre_treatment_idx, time_idx + 1)][valid]
 
     try:

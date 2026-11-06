@@ -254,7 +254,7 @@ def drdid(
                 trim_level=trim_level,
             )
     else:
-        # Since drdid_imp_rc's improved estimator is not locally efficient, "imp" runs the one that is.
+        # drdid_imp_rc's improved estimator is not locally efficient. "imp" runs the one that is.
         if est_method == "imp":
             result = drdid_imp_local_rc(
                 y=dp.y,

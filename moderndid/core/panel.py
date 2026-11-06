@@ -187,7 +187,7 @@ def diagnose_panel(data, idname, tname, treatname=None):
     if treatname is not None and treatname in df.columns:
         first_period = panel[tname].min()
         n_early = 0
-        # Since a comparison with None warns and matches nothing, a panel without a usable period counts no units.
+        # A comparison with None warns and matches nothing. A panel without a usable period counts no units.
         if first_period is not None:
             first_rows = panel.filter((pl.col(tname) == first_period) & (pl.col(treatname) > 0))
             n_early = int(first_rows[idname].n_unique())
@@ -213,8 +213,8 @@ def diagnose_panel(data, idname, tname, treatname=None):
         )
     if treat_varying:
         suggestions.append("Treatment varies within units. If your estimator takes gname, call get_group() to build it")
-        # Since a treatment that never changes within a unit records who is treated rather than when,
-        # its first-period values say nothing about early treatment.
+        # A treatment that never changes within a unit records who is treated rather than when. Its first-period values
+        # say nothing about early treatment.
         if n_early > 0:
             suggestions.append(
                 f"Estimators that take gname drop the {_count(n_early, 'unit')} already treated in the first period"
@@ -516,8 +516,8 @@ def fill_panel_gaps(data, idname, tname):
     full = ids.join(times, how="cross")
     result = full.join(keyed, on=[idname, tname], how="left")
 
-    # Since a missing unit or period names no pair to fill, these rows skip the cross product.
-    # Inside it, a missing period would add an empty row for every unit.
+    # Rows with a missing unit or period name no pair to fill and skip the cross product. Inside it, a missing period
+    # would add an empty row for every unit.
     unkeyed = df.filter(~has_key)
     if unkeyed.height > 0:
         result = pl.concat([result, unkeyed.select(result.columns)])
@@ -919,8 +919,8 @@ def _key_mask(df, columns):
     """Return an expression that is true for the rows whose listed columns all hold a value."""
     mask = pl.lit(True)
     for name in columns:
-        # A NaN or infinite unit or period counts as missing. Since is_finite raises on other types,
-        # only float columns get that check.
+        # A NaN or infinite unit or period counts as missing. Only float columns get that check because is_finite raises
+        # on other types.
         present = pl.col(name).is_finite() if df.schema[name].is_float() else pl.col(name).is_not_null()
         mask = mask & present.fill_null(False)
     return mask

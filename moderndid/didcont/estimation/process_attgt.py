@@ -49,8 +49,8 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
 
     pointwise_value = scipy.stats.norm.ppf(1 - alpha / 2)
     critical_value = pointwise_value
-    # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that column
-    # staying at zero, they stay in the sample.
+    # The draws that move a column with zero bootstrap scale stay in the sample. Dropping them would condition the band
+    # on that column staying at zero.
     boot_results = _mboot(
         influence_func,
         n_units=n_units,
@@ -68,7 +68,7 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
             critical_value = pointwise_value
 
     se = boot_results["se"]
-    # Since the reference period of a universal base has no estimate, its standard error stays undefined.
+    # The reference period of a universal base has no estimate. Its standard error stays undefined.
     if pte_params.base_period == "universal":
         se = np.where(times == groups - 1 - pte_params.anticipation, np.nan, se)
     # A cell without variance, such as the reference period under a universal base, carries nothing for the

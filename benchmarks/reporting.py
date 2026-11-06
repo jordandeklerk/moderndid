@@ -73,7 +73,7 @@ def source_fingerprint(root):
 def cpu_name():
     """Read the CPU model on macOS and Linux and fall back to platform metadata."""
     if platform.system() == "Darwin":
-        # Since managed environments often leave /usr/sbin off PATH, the system location comes first.
+        # The system location comes first because managed environments often leave /usr/sbin off PATH.
         sysctl = shutil.which("sysctl", path="/usr/sbin") or shutil.which("sysctl")
         if sysctl is not None:
             try:

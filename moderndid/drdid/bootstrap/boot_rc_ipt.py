@@ -54,7 +54,7 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, biters=1000, trim_level=0.995,
     n_units = _validate_inputs(
         {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level, check_intercept=True
     )
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)
@@ -172,7 +172,7 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, biters=1000, trim_level=0.995,
     n_units = _validate_inputs(
         {"y": y, "post": post, "d": d, "i_weights": i_weights}, x, biters, trim_level, check_intercept=True
     )
-    # Since each draw refits small models, the bootstrap runs on the CPU under every backend.
+    # The bootstrap runs on the CPU under every backend because each draw refits small models.
     y, post, d, x, i_weights = map(to_numpy, (y, post, d, x, i_weights))
 
     rng = np.random.RandomState(random_state)

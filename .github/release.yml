@@ -1,4 +1,4 @@
-# GitHub's generated release notes, which feed CHANGELOG.md, list only pull requests that people wrote.
+# GitHub's generated release notes feed CHANGELOG.md. They list only pull requests that people wrote.
 changelog:
   exclude:
     authors:

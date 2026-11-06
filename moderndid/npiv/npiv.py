@@ -288,7 +288,7 @@ def npiv(
         )
 
     if np.array_equal(x, w):
-        # Since w equal to x asks for a regression, the instrument basis takes the degree and segments of the X basis.
+        # Setting w to x asks for a regression. The instrument basis then takes the degree and segments of the X basis.
         k_w_degree = j_x_degree
         k_w_smooth = 0
 

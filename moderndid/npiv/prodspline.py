@@ -195,8 +195,8 @@ def prodspline(
                 P = glp_model_matrix(tp)
 
             if deriv != 0 and K[deriv_index - 1, 0] > 0 and basis != "tensor":
-                # Since tp holds one block per continuous variable with a positive degree, tp_idx is the
-                # derivative variable's block. Additive and glp columns without it have zero derivative.
+                # tp holds one block per continuous variable with a positive degree. tp_idx is thus the derivative
+                # variable's block. Additive and glp columns without it have zero derivative.
                 tp_idx = int(np.sum(K[: deriv_index - 1, 0] > 0))
                 widths = [b.shape[1] for b in tp]
                 if basis == "glp":
@@ -386,7 +386,7 @@ def _glp_add_dimension(d1, d2, d2p, nd1, d1sets):
     n_main = min(d1sets.shape[0], d2)
     d2sets = np.column_stack([np.zeros((n_main, d1sets.shape[1]), dtype=int), np.resize(np.arange(1, d2 + 1), n_main)])
 
-    # Since the previous basis's top column enters only as a main effect added at the end, it is left out here.
+    # The previous basis's top column enters only as a main effect added at the end. It is left out here.
     candidates = d1sets[d1sets[:, -1] != d2p] if d1sets.shape[1] > 1 and d2p > 0 else d1sets
     if candidates.shape[1] > 1 and candidates.shape[0] == 1:
         raise ValueError("basis='glp' cannot be built from marginal bases of these sizes.")

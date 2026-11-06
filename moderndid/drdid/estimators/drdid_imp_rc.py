@@ -143,7 +143,6 @@ def drdid_imp_rc(
     att_inf_func = to_numpy(att_inf_func)
     dr_att = float(dr_att)
 
-    # Inference
     dr_boot = None
     if not boot:
         se_dr_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
@@ -270,7 +269,6 @@ def _get_influence_quantities(
     w_cont_pre = weights["w_cont_pre"]
     w_cont_post = weights["w_cont_post"]
 
-    # Elements of the influence function (summands)
     eta_treat_pre = w_treat_pre * (y - out_y) / xp.mean(w_treat_pre)
     eta_treat_post = w_treat_post * (y - out_y) / xp.mean(w_treat_post)
     eta_cont_pre = w_cont_pre * (y - out_y) / xp.mean(w_cont_pre)
@@ -295,13 +293,11 @@ def _compute_influence_function(
     eta_cont_pre = components["eta_cont_pre"]
     eta_cont_post = components["eta_cont_post"]
 
-    # Get weights
     w_treat_pre = weights["w_treat_pre"]
     w_treat_post = weights["w_treat_post"]
     w_cont_pre = weights["w_cont_pre"]
     w_cont_post = weights["w_cont_post"]
 
-    # Estimator of each component
     att_treat_pre = xp.mean(eta_treat_pre)
     att_treat_post = xp.mean(eta_treat_post)
     att_cont_pre = xp.mean(eta_cont_pre)
@@ -309,21 +305,15 @@ def _compute_influence_function(
 
     dr_att = (att_treat_post - att_treat_pre) - (att_cont_post - att_cont_pre)
 
-    # Now, the influence function of the "treat" component
-    # Leading term of the influence function: no estimation effect
+    # The nuisance parameters add no estimation effect to the improved estimator's influence function.
     inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / xp.mean(w_treat_pre)
     inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / xp.mean(w_treat_post)
-    # Influence function for the treated component
     inf_treat = inf_treat_post - inf_treat_pre
 
-    # Now, get the influence function of control component
-    # Leading term of the influence function: no estimation effect from nuisance parameters
     inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / xp.mean(w_cont_pre)
     inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / xp.mean(w_cont_post)
-    # Influence function for the control component
     inf_cont = inf_cont_post - inf_cont_pre
 
-    # Get the influence function of the DR estimator (put all pieces together)
     att_inf_func = inf_treat - inf_cont
 
     return dr_att, att_inf_func

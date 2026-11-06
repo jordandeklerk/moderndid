@@ -399,7 +399,7 @@ def _compute_cs_sdm_no_nuisance(
             alpha=hybrid_kappa,
         )
 
-        # For single post-period, we need the full optimal_vec for compute_arp_ci
+        # With a single post-period, compute_arp_ci needs the full optimal_vec.
         hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 

@@ -80,8 +80,8 @@ def ipw_rc(y, post, d, ps, i_weights, trim_ps=None):
     if trim_ps is None:
         trim_ps = np.ones_like(d, dtype=bool)
 
-    # As in ipw_did_rc, the period share uses every observation. Since bootstrap weights do not
-    # average to one, the share divides by their total.
+    # The period share uses every observation here and in ipw_did_rc. It divides by the total weight because bootstrap
+    # weights do not average to one.
     total_weight = np.sum(i_weights)
     lambda_val = np.sum(i_weights * post) / total_weight if total_weight > 0 else 0.0
 

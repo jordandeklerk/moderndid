@@ -109,7 +109,7 @@ class DynBalancingResult(NamedTuple):
         )
         params = self.estimation_params
         if params.get("robust_quantile", self.robust_quantile != self.gaussian_quantile):
-            # As in the printed report, a robust fit takes its p-value from the chi-squared bound.
+            # A robust fit takes its p-value from the chi-squared bound here and in the printed report.
             n_periods = params.get("n_periods")
             table["p"] = stats.chi2.sf(table["t"] ** 2, 2 * n_periods) if n_periods else np.nan
         return table
