@@ -9,16 +9,16 @@ import pytest
 from polars.testing import assert_frame_equal
 from scipy import stats
 
-from moderndid import aggte, att_gt, drdid_panel, honest_did, preprocess_did, to_df
-from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
-from moderndid.did.shards.layout import row_keys, row_shard_from_arrow
-from moderndid.did.shards.row_driver import fit_att_gt_on_row_shards
 from tests.helpers import importorskip
 
 pyspark = importorskip("pyspark")
 
 from pyspark.sql import functions as F
 
+from moderndid import aggte, att_gt, drdid_panel, honest_did, preprocess_did, to_df
+from moderndid.core.bootstrap import canonical_keys, keyed_rademacher
+from moderndid.did.shards.layout import row_keys, row_shard_from_arrow
+from moderndid.did.shards.row_driver import fit_att_gt_on_row_shards
 from moderndid.spark.executor import SparkExecutor
 
 pytestmark = pytest.mark.spark
