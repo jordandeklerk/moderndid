@@ -14,14 +14,14 @@ import pytest
 from moderndid import att_gt, gen_did_scalable, load_mpdta
 from moderndid.core.preprocess import DIDConfig
 
-# Since pytest imports this file before it can skip anything when the folder is named on the command line, the test
-# modules skip themselves without pyspark and this file imports it only when it is installed.
+# pytest imports this file before it can skip anything when the folder is named on the command line. The test modules
+# skip themselves without pyspark. This file imports it only when it is installed.
 if find_spec("pyspark") is not None:
     import pyspark
     from pyspark.sql import SparkSession
     from pyspark.sql.pandas.types import from_arrow_schema, to_arrow_schema
 
-    from moderndid.spark.preprocess import build_unit_table
+    from moderndid.spark.preprocess import build_row_table, build_unit_table
 
 
 @pytest.fixture(scope="session")
@@ -32,20 +32,20 @@ def spark():
         if "MODERNDID_REQUIRE_ALL_DEPS" in os.environ:
             pytest.fail("Spark needs a Java runtime. Set JAVA_HOME or put java on PATH.")
         pytest.skip("Spark needs a Java runtime on JAVA_HOME or PATH")
-    # Since a persisted shuffle keeps every shuffle partition, eight partitions in place of 200 make a fit of a small
-    # panel about three times faster without changing its results.
+    # A persisted shuffle keeps every shuffle partition. Eight partitions in place of 200 make a fit of a small panel
+    # about three times faster without changing its results.
     builder = SparkSession.builder.config("spark.sql.shuffle.partitions", "8")
     with pytest.MonkeyPatch.context() as patch:
-        # Since a Spark Connect server starts the Python workers that PYSPARK_PYTHON names, a local server runs the
+        # A Spark Connect server starts the Python workers that PYSPARK_PYTHON names. A local server thus runs the
         # interpreter of the tests on its executors.
         patch.setenv("PYSPARK_PYTHON", sys.executable)
         if remote:
             if remote.startswith("local") and int(pyspark.__version__.split(".")[0]) < 4:
-                # Since PySpark 3.5 doesn't bundle the Spark Connect server, a local server loads it from Maven Central.
+                # PySpark 3.5 doesn't bundle the Spark Connect server. A local server loads it from Maven Central.
                 version = pyspark.__version__
                 builder = builder.config("spark.jars.packages", f"org.apache.spark:spark-connect_2.12:{version}")
-                # Because the tasks of a Connect session in Spark 3.5 load classes only from the executor's classpath
-                # and the session's own jars, the executors of a local cluster read the server jar from the Ivy folder.
+                # The tasks of a Connect session in Spark 3.5 load classes only from the executor's classpath and the
+                # session's own jars. The executors of a local cluster read the server jar from the Ivy folder.
                 jar = os.path.join(
                     os.path.expanduser("~"), ".ivy2", "jars", f"org.apache.spark_spark-connect_2.12-{version}.jar"
                 )
@@ -71,8 +71,8 @@ def to_spark(spark):
         table = data.to_arrow()
         if int(pyspark.__version__.split(".")[0]) >= 4:
             return spark.createDataFrame(table)
-        # Since PySpark 3.5 builds no DataFrame from a pyarrow Table, the rows go in with the table's Spark types.
-        # Going through pandas instead would turn integer columns with nulls into floats.
+        # PySpark 3.5 builds no DataFrame from a pyarrow Table. The rows go in with the table's Spark types. Going
+        # through pandas instead would turn integer columns with nulls into floats.
         return spark.createDataFrame(table.to_pylist(), schema=from_arrow_schema(table.schema))
 
     return convert
@@ -167,6 +167,27 @@ def mpdta_treated_in_the_first_period(mpdta_data):
 
 
 @pytest.fixture(scope="session")
+def mpdta_with_early_rows(mpdta_data):
+    """mpdta in which the 2003 rows of the counties whose code is a multiple of seven are treated from 2003."""
+    early = (pl.col("countyreal") % 7 == 0) & (pl.col("year") == 2003)
+    return mpdta_data.with_columns(pl.when(early).then(2003).otherwise(pl.col("first.treat")).alias("first.treat"))
+
+
+@pytest.fixture(scope="session")
+def mpdta_with_a_small_cohort(mpdta_data):
+    """mpdta in which cohort 2004 keeps only the five counties with the lowest codes."""
+    kept = mpdta_data.filter(pl.col("first.treat") == 2004)["countyreal"].unique().sort()[:5]
+    return mpdta_data.filter((pl.col("first.treat") != 2004) | pl.col("countyreal").is_in(kept.to_list()))
+
+
+@pytest.fixture(scope="session")
+def mpdta_unbalanced(mpdta_with_weights_and_states):
+    """mpdta with time-varying and population weights and states without a random fifth of its rows."""
+    kept = pl.Series(np.random.default_rng(0).random(mpdta_with_weights_and_states.height) >= 0.2)
+    return mpdta_with_weights_and_states.with_columns(pl.col("lpop").exp().alias("pop")).filter(kept)
+
+
+@pytest.fixture(scope="session")
 def mpdta_without_never_treated(mpdta_data):
     """mpdta without the counties that are never treated."""
     return mpdta_data.filter(pl.col("first.treat") > 0)
@@ -228,6 +249,21 @@ def scalable_panel():
 
 
 @pytest.fixture(scope="session")
+def scalable_cross_sections(scalable_panel):
+    """Generated panel cut to one random period of each unit with a positive weight on each row."""
+    units = scalable_panel["id"].unique().sort()
+    picks = pl.DataFrame({"id": units, "time": np.random.default_rng(1).integers(1, 6, size=len(units))})
+    picked = scalable_panel.join(picks, on=["id", "time"], how="semi")
+    return picked.with_columns((1 + pl.col("cov1").abs()).alias("w"))
+
+
+@pytest.fixture(scope="session")
+def scalable_unbalanced_panel(scalable_panel):
+    """Generated panel that keeps a random seven tenths of its rows."""
+    return scalable_panel.filter(pl.Series(np.random.default_rng(2).random(scalable_panel.height) < 0.7))
+
+
+@pytest.fixture(scope="session")
 def scalable_panel_with_cluster_names(scalable_panel):
     """Generated panel with the cluster of each unit as a string."""
     return scalable_panel.with_columns(pl.col("cluster").cast(pl.String))
@@ -244,6 +280,13 @@ def large_clustered_panel():
     """Generated panel of 12000 units over three periods with 50 clusters and a standardized outcome."""
     data = gen_did_scalable(12000, n_periods=3, n_cohorts=2, n_covariates=4, random_state=42)["data"]
     return data.with_columns((pl.col("y") - pl.col("y").mean()) / pl.col("y").std())
+
+
+@pytest.fixture(scope="session")
+def large_clustered_unbalanced_panel(large_clustered_panel):
+    """Generated panel of 12000 units with 50 clusters that keeps a random seven tenths of its rows."""
+    kept = pl.Series(np.random.default_rng(3).random(large_clustered_panel.height) < 0.7)
+    return large_clustered_panel.filter(kept)
 
 
 @pytest.fixture(scope="session")
@@ -278,14 +321,72 @@ def universal_base_fits(mpdta_data, to_spark):
     return att_gt(to_spark(mpdta_data), **spec), att_gt(mpdta_data, **spec)
 
 
+@pytest.fixture(scope="session")
+def repeated_cross_section_fits(mpdta_pop_weighted, to_spark):
+    """att_gt fits of mpdta as weighted repeated cross-sections with a universal base period on Spark and in memory."""
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "weightsname": "pop",
+        "panel": False,
+        "base_period": "universal",
+        "biters": 499,
+        "random_state": 7,
+    }
+    return att_gt(to_spark(mpdta_pop_weighted), **spec), att_gt(mpdta_pop_weighted, **spec)
+
+
+@pytest.fixture(scope="session")
+def unbalanced_panel_fits(mpdta_unbalanced, to_spark):
+    """att_gt fits of an unbalanced panel with varying weights and a universal base period on Spark and in memory."""
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "xformla": "~lpop",
+        "weightsname": "w",
+        "allow_unbalanced_panel": True,
+        "base_period": "universal",
+        "biters": 499,
+        "random_state": 7,
+    }
+    with pytest.warns(UserWarning, match="^Time-varying weights detected"):
+        distributed = att_gt(to_spark(mpdta_unbalanced), **spec)
+    with pytest.warns(UserWarning, match="^Time-varying weights detected"):
+        memory = att_gt(mpdta_unbalanced, **spec)
+    return distributed, memory
+
+
 @pytest.fixture
 def unit_table_of(to_spark):
     """Function that builds the unit table of a panel on Spark and releases its cache after the test."""
     cached = []
 
     def build(data, **spec):
-        config = DIDConfig(panel=True, allow_unbalanced_panel=False, **spec)
-        *built, persisted = build_unit_table(to_spark(data), config)
+        config = DIDConfig(**{"panel": True, "allow_unbalanced_panel": False, **spec})
+        frame = to_spark(data) if isinstance(data, pl.DataFrame) else data
+        *built, persisted = build_unit_table(frame, config)
+        cached.append(persisted)
+        return built
+
+    yield build
+    for table in cached:
+        if table is not None:
+            table.unpersist()
+
+
+@pytest.fixture
+def row_table_of(to_spark):
+    """Function that builds the row table of repeated cross-sections on Spark and releases its cache after the test."""
+    cached = []
+
+    def build(data, draws=False, **spec):
+        config = DIDConfig(**{"panel": False, **spec})
+        frame = to_spark(data) if isinstance(data, pl.DataFrame) else data
+        *built, persisted = build_row_table(frame, config, draws=draws)
         cached.append(persisted)
         return built
 
@@ -302,8 +403,8 @@ def record_warnings():
     def call(function, *args, **kwargs):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            # Since classic PySpark 3.5 through 4.1 leave a socket open on each collect and PySpark 3.5 checks versions
-            # with the deprecated distutils, those warnings come from PySpark rather than from the call.
+            # Classic PySpark 3.5 through 4.1 leave a socket open on each collect. PySpark 3.5 also checks versions with
+            # the deprecated distutils. These warnings come from PySpark rather than from the call.
             warnings.filterwarnings("ignore", message=r"unclosed <socket\.socket", category=ResourceWarning)
             warnings.filterwarnings(
                 "ignore", message="distutils Version classes are deprecated", category=DeprecationWarning
