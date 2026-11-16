@@ -1483,8 +1483,8 @@ def test_aggte_on_a_clustered_shard_fit_rejects_unit_level_draws(mpdta_with_stat
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "clustervars=[] asks for unit-level bootstrap draws. Since this att_gt fit on a Spark DataFrame drew "
-            "one multiplier for each cluster, it holds no draws for single units."
+            "clustervars=[] asks for unit-level bootstrap draws. This att_gt fit on a Spark DataFrame drew "
+            "one multiplier for each cluster and holds no draws for single units."
         ),
     ):
         aggte(sharded, type="dynamic", clustervars=[])
