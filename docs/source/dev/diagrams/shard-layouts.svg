@@ -1,0 +1,528 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="dg" viewBox="0 0 880 636" role="img" aria-labelledby="dg-layouts-title dg-layouts-desc">
+  <title id="dg-layouts-title">Table layouts and their shards</title>
+  <desc id="dg-layouts-desc">The unit table of a balanced panel becomes the panel engine's Shard. The unit table of an unbalanced panel and the row table of repeated cross-sections become the row engine's RowShard.</desc>
+  <defs>
+    <pattern id="dg-layouts-grid" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmin" d="M 16 0 V 64 M 32 0 V 64 M 48 0 V 64 M 0 16 H 64 M 0 32 H 64 M 0 48 H 64"/>
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <pattern id="dg-layouts-gridq" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <marker id="dg-layouts-head" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <symbol id="dg-layouts-grid-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M7 5h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2ZM11 5v18M17 5v18M5 11h18M5 17h18"/></symbol>
+    <symbol id="dg-layouts-columns-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M7 5h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2ZM9.5 5v18M14 5v18M18.5 5v18"/></symbol>
+    <symbol id="dg-layouts-store-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M6 7.5a8 3 0 1 0 16 0a8 3 0 1 0-16 0M6 7.5v13a8 3 0 0 0 16 0v-13M6 12a8 3 0 0 0 16 0M6 16.25a8 3 0 0 0 16 0"/></symbol>
+    <symbol id="dg-layouts-exec-24" viewBox="-4 -4 24 24"><path d="M3.5 2.5h9a1 1 0 0 1 1 1v2.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1ZM3.5 9h9a1 1 0 0 1 1 1v2.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1ZM5 4.75h.01M5 11.25h.01M7.5 4.75h.01M7.5 11.25h.01"/></symbol>
+    <symbol id="dg-layouts-task-24" viewBox="-7 -7 42 42"><path d="M9.5 7.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2ZM12 12h4v4h-4ZM11.5 4v3.5M16.5 4v3.5M11.5 20.5V24M16.5 20.5V24M4 11.5h3.5M4 16.5h3.5M20.5 11.5H24M20.5 16.5H24"/></symbol>
+  </defs>
+  <rect class="dg-paper" x="0" y="0" width="880" height="636"/>
+  <rect fill="url(#dg-layouts-grid)" x="0" y="0" width="880" height="636"/>
+  <path class="dg-paper" d="M 20 24 H 456 A 4 4 0 0 1 460 28 V 616 A 4 4 0 0 1 456 620 H 20 A 4 4 0 0 1 16 616 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path fill="url(#dg-layouts-gridq)" d="M 20 24 H 456 A 4 4 0 0 1 460 28 V 616 A 4 4 0 0 1 456 620 H 20 A 4 4 0 0 1 16 616 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path class="dg-data dg-zone" d="M 20 24 H 456 A 4 4 0 0 1 460 28 V 616 A 4 4 0 0 1 456 620 H 20 A 4 4 0 0 1 16 616 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <path class="dg-data dg-zone-dash" d="M 40 24 H 456 A 4 4 0 0 1 460 28 V 616 A 4 4 0 0 1 456 620 H 20 A 4 4 0 0 1 16 616 V 48"/>
+  <path class="dg-data dg-tile" d="M 20 24 H 40 V 48 H 16 V 28 A 4 4 0 0 1 20 24 Z"/>
+  <use class="dg-glyph dg-glyph-tab" href="#dg-layouts-exec-24" x="16" y="24" width="24" height="24"/>
+  <text class="dg-zone-label" x="48" y="40">Spark tables</text>
+  <path class="dg-paper" d="M 480 24 H 860 A 4 4 0 0 1 864 28 V 616 A 4 4 0 0 1 860 620 H 480 A 4 4 0 0 1 476 616 V 28 A 4 4 0 0 1 480 24 Z"/>
+  <path fill="url(#dg-layouts-gridq)" d="M 480 24 H 860 A 4 4 0 0 1 864 28 V 616 A 4 4 0 0 1 860 620 H 480 A 4 4 0 0 1 476 616 V 28 A 4 4 0 0 1 480 24 Z"/>
+  <path class="dg-compute dg-zone" d="M 480 24 H 860 A 4 4 0 0 1 864 28 V 616 A 4 4 0 0 1 860 620 H 480 A 4 4 0 0 1 476 616 V 28 A 4 4 0 0 1 480 24 Z"/>
+  <path class="dg-compute dg-zone-line" d="M 500 24 H 860 A 4 4 0 0 1 864 28 V 616 A 4 4 0 0 1 860 620 H 480 A 4 4 0 0 1 476 616 V 48"/>
+  <path class="dg-compute dg-tile" d="M 480 24 H 500 V 48 H 476 V 28 A 4 4 0 0 1 480 24 Z"/>
+  <use class="dg-glyph dg-glyph-tab28" href="#dg-layouts-task-24" x="476" y="24" width="24" height="24"/>
+  <text class="dg-zone-label" x="508" y="40">NumPy shards</text>
+  <path class="dg-wire" d="M 372 164 H 616" marker-end="url(#dg-layouts-head)"/>
+  <text class="dg-reader" x="546" y="156" text-anchor="middle">shard_from_arrow</text>
+  <path class="dg-wire" d="M 440 332 H 616" marker-end="url(#dg-layouts-head)"/>
+  <text class="dg-reader" x="546" y="324" text-anchor="middle">row_shard_from_arrow</text>
+  <path class="dg-wire" d="M 400 508 H 616" marker-end="url(#dg-layouts-head)"/>
+  <text class="dg-reader" x="546" y="500" text-anchor="middle">row_shard_from_arrow</text>
+  <rect class="dg-box" x="616" y="68" width="228" height="204" rx="4"/>
+  <rect class="dg-compute dg-tile" x="628" y="76" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-layouts-grid-32" x="628" y="76" width="32" height="32"/>
+  <text class="dg-name" x="672" y="97"><tspan class="dg-code">Shard</tspan></text>
+  <path class="dg-rule" d="M 616 116 H 844"/>
+  <rect class="dg-compute dg-r-cell" x="712" y="128" width="48" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 128 V 136 M 736 128 V 136 M 748 128 V 136"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="128" width="48" height="8"/>
+  <text class="dg-th" x="628" y="136">unit_keys</text>
+  <text class="dg-shape" x="832" y="136" text-anchor="end">(m,)</text>
+  <rect class="dg-compute dg-r-cell" x="712" y="144" width="48" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 144 V 152 M 736 144 V 152 M 748 144 V 152"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="144" width="48" height="8"/>
+  <text class="dg-th" x="628" y="152">cohort</text>
+  <text class="dg-shape" x="832" y="152" text-anchor="end">(m,)</text>
+  <rect class="dg-compute dg-r-cell" x="712" y="160" width="48" height="20"/>
+  <path class="dg-compute dg-r-div" d="M 724 160 V 180 M 736 160 V 180 M 748 160 V 180 M 712 164 H 760 M 712 168 H 760 M 712 172 H 760 M 712 176 H 760"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="160" width="48" height="20"/>
+  <text class="dg-th" x="628" y="174">y</text>
+  <text class="dg-shape" x="832" y="174" text-anchor="end">(m, T)</text>
+  <rect class="dg-compute dg-r-cell-opt" x="712" y="188" width="48" height="20"/>
+  <path class="dg-compute dg-r-div" d="M 724 188 V 208 M 736 188 V 208 M 748 188 V 208 M 712 192 H 760 M 712 196 H 760 M 712 200 H 760 M 712 204 H 760"/>
+  <rect class="dg-compute dg-r-edge-opt" x="712" y="188" width="48" height="20"/>
+  <text class="dg-th-opt" x="628" y="202">weights</text>
+  <text class="dg-shape" x="832" y="202" text-anchor="end">(m, T)</text>
+  <path class="dg-compute dg-r-cell-opt" d="M 712 224 L 720 216 H 768 L 760 224 Z"/>
+  <path class="dg-compute dg-r-cell-opt" d="M 760 224 L 768 216 V 236 L 760 244 Z"/>
+  <path class="dg-compute dg-r-div" d="M 716 220 H 764 V 240"/>
+  <path class="dg-compute dg-r-edge-opt" d="M 712 224 L 720 216 H 768 L 760 224 Z M 760 224 L 768 216 V 236 L 760 244 Z"/>
+  <rect class="dg-compute dg-r-cell-opt" x="712" y="224" width="48" height="20"/>
+  <path class="dg-compute dg-r-div" d="M 724 224 V 244 M 736 224 V 244 M 748 224 V 244 M 712 228 H 760 M 712 232 H 760 M 712 236 H 760 M 712 240 H 760"/>
+  <rect class="dg-compute dg-r-edge-opt" x="712" y="224" width="48" height="20"/>
+  <text class="dg-th-opt" x="628" y="238">covariates</text>
+  <text class="dg-shape" x="832" y="238" text-anchor="end">(m, T, p)</text>
+  <rect class="dg-compute dg-r-cell-opt" x="712" y="252" width="48" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 252 V 260 M 736 252 V 260 M 748 252 V 260"/>
+  <rect class="dg-compute dg-r-edge-opt" x="712" y="252" width="48" height="8"/>
+  <text class="dg-th-opt" x="628" y="260">cluster_keys</text>
+  <text class="dg-shape" x="832" y="260" text-anchor="end">(m,)</text>
+  <text class="dg-note" x="616" y="292"><tspan class="dg-math">m</tspan> whole units, for the panel engine</text>
+  <rect class="dg-paper" x="616" y="316" width="228" height="260" rx="4"/>
+  <rect class="dg-compute dg-r-frame" x="616" y="316" width="228" height="260" rx="4"/>
+  <rect class="dg-compute dg-tile" x="628" y="324" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-layouts-columns-32" x="628" y="324" width="32" height="32"/>
+  <text class="dg-name" x="672" y="345"><tspan class="dg-code">RowShard</tspan></text>
+  <path class="dg-rule" d="M 616 364 H 844"/>
+  <rect class="dg-compute dg-r-cell" x="712" y="376" width="72" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 376 V 384 M 736 376 V 384 M 748 376 V 384 M 760 376 V 384 M 772 376 V 384"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="376" width="72" height="8"/>
+  <text class="dg-th" x="628" y="384">period</text>
+  <text class="dg-shape" x="832" y="384" text-anchor="end">(m,)</text>
+  <rect class="dg-compute dg-r-cell" x="712" y="392" width="72" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 392 V 400 M 736 392 V 400 M 748 392 V 400 M 760 392 V 400 M 772 392 V 400"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="392" width="72" height="8"/>
+  <text class="dg-th" x="628" y="400">cohort</text>
+  <text class="dg-shape" x="832" y="400" text-anchor="end">(m,)</text>
+  <rect class="dg-compute dg-r-cell" x="712" y="408" width="72" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 408 V 416 M 736 408 V 416 M 748 408 V 416 M 760 408 V 416 M 772 408 V 416"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="408" width="72" height="8"/>
+  <text class="dg-th" x="628" y="416">y</text>
+  <text class="dg-shape" x="832" y="416" text-anchor="end">(m,)</text>
+  <rect class="dg-compute dg-r-cell-opt" x="712" y="424" width="72" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 424 V 432 M 736 424 V 432 M 748 424 V 432 M 760 424 V 432 M 772 424 V 432"/>
+  <rect class="dg-compute dg-r-edge-opt" x="712" y="424" width="72" height="8"/>
+  <text class="dg-th-opt" x="628" y="432">weights</text>
+  <text class="dg-shape" x="832" y="432" text-anchor="end">(m,)</text>
+  <rect class="dg-compute dg-r-cell-opt" x="712" y="440" width="72" height="12"/>
+  <path class="dg-compute dg-r-div" d="M 724 440 V 452 M 736 440 V 452 M 748 440 V 452 M 760 440 V 452 M 772 440 V 452 M 712 446 H 784"/>
+  <rect class="dg-compute dg-r-edge-opt" x="712" y="440" width="72" height="12"/>
+  <text class="dg-th-opt" x="628" y="450">covariates</text>
+  <text class="dg-shape" x="832" y="450" text-anchor="end">(m, p)</text>
+  <rect class="dg-compute dg-r-cell" x="712" y="460" width="72" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 460 V 468 M 736 460 V 468 M 748 460 V 468 M 760 460 V 468 M 772 460 V 468"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="460" width="72" height="8"/>
+  <text class="dg-th" x="628" y="468">units</text>
+  <text class="dg-shape" x="832" y="468" text-anchor="end">(m,)</text>
+  <rect class="dg-compute dg-r-cell" x="712" y="476" width="36" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 476 V 484 M 736 476 V 484"/>
+  <rect class="dg-compute dg-r-edge" x="712" y="476" width="36" height="8"/>
+  <text class="dg-th" x="628" y="484">unit_keys</text>
+  <text class="dg-shape" x="832" y="484" text-anchor="end">(u,)</text>
+  <rect class="dg-compute dg-r-cell-opt" x="712" y="492" width="36" height="8"/>
+  <path class="dg-compute dg-r-div" d="M 724 492 V 500 M 736 492 V 500"/>
+  <rect class="dg-compute dg-r-edge-opt" x="712" y="492" width="36" height="8"/>
+  <text class="dg-th-opt" x="628" y="500">cluster_keys</text>
+  <text class="dg-shape" x="832" y="500" text-anchor="end">(u,)</text>
+  <path class="dg-rule" d="M 616 512 H 844"/>
+  <text class="dg-note" x="628" y="532"><tspan class="dg-code">units</tspan> holds each row's unit</text>
+  <text class="dg-note" x="628" y="548">in an unbalanced panel and is <tspan class="dg-code">None</tspan></text>
+  <text class="dg-note" x="628" y="564">for repeated cross-sections</text>
+  <text class="dg-note" x="616" y="596"><tspan class="dg-math">m</tspan> rows of <tspan class="dg-math">u</tspan> whole units, for the row engine</text>
+  <rect class="dg-data dg-tile" x="36" y="68" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-layouts-store-32" x="36" y="68" width="32" height="32"/>
+  <text class="dg-name" x="80" y="81">Unit table, balanced panel</text>
+  <path class="dg-dim" d="M 192 100 H 368 M 188 104 L 196 96 M 364 104 L 372 96"/>
+  <rect class="dg-mask" x="248" y="92" width="64" height="16"/>
+  <rect class="dg-data dg-zone" x="248" y="92" width="64" height="16"/>
+  <text class="dg-note" x="280" y="104" text-anchor="middle">Optional</text>
+  <rect class="dg-paper" x="36" y="112" width="336" height="84"/>
+  <rect class="dg-data dg-zone" x="36" y="112" width="336" height="84"/>
+  <path class="dg-rule" d="M 36 148 H 372 M 36 164 H 372 M 36 180 H 372 M 72 112 V 196 M 124 112 V 196 M 252 112 V 196 M 316 112 V 196"/>
+  <text class="dg-th" x="54" y="126" text-anchor="middle">unit</text>
+  <rect class="dg-data dg-r-cell" x="40" y="136" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="136" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="152" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="152" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="168" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="168" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="184" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="184" width="28" height="8"/>
+  <text class="dg-th" x="98" y="126" text-anchor="middle">cohort</text>
+  <rect class="dg-data dg-r-cell" x="76" y="136" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="76" y="136" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="76" y="152" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="76" y="152" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="76" y="168" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="76" y="168" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="76" y="184" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="76" y="184" width="44" height="8"/>
+  <text class="dg-th" x="156" y="126" text-anchor="middle">y[T]</text>
+  <rect class="dg-data dg-r-cell" x="128" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="128" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="140" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="140" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="152" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="152" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="164" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="164" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="176" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="176" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="128" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="128" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="140" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="140" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="152" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="152" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="164" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="164" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="176" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="176" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="128" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="128" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="140" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="140" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="152" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="152" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="164" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="164" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="176" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="176" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="128" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="128" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="140" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="140" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="152" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="152" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="164" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="164" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="176" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="176" y="184" width="8" height="8"/>
+  <text class="dg-th-opt" x="220" y="126" text-anchor="middle">w[T]</text>
+  <rect class="dg-data dg-r-cell-opt" x="192" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="192" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="204" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="204" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="216" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="216" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="228" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="228" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="240" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="240" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="192" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="192" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="204" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="204" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="216" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="216" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="228" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="228" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="240" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="240" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="192" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="192" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="204" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="204" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="216" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="216" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="228" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="228" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="240" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="240" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="192" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="192" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="204" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="204" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="216" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="216" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="228" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="228" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="240" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="240" y="184" width="8" height="8"/>
+  <text class="dg-th-opt" x="284" y="126" text-anchor="middle">x[T·p]</text>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="136" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 260 136 V 144"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="268" y="136" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 272 136 V 144"/>
+  <rect class="dg-data dg-r-chip-opt" x="268" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="280" y="136" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 284 136 V 144"/>
+  <rect class="dg-data dg-r-chip-opt" x="280" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="292" y="136" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 296 136 V 144"/>
+  <rect class="dg-data dg-r-chip-opt" x="292" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="304" y="136" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 308 136 V 144"/>
+  <rect class="dg-data dg-r-chip-opt" x="304" y="136" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="152" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 260 152 V 160"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="268" y="152" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 272 152 V 160"/>
+  <rect class="dg-data dg-r-chip-opt" x="268" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="280" y="152" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 284 152 V 160"/>
+  <rect class="dg-data dg-r-chip-opt" x="280" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="292" y="152" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 296 152 V 160"/>
+  <rect class="dg-data dg-r-chip-opt" x="292" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="304" y="152" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 308 152 V 160"/>
+  <rect class="dg-data dg-r-chip-opt" x="304" y="152" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="168" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 260 168 V 176"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="268" y="168" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 272 168 V 176"/>
+  <rect class="dg-data dg-r-chip-opt" x="268" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="280" y="168" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 284 168 V 176"/>
+  <rect class="dg-data dg-r-chip-opt" x="280" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="292" y="168" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 296 168 V 176"/>
+  <rect class="dg-data dg-r-chip-opt" x="292" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="304" y="168" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 308 168 V 176"/>
+  <rect class="dg-data dg-r-chip-opt" x="304" y="168" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="184" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 260 184 V 192"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="268" y="184" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 272 184 V 192"/>
+  <rect class="dg-data dg-r-chip-opt" x="268" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="280" y="184" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 284 184 V 192"/>
+  <rect class="dg-data dg-r-chip-opt" x="280" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="292" y="184" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 296 184 V 192"/>
+  <rect class="dg-data dg-r-chip-opt" x="292" y="184" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="304" y="184" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 308 184 V 192"/>
+  <rect class="dg-data dg-r-chip-opt" x="304" y="184" width="8" height="8"/>
+  <text class="dg-th-opt" x="344" y="126" text-anchor="middle">cluster</text>
+  <rect class="dg-data dg-r-cell-opt" x="320" y="136" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="320" y="136" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="320" y="152" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="320" y="152" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="320" y="168" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="320" y="168" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="320" y="184" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="320" y="184" width="48" height="8"/>
+  <path class="dg-edge" d="M 36 132 H 188"/>
+  <path class="dg-edge-opt" d="M 188 132 H 372"/>
+  <path class="dg-edge" d="M 188 112 H 36 V 196 H 188 Z"/>
+  <path class="dg-edge-opt" d="M 188 112 H 372 V 196 H 188"/>
+  <text class="dg-note" x="36" y="216">one row per unit with all <tspan class="dg-math">T</tspan> periods</text>
+  <rect class="dg-data dg-tile" x="36" y="244" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-layouts-store-32" x="36" y="244" width="32" height="32"/>
+  <text class="dg-name" x="80" y="257">Unit table, unbalanced panel</text>
+  <path class="dg-dim" d="M 260 276 H 436 M 256 280 L 264 272 M 432 280 L 440 272"/>
+  <rect class="dg-mask" x="316" y="268" width="64" height="16"/>
+  <rect class="dg-data dg-zone" x="316" y="268" width="64" height="16"/>
+  <text class="dg-note" x="348" y="280" text-anchor="middle">Optional</text>
+  <rect class="dg-paper" x="36" y="288" width="404" height="68"/>
+  <rect class="dg-data dg-zone" x="36" y="288" width="404" height="68"/>
+  <path class="dg-rule" d="M 36 324 H 440 M 36 340 H 440 M 72 288 V 356 M 124 288 V 356 M 192 288 V 356 M 320 288 V 356 M 384 288 V 356"/>
+  <text class="dg-th" x="54" y="302" text-anchor="middle">unit</text>
+  <rect class="dg-data dg-r-cell" x="40" y="312" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="312" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="328" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="328" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="344" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="344" width="28" height="8"/>
+  <text class="dg-th" x="98" y="302" text-anchor="middle">cohort</text>
+  <rect class="dg-data dg-r-cell" x="76" y="312" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="76" y="312" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="76" y="328" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="76" y="328" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="76" y="344" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="76" y="344" width="44" height="8"/>
+  <text class="dg-th" x="158" y="302" text-anchor="middle">period[ ]</text>
+  <rect class="dg-data dg-r-cell" x="128" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="128" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="140" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="140" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="152" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="152" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="128" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="128" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="140" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="140" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="128" y="344" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="128" y="344" width="8" height="8"/>
+  <text class="dg-th" x="224" y="302" text-anchor="middle">y[ ]</text>
+  <rect class="dg-data dg-r-cell" x="196" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="196" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="208" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="208" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="220" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="220" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="196" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="196" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="208" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="208" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="196" y="344" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="196" y="344" width="8" height="8"/>
+  <text class="dg-th-opt" x="288" y="302" text-anchor="middle">w[ ]</text>
+  <rect class="dg-data dg-r-cell-opt" x="260" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="260" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="272" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="272" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="284" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="284" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="260" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="260" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="272" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="272" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="260" y="344" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="260" y="344" width="8" height="8"/>
+  <text class="dg-th-opt" x="352" y="302" text-anchor="middle">x[ ]</text>
+  <rect class="dg-data dg-r-cell-opt" x="324" y="312" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 328 312 V 320"/>
+  <rect class="dg-data dg-r-chip-opt" x="324" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="336" y="312" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 340 312 V 320"/>
+  <rect class="dg-data dg-r-chip-opt" x="336" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="348" y="312" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 352 312 V 320"/>
+  <rect class="dg-data dg-r-chip-opt" x="348" y="312" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="324" y="328" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 328 328 V 336"/>
+  <rect class="dg-data dg-r-chip-opt" x="324" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="336" y="328" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 340 328 V 336"/>
+  <rect class="dg-data dg-r-chip-opt" x="336" y="328" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="324" y="344" width="8" height="8"/>
+  <path class="dg-data dg-r-chip-opt" d="M 328 344 V 352"/>
+  <rect class="dg-data dg-r-chip-opt" x="324" y="344" width="8" height="8"/>
+  <text class="dg-th-opt" x="412" y="302" text-anchor="middle">cluster</text>
+  <rect class="dg-data dg-r-cell-opt" x="388" y="312" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="388" y="312" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="388" y="328" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="388" y="328" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="388" y="344" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="388" y="344" width="48" height="8"/>
+  <path class="dg-edge" d="M 36 308 H 256"/>
+  <path class="dg-edge-opt" d="M 256 308 H 440"/>
+  <path class="dg-edge" d="M 256 288 H 36 V 356 H 256 Z"/>
+  <path class="dg-edge-opt" d="M 256 288 H 440 V 356 H 256"/>
+  <text class="dg-note" x="36" y="376">lists run over the unit's observed periods</text>
+  <rect class="dg-data dg-tile" x="36" y="404" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-layouts-store-32" x="36" y="404" width="32" height="32"/>
+  <text class="dg-name" x="80" y="417">Row table, repeated cross-sections</text>
+  <path class="dg-dim" d="M 184 436 H 396 M 180 440 L 188 432 M 392 440 L 400 432"/>
+  <rect class="dg-mask" x="256" y="428" width="68" height="16"/>
+  <rect class="dg-data dg-zone" x="256" y="428" width="68" height="16"/>
+  <text class="dg-note" x="290" y="440" text-anchor="middle">Optional</text>
+  <rect class="dg-paper" x="36" y="448" width="364" height="100"/>
+  <rect class="dg-data dg-zone" x="36" y="448" width="364" height="100"/>
+  <path class="dg-rule" d="M 36 484 H 400 M 36 500 H 400 M 36 516 H 400 M 36 532 H 400 M 92 448 V 548 M 144 448 V 548 M 216 448 V 548 M 252 448 V 548 M 308 448 V 548 M 352 448 V 548"/>
+  <text class="dg-th" x="64" y="462" text-anchor="middle">period</text>
+  <rect class="dg-data dg-r-cell" x="40" y="472" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="472" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="488" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="488" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="504" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="504" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="520" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="520" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell" x="40" y="536" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip" x="40" y="536" width="48" height="8"/>
+  <text class="dg-th" x="118" y="462" text-anchor="middle">cohort</text>
+  <rect class="dg-data dg-r-cell" x="96" y="472" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="96" y="472" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="96" y="488" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="96" y="488" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="96" y="504" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="96" y="504" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="96" y="520" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="96" y="520" width="44" height="8"/>
+  <rect class="dg-data dg-r-cell" x="96" y="536" width="44" height="8"/>
+  <rect class="dg-data dg-r-chip" x="96" y="536" width="44" height="8"/>
+  <text class="dg-th" x="162" y="462" text-anchor="middle">y</text>
+  <rect class="dg-data dg-r-cell" x="148" y="472" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="148" y="472" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="148" y="488" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="148" y="488" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="148" y="504" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="148" y="504" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="148" y="520" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="148" y="520" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell" x="148" y="536" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip" x="148" y="536" width="28" height="8"/>
+  <text class="dg-th-opt" x="198" y="462" text-anchor="middle">w</text>
+  <rect class="dg-data dg-r-cell-opt" x="184" y="472" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="184" y="472" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="184" y="488" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="184" y="488" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="184" y="504" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="184" y="504" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="184" y="520" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="184" y="520" width="28" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="184" y="536" width="28" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="184" y="536" width="28" height="8"/>
+  <text class="dg-th-opt" x="234" y="462" text-anchor="middle">x[p]</text>
+  <rect class="dg-data dg-r-cell-opt" x="220" y="472" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="220" y="472" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="232" y="472" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="232" y="472" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="220" y="488" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="220" y="488" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="232" y="488" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="232" y="488" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="220" y="504" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="220" y="504" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="232" y="504" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="232" y="504" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="220" y="520" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="220" y="520" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="232" y="520" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="232" y="520" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="220" y="536" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="220" y="536" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="232" y="536" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="232" y="536" width="8" height="8"/>
+  <text class="dg-th-opt" x="280" y="462" text-anchor="middle">cluster</text>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="472" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="472" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="488" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="488" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="504" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="504" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="520" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="520" width="48" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="256" y="536" width="48" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="256" y="536" width="48" height="8"/>
+  <text class="dg-th-opt" x="330" y="462" text-anchor="middle">copy</text>
+  <rect class="dg-data dg-r-cell-opt" x="312" y="472" width="36" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="312" y="472" width="36" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="312" y="488" width="36" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="312" y="488" width="36" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="312" y="504" width="36" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="312" y="504" width="36" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="312" y="520" width="36" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="312" y="520" width="36" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="312" y="536" width="36" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="312" y="536" width="36" height="8"/>
+  <text class="dg-th-opt" x="376" y="462" text-anchor="middle">raw_w</text>
+  <rect class="dg-data dg-r-cell-opt" x="356" y="472" width="40" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="356" y="472" width="40" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="356" y="488" width="40" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="356" y="488" width="40" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="356" y="504" width="40" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="356" y="504" width="40" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="356" y="520" width="40" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="356" y="520" width="40" height="8"/>
+  <rect class="dg-data dg-r-cell-opt" x="356" y="536" width="40" height="8"/>
+  <rect class="dg-data dg-r-chip-opt" x="356" y="536" width="40" height="8"/>
+  <path class="dg-edge" d="M 36 468 H 180"/>
+  <path class="dg-edge-opt" d="M 180 468 H 400"/>
+  <path class="dg-edge" d="M 180 448 H 36 V 548 H 180 Z"/>
+  <path class="dg-edge-opt" d="M 180 448 H 400 V 548 H 180"/>
+  <text class="dg-note" x="36" y="568">one row per observation</text>
+  <path class="dg-leader" d="M 780 528 H 796 V 464 H 788"/>
+  <circle class="dg-dot" cx="786" cy="464" r="2"/>
+</svg>

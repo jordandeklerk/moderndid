@@ -117,7 +117,8 @@ html_logo = "_static/logo-mark.svg"
 html_favicon = "_static/logo-mark.svg"
 
 html_theme_options = {
-    "font": {"text": "PT Sans", "code": "Fira Mono"},
+    # The theme serves every font named here. The diagrams set their callouts in PT Serif italic.
+    "font": {"text": "PT Sans", "code": "Fira Mono", "callout": "PT Serif"},
     "repo_url": "https://github.com/jordandeklerk/moderndid",
     "repo_name": "ModernDiD",
     "icon": {"repo": "fontawesome/brands/git-alt"},
