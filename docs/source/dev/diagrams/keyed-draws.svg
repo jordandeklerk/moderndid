@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="dg" viewBox="0 0 880 568" role="img" aria-labelledby="dg-draws-title dg-draws-desc">
+  <title id="dg-draws-title">Keyed bootstrap draws</title>
+  <desc id="dg-draws-desc">Philox4x32-10 turns the seed, the block of a draw, and the 64-bit key of a unit, cluster, or row into 128 bits. Each draw takes its sign from one of those bits. No input depends on the partition or the task.</desc>
+  <defs>
+    <pattern id="dg-draws-grid" x="0" y="0" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path class="dg-gmin" d="M 16 0 V 64 M 32 0 V 64 M 48 0 V 64 M 0 16 H 64 M 0 32 H 64 M 0 48 H 64"/>
+      <path class="dg-gmaj" d="M 0 0 V 64 M 0 0 H 64"/>
+    </pattern>
+    <marker id="dg-draws-head" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
+      <path class="dg-head" d="M0,1 L10,5 L0,9 z"/>
+    </marker>
+    <symbol id="dg-draws-hash-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M12 4.5 10 23.5M18.5 4.5l-2 19M6 10.5h16.5M5.5 17.5H22"/></symbol>
+    <symbol id="dg-draws-tag-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M7.5 7h9.25l6.25 7-6.25 7H7.5A2.5 2.5 0 0 1 5 18.5v-9A2.5 2.5 0 0 1 7.5 7Z"/><path class="dg-glyph-dot" d="M14.25 14a1.75 1.75 0 1 0 3.5 0a1.75 1.75 0 1 0 -3.5 0"/></symbol>
+    <symbol id="dg-draws-row-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M4 8h20v12H4ZM10.67 8v12M17.33 8v12"/></symbol>
+    <symbol id="dg-draws-die-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M8 4.5h12a3.5 3.5 0 0 1 3.5 3.5v12a3.5 3.5 0 0 1-3.5 3.5H8A3.5 3.5 0 0 1 4.5 20V8A3.5 3.5 0 0 1 8 4.5Z"/><path class="dg-glyph-dot" d="M8.25 9.75a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0M16.75 9.75a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0M12.5 14a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0M8.25 18.25a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0M16.75 18.25a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0"/></symbol>
+    <symbol id="dg-draws-sign-32" viewBox="-8.4 -8.4 44.8 44.8"><path d="M14 5v10M9 10h10M9 21.5h10"/></symbol>
+  </defs>
+  <rect class="dg-paper" x="0" y="0" width="880" height="568"/>
+  <rect fill="url(#dg-draws-grid)" x="0" y="0" width="880" height="568"/>
+  <path id="dg-draws-block" class="dg-wire" d="M 296 40 H 660 A 8 8 0 0 1 668 48 V 180" marker-end="url(#dg-draws-head)"/>
+  <path id="dg-draws-canonical" class="dg-wire" d="M 296 116 H 488" marker-end="url(#dg-draws-head)"/>
+  <path id="dg-draws-rowkey" class="dg-wire" d="M 328 192 H 456 A 8 8 0 0 0 464 184 V 116"/>
+  <path class="dg-wire" d="M 524 128 V 180" marker-end="url(#dg-draws-head)"/>
+  <path class="dg-wire" d="M 596 128 V 180" marker-end="url(#dg-draws-head)"/>
+  <path class="dg-wire" d="M 488 212 V 224 H 776 V 212"/>
+  <path id="dg-draws-counter" class="dg-wire" d="M 632 224 V 244" marker-end="url(#dg-draws-head)"/>
+  <path id="dg-draws-key" class="dg-wire" d="M 392 268 H 552" marker-end="url(#dg-draws-head)"/>
+  <path id="dg-draws-bits" class="dg-wire" d="M 632 292 V 332" marker-end="url(#dg-draws-head)"/>
+  <circle class="dg-dot" cx="464" cy="116" r="2"/>
+  <text class="dg-reader" x="380" y="108" text-anchor="middle">canonical_keys</text>
+  <text class="dg-note" x="380" y="136" text-anchor="middle">integer or float bits,</text>
+  <text class="dg-note" x="380" y="152" text-anchor="middle">a string's BLAKE2b digest</text>
+  <text class="dg-reader" x="396" y="184" text-anchor="middle">row_keys</text>
+  <text class="dg-note" x="396" y="212" text-anchor="middle">a splitmix64 chain</text>
+  <text class="dg-note" x="396" y="228" text-anchor="middle">over values and copy index</text>
+  <text class="dg-label" x="676" y="164">⌊<tspan class="dg-math">b</tspan> / 128⌋</text>
+  <text class="dg-label" x="472" y="260" text-anchor="middle">key</text>
+  <text class="dg-label" x="640" y="316">128 bits</text>
+  <text class="dg-compute dg-r-label" x="788" y="196">Counter</text>
+  <text class="dg-compute dg-r-label" x="680" y="120">Unit key</text>
+  <rect class="dg-compute dg-tile" x="40" y="24" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-draws-hash-32" x="40" y="24" width="32" height="32"/>
+  <text class="dg-name" x="84" y="37">Draw <tspan class="dg-math">b</tspan></text>
+  <text class="dg-note" x="84" y="53">index of a bootstrap draw,</text>
+  <text class="dg-note" x="84" y="69">counted from 0</text>
+  <rect class="dg-paper" x="248" y="28" width="48" height="24"/>
+  <rect class="dg-compute dg-r-cell" x="248" y="28" width="48" height="24"/>
+  <path class="dg-compute dg-r-div" d=""/>
+  <rect class="dg-compute dg-r-edge" x="248" y="28" width="48" height="24"/>
+  <text class="dg-code" x="272" y="44" text-anchor="middle">500</text>
+  <rect class="dg-data dg-tile" x="40" y="100" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-draws-tag-32" x="40" y="100" width="32" height="32"/>
+  <text class="dg-name" x="84" y="113">Identifier</text>
+  <text class="dg-note" x="84" y="129">of a unit or cluster</text>
+  <text class="dg-note" x="84" y="145">as an int, float, or string</text>
+  <rect class="dg-paper" x="248" y="104" width="48" height="24"/>
+  <rect class="dg-data dg-r-cell" x="248" y="104" width="48" height="24"/>
+  <rect class="dg-edge" x="248" y="104" width="48" height="24"/>
+  <text class="dg-code" x="272" y="120" text-anchor="middle">8001</text>
+  <rect class="dg-data dg-tile" x="40" y="176" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-draws-row-32" x="40" y="176" width="32" height="32"/>
+  <text class="dg-name" x="84" y="189">Row values</text>
+  <text class="dg-note" x="84" y="205">repeated cross-sections</text>
+  <text class="dg-note" x="84" y="221">without clusters</text>
+  <rect class="dg-paper" x="248" y="180" width="80" height="24"/>
+  <rect class="dg-data dg-r-cell" x="248" y="180" width="80" height="24"/>
+  <path class="dg-div" d="M 264 180 V 204 M 280 180 V 204 M 296 180 V 204 M 312 180 V 204"/>
+  <rect class="dg-edge" x="248" y="180" width="80" height="24"/>
+  <rect class="dg-data dg-r-cell" x="252" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="252" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="268" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="268" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="284" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="284" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="300" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="300" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-cell" x="316" y="188" width="8" height="8"/>
+  <rect class="dg-data dg-r-chip" x="316" y="188" width="8" height="8"/>
+  <rect class="dg-driver dg-tile" x="40" y="252" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-draws-die-32" x="40" y="252" width="32" height="32"/>
+  <text class="dg-name" x="84" y="265">Seed</text>
+  <text class="dg-note" x="84" y="281"><tspan class="dg-code">random_state</tspan></text>
+  <text class="dg-note" x="84" y="297">as 64 bits</text>
+  <rect class="dg-paper" x="248" y="256" width="144" height="24"/>
+  <rect class="dg-driver dg-r-cell" x="248" y="256" width="144" height="24"/>
+  <path class="dg-driver dg-r-div" d="M 320 256 V 280"/>
+  <rect class="dg-driver dg-r-edge" x="248" y="256" width="144" height="24"/>
+  <text class="dg-code" x="284" y="272" text-anchor="middle">00000007</text>
+  <text class="dg-code" x="356" y="272" text-anchor="middle">00000000</text>
+  <rect class="dg-paper" x="488" y="104" width="144" height="24"/>
+  <rect class="dg-compute dg-r-cell" x="488" y="104" width="144" height="24"/>
+  <path class="dg-compute dg-r-div" d="M 560 104 V 128"/>
+  <rect class="dg-compute dg-r-edge" x="488" y="104" width="144" height="24"/>
+  <text class="dg-code" x="524" y="120" text-anchor="middle">00001F41</text>
+  <text class="dg-code" x="596" y="120" text-anchor="middle">00000000</text>
+  <rect class="dg-paper" x="488" y="180" width="288" height="24"/>
+  <rect class="dg-compute dg-r-cell" x="488" y="180" width="288" height="24"/>
+  <path class="dg-compute dg-r-div" d="M 560 180 V 204 M 632 180 V 204 M 704 180 V 204"/>
+  <rect class="dg-compute dg-r-edge" x="488" y="180" width="288" height="24"/>
+  <text class="dg-code" x="524" y="196" text-anchor="middle">00001F41</text>
+  <text class="dg-code" x="596" y="196" text-anchor="middle">00000000</text>
+  <text class="dg-code" x="668" y="196" text-anchor="middle">00000003</text>
+  <text class="dg-code" x="740" y="196" text-anchor="middle">00000000</text>
+  <rect class="dg-compute dg-r-box" x="552" y="244" width="160" height="48" rx="4"/>
+  <text class="dg-body" x="632" y="264" text-anchor="middle">Philox4x32-10</text>
+  <text class="dg-code" x="632" y="280" text-anchor="middle">keyed_rademacher</text>
+  <rect class="dg-compute dg-tile" x="40" y="328" width="32" height="32" rx="4"/>
+  <use class="dg-glyph" href="#dg-draws-sign-32" x="40" y="328" width="32" height="32"/>
+  <text class="dg-name" x="84" y="341">Sign</text>
+  <text class="dg-note" x="84" y="357">bit <tspan class="dg-math">b</tspan> mod 32</text>
+  <text class="dg-note" x="84" y="373">of word ⌊<tspan class="dg-math">b</tspan> / 32⌋ mod 4</text>
+  <rect class="dg-paper" x="488" y="332" width="288" height="24"/>
+  <rect class="dg-compute dg-r-cell" x="488" y="332" width="288" height="24"/>
+  <path class="dg-compute dg-r-div" d="M 560 332 V 356 M 632 332 V 356 M 704 332 V 356"/>
+  <rect class="dg-compute dg-r-edge" x="488" y="332" width="288" height="24"/>
+  <text class="dg-code" x="524" y="348" text-anchor="middle">F2E97503</text>
+  <text class="dg-code" x="596" y="348" text-anchor="middle">B32A2DBA</text>
+  <text class="dg-code" x="668" y="348" text-anchor="middle">034CB0A9</text>
+  <text class="dg-code" x="740" y="348" text-anchor="middle">B726F006</text>
+  <path class="dg-leader" d="M 780 344 H 816 V 372 M 816 388 V 408"/>
+  <path class="dg-detail" d="M 704 328 H 776 A 4 4 0 0 1 780 332 V 356 A 4 4 0 0 1 776 360 H 704 V 328 Z"/>
+  <circle class="dg-badge" cx="816" cy="380" r="9"/>
+  <text class="dg-badge-text" x="816" y="384" text-anchor="middle">A</text>
+  <rect class="dg-inset" x="40" y="408" width="800" height="136" rx="4"/>
+  <circle class="dg-badge" cx="56" cy="424" r="9"/>
+  <text class="dg-badge-text" x="56" y="428" text-anchor="middle">A</text>
+  <text class="dg-zone-label" x="72" y="428">Word 3</text>
+  <text class="dg-note" x="776" y="428" text-anchor="end">set bit +1, clear bit −1</text>
+  <path class="dg-dim" d="M 136 452 H 396 M 516 452 H 776 M 132 456 L 140 448 M 772 456 L 780 448"/>
+  <text class="dg-note" x="456" y="456" text-anchor="middle">draws 480 to 511</text>
+  <rect class="dg-paper" x="136" y="464" width="640" height="20"/>
+  <rect class="dg-compute dg-r-cell" x="136" y="464" width="640" height="20"/>
+  <path class="dg-compute dg-r-div" d="M 156 464 V 484 M 176 464 V 484 M 196 464 V 484 M 216 464 V 484 M 236 464 V 484 M 256 464 V 484 M 276 464 V 484 M 296 464 V 484 M 316 464 V 484 M 336 464 V 484 M 356 464 V 484 M 376 464 V 484 M 396 464 V 484 M 416 464 V 484 M 436 464 V 484 M 456 464 V 484 M 476 464 V 484 M 496 464 V 484 M 516 464 V 484 M 536 464 V 484 M 556 464 V 484 M 576 464 V 484 M 596 464 V 484 M 616 464 V 484 M 636 464 V 484 M 656 464 V 484 M 676 464 V 484 M 696 464 V 484 M 716 464 V 484 M 736 464 V 484 M 756 464 V 484"/>
+  <rect class="dg-compute dg-r-edge" x="136" y="464" width="640" height="20"/>
+  <rect class="dg-paper" x="136" y="484" width="640" height="20"/>
+  <rect class="dg-compute dg-r-cell" x="136" y="484" width="640" height="20"/>
+  <path class="dg-compute dg-r-div" d="M 156 484 V 504 M 176 484 V 504 M 196 484 V 504 M 216 484 V 504 M 236 484 V 504 M 256 484 V 504 M 276 484 V 504 M 296 484 V 504 M 316 484 V 504 M 336 484 V 504 M 356 484 V 504 M 376 484 V 504 M 396 484 V 504 M 416 484 V 504 M 436 484 V 504 M 456 484 V 504 M 476 484 V 504 M 496 484 V 504 M 516 484 V 504 M 536 484 V 504 M 556 484 V 504 M 576 484 V 504 M 596 484 V 504 M 616 484 V 504 M 636 484 V 504 M 656 484 V 504 M 676 484 V 504 M 696 484 V 504 M 716 484 V 504 M 736 484 V 504 M 756 484 V 504"/>
+  <rect class="dg-compute dg-r-edge" x="136" y="484" width="640" height="20"/>
+  <text class="dg-code" x="146" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="166" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="186" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="206" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="226" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="246" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="266" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="286" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="306" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="326" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="346" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="366" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="386" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="406" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="426" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="446" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="466" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="486" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="506" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="526" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="546" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="566" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="586" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="606" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="626" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="646" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="666" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="686" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="706" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="726" y="478" text-anchor="middle">1</text>
+  <text class="dg-code" x="746" y="478" text-anchor="middle">0</text>
+  <text class="dg-code" x="766" y="478" text-anchor="middle">1</text>
+  <path class="dg-edge" d="M 142.5 494 L 149.5 494 M 162.5 494 L 169.5 494 M 166 490.5 L 166 497.5 M 182.5 494 L 189.5 494 M 186 490.5 L 186 497.5 M 202.5 494 L 209.5 494 M 222.5 494 L 229.5 494 M 242.5 494 L 249.5 494 M 262.5 494 L 269.5 494 M 282.5 494 L 289.5 494 M 302.5 494 L 309.5 494 M 322.5 494 L 329.5 494 M 342.5 494 L 349.5 494 M 362.5 494 L 369.5 494 M 382.5 494 L 389.5 494 M 386 490.5 L 386 497.5 M 402.5 494 L 409.5 494 M 406 490.5 L 406 497.5 M 422.5 494 L 429.5 494 M 426 490.5 L 426 497.5 M 442.5 494 L 449.5 494 M 446 490.5 L 446 497.5 M 462.5 494 L 469.5 494 M 482.5 494 L 489.5 494 M 486 490.5 L 486 497.5 M 502.5 494 L 509.5 494 M 506 490.5 L 506 497.5 M 522.5 494 L 529.5 494 M 542.5 494 L 549.5 494 M 562.5 494 L 569.5 494 M 566 490.5 L 566 497.5 M 582.5 494 L 589.5 494 M 602.5 494 L 609.5 494 M 622.5 494 L 629.5 494 M 626 490.5 L 626 497.5 M 642.5 494 L 649.5 494 M 646 490.5 L 646 497.5 M 662.5 494 L 669.5 494 M 666 490.5 L 666 497.5 M 682.5 494 L 689.5 494 M 702.5 494 L 709.5 494 M 706 490.5 L 706 497.5 M 722.5 494 L 729.5 494 M 726 490.5 L 726 497.5 M 742.5 494 L 749.5 494 M 762.5 494 L 769.5 494 M 766 490.5 L 766 497.5"/>
+  <text class="dg-label" x="124" y="478" text-anchor="end">bit</text>
+  <text class="dg-label" x="124" y="498" text-anchor="end">sign</text>
+  <rect class="dg-edge" x="536" y="464" width="20" height="40"/>
+  <text class="dg-compute dg-r-label" x="546" y="524" text-anchor="middle">draw 500</text>
+  <text class="dg-note" x="136" y="524">bit 0</text>
+  <text class="dg-note" x="776" y="524" text-anchor="end">bit 31</text>
+  <text class="dg-callout" x="840" y="48" text-anchor="end">No input depends</text>
+  <text class="dg-callout" x="840" y="68" text-anchor="end">on the partition</text>
+  <text class="dg-callout" x="840" y="88" text-anchor="end">or the task.</text>
+  <text class="dg-callout" x="840" y="108" text-anchor="end">Every split draws</text>
+  <text class="dg-callout" x="840" y="128" text-anchor="end">the same signs.</text>
+</svg>
