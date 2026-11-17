@@ -4,36 +4,35 @@
 Working on a contribution
 #########################
 
-Once you've found a fix or a clearer explanation, someone else needs enough
-context to check your work. We'll keep the problem, the new behavior, and its
-tests together in a separate branch and a focused pull request. That gives the
-reviewer a path through the change and lets you keep working without mixing it
-with unrelated edits in your checkout.
+Once you have a fix or a clearer explanation, it reaches users only after
+review. Reviewers see only your diff and what you write about it. A diff that
+mixes in unrelated edits, or a description that leaves out how you checked the
+result, makes them reconstruct your reasoning before they can judge it. We'll
+follow one change from a new branch to a pull request and through its review.
 
 Starting a branch
 =================
 
-If you've followed :doc:`guide`, ``origin`` points to your fork and
-``upstream`` points to the main repository. Start a new contribution from the
-latest upstream ``main`` after saving any work already in progress.
+Each contribution gets its own branch, a line of commits kept apart from
+``main`` and from your other work. Name it after the work and start it from the
+newest ``main`` of the repository that the :doc:`setup guide <guide>` named
+``upstream``. Commit or set aside any work in progress first, since uncommitted
+edits follow you onto the new branch.
 
 .. code-block:: bash
 
    git fetch upstream
    git switch -c fix-unbalanced-county-weights upstream/main
 
-Choose a branch name that describes the work, such as
-``fix-unbalanced-county-weights`` or ``clarify-continuous-dose-guide``.
-Although no hook enforces a particular naming pattern, the name helps you and a
-reviewer identify the branch.
-
 Keeping the change focused
 ==========================
 
-As you work, inspect the diff for edits that don't help explain or fix the
-problem. A formatting cleanup in another estimator is easier to review
-separately because it needs different evidence from your bug fix. You can stage
-selected parts of a file when several changes share your working directory.
+Keep each pull request to the edits that its problem needs. A formatting
+cleanup in another estimator needs different evidence from your bug fix and is
+easier to review on its own. The docstring and any guide that explain a change
+to what users pass in, get back, or conclude from a result belong in the same
+pull request. Read your diff before each commit and stage only the parts that
+belong together.
 
 .. code-block:: bash
 
@@ -41,25 +40,24 @@ selected parts of a file when several changes share your working directory.
    git add -p
    git diff --staged
 
-A commit message should name the behavior it changes so someone reading the
-history doesn't need the original discussion. A subject such as ``BUG: preserve
-county weights in an unbalanced panel`` explains more than ``fix another
-issue``. Prefixes such as ``BUG``, ``ENH``, ``DOC``, ``TEST``, and ``MAINT``
-can help identify the kind of work even though the hooks don't enforce them.
-The generated changelog uses GitHub release content rather than parsing these
-prefixes.
+``git add -p`` asks about each changed block of a file before staging it.
+``git diff --staged`` then shows what the next commit will hold.
 
-If the reason for the change isn't apparent from its subject, add it to the
-commit body. For numerical code, that explanation may need to name the
-estimand, the sample on which a failure occurs, or the distinction between an
-estimate and its standard error.
+Write each commit message for someone who reads the history without the
+original discussion. A subject such as
+``BUG: preserve county weights in an unbalanced panel`` says more than
+``fix another issue``. The project's subjects open with a prefix for the kind
+of work, such as ``BUG``, ``ENH``, ``DOC``, ``TEST``, or ``MAINT``. If the
+subject doesn't say why the change is needed, give the reason in the commit
+body. In numerical code, that reason may name the estimand, the sample on which
+the old code failed, or whether an estimate or its standard error was wrong.
 
 Updating a branch during development
 ====================================
 
-When upstream changes affect your work, fetch the new commits before choosing
-how to incorporate them. If you're the only person working on the branch, a
-rebase can replay your commits on the current ``main``.
+When upstream changes affect your work, fetch them before deciding how to bring
+them in. If you're the only person working on the branch, a rebase replays your
+commits on top of the newest ``main``.
 
 .. code-block:: bash
 
@@ -67,59 +65,63 @@ rebase can replay your commits on the current ``main``.
    git rebase upstream/main
 
 Resolve any conflicts by checking the intended behavior on both sides. Rerun
-the affected tests after the rebase because a clean merge of text can still
-change a calculation. A merge is another way to incorporate upstream work
-without changing existing commit identities.
+the affected tests afterward, because text that merges cleanly can still change
+a calculation. A branch you've already pushed then needs
+``git push --force-with-lease``, the force push that refuses to overwrite
+commits on your fork that you haven't fetched. Merging ``upstream/main``
+instead brings in the same work without rewriting any commit.
 
 .. admonition:: Keep review changes visible
    :class: tip
 
-   Once review has begun, pushing additional commits usually makes feedback
-   easier to follow. Discuss a rebase with collaborators before replacing
-   the history they have already reviewed.
+   Once review has begun, new commits on top of the branch show reviewers what
+   changed since their last read. Discuss a rebase with them before replacing
+   history they've already reviewed.
 
 Opening the pull request
 ========================
 
-After running the checks for your change, push the branch to your fork and open
-a pull request against the main repository's ``main`` branch.
+A pull request asks the main repository to merge your branch. Once the checks
+for your change pass locally, push the branch to your fork and follow the link
+that GitHub prints to open the pull request against ``main``.
 
 .. code-block:: bash
 
    git push -u origin fix-unbalanced-county-weights
 
-Use the description to give a reviewer the context you had when making the
-change. For a bug fix, a small input that fails before the change and succeeds
-afterward often explains the problem and its resolution more clearly than a
-tour of the edited functions. If you're adding an estimator, explain which
-design it supports and give the method's source and the checks used to verify
-its estimates and inference.
+With ``-u``, later pushes from this branch go to your fork without naming it.
+Give the pull request a title like a commit subject, prefix included, because
+the changelog lists each merged pull request by its title.
 
-Include the commands you ran and any limits to that evidence. For example,
-check a changed guide through a rendered build as well as a unit test. Confirm
-that a numerical validation ran rather than being skipped. Link the relevant
-issue with ``Fixes #123`` when the pull request resolves it, or with
-``Refs #123`` when the issue should remain open.
+Use the description to give a reviewer the context you had. For a bug fix, a
+small input that fails before the change and succeeds after it explains more
+than a tour of the edited functions. For a new estimator, name the design it
+supports, the paper it implements, and the checks behind its estimates and
+inference.
+
+List the commands you ran and the limits of that evidence. A changed guide
+needs a rendered build as well as a unit test. A numerical validation supports
+a claim only if it ran rather than skipped. When the pull request resolves an
+issue, ``Fixes #123`` in the description closes the issue at the merge.
+``Refs #123`` links an issue without closing it at the merge.
 
 .. admonition:: Use a draft for unsettled choices
    :class: tip
 
-   A draft pull request suits a methodological question or implementation
-   choice that is still being discussed. Describe the remaining work so a
-   reviewer can focus on that question without assuming the change is ready to
-   merge.
+   Open a draft pull request while a methodological question or an
+   implementation choice is still under discussion. Describe the remaining work
+   so reviewers can focus on that question.
 
 Following the review
 ====================
 
-The Actions checks on the pull request show which job and command failed. Use
-that output to reproduce the failure locally rather than rerunning unrelated
-tests. If feedback changes the specification or implementation, update the
-tests and explanation that support the new behavior too.
+When one of the checks on the pull request fails, its log names the command
+and the environment to rerun locally. The :doc:`testing` guide describes what
+each check runs and on which platforms.
 
-Push follow-up changes to the same branch so they remain in the original pull
-request. If you disagree with a suggestion, explain the technical reason in its
-thread and give the reviewer evidence to assess it. :doc:`testing` explains
-which tests a change needs and what each automated check runs.
-:doc:`reviewing` describes the method, code, and documentation checks that
-help us decide when a contribution is ready to merge.
+If feedback changes the specification or the implementation, update the tests
+and the explanation that support the new behavior too. Push follow-up commits
+to the same branch so they stay in the pull request. If you disagree with a
+suggestion, give the technical reason and your evidence in its thread.
+:doc:`reviewing` describes how reviewers read the method, the code, and the
+documentation before deciding to merge.
