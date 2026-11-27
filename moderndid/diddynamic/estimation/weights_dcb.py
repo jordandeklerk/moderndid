@@ -555,7 +555,7 @@ def _compute_bias(
     bias_parts = np.empty(n_periods)
     coef_diff_0 = coef_t[0] - coef_accum[0] / 20.0
     coef_slope_0 = coef_diff_0[1:]
-    diff_gamma_0 = keep_gammas[not_nas[0], 0] - 1.0 / n
+    diff_gamma_0 = keep_gammas[not_nas[0], 0] - 1.0 / len(not_nas[0])
     bias_parts[0] = coef_slope_0 @ (diff_gamma_0 @ covariates_nonna[0])
 
     for t in range(1, n_periods):
