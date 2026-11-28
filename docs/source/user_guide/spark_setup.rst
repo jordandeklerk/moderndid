@@ -12,43 +12,12 @@ one imports ModernDiD for its share of the units and needs the driver's
 ModernDiD version and Python minor version. Both need Python 3.12 or later and
 PySpark 3.5 or later.
 
-If a fit stops with an error, look for its message in the troubleshooting
-section at the end. Once your setup works, the :ref:`Spark guide <spark>` takes
-you through a fit.
-
-Tested setups
--------------
-
-Before you install anything, the table below shows whether a Spark fit has
-already run on a setup like yours. Your code can reach Spark in a classic
-session, where the driver controls Spark from its own machine, or through Spark
-Connect, where it sends each query over the network to a server that may run
-elsewhere. Continuous integration runs the Spark tests both ways on every pull
-request, as the :ref:`testing guide <testing-spark>` shows.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 32 24 44
-
-   * - Spark
-     - Python and Java
-     - Where it ran
-   * - PySpark 4.2
-     - Python 3.13 and Java 21
-     - Continuous integration on a local cluster of two executors and on a
-       cluster of Docker containers
-   * - PySpark 3.5
-     - Python 3.12 and Java 17
-     - Continuous integration on a local cluster of two executors
-   * - Databricks Runtime 16.4 LTS ML (Spark 3.5.2)
-     - Python 3.12.3 and Java 17
-     - Azure Databricks in October 2026, on classic compute in dedicated access
-       mode
-
-On Databricks, the Spark 4 runtimes (17.3 LTS and later), standard access
-mode, serverless compute, Databricks Connect, and cluster libraries haven't run
-a fit yet. Neither have Amazon EMR, Google Cloud Dataproc, and Spark on
-Kubernetes, where the steps for a cluster you manage should carry over.
+Your code can reach Spark in a classic session, where the driver controls Spark
+from its own machine, or through Spark Connect, where it sends each query over
+the network to a server that may run elsewhere. The sections below cover both
+on Databricks, on a cluster you manage, and on your own machine. If a fit stops
+with an error, look for its message in the troubleshooting section at the end.
+Once your setup works, the :ref:`Spark guide <spark>` takes you through a fit.
 
 Databricks
 ----------
@@ -63,8 +32,9 @@ Spark Connect.
 
 Install ModernDiD as a `notebook-scoped library
 <https://docs.databricks.com/aws/en/libraries/notebooks-python-libraries>`_ in
-the first cell and restart Python in the next, as Databricks recommends. On our
-cluster, that install reached the executors as well as the notebook.
+the first cell and restart Python in the next, as Databricks recommends. On
+classic compute in dedicated access mode, that install reaches the executors as
+well as the notebook.
 
 .. code-block:: python
 
