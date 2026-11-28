@@ -641,6 +641,59 @@ def test_debias_depends_only_on_random_state(estimation_panel):
     assert first.bias == second.bias
 
 
+def test_bias_vanishes_with_zero_imbalance_when_rows_are_missing(estimation_panel):
+    outcome, treatment, covariates, ds = estimation_panel
+    n = len(outcome)
+    cov_missing = {t: x.copy() for t, x in covariates.items()}
+    cov_missing[0] = cov_missing[0] + 1000.0
+    cov_missing[0][:10, 0] = np.nan
+    coefs = compute_coefficients(3, outcome, treatment, cov_missing, ds, "lasso_plain", False, 10)
+    gammas = np.zeros((n, 3))
+    gammas[coefs.not_nas[0], 0] = 1.0 / len(coefs.not_nas[0])
+    gammas[:, 1] = gammas[:, 0]
+    gammas[:, 2] = gammas[:, 0]
+    bias = _compute_bias(
+        n,
+        3,
+        outcome,
+        treatment,
+        cov_missing,
+        ds,
+        "lasso_plain",
+        False,
+        10,
+        None,
+        0,
+        coefs.coef_t,
+        coefs.covariates_nonna,
+        coefs.not_nas,
+        gammas,
+        np.random.default_rng(0),
+    )
+    assert bias == pytest.approx(0.0, abs=1e-10)
+
+
+def test_debias_is_invariant_to_period_one_shift_when_rows_are_missing(estimation_panel):
+    outcome, treatment, covariates, ds = estimation_panel
+    cov_missing = {t: x.copy() for t, x in covariates.items()}
+    cov_missing[0][:10, 0] = np.nan
+    cov_shifted = {t: x.copy() for t, x in cov_missing.items()}
+    cov_shifted[0] = cov_shifted[0] + 1000.0
+    kwargs = dict(
+        method="lasso_subsample",
+        regularization=False,
+        debias=True,
+        adaptive_balancing=False,
+        ub=20.0,
+        grid_length=50,
+        random_state=3,
+    )
+    base = compute_dcb_estimator(3, outcome, treatment, cov_missing, ds, **kwargs)
+    shifted = compute_dcb_estimator(3, outcome, treatment, cov_shifted, ds, **kwargs)
+    assert shifted.mu_hat == pytest.approx(base.mu_hat, abs=1e-6)
+    assert shifted.bias == pytest.approx(base.bias, abs=1e-6)
+
+
 def test_imbalances_compare_with_equal_then_previous_weights(rng):
     n = 30
     covariates = {t: rng.standard_normal((n, 2)) for t in range(2)}
