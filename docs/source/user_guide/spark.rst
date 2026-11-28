@@ -124,8 +124,9 @@ order. A fit that runs at all also shows that ModernDiD reached every executor
 that worked on it. That may not be every executor you have, because Spark hands
 a table out in partitions, chunks of rows that each run as a separate task. A
 panel as small as the county data may fill one partition and reach one
-executor. If the call fails instead, look up its message in the
-:ref:`troubleshooting section <spark-troubleshooting>` of the setup guide.
+executor. If the call stops instead with an error that the executors failed to
+import ModernDiD or run another version of it, the :ref:`setup guide
+<spark-setup>` shows how to install it where they run.
 
 .. admonition:: Tested on a Databricks cluster
    :class: note
@@ -266,8 +267,8 @@ its column types before it reads a single row.
 Every column of the county data holds a long or a double, Spark's types for
 64-bit integers and floating-point numbers. The outcome, period, unit, and
 cohort columns need numbers, as do any weights and covariates. Decimal columns
-pass too, within limits that the :ref:`troubleshooting section
-<spark-troubleshooting>` lists under their error messages.
+pass too, as long as a decimal unit identifier or cluster column has no
+fraction digits and at most 18 digits.
 
 If your table stores the unit identifier as text, the type check stops the fit
 and asks you to convert it. Spark's ``xxhash64`` function hashes the text into
@@ -533,8 +534,8 @@ default ``boot=False``, the default ``cband=True`` draws ``biters`` random signs
 for each unit or cluster and keeps their sums for the bands of later
 aggregations. When no aggregation will need them, passing ``cband=False`` as
 well skips the draws. A very large design may need fewer draws to stay under
-the limits on what the driver collects, as the :ref:`troubleshooting section
-<spark-troubleshooting>` explains.
+``spark.driver.maxResultSize``, Spark's cap on what the driver collects at
+once.
 
 For a look at how a Spark fit computes its estimates and draws without
 collecting the units, the developer guide to :ref:`fits on shards

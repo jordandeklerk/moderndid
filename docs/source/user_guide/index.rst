@@ -94,7 +94,7 @@ Scaling
    * - :doc:`GPU acceleration <gpu>`
      - Set up CuPy, select supported GPU calculations, and measure their running time.
    * - :doc:`Setting up Spark <spark_setup>`
-     - Install ModernDiD for Spark on Databricks, a cluster, or one machine and fix setup errors.
+     - Install ModernDiD for Spark on Databricks, a cluster you manage, or your own machine.
    * - :doc:`Distributed estimation on Spark <spark>`
      - Fit group-time effects on a Spark DataFrame and check them against an in-memory fit.
 

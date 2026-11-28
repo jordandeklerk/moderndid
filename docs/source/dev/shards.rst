@@ -419,8 +419,9 @@ an in-memory fit and ``_MomentEvaluator`` to the sums of a fit on shards.
 These sums make the moments pass return a fit's largest partials, about
 :math:`8L(L + B)` bytes from each task for :math:`B` draws and the :math:`L`
 entries of :math:`z_i`. Keyed sums add about :math:`8(L + 1)` bytes for each
-cluster a task touched. The setup guide's :ref:`troubleshooting section
-<spark-troubleshooting>` covers the limits that Spark puts on them.
+cluster a task touched. With many draws, these partials can reach
+``spark.driver.maxResultSize``, Spark's cap on what the driver collects in one
+step.
 
 .. _dev-shard-draws:
 

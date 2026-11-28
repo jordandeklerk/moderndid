@@ -992,9 +992,9 @@ For :math:`B` draws and the :math:`L` entries of :math:`z_i`, each row that
 ``moments_kernel`` returns takes about :math:`8L(L + B)` bytes. A clustered fit
 that keeps whole clusters adds another :math:`8L^2` bytes for its cluster Gram
 matrix. One that spreads its clusters adds about :math:`8(L + 1)` bytes for
-each cluster the task touched instead. The
-:ref:`troubleshooting section <spark-troubleshooting>` of the setup guide
-covers the limits these rows can reach.
+each cluster the task touched instead. With many draws, these rows can reach
+``spark.driver.maxResultSize``, Spark's cap on what the driver collects in one
+step.
 
 .. _architecture-shard-draws:
 
